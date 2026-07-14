@@ -1,0 +1,85 @@
+# 智慧矿山数据采集管理平台设计文档集
+
+> 临时工程名：mine-platform  
+> 文档版本：0.1.0  
+> 基线日期：2026-07-14  
+> 状态：已确认设计，可进入工程初始化  
+> 部署形态：单矿区私有化部署，支持单机与五节点生产方案
+
+工程坐标：Maven groupId 使用 `com.bosco`，Java 基础包使用 `com.bosco.mine`。  
+项目许可证：Apache License 2.0。
+
+## 1. 文档用途
+
+本目录是 mine-platform 的产品、架构、开发、测试和运维基线。它不是一份仅供评审的概念方案，而是后续 Codex 生成代码、数据库迁移、接口、测试、Compose 文件和现场手册时必须遵守的上位约束。
+
+项目名称暂不确定，源码中的 mine-* 仅作为稳定的临时模块名。更换产品名称不得改变模块边界、接口语义和数据库前缀。
+
+## 2. 核心结论
+
+- 平台从头自研，不基于现有 IoT 平台做二次开发。
+- 允许使用 Spring Boot、Netty、RabbitMQ、PostgreSQL、TimescaleDB、Redis、Vue 等基础开源框架或中间件。
+- 一套代码同时支持单机 Compose 和五节点 Compose，不维护两个产品分支。
+- 设备接入以 MQTT 为主，同时支持厂商私有 TCP、二进制和差异化 MQTT 报文。
+- MQTT Broker 与内部消息队列使用同一套三节点 RabbitMQ 集群，通过两个 vhost 做逻辑隔离。
+- 普通协议采用前台配置；复杂加密、状态机、文件传输等通过 Java 协议插件扩展。
+- 物模型、字段映射、协议、告警、保留、弱网等策略可在前台发布和热加载。
+- 后端采用模块优先的 MVC，复杂领域局部使用领域模型，不实施教科书式全量 DDD。
+- 前端基于 SoybeanAdmin 的布局、登录、主题和动态路由底座，矿山业务页面全部自研。
+- 一期必须通过 5000 客户端压测、弱网补传测试和 72 小时稳定性测试。
+
+## 3. 推荐阅读顺序
+
+| 顺序 | 文档 | 读者与用途 |
+|---|---|---|
+| 1 | [00-product-scope.md](00-product-scope.md) | 了解产品目标、范围和不可变约束 |
+| 2 | [01-system-architecture.md](01-system-architecture.md) | 了解模块、节点和主数据流 |
+| 3 | [02-repository-backend.md](02-repository-backend.md) | 后端工程结构和编码边界 |
+| 4 | [03-device-access-protocol.md](03-device-access-protocol.md) | MQTT、TCP、协议引擎和弱网 |
+| 5 | [04-device-model-strategy.md](04-device-model-strategy.md) | 物模型、映射、策略和热发布 |
+| 6 | [05-messaging-telemetry-data.md](05-messaging-telemetry-data.md) | RabbitMQ、遥测、时序与幂等 |
+| 7 | [06-mine-business.md](06-mine-business.md) | 车辆、人员、路线、UWB 和运营 |
+| 8 | [07-frontend.md](07-frontend.md) | Vue 3 信息架构和实时前端 |
+| 9 | [08-security-auth-audit.md](08-security-auth-audit.md) | Sa-Token、RBAC、设备安全和审计 |
+| 10 | [09-deployment-operations.md](09-deployment-operations.md) | 单机、五节点、备份和现场运维 |
+| 11 | [10-testing-quality-gates.md](10-testing-quality-gates.md) | 测试分层、压测和上线门禁 |
+| 12 | [11-contracts-and-database.md](11-contracts-and-database.md) | API、消息信封和核心表设计 |
+| 13 | [12-roadmap-and-codex-workflow.md](12-roadmap-and-codex-workflow.md) | 阶段路线与 Codex 协作方式 |
+| 14 | [13-technology-and-licenses.md](13-technology-and-licenses.md) | 技术版本、许可证和升级策略 |
+| 15 | [14-decisions-and-glossary.md](14-decisions-and-glossary.md) | ADR 摘要、术语和待确认项 |
+
+详细实施任务位于 plans/，必须按测试先行、小提交、逐阶段验收执行。
+
+## 4. Codex 开始开发前的固定动作
+
+1. 读取仓库根目录 AGENTS.md。
+2. 读取本 README 和当前任务涉及的专题文档。
+3. 检查 plans/ 中对应阶段的任务和验收标准。
+4. 检查工作树已有改动，不覆盖用户修改。
+5. 先写失败测试，再写最小实现。
+6. 运行当前模块测试和架构规则。
+7. 更新接口、消息、数据库及运维文档。
+8. 使用中文 Conventional Commit 提交。
+
+## 5. 文档治理
+
+- 架构边界变更必须先增加或更新 ADR。
+- API、MQ 消息和数据库结构属于契约，禁止只改实现不改文档。
+- 协议版本、物模型版本和策略版本一经发布不可原地修改。
+- 文档里的示例 ID、密钥和报文均不得使用现场真实凭据。
+- 版本表中的 patch 版本只是当前验证基线，构建时必须由 BOM、lockfile 和镜像 digest 锁定。
+
+## 6. 当前仍需现场材料
+
+这些材料不阻塞工程底座，但会阻塞真实设备验收：
+
+- 至少一种真实 MQTT 设备的连接参数、主题、上行与下行样本。
+- 至少一种私有 TCP 二进制协议文档及正常、异常报文。
+- UWB 厂商协议、频率、坐标系和精度定义。
+- 矿区坐标基准、车辆/人员编码规范、班次和作业单规则。
+- 三维模型来源；没有正式模型时使用演示 GLB/3D Tiles 和二维网格降级。
+- 最终项目名称和对外品牌规范。
+
+## 7. 一句话总结
+
+mine-platform 是一个面向弱网矿区、支持异构设备和可配置协议、能够在现场长期运行的自研采集与业务平台，而不是一个换皮的通用 IoT 后台。
