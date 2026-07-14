@@ -114,14 +114,18 @@ POST      /api/v1/alarms/{id}/close
   "message": "设备组策略存在同优先级冲突",
   "traceId": "abc",
   "timestamp": "2026-07-14T08:00:00Z",
-  "details": [
-    {
-      "field": "offlineTimeout",
-      "reason": "group-a 与 group-b 的值不同"
-    }
-  ]
+  "details": {
+    "violations": [
+      {
+        "field": "offlineTimeout",
+        "reason": "group-a 与 group-b 的值不同"
+      }
+    ]
+  }
 }
 ~~~
+
+`details` 始终是 JSON 对象；字段校验错误统一放入 `details.violations` 数组，因此一次请求可以返回多个 `{field, reason}`。
 
 写操作接受 X-Request-Id；命令和发布接受 Idempotency-Key。
 
@@ -346,6 +350,9 @@ payload JSONB
 status VARCHAR
 attempts INTEGER
 next_attempt_at TIMESTAMPTZ
+locked_by VARCHAR NULL
+locked_at TIMESTAMPTZ NULL
+lease_expires_at TIMESTAMPTZ NULL
 created_at TIMESTAMPTZ
 published_at TIMESTAMPTZ NULL
 last_error VARCHAR NULL
@@ -354,6 +361,7 @@ last_error VARCHAR NULL
 索引：
 
 - status + next_attempt_at。
+- PUBLISHING + lease_expires_at，用于 relay 崩溃后的超时重新认领。
 - aggregate_type + aggregate_id。
 - published_at 用于归档。
 

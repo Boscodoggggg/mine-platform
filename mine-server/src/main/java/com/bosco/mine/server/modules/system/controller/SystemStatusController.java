@@ -6,7 +6,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 为现场部署、健康巡检和前端展示提供基础系统状态。
+ * 为现场部署、健康巡检和前端展示提供基础进程状态。
+ * 此接口不代表依赖就绪状态，readiness 需要单独检查数据库、消息系统和配置快照。
  */
 @RestController
 @RequestMapping("/api/v1/system")

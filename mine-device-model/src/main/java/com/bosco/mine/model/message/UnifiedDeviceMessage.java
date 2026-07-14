@@ -34,7 +34,7 @@ public record UnifiedDeviceMessage(
         Long sequence,
         Instant occurredAt,
         Instant receivedAt,
-        boolean replayed,
+        Boolean replayed,
         TelemetryPayload properties,
         Quality quality,
         String rawRef) {
@@ -53,6 +53,7 @@ public record UnifiedDeviceMessage(
         protocolVersion = requireText(protocolVersion, "protocolVersion");
         Objects.requireNonNull(occurredAt, "occurredAt 不能为空");
         Objects.requireNonNull(receivedAt, "receivedAt 不能为空");
+        Objects.requireNonNull(replayed, "replayed 不能为空");
         Objects.requireNonNull(properties, "properties 不能为空");
         Objects.requireNonNull(quality, "quality 不能为空");
     }

@@ -11,7 +11,7 @@ import java.util.Objects;
  * @param message   可读错误消息
  * @param traceId   本次请求链路标识
  * @param timestamp 错误发生时刻
- * @param details   可安全返回给调用方的结构化详情
+ * @param details   可安全返回给调用方的结构化详情对象；字段错误放入 violations 数组
  */
 public record ApiErrorResponse(
         String code,

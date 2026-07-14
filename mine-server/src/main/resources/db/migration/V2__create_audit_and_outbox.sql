@@ -75,6 +75,9 @@ CREATE TABLE sys_outbox_event (
     status           VARCHAR(32)  NOT NULL DEFAULT 'PENDING',
     attempts         INTEGER      NOT NULL DEFAULT 0,
     next_attempt_at  TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    locked_by        VARCHAR(128),
+    locked_at        TIMESTAMPTZ,
+    lease_expires_at TIMESTAMPTZ,
     created_at       TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     published_at     TIMESTAMPTZ,
     last_error       VARCHAR(2000),
@@ -86,6 +89,22 @@ CREATE TABLE sys_outbox_event (
         status IN ('PENDING', 'PUBLISHING', 'PUBLISHED', 'FAILED', 'DEAD')
     ),
     CONSTRAINT ck_sys_outbox_event_attempts CHECK (attempts >= 0),
+    CONSTRAINT ck_sys_outbox_event_lease CHECK (
+        (
+            status = 'PUBLISHING'
+            AND locked_by IS NOT NULL
+            AND locked_at IS NOT NULL
+            AND lease_expires_at IS NOT NULL
+            AND lease_expires_at > locked_at
+        )
+        OR
+        (
+            status <> 'PUBLISHING'
+            AND locked_by IS NULL
+            AND locked_at IS NULL
+            AND lease_expires_at IS NULL
+        )
+    ),
     CONSTRAINT ck_sys_outbox_event_published_at CHECK (
         status <> 'PUBLISHED' OR published_at IS NOT NULL
     )
@@ -97,6 +116,10 @@ CREATE INDEX idx_sys_outbox_event_pending
 
 CREATE INDEX idx_sys_outbox_event_aggregate
     ON sys_outbox_event (aggregate_type, aggregate_id, created_at);
+
+CREATE INDEX idx_sys_outbox_event_expired_lease
+    ON sys_outbox_event (lease_expires_at, created_at)
+    WHERE status = 'PUBLISHING';
 
 CREATE INDEX idx_sys_outbox_event_published_at
     ON sys_outbox_event (published_at)

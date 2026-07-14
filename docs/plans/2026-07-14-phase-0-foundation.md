@@ -260,7 +260,7 @@ git commit -am "feat(server): 新增服务启动与统一错误响应"
 **Step 2: 运行**
 
 ~~~bash
-./mvnw -pl mine-server -am verify -Dtest=DatabaseMigrationIT
+./mvnw -pl mine-server -am verify
 ~~~
 
 Expected: FAIL，migration 不存在。

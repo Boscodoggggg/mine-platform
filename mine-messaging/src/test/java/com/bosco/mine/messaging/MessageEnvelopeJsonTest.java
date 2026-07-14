@@ -4,6 +4,7 @@ import com.bosco.mine.model.message.UnifiedDeviceMessage;
 import org.junit.jupiter.api.Test;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.exc.ValueInstantiationException;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
@@ -51,6 +52,17 @@ class MessageEnvelopeJsonTest {
                 compatibleJson, new TypeReference<>() { });
 
         assertThat(envelope.payload().deviceId()).isEqualTo("device-001");
+    }
+
+    @Test
+    void 应拒绝缺少弱网补传标识的设备消息() throws IOException {
+        String missingReplayed = Files.readString(contractPath())
+                .replace("    \"replayed\": false,\n", "");
+
+        assertThatThrownBy(() -> jsonMapper.readValue(missingReplayed, new TypeReference<
+                MessageEnvelope<UnifiedDeviceMessage>>() { }))
+                .isInstanceOf(ValueInstantiationException.class)
+                .hasMessageContaining("replayed");
     }
 
     @Test
