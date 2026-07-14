@@ -30,6 +30,12 @@ public final class TraceIdFilter extends OncePerRequestFilter {
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
+     * 创建 HTTP 链路标识过滤器。
+     */
+    public TraceIdFilter() {
+    }
+
+    /**
      * 复用合法的上游链路标识，缺失或不合法时生成 UUIDv7 标识。
      *
      * @param request     HTTP 请求

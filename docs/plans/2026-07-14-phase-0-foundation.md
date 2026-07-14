@@ -287,13 +287,14 @@ git commit -am "feat(database): 创建系统权限审计与消息表"
 - Create: mine-server/src/main/java/com/bosco/mine/server/modules/system/service/AuthService.java
 - Create: mine-server/src/main/java/com/bosco/mine/server/bootstrap/security/StpInterfaceImpl.java
 - Create: mine-server/src/main/java/com/bosco/mine/server/bootstrap/security/SaTokenConfiguration.java
+- Create: mine-server/src/main/java/com/bosco/mine/server/bootstrap/security/BootstrapAdminInitializer.java
 - Create: mine-server/src/main/java/com/bosco/mine/server/modules/system/repository/SystemAuthMapper.java
 - Test: mine-server/src/test/java/com/bosco/mine/server/modules/system/controller/AuthControllerTest.java
 - Test: mine-server/src/test/java/com/bosco/mine/server/bootstrap/security/PermissionIntegrationIT.java
 
 **Step 1: 写失败测试**
 
-覆盖错误密码、成功登录、无 token 401、缺权限 403、有权限 200、踢下线后失效。
+覆盖错误密码、成功登录、无 token 401、缺权限 403、有权限 200、踢下线后失效，并使用真实 Redis 校验共享会话。
 
 **Step 2: 运行**
 
@@ -301,7 +302,7 @@ Expected: FAIL，登录 API 不存在。
 
 **Step 3: 实现**
 
-通过 StpInterface 读取角色和 sys_menu.permission。仅初始化超级管理员；初始密码来自 secret，首次登录强制修改。
+通过 StpInterface 读取角色和 sys_menu.permission。登录态写入 Redis，支持多节点共享会话和跨节点踢下线。仅初始化超级管理员；初始密码来自 secret 文件，首次登录强制修改。
 
 **Step 4: 运行**
 

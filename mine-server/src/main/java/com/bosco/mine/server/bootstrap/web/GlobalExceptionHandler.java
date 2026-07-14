@@ -1,5 +1,7 @@
 package com.bosco.mine.server.bootstrap.web;
 
+import cn.dev33.satoken.exception.NotLoginException;
+import cn.dev33.satoken.exception.NotPermissionException;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.time.MineClock;
 import jakarta.servlet.http.HttpServletRequest;
@@ -32,6 +34,56 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     );
 
     private final MineClock clock = MineClock.systemUtc();
+
+    /**
+     * 创建统一异常处理器。
+     */
+    public GlobalExceptionHandler() {
+    }
+
+    /**
+     * 处理未登录、令牌过期和被踢下线等无效会话。
+     *
+     * @param exception Sa-Token 未登录异常
+     * @param request   当前 HTTP 请求
+     * @return 未授权响应
+     */
+    @ExceptionHandler(NotLoginException.class)
+    public ResponseEntity<ApiErrorResponse> handleNotLoginException(
+            NotLoginException exception,
+            HttpServletRequest request
+    ) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                "AUTH-401-002",
+                "登录状态无效",
+                traceIdOf(request),
+                clock.instant(),
+                Map.of()
+        );
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(response);
+    }
+
+    /**
+     * 处理已登录但没有目标权限的请求。
+     *
+     * @param exception Sa-Token 缺少权限异常
+     * @param request   当前 HTTP 请求
+     * @return 禁止访问响应
+     */
+    @ExceptionHandler(NotPermissionException.class)
+    public ResponseEntity<ApiErrorResponse> handleNotPermissionException(
+            NotPermissionException exception,
+            HttpServletRequest request
+    ) {
+        ApiErrorResponse response = new ApiErrorResponse(
+                "AUTH-403-001",
+                "没有操作权限",
+                traceIdOf(request),
+                clock.instant(),
+                Map.of()
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
 
     /**
      * 处理平台已识别的业务或应用异常。

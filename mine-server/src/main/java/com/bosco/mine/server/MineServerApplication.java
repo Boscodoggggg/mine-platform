@@ -10,6 +10,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class MineServerApplication {
 
     /**
+     * 创建 Spring Boot 应用配置入口。
+     */
+    public MineServerApplication() {
+    }
+
+    /**
      * 启动矿山业务管理服务。
      *
      * @param args 命令行参数

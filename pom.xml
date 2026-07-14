@@ -44,11 +44,20 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <archunit.version>1.4.1</archunit.version>
+        <mybatis-plus.version>3.5.14</mybatis-plus.version>
+        <sa-token.version>1.45.0</sa-token.version>
         <uuid-creator.version>6.1.1</uuid-creator.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>cn.dev33</groupId>
+                <artifactId>sa-token-bom</artifactId>
+                <version>${sa-token.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>com.github.f4b6a3</groupId>
                 <artifactId>uuid-creator</artifactId>

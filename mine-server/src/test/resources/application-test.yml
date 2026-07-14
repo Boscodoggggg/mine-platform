@@ -5,3 +5,8 @@ spring:
   datasource:
     hikari:
       maximum-pool-size: 2
+
+mine:
+  security:
+    bootstrap-admin:
+      enabled: false

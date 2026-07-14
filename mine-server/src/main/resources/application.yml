@@ -2,6 +2,24 @@ spring:
   application:
     name: mine-server
 
+sa-token:
+  token-name: X-Mine-Token
+  timeout: 43200
+  active-timeout: -1
+  is-concurrent: true
+  is-share: false
+  is-read-cookie: false
+  is-read-body: false
+
 mine:
   platform:
     version: "@project.version@"
+  security:
+    bootstrap-admin:
+      enabled: ${MINE_BOOTSTRAP_ADMIN_ENABLED:false}
+      id: ${MINE_BOOTSTRAP_ADMIN_ID:0198aef6-2e80-7000-8000-000000000001}
+      username: ${MINE_BOOTSTRAP_ADMIN_USERNAME:mine-admin}
+      display-name: ${MINE_BOOTSTRAP_ADMIN_DISPLAY_NAME:矿区超级管理员}
+      password-file: ${MINE_BOOTSTRAP_ADMIN_PASSWORD_FILE:/run/secrets/mine_super_admin_password}
+    password:
+      bcrypt-strength: ${MINE_PASSWORD_BCRYPT_STRENGTH:12}
