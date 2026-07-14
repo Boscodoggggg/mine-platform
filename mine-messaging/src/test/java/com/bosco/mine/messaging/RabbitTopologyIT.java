@@ -37,6 +37,8 @@ class RabbitTopologyIT {
     private static final String DEVICE_PASSWORD = "mine-device-test-password";
     private static final String MQTT_DEVICE_A = "device-a";
     private static final String MQTT_DEVICE_B = "device-b";
+    private static final String MQTT_PUBLISH_DENIED_DEVICE = "device-publish-denied";
+    private static final String MQTT_SUBSCRIBE_DENIED_DEVICE = "device-subscribe-denied";
     private static final String MQTT_PASSWORD = "mqtt-device-test-password";
     private static final Path RABBITMQ_CONFIG = rabbitmqConfigDirectory();
 
@@ -160,6 +162,8 @@ class RabbitTopologyIT {
     void MQTT设备应只能发布和订阅本设备主题() throws Exception {
         createMqttDevice(MQTT_DEVICE_A);
         createMqttDevice(MQTT_DEVICE_B);
+        createMqttDevice(MQTT_PUBLISH_DENIED_DEVICE);
+        createMqttDevice(MQTT_SUBSCRIBE_DENIED_DEVICE);
 
         MqttClient deviceA = openMqttClient(MQTT_DEVICE_A, false);
         try {
@@ -181,7 +185,8 @@ class RabbitTopologyIT {
         assertThat(lineStartingWith(queues, "mqtt-subscription-device-aqos1"))
                 .endsWith("\tclassic");
 
-        MqttClient publishDenied = openMqttClient(MQTT_DEVICE_A, true);
+        // Broker 拒绝越权后会异步断开连接；每个断言使用独立 clientId，避免旧连接清理与重连互踢。
+        MqttClient publishDenied = openMqttClient(MQTT_PUBLISH_DENIED_DEVICE, true);
         try {
             assertThatThrownBy(() -> publishDenied.publish(
                     "mine/v1/truck/device-b/up/telemetry",
@@ -193,7 +198,7 @@ class RabbitTopologyIT {
             closeMqttClient(publishDenied);
         }
 
-        MqttClient subscribeDenied = openMqttClient(MQTT_DEVICE_A, true);
+        MqttClient subscribeDenied = openMqttClient(MQTT_SUBSCRIBE_DENIED_DEVICE, true);
         try {
             assertThatThrownBy(() -> subscribeDenied.subscribe(
                     "mine/v1/truck/device-b/down/command", 1
