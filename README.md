@@ -32,6 +32,16 @@ mine-platform 是面向单矿区私有化部署的智慧矿山数据采集与设
 ./mvnw test
 ~~~
 
+提交前执行全仓质量门禁：
+
+~~~bash
+bash scripts/verify.sh
+~~~
+
+该命令会验证后端测试与架构规则、前端类型/规范/测试/构建、Compose 和可观测性配置，并在 `target/sbom/` 生成后端与前端 CycloneDX 1.6 SBOM。AGPL、SSPL 和 Commons Clause 依赖默认禁止自动引入，需要架构与法务评审后才能调整门禁。
+
+GitHub Actions 会并行执行同样的后端、前端、部署配置和 SBOM 检查；失败时保留测试报告。Dependabot 每周检查 Maven、pnpm、Compose 镜像与 Actions 依赖，但版本升级仍需通过完整质量门禁和现场回归。
+
 完整设计、架构决策和分阶段实施计划见 [docs/README.md](docs/README.md)。
 
 单机一体化环境的构建、配置、启动和验收步骤见 [deploy/README.md](deploy/README.md)。

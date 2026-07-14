@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端验证
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: 运行 Maven 质量门禁
+        run: ./mvnw -B -ntp verify
+      - name: 上传后端测试报告
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-test-reports
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: 前端验证
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: mine-web/pnpm-lock.yaml
+      - name: 安装依赖
+        working-directory: mine-web
+        run: pnpm install --frozen-lockfile
+      - name: 类型检查
+        working-directory: mine-web
+        run: pnpm typecheck
+      - name: 代码规范检查
+        working-directory: mine-web
+        run: pnpm lint:check
+      - name: 单元测试
+        working-directory: mine-web
+        run: mkdir -p reports && pnpm test:ci
+      - name: 生产构建
+        working-directory: mine-web
+        run: pnpm build
+      - name: 上传前端测试报告
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-test-reports
+          path: mine-web/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  deployment:
+    name: 部署配置验证
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: 校验 Shell 与 Compose
+        run: |
+          find scripts deploy/scripts deploy/tests -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          docker compose --profile observability \
+            --env-file deploy/env/standalone.env.example \
+            -f deploy/compose/compose-standalone.yml config --quiet
+      - name: 校验 Prometheus
+        run: |
+          docker run --rm --entrypoint /bin/promtool \
+            -v "$PWD/deploy/config/prometheus:/etc/prometheus:ro" \
+            prom/prometheus:v3.12.0 check config /etc/prometheus/prometheus.yml
+      - name: 校验 Loki 与 Alloy
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/config/loki/loki.yml:/etc/loki/loki.yml:ro" \
+            grafana/loki:3.7.2 -config.file=/etc/loki/loki.yml -verify-config=true
+          docker run --rm \
+            -v "$PWD/deploy/config/alloy/config.alloy:/etc/alloy/config.alloy:ro" \
+            grafana/alloy:v1.16.1 validate /etc/alloy/config.alloy
+
+  sbom:
+    name: SBOM 与许可证
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: mine-web/pnpm-lock.yaml
+      - name: 安装前端依赖
+        working-directory: mine-web
+        run: pnpm install --frozen-lockfile
+      - name: 生成 SBOM 并执行许可证门禁
+        run: bash scripts/generate-sbom.sh
+      - name: 上传 CycloneDX SBOM
+        uses: actions/upload-artifact@v6
+        with:
+          name: cyclonedx-sbom
+          path: target/sbom/*.json
+          if-no-files-found: error
+          retention-days: 30

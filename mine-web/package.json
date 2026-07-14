@@ -24,8 +24,10 @@
     "fmt": "oxfmt",
     "gen-route": "sa gen-route",
     "lint": "oxlint --fix && eslint --fix .",
+    "lint:check": "oxlint && eslint .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:ci": "vitest run --reporter=default --reporter=junit --outputFile.junit=reports/vitest-junit.xml",
     "test:watch": "vitest",
     "typecheck": "vue-tsc --noEmit --skipLibCheck",
     "update-pkg": "sa update-pkg"
