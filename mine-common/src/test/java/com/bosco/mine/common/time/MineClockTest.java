@@ -13,6 +13,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 class MineClockTest {
 
     @Test
+    void 应提供生产使用的UTC系统时钟() {
+        Instant before = Instant.now();
+
+        MineClock clock = MineClock.systemUtc();
+        Instant actual = clock.instant();
+
+        Instant after = Instant.now();
+        assertThat(clock.zoneId()).isEqualTo(ZoneId.of("UTC"));
+        assertThat(actual).isBetween(before, after);
+    }
+
+    @Test
     void 应返回固定的时间和时区() {
         Instant expected = Instant.parse("2026-07-14T03:00:00Z");
         ZoneId zoneId = ZoneId.of("Asia/Shanghai");

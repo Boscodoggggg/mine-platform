@@ -17,6 +17,15 @@ public final class MineClock {
     }
 
     /**
+     * 创建生产环境使用的 UTC 系统时钟。
+     *
+     * @return UTC 系统时钟
+     */
+    public static MineClock systemUtc() {
+        return new MineClock(Clock.system(ZoneId.of("UTC")));
+    }
+
+    /**
      * 创建固定时间的测试时钟。
      *
      * @param instant 固定时刻
