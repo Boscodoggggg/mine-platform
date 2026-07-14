@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: mine-server
+
+mine:
+  platform:
+    version: "@project.version@"
