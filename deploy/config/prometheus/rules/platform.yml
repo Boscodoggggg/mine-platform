@@ -1,0 +1,49 @@
+groups:
+  - name: mine-platform-availability
+    rules:
+      - alert: MineRuntimeServiceDown
+        expr: up{job=~"mine-server|mine-gateway|mine-telemetry"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "智慧矿山运行服务不可用"
+          description: "{{ $labels.job }} 已连续 2 分钟无法被 Prometheus 抓取。"
+
+      - alert: MineRabbitMqDown
+        expr: up{job="rabbitmq"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RabbitMQ 不可用"
+          description: "设备 MQTT 与内部消息总线监控目标不可用。"
+
+      - alert: MineDatabaseExporterDown
+        expr: up{job=~"postgres|timescale"} == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库指标采集失败"
+          description: "{{ $labels.job }} exporter 已连续 3 分钟不可用。"
+
+  - name: mine-platform-capacity
+    rules:
+      - alert: MineJvmHeapPressureHigh
+        expr: sum by (job) (jvm_memory_used_bytes{area="heap"}) / sum by (job) (jvm_memory_max_bytes{area="heap"}) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM 堆内存持续偏高"
+          description: "{{ $labels.job }} 堆内存使用率已连续 10 分钟超过 85%。"
+
+      - alert: MineRabbitQueueBacklogHigh
+        expr: sum(rabbitmq_queue_messages_ready) > 100000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ 消息积压"
+          description: "待消费消息已连续 5 分钟超过 100000 条。"

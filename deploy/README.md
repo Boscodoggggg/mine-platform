@@ -15,6 +15,8 @@
 | `timescale` | 遥测时序数据 | 否 |
 | `redis` | 会话、缓存和实时状态 | 否 |
 
+启用 `observability` profile 后还会启动 Prometheus、Grafana、Loki、Alloy 以及 PostgreSQL/TimescaleDB exporter。Grafana `3000`、Prometheus `9090` 和 Loki `3100` 默认都只绑定宿主机 `127.0.0.1`。需要让运维工作站直接访问 Grafana 时，把 `MINE_GRAFANA_BIND_ADDRESS` 改为指定管理网 IP，并由现场防火墙限制来源；不要把它开放到设备网。
+
 数据库、Redis、AMQP 管理端口和应用管理端口只存在于 Compose 隔离网络。现场防火墙只需按需开放 HTTPS 和 MQTTS，不要把数据库端口直接暴露到办公网或设备网。
 
 ## 2. 前置条件
@@ -75,6 +77,17 @@ docker compose \
   up -d
 ~~~
 
+生产现场建议同时启动可观测组件：
+
+~~~bash
+MINE_PREFLIGHT_PROFILE=observability bash deploy/scripts/preflight.sh
+docker compose \
+  --profile observability \
+  --env-file deploy/env/standalone.env \
+  -f deploy/compose/compose-standalone.yml \
+  up -d
+~~~
+
 启动后执行完整健康检查：
 
 ~~~bash
@@ -89,6 +102,14 @@ docker compose --env-file deploy/env/standalone.env \
 docker compose --env-file deploy/env/standalone.env \
   -f deploy/compose/compose-standalone.yml logs --tail=200 mine-server
 ~~~
+
+可观测性单独验收：
+
+~~~bash
+MINE_ENV_FILE=deploy/env/standalone.env bash deploy/tests/observability-smoke.sh
+~~~
+
+该脚本验证三个 Java 服务、RabbitMQ、PostgreSQL 和 TimescaleDB 的 Prometheus target 均为 `up`，Grafana/Loki 可用，并生成一次 HTTPS 请求后按 `X-Request-Id` 在 Loki 中反查日志。Grafana 管理密码来自 `deploy/secrets/grafana_admin_password`，总览仪表板和 Prometheus/Loki 数据源会自动配置。
 
 ## 6. 停止与清理
 
@@ -113,4 +134,6 @@ docker compose --env-file deploy/env/standalone.env \
 - RabbitMQ 同时承担设备 MQTT Broker 和平台内部消息总线，但通过虚拟主机、用户、权限和交换机隔离；不要再部署第二套 MQ。
 - 弱网设备应使用持久会话、QoS、消息序号和幂等处理，命令必须具有超时、回执和审计记录。
 - 发布新版本前先备份，再执行冒烟测试；数据库迁移必须使用向前兼容的 expand/contract 方式。
-- 当前 Compose 不包含监控、对象存储和主机容灾。五节点生产方案及完整 RPO/RTO 见 [部署与运维设计](../docs/09-deployment-operations.md)。
+- 当前 Compose 不包含对象存储和主机容灾。五节点生产方案及完整 RPO/RTO 见 [部署与运维设计](../docs/09-deployment-operations.md)。
+- Alloy 为采集容器日志只读挂载了 Docker socket；它仍具备读取 Docker 元数据和日志的高权限。必须使用固定可信镜像、限制 Grafana/Alloy 管理入口，并且不能给业务用户容器管理权限。
+- 单机 Loki 使用本地文件系统并保留 30 天日志，Prometheus 默认保留 15 天指标；现场磁盘容量评估后再调整，不能把它们当作审计数据的唯一副本。

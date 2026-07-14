@@ -26,6 +26,9 @@ if [[ -z "${secrets_dir}" ]]; then
 fi
 
 required=(postgres_password timescale_password redis_password rabbitmq_admin_username rabbitmq_admin_password mine_super_admin_password tls.crt tls.key)
+if [[ "${MINE_PREFLIGHT_PROFILE:-}" == "observability" ]]; then
+  required+=(grafana_admin_password)
+fi
 for name in "${required[@]}"; do
   file="${secrets_dir}/${name}"
   [[ -s "${file}" ]] || { echo "FAIL: secret 缺失或为空：${file}" >&2; exit 1; }
@@ -42,5 +45,9 @@ minimum_kb="$(( ${MINE_MIN_FREE_GB:-20} * 1024 * 1024 ))"
 
 openssl x509 -in "${secrets_dir}/tls.crt" -noout -checkend 604800 >/dev/null \
   || { echo "FAIL: TLS 证书将在 7 天内过期或格式错误" >&2; exit 1; }
-docker compose --env-file "${ENV_FILE}" -f "${ROOT_DIR}/deploy/compose/compose-standalone.yml" config --quiet
+compose_args=(--env-file "${ENV_FILE}" -f "${ROOT_DIR}/deploy/compose/compose-standalone.yml")
+if [[ -n "${MINE_PREFLIGHT_PROFILE:-}" ]]; then
+  compose_args+=(--profile "${MINE_PREFLIGHT_PROFILE}")
+fi
+docker compose "${compose_args[@]}" config --quiet
 echo "PASS: Docker、Compose、磁盘、文件句柄、secret、证书和 Compose 配置检查通过"
