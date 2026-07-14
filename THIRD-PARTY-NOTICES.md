@@ -9,5 +9,8 @@
 | Jackson Databind | 3.1.4 | 统一消息 JSON 序列化与反序列化 | Apache-2.0 |
 | Jackson Annotations | 2.21 | 消息契约兼容性与值对象注解 | Apache-2.0 |
 | uuid-creator | 6.1.1 | UUIDv7 标识生成 | MIT，见 `licenses/uuid-creator-LICENSE.txt` |
+| Flyway | 12.4.0 | PostgreSQL 数据库版本迁移 | Apache-2.0 |
+| PostgreSQL JDBC Driver | 42.7.11 | PostgreSQL 数据库连接 | BSD-2-Clause |
+| Testcontainers | 2.0.5 | 使用真实 PostgreSQL 进行集成测试 | MIT |
 
 项目自身采用 Apache License 2.0。第三方软件的版权和许可证不因被本项目引用而发生改变。
