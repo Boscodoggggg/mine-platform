@@ -8,7 +8,7 @@
       "metadata": {
         "description": "设备 MQTT 上下行虚拟主机",
         "tags": [],
-        "default_queue_type": "quorum"
+        "default_queue_type": "classic"
       }
     },
     {
@@ -64,7 +64,9 @@
       "durable": true,
       "auto_delete": false,
       "arguments": {
-        "x-queue-type": "quorum"
+        "x-queue-type": "quorum",
+        "x-max-length-bytes": 1073741824,
+        "x-overflow": "drop-head"
       }
     }
   ],

@@ -22,6 +22,7 @@
 | Flyway | Spring Boot BOM 管理的兼容版本 | 禁止自动 ddl |
 | Netty | Spring Boot BOM/项目 BOM 管理 | gateway 单独做兼容和压力测试 |
 | JUnit/Testcontainers | BOM 锁定 | 真实中间件集成测试 |
+| Eclipse Paho Java Client | 1.2.5 | 仅用于真实 MQTT 3.1.1 集成测试 |
 
 Java 21 不是因为框架不能运行在 Java 25，而是一期减少 JDK、驱动、插件和现场运维变量。完成全套兼容和性能测试后可升级。
 
@@ -149,6 +150,7 @@ release/
 - MyBatis-Plus：https://github.com/baomidou/mybatis-plus
 - RabbitMQ MQTT：https://www.rabbitmq.com/docs/4.1/mqtt
 - RabbitMQ 安装版本：https://www.rabbitmq.com/docs/4.1/download
+- Eclipse Paho Java Client：https://eclipse.dev/paho/clients/java/
 - PostgreSQL 版本策略：https://www.postgresql.org/support/versioning/
 - TimescaleDB releases：https://github.com/timescale/timescaledb/releases
 - TimescaleDB OSS 镜像：https://hub.docker.com/r/timescale/timescaledb-ha/tags

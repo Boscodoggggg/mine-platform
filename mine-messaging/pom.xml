@@ -52,6 +52,11 @@
             <artifactId>amqp-client</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.eclipse.paho</groupId>
+            <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

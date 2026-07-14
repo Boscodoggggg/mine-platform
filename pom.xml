@@ -45,6 +45,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <archunit.version>1.4.1</archunit.version>
         <mybatis-plus.version>3.5.14</mybatis-plus.version>
+        <paho-mqtt.version>1.2.5</paho-mqtt.version>
         <sa-token.version>1.45.0</sa-token.version>
         <uuid-creator.version>6.1.1</uuid-creator.version>
     </properties>
@@ -67,6 +68,11 @@
                 <groupId>com.tngtech.archunit</groupId>
                 <artifactId>archunit-junit5</artifactId>
                 <version>${archunit.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.paho</groupId>
+                <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+                <version>${paho-mqtt.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -1,8 +1,13 @@
 package com.bosco.mine.messaging;
 
 import com.bosco.mine.messaging.topology.MineTopology;
+import com.bosco.mine.messaging.topology.MqttDevicePermissions;
 import com.rabbitmq.client.Connection;
 import com.rabbitmq.client.ConnectionFactory;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttException;
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.junit.jupiter.Container;
@@ -30,6 +35,9 @@ class RabbitTopologyIT {
 
     private static final String DEVICE_USERNAME = "mine-device-test";
     private static final String DEVICE_PASSWORD = "mine-device-test-password";
+    private static final String MQTT_DEVICE_A = "device-a";
+    private static final String MQTT_DEVICE_B = "device-b";
+    private static final String MQTT_PASSWORD = "mqtt-device-test-password";
     private static final Path RABBITMQ_CONFIG = rabbitmqConfigDirectory();
 
     @Container
@@ -71,7 +79,7 @@ class RabbitTopologyIT {
         String vhosts = rabbitmqctl("list_vhosts", "name", "default_queue_type");
         assertThat(vhosts)
                 .contains(
-                        MineTopology.DEVICE_VHOST + "\tquorum",
+                        MineTopology.DEVICE_VHOST + "\tclassic",
                         MineTopology.PLATFORM_VHOST + "\tquorum"
                 );
 
@@ -103,6 +111,11 @@ class RabbitTopologyIT {
                         "\ttrue\t",
                         "{\"x-queue-type\",\"quorum\"}",
                         "{\"x-dead-letter-exchange\",\"mine.dlx\"}"
+                );
+        assertThat(lineStartingWith(queues, MineTopology.DEAD_LETTER_QUEUE))
+                .contains(
+                        "{\"x-max-length-bytes\",1073741824}",
+                        "{\"x-overflow\",\"drop-head\"}"
                 );
 
         String bindings = rabbitmqctl(
@@ -138,6 +151,59 @@ class RabbitTopologyIT {
                 .isInstanceOfAny(IOException.class, TimeoutException.class);
     }
 
+    @Test
+    void 不应保留默认Guest账号() throws Exception {
+        assertThat(rabbitmqctl("list_users")).doesNotContain("guest");
+    }
+
+    @Test
+    void MQTT设备应只能发布和订阅本设备主题() throws Exception {
+        createMqttDevice(MQTT_DEVICE_A);
+        createMqttDevice(MQTT_DEVICE_B);
+
+        MqttClient deviceA = openMqttClient(MQTT_DEVICE_A, false);
+        try {
+            deviceA.subscribe("mine/v1/truck/device-a/down/command", 1);
+            deviceA.publish(
+                    "mine/v1/truck/device-a/up/telemetry",
+                    "{\"speed\":12}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    1,
+                    false
+            );
+        } finally {
+            closeMqttClient(deviceA);
+        }
+
+        String queues = rabbitmqctl(
+                "list_queues", "-p", MineTopology.DEVICE_VHOST,
+                "name", "type"
+        );
+        assertThat(lineStartingWith(queues, "mqtt-subscription-device-aqos1"))
+                .endsWith("\tclassic");
+
+        MqttClient publishDenied = openMqttClient(MQTT_DEVICE_A, true);
+        try {
+            assertThatThrownBy(() -> publishDenied.publish(
+                    "mine/v1/truck/device-b/up/telemetry",
+                    "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    1,
+                    false
+            )).isInstanceOf(MqttException.class);
+        } finally {
+            closeMqttClient(publishDenied);
+        }
+
+        MqttClient subscribeDenied = openMqttClient(MQTT_DEVICE_A, true);
+        try {
+            assertThatThrownBy(() -> subscribeDenied.subscribe(
+                    "mine/v1/truck/device-b/down/command", 1
+            )).isInstanceOf(MqttException.class);
+        } finally {
+            closeMqttClient(subscribeDenied);
+        }
+
+    }
+
     private Connection openConnection(String virtualHost) throws IOException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost(RABBITMQ.getHost());
@@ -148,6 +214,57 @@ class RabbitTopologyIT {
         factory.setConnectionTimeout((int) Duration.ofSeconds(5).toMillis());
         factory.setHandshakeTimeout((int) Duration.ofSeconds(5).toMillis());
         return factory.newConnection("rabbit-topology-it");
+    }
+
+    private void createMqttDevice(String deviceId) throws Exception {
+        rabbitmqctl("add_user", deviceId, MQTT_PASSWORD);
+        MqttDevicePermissions permissions = MqttDevicePermissions.forDevice(deviceId);
+        rabbitmqctl(
+                "set_permissions", "-p", MineTopology.DEVICE_VHOST,
+                deviceId,
+                permissions.configurePattern(),
+                permissions.writePattern(),
+                permissions.readPattern()
+        );
+        rabbitmqctl(
+                "set_topic_permissions", "-p", MineTopology.DEVICE_VHOST,
+                deviceId, MineTopology.MQTT_EXCHANGE,
+                permissions.topicWritePattern(),
+                permissions.topicReadPattern()
+        );
+    }
+
+    private MqttClient openMqttClient(String deviceId, boolean cleanSession) throws MqttException {
+        MqttClient client = new MqttClient(
+                "tcp://" + RABBITMQ.getHost() + ":" + RABBITMQ.getMappedPort(1883),
+                deviceId,
+                new MemoryPersistence()
+        );
+        MqttConnectOptions options = new MqttConnectOptions();
+        options.setMqttVersion(MqttConnectOptions.MQTT_VERSION_3_1_1);
+        options.setUserName(deviceId);
+        options.setPassword(MQTT_PASSWORD.toCharArray());
+        options.setCleanSession(cleanSession);
+        options.setConnectionTimeout(5);
+        options.setKeepAliveInterval(10);
+        client.connect(options);
+        return client;
+    }
+
+    private void closeMqttClient(MqttClient client) {
+        try {
+            if (client.isConnected()) {
+                client.disconnect(1000L);
+            }
+        } catch (MqttException ignored) {
+            // Broker 拒绝越权操作时会主动断开；清理阶段不得覆盖权限断言结果。
+        } finally {
+            try {
+                client.close(true);
+            } catch (MqttException ignored) {
+                // 客户端可能仍处于异步断开状态，强制关闭失败无需再次抛出。
+            }
+        }
     }
 
     private String rabbitmqctl(String... arguments) throws IOException, InterruptedException {
