@@ -19,7 +19,8 @@
 ~~~text
 POST   /api/v1/auth/login
 POST   /api/v1/auth/logout
-GET    /api/v1/auth/profile
+GET    /api/v1/auth/me
+POST   /api/v1/auth/password
 GET    /api/v1/auth/menus
 
 GET/POST/PATCH  /api/v1/users
@@ -29,6 +30,52 @@ GET/POST/PATCH  /api/v1/menus
 GET             /api/v1/operation-logs
 GET             /api/v1/login-logs
 ~~~
+
+`GET /api/v1/auth/menus` 响应：
+
+~~~json
+{
+  "roles": ["DEVICE_OPERATOR"],
+  "permissions": ["device:device:list"],
+  "menus": [
+    {
+      "id": "0198aef6-2e80-7000-8000-000000000101",
+      "parentId": null,
+      "name": "设备管理",
+      "type": "DIRECTORY",
+      "path": "/device",
+      "componentKey": null,
+      "permission": null,
+      "icon": "mdi:factory",
+      "sortOrder": 10,
+      "visible": true,
+      "children": [
+        {
+          "id": "0198aef6-2e80-7000-8000-000000000102",
+          "parentId": "0198aef6-2e80-7000-8000-000000000101",
+          "name": "设备台账",
+          "type": "MENU",
+          "path": "/devices",
+          "componentKey": "device-list",
+          "permission": null,
+          "icon": "mdi:truck",
+          "sortOrder": 20,
+          "visible": true,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
+~~~
+
+约束：
+
+- 普通用户仅返回启用角色直接授权的节点，并自动补齐这些节点的启用祖先。
+- 超级管理员返回全部启用节点；角色和权限数组可包含超级管理员通配值。
+- DIRECTORY 只组织导航，MENU 才能生成页面路由，BUTTON 只表达操作权限。
+- `componentKey` 是前端白名单键，不是文件路径；未知键由前端安全降级。
+- 父节点未授权但子按钮已授权时，父目录和页面仍必须返回，否则前端无法形成可达导航。
 
 ### 2.2 设备与模型
 

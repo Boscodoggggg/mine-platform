@@ -323,6 +323,40 @@ class PermissionIntegrationIT {
     }
 
     @Test
+    void 当前用户菜单应补齐祖先目录并保留按钮权限() throws Exception {
+        UUID userId = createUser("test-navigation", "navigation-password");
+        UUID directoryId = UUID.randomUUID();
+        UUID menuId = UUID.randomUUID();
+        UUID buttonId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO sys_menu (id, name, type, path, icon, sort_order)
+                VALUES (?, '设备管理', 'DIRECTORY', '/device', 'mdi:factory', 10)
+                """, directoryId);
+        jdbcTemplate.update("""
+                INSERT INTO sys_menu (
+                    id, parent_id, name, type, path, component_key, icon, sort_order
+                ) VALUES (?, ?, '设备台账', 'MENU', '/devices', 'device-list', 'mdi:truck', 20)
+                """, menuId, directoryId);
+        jdbcTemplate.update("""
+                INSERT INTO sys_menu (
+                    id, parent_id, name, type, permission, sort_order
+                ) VALUES (?, ?, '查看设备', 'BUTTON', 'device:device:list', 30)
+                """, buttonId, menuId);
+        grantMenu(userId, buttonId, "DEVICE_OPERATOR");
+        LoginSession session = login("test-navigation", "navigation-password");
+
+        mockMvc.perform(get("/api/v1/auth/menus")
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.roles[0]").value("DEVICE_OPERATOR"))
+                .andExpect(jsonPath("$.permissions[0]").value("device:device:list"))
+                .andExpect(jsonPath("$.menus[0].id").value(directoryId.toString()))
+                .andExpect(jsonPath("$.menus[0].children[0].id").value(menuId.toString()))
+                .andExpect(jsonPath("$.menus[0].children[0].componentKey").value("device-list"))
+                .andExpect(jsonPath("$.menus[0].children[0].children[0].id").value(buttonId.toString()));
+    }
+
+    @Test
     void 登录态应写入Redis且踢下线后令牌立即失效() throws Exception {
         createUser("test-kickout", "kickout-password");
         LoginSession session = login("test-kickout", "kickout-password");
@@ -388,6 +422,22 @@ class PermissionIntegrationIT {
                 INSERT INTO sys_menu (id, name, type, permission)
                 VALUES (?, '审计查看', 'BUTTON', ?)
                 """, menuId, permission);
+        jdbcTemplate.update("""
+                INSERT INTO sys_user_role (id, user_id, role_id)
+                VALUES (?, ?, ?)
+                """, UUID.randomUUID(), userId, roleId);
+        jdbcTemplate.update("""
+                INSERT INTO sys_role_menu (id, role_id, menu_id)
+                VALUES (?, ?, ?)
+                """, UUID.randomUUID(), roleId, menuId);
+    }
+
+    private void grantMenu(UUID userId, UUID menuId, String roleCode) {
+        UUID roleId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO sys_role (id, code, name)
+                VALUES (?, ?, '导航测试角色')
+                """, roleId, roleCode);
         jdbcTemplate.update("""
                 INSERT INTO sys_user_role (id, user_id, role_id)
                 VALUES (?, ?, ?)

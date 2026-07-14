@@ -233,6 +233,57 @@ public interface SystemAuthMapper {
     List<String> findPermissionCodes(@Param("userId") UUID userId);
 
     /**
+     * 获取全部启用的菜单和按钮节点，供超级管理员构建导航树。
+     *
+     * @return 启用节点列表
+     */
+    @Select("""
+            SELECT id, parent_id, name, type, path, component_key,
+                   permission, icon, sort_order, visible
+            FROM sys_menu
+            WHERE status = 'ENABLED'
+            ORDER BY sort_order, id
+            """)
+    List<MenuRecord> findAllEnabledMenus();
+
+    /**
+     * 获取用户经启用角色获授的菜单节点，并递归补齐其启用祖先目录。
+     *
+     * @param userId 用户标识
+     * @return 用户可访问节点列表
+     */
+    @Select("""
+            WITH RECURSIVE granted_menu AS (
+                SELECT DISTINCT menu.id, menu.parent_id, menu.name, menu.type,
+                       menu.path, menu.component_key, menu.permission,
+                       menu.icon, menu.sort_order, menu.visible
+                FROM sys_user_role user_role
+                JOIN sys_user user_account ON user_account.id = user_role.user_id
+                JOIN sys_role role ON role.id = user_role.role_id
+                JOIN sys_role_menu role_menu ON role_menu.role_id = role.id
+                JOIN sys_menu menu ON menu.id = role_menu.menu_id
+                WHERE user_role.user_id = #{userId}
+                  AND user_account.status = 'ENABLED'
+                  AND role.status = 'ENABLED'
+                  AND menu.status = 'ENABLED'
+            ), accessible_menu AS (
+                SELECT * FROM granted_menu
+                UNION
+                SELECT parent.id, parent.parent_id, parent.name, parent.type,
+                       parent.path, parent.component_key, parent.permission,
+                       parent.icon, parent.sort_order, parent.visible
+                FROM sys_menu parent
+                JOIN accessible_menu child ON child.parent_id = parent.id
+                WHERE parent.status = 'ENABLED'
+            )
+            SELECT DISTINCT id, parent_id, name, type, path, component_key,
+                   permission, icon, sort_order, visible
+            FROM accessible_menu
+            ORDER BY sort_order, id
+            """)
+    List<MenuRecord> findEnabledMenusByUserId(@Param("userId") UUID userId);
+
+    /**
      * 登录和授权所需的用户快照。
      *
      * @param id                     用户标识
@@ -249,6 +300,34 @@ public interface SystemAuthMapper {
             String displayName,
             String status,
             boolean passwordChangeRequired
+    ) {
+    }
+
+    /**
+     * 菜单、页面或按钮节点的持久化投影。
+     *
+     * @param id           节点标识
+     * @param parentId     父节点标识
+     * @param name         展示名称
+     * @param type         DIRECTORY、MENU 或 BUTTON
+     * @param path         前端路由路径
+     * @param componentKey 前端组件白名单键
+     * @param permission   权限码
+     * @param icon         图标键
+     * @param sortOrder    同级顺序
+     * @param visible      是否在菜单中可见
+     */
+    record MenuRecord(
+            UUID id,
+            UUID parentId,
+            String name,
+            String type,
+            String path,
+            String componentKey,
+            String permission,
+            String icon,
+            int sortOrder,
+            boolean visible
     ) {
     }
 }

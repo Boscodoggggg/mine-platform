@@ -165,6 +165,12 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
     });
   }
 
+  /** 使用后端授权快照更新当前角色和按钮权限。 */
+  function setAuthorization(roles: string[], permissions: string[]) {
+    userInfo.roles = [...roles];
+    userInfo.buttons = [...permissions];
+  }
+
   return {
     token,
     userInfo,
@@ -173,6 +179,7 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
     loginLoading,
     resetStore,
     login,
-    initUserInfo
+    initUserInfo,
+    setAuthorization
   };
 });

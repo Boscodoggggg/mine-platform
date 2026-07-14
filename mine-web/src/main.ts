@@ -5,6 +5,7 @@ import { setupAppVersionNotification, setupDayjs, setupIconifyOffline, setupLoad
 import { setupStore } from './store';
 import { setupRouter } from './router';
 import { getLocale, setupI18n } from './locales';
+import { setupPermissionDirective } from './app/permission/permission';
 import App from './App.vue';
 
 async function setupApp() {
@@ -19,6 +20,8 @@ async function setupApp() {
   const app = createApp(App);
 
   setupStore(app);
+
+  setupPermissionDirective(app);
 
   await setupRouter(app);
 

@@ -69,13 +69,48 @@ mine-web/src/
 
 登录后：
 
-1. 获取用户信息、角色码和权限码。
-2. 获取 sys_menu 形成的目录/菜单树。
-3. 前端把后端 componentKey 映射到本地白名单页面组件。
+1. `GET /api/v1/auth/me` 获取用户基本信息。
+2. `GET /api/v1/auth/menus` 一次返回角色码、权限码和 sys_menu 授权树。
+3. 前端把后端 `componentKey` 映射到 `componentRegistry` 中明确注册的本地页面组件。
 4. BUTTON 类型不生成路由，只控制按钮/操作可见性。
 5. 页面展示权限只改善体验，后端 API 注解才是最终安全边界。
 
-禁止后端返回任意组件路径让前端动态 import，防止加载未授权模块。
+禁止后端返回任意组件路径让前端动态 import，防止加载未授权模块或形成远程代码执行入口。未知
+`componentKey` 使用本地占位页面，并在浏览器控制台记录未注册键；它不会回退到字符串拼接 import。
+
+首批实现位置：
+
+~~~text
+src/app/router/dynamic-routes.ts       componentKey 白名单、路由和菜单转换
+src/app/router/DynamicFallbackPage.vue 未注册组件的安全降级页
+src/app/permission/permission.ts       v-permission 指令与纯权限判断函数
+src/store/modules/route/index.ts       登录后装载授权快照和动态路由
+~~~
+
+页面组件注册示例：
+
+~~~ts
+const componentRegistry = {
+  'home-overview': () => import('@/views/home/index.vue'),
+  'device-list': () => import('@/modules/device/pages/DeviceListPage.vue')
+};
+~~~
+
+后端菜单管理页只能从前端发布版本支持的 `componentKey` 字典中选择。新页面首次开发时要同时完成：组件注册、
+页面路由测试、后端接口权限、按钮权限和菜单数据配置。菜单发布不等于上传前端代码。
+
+按钮权限用法：
+
+~~~vue
+<!-- 单权限 -->
+<NButton v-permission="'device:device:create'">新增设备</NButton>
+
+<!-- 数组表示满足任意一项；all 表示必须全部满足 -->
+<NButton v-permission="['device:device:update', 'device:device:archive']">维护设备</NButton>
+<NButton v-permission="{ all: ['protocol:definition:test', 'protocol:definition:publish'] }">发布协议</NButton>
+~~~
+
+`v-permission` 只隐藏无权限操作；直接调用 API 时后端仍必须通过 `@SaCheckPermission` 拒绝越权请求。
 
 权限码示例：
 
@@ -246,6 +281,9 @@ location    → LocationSummary
 - Playwright：登录、角色菜单、设备注册、协议发布、策略回滚、命令下发和告警确认。
 - Cesium 单元测试 mock adapter，另设真实浏览器演示场景 smoke test。
 - 不以快照测试代替行为断言。
+
+动态授权至少覆盖：DIRECTORY 层级保留、BUTTON 不生成路由、未知组件降级、任一/全部权限语义、超级管理员
+`*` 通配权限。组件白名单测试不能通过 mock 任意 import 来弱化安全边界。
 
 ## 16. UI 设计原则
 

@@ -25,6 +25,30 @@ export interface PasswordChangeRequest {
   newPassword: string;
 }
 
+export type NavigationNodeType = 'DIRECTORY' | 'MENU' | 'BUTTON';
+
+/** 后端授权后返回的菜单树节点。 */
+export interface NavigationMenuNode {
+  id: string;
+  parentId: string | null;
+  name: string;
+  type: NavigationNodeType;
+  path: string | null;
+  componentKey: string | null;
+  permission: string | null;
+  icon: string | null;
+  sortOrder: number;
+  visible: boolean;
+  children: NavigationMenuNode[];
+}
+
+/** 当前用户的导航与操作权限。 */
+export interface NavigationResponse {
+  roles: string[];
+  permissions: string[];
+  menus: NavigationMenuNode[];
+}
+
 interface ApiErrorPayload {
   code?: string;
   message?: string;
@@ -58,6 +82,11 @@ export function login(body: LoginRequest) {
 /** 读取当前登录用户。 */
 export function getCurrentUser() {
   return request<AuthUser>('/auth/me');
+}
+
+/** 读取当前用户可访问的菜单、角色和按钮权限。 */
+export function getNavigation() {
+  return request<NavigationResponse>('/auth/menus');
 }
 
 /** 修改初始密码或当前密码。 */

@@ -50,6 +50,10 @@ declare module 'vue-router' {
     href?: string | null;
     /** Whether to hide the route in the menu */
     hideInMenu?: boolean | null;
+    /** 后端菜单配置使用的本地组件白名单标识 */
+    componentKey?: string | null;
+    /** 组件标识未注册时是否使用了安全占位页面 */
+    componentFallback?: boolean;
     /**
      * The menu key will be activated when entering the route
      *
