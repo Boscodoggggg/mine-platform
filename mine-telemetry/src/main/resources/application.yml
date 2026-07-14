@@ -9,6 +9,9 @@ server:
   shutdown: graceful
 
 management:
+  server:
+    port: ${MINE_TELEMETRY_MANAGEMENT_PORT:18082}
+    address: ${MINE_MANAGEMENT_ADDRESS:127.0.0.1}
   endpoints:
     web:
       exposure:

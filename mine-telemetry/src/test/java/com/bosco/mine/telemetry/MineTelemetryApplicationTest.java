@@ -26,26 +26,39 @@ class MineTelemetryApplicationTest {
     @Value("${local.server.port}")
     private int serverPort;
 
+    @Value("${local.management.port}")
+    private int managementPort;
+
     @Test
-    void 应启动并暴露健康信息和指标端点() throws Exception {
-        assertEndpointContains("/actuator/health", "\"status\":\"UP\"");
-        assertEndpointContains("/actuator/info", "\"name\":\"mine-telemetry\"");
-        assertEndpointContains("/actuator/metrics", "jvm.memory.used");
+    void 应在独立管理端口暴露运维端点且业务端口不可访问() throws Exception {
+        assertThat(managementPort).isNotEqualTo(serverPort);
+        assertEndpointContains(managementPort, "/actuator/health", "\"status\":\"UP\"");
+        assertEndpointContains(managementPort, "/actuator/info", "\"name\":\"mine-telemetry\"");
+        assertEndpointContains(managementPort, "/actuator/metrics", "jvm.memory.used");
+        assertEndpointContains(managementPort, "/actuator/prometheus", "jvm_memory_used_bytes");
+        assertEndpointStatus(serverPort, "/actuator/health", 404);
     }
 
-    private void assertEndpointContains(String path, String expectedContent) throws Exception {
+    private void assertEndpointContains(int port, String path, String expectedContent) throws Exception {
+        HttpResponse<String> response = get(port, path);
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains(expectedContent);
+    }
+
+    private void assertEndpointStatus(int port, String path, int expectedStatus) throws Exception {
+        assertThat(get(port, path).statusCode()).isEqualTo(expectedStatus);
+    }
+
+    private HttpResponse<String> get(int port, String path) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(
-                        URI.create("http://127.0.0.1:%d%s".formatted(serverPort, path))
+                        URI.create("http://127.0.0.1:%d%s".formatted(port, path))
                 )
                 .timeout(Duration.ofSeconds(5))
                 .GET()
                 .build();
-        HttpResponse<String> response = httpClient.send(
+        return httpClient.send(
                 request,
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
-
-        assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(response.body()).contains(expectedContent);
     }
 }
