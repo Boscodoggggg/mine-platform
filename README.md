@@ -34,6 +34,8 @@ mine-platform 是面向单矿区私有化部署的智慧矿山数据采集与设
 
 完整设计、架构决策和分阶段实施计划见 [docs/README.md](docs/README.md)。
 
+单机一体化环境的构建、配置、启动和验收步骤见 [deploy/README.md](deploy/README.md)。
+
 ## 许可证
 
 本项目采用 [Apache License 2.0](LICENSE)。第三方软件仍遵循其各自许可证，发行时必须保留对应声明。

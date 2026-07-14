@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+COMPOSE_FILE="${MINE_COMPOSE_FILE:-${ROOT_DIR}/deploy/compose/compose-standalone.yml}"
+ENV_FILE="${MINE_ENV_FILE:-${ROOT_DIR}/deploy/env/standalone.env}"
+
+if [[ ! -f "${COMPOSE_FILE}" ]]; then
+  echo "FAIL: 缺少单机 Compose：${COMPOSE_FILE}" >&2
+  exit 1
+fi
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "FAIL: 缺少环境变量文件：${ENV_FILE}" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+set +a
+
+compose=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
+"${compose[@]}" config --quiet
+
+services=(nginx mine-server mine-gateway mine-telemetry rabbitmq postgres timescale redis)
+for service in "${services[@]}"; do
+  container_id="$("${compose[@]}" ps --quiet "${service}")"
+  if [[ -z "${container_id}" ]]; then
+    echo "FAIL: ${service} 未运行" >&2
+    exit 1
+  fi
+  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${container_id}")"
+  if [[ "${health}" != "healthy" && "${health}" != "running" ]]; then
+    echo "FAIL: ${service} 状态为 ${health}" >&2
+    exit 1
+  fi
+done
+
+curl --fail --silent --show-error --insecure "https://127.0.0.1:${MINE_HTTPS_PORT:-443}/api/v1/system/status" \
+  | grep -q '"status":"UP"'
+curl --fail --silent --show-error --insecure "https://127.0.0.1:${MINE_HTTPS_PORT:-443}/" \
+  | grep -qi '<!doctype html>'
+openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MINE_TLS_SERVER_NAME:-mine.local}" \
+  </dev/null 2>/dev/null | grep -q "BEGIN CERTIFICATE"
+
+"${compose[@]}" exec -T postgres pg_isready -U "${POSTGRES_USER:-mine}" -d "${POSTGRES_DB:-mine}"
+"${compose[@]}" exec -T timescale psql -U "${TIMESCALE_USER:-mine_ts}" -d "${TIMESCALE_DB:-mine_telemetry}" \
+  -tAc "SELECT extname FROM pg_extension WHERE extname = 'timescaledb'" | grep -q timescaledb
+"${compose[@]}" exec -T rabbitmq rabbitmq-diagnostics -q ping
+"${compose[@]}" exec -T rabbitmq sh -ec \
+  'rabbitmqctl -q authenticate_user "$(cat /run/secrets/rabbitmq_admin_username)" "$(cat /run/secrets/rabbitmq_admin_password)"'
+"${compose[@]}" exec -T rabbitmq sh -ec \
+  'rabbitmqctl -q list_user_permissions "$(cat /run/secrets/rabbitmq_admin_username)"' \
+  | grep -q '^/mine-platform'
+"${compose[@]}" exec -T redis sh -ec \
+  'redis-cli --no-auth-warning -a "$(cat /run/secrets/redis_password)" ping' | grep -q PONG
+
+echo "PASS: 单机 Compose 核心服务、HTTPS、MQTTS、数据库、TimescaleDB、RabbitMQ 与 Redis 均正常"

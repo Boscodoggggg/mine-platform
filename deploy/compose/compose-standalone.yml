@@ -1,0 +1,330 @@
+name: mine-standalone
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+x-java-service: &java-service
+  image: ${MINE_JAVA_IMAGE:-eclipse-temurin:21.0.7_6-jre-jammy}
+  restart: unless-stopped
+  init: true
+  user: "10001:10001"
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+  logging: *default-logging
+
+services:
+  nginx:
+    image: ${MINE_NGINX_IMAGE:-nginx:1.29.0-alpine}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${MINE_HTTPS_PORT:-443}:443"
+    volumes:
+      - ../config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${MINE_WEB_DIST_PATH:-../../mine-web/dist}:/usr/share/nginx/html:ro
+    secrets:
+      - source: tls_certificate
+        target: tls_certificate
+      - source: tls_private_key
+        target: tls_private_key
+    tmpfs:
+      - /var/cache/nginx:size=64m,uid=101,gid=101
+      - /var/run:size=8m,uid=101,gid=101
+    depends_on:
+      mine-server:
+        condition: service_healthy
+    networks:
+      - ingress
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --no-check-certificate -O- https://127.0.0.1/nginx-health | grep -q ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256m
+    logging: *default-logging
+
+  mine-server:
+    <<: *java-service
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        export SPRING_DATASOURCE_PASSWORD="$$(cat /run/secrets/postgres_password)"
+        export SPRING_DATA_REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"
+        exec java $${JAVA_OPTS:-} -jar /opt/mine/app.jar
+    environment:
+      TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-mine}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-mine}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      MINE_MANAGEMENT_ADDRESS: 0.0.0.0
+      MINE_BOOTSTRAP_ADMIN_ENABLED: "true"
+      MINE_BOOTSTRAP_ADMIN_ID: ${MINE_BOOTSTRAP_ADMIN_ID:-0198aef6-2e80-7000-8000-000000000001}
+      MINE_BOOTSTRAP_ADMIN_USERNAME: ${MINE_BOOTSTRAP_ADMIN_USERNAME:-mine-admin}
+      MINE_BOOTSTRAP_ADMIN_DISPLAY_NAME: ${MINE_BOOTSTRAP_ADMIN_DISPLAY_NAME:-矿区超级管理员}
+      MINE_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/mine_super_admin_password
+      MINE_PASSWORD_BCRYPT_STRENGTH: ${MINE_PASSWORD_BCRYPT_STRENGTH:-12}
+      MINE_AUTH_ACTIVE_TIMEOUT_SECONDS: ${MINE_AUTH_ACTIVE_TIMEOUT_SECONDS:-1800}
+    volumes:
+      - ../../mine-server/target/mine-server-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
+    secrets:
+      - postgres_password
+      - redis_password
+      - mine_super_admin_password
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - app
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/18080; printf \"GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n\" >&3; grep -q \"200\" <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+
+  mine-gateway:
+    <<: *java-service
+    command: ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-Duser.timezone=UTC", "-jar", "/opt/mine/app.jar"]
+    environment:
+      TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+      MINE_MANAGEMENT_ADDRESS: 0.0.0.0
+    volumes:
+      - ../../mine-gateway/target/mine-gateway-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/18081; printf \"GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n\" >&3; grep -q \"200\" <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+
+  mine-telemetry:
+    <<: *java-service
+    command: ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-Duser.timezone=UTC", "-jar", "/opt/mine/app.jar"]
+    environment:
+      TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+      MINE_MANAGEMENT_ADDRESS: 0.0.0.0
+    volumes:
+      - ../../mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      timescale:
+        condition: service_healthy
+    networks:
+      - app
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/18082; printf \"GET /actuator/health/readiness HTTP/1.0\\r\\n\\r\\n\" >&3; grep -q \"200\" <&3'"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+
+  rabbitmq:
+    image: ${MINE_RABBITMQ_IMAGE:-rabbitmq:4.1.8-management}
+    hostname: rabbitmq
+    restart: unless-stopped
+    init: true
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        chown -R rabbitmq:rabbitmq /var/lib/rabbitmq
+        exec gosu rabbitmq /opt/mine/rabbitmq-bootstrap.sh
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${MINE_MQTTS_PORT:-8883}:8883"
+    environment:
+      TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ../config/rabbitmq/rabbitmq-standalone.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ../config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ../config/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ../scripts/rabbitmq-bootstrap.sh:/opt/mine/rabbitmq-bootstrap.sh:ro
+    secrets:
+      - rabbitmq_admin_username
+      - rabbitmq_admin_password
+      - source: tls_certificate
+        target: tls_certificate
+      - source: tls_private_key
+        target: tls_private_key
+    networks:
+      - ingress
+      - app
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/mine-rabbitmq-bootstrap-complete && rabbitmq-diagnostics -q ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    logging: *default-logging
+
+  postgres:
+    image: ${MINE_POSTGRES_IMAGE:-postgres:18.4-alpine}
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+      POSTGRES_DB: ${POSTGRES_DB:-mine}
+      POSTGRES_USER: ${POSTGRES_USER:-mine}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    secrets:
+      - postgres_password
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    logging: *default-logging
+
+  timescale:
+    image: ${MINE_TIMESCALE_IMAGE:-timescale/timescaledb:2.22.1-pg17}
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+      POSTGRES_DB: ${TIMESCALE_DB:-mine_telemetry}
+      POSTGRES_USER: ${TIMESCALE_USER:-mine_ts}
+      POSTGRES_PASSWORD_FILE: /run/secrets/timescale_password
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ../config/timescale/init.sql:/docker-entrypoint-initdb.d/010-timescale.sql:ro
+    secrets:
+      - timescale_password
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+    logging: *default-logging
+
+  redis:
+    image: ${MINE_REDIS_IMAGE:-redis:8.2-alpine}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - /bin/sh
+      - -ec
+      - exec redis-server --appendonly yes --requirepass "$$(cat /run/secrets/redis_password)"
+    volumes:
+      - redis_data:/data
+    secrets:
+      - redis_password
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$(cat /run/secrets/redis_password)\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+    logging: *default-logging
+
+networks:
+  ingress: {}
+  app:
+    internal: true
+  data:
+    internal: true
+
+volumes:
+  rabbitmq_data: {}
+  postgres_data: {}
+  timescale_data: {}
+  redis_data: {}
+
+secrets:
+  postgres_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/postgres_password
+  timescale_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/timescale_password
+  redis_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/redis_password
+  rabbitmq_admin_username:
+    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_admin_username
+  rabbitmq_admin_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_admin_password
+  mine_super_admin_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/mine_super_admin_password
+  tls_certificate:
+    file: ${MINE_SECRETS_DIR:-../secrets}/tls.crt
+  tls_private_key:
+    file: ${MINE_SECRETS_DIR:-../secrets}/tls.key
