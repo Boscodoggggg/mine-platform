@@ -1,0 +1,143 @@
+{
+  "users": [],
+  "vhosts": [
+    {
+      "name": "/mine-device",
+      "description": "设备 MQTT 上下行虚拟主机",
+      "tags": [],
+      "metadata": {
+        "description": "设备 MQTT 上下行虚拟主机",
+        "tags": [],
+        "default_queue_type": "quorum"
+      }
+    },
+    {
+      "name": "/mine-platform",
+      "description": "平台内部可靠消息虚拟主机",
+      "tags": [],
+      "metadata": {
+        "description": "平台内部可靠消息虚拟主机",
+        "tags": [],
+        "default_queue_type": "quorum"
+      }
+    }
+  ],
+  "permissions": [],
+  "topic_permissions": [],
+  "parameters": [],
+  "global_parameters": [],
+  "policies": [],
+  "queues": [
+    {
+      "name": "mine.telemetry.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.command.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.config.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.dead-letter.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum"
+      }
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "mine.telemetry.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.command.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.config.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.dlx",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "mine.telemetry.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.telemetry.q",
+      "destination_type": "queue",
+      "routing_key": "telemetry.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.command.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.command.q",
+      "destination_type": "queue",
+      "routing_key": "command.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.config.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.config.q",
+      "destination_type": "queue",
+      "routing_key": "config.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.dlx",
+      "vhost": "/mine-platform",
+      "destination": "mine.dead-letter.q",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    }
+  ]
+}
