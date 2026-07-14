@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import mineLandscapeUrl from '@/assets/images/login-mine-landscape.jpg';
 import { changePassword, login } from '../../api/auth';
 import { clearAuthSession, saveAuthSession } from '../../auth/session';
 
@@ -10,6 +9,14 @@ type LoginStage = 'login' | 'password' | 'complete';
 interface DisplayError {
   message: string;
   traceId?: string;
+}
+
+interface NetworkNode {
+  x: number;
+  y: number;
+  velocityX: number;
+  velocityY: number;
+  radius: number;
 }
 
 const router = useRouter();
@@ -25,25 +32,101 @@ const fieldErrors = reactive<Record<string, string | undefined>>({
 });
 const loginForm = reactive({ username: '', password: '' });
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' });
-const mineParticles = Array.from({ length: 144 }, (_, index) => {
-  return {
-    id: index,
-    x: 2 + ((index * 47) % 96),
-    y: 12 + ((index * 31) % 76),
-    size: 1 + (index % 4) * 0.7,
-    opacity: 0.3 + (index % 6) * 0.09,
-    travelX: -22 + ((index * 13) % 46),
-    travelY: -14 + ((index * 17) % 30),
-    duration: 7 + (index % 8) * 0.9,
-    delay: -(index % 18) * 0.55
-  };
-});
+const networkCanvas = ref<HTMLCanvasElement | null>(null);
+let stopNetwork: (() => void) | undefined;
 
 const title = computed(() => {
   if (stage.value === 'password') return '修改初始密码';
   if (stage.value === 'complete') return '密码修改成功';
-  return '进入管理平台';
+  return '欢迎登录';
 });
+
+onMounted(() => {
+  if (networkCanvas.value) stopNetwork = startParticleNetwork(networkCanvas.value);
+});
+
+onBeforeUnmount(() => stopNetwork?.());
+
+function startParticleNetwork(canvas: HTMLCanvasElement) {
+  const context = canvas.getContext('2d');
+  if (!context) return () => undefined;
+
+  const nodes: NetworkNode[] = [];
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  let width = 0;
+  let height = 0;
+  let animationFrame = 0;
+
+  const resize = () => {
+    const bounds = canvas.getBoundingClientRect();
+    width = bounds.width || window.innerWidth || 1440;
+    height = bounds.height || window.innerHeight || 900;
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(width * pixelRatio);
+    canvas.height = Math.round(height * pixelRatio);
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+    if (!nodes.length) {
+      const count = Math.max(42, Math.min(78, Math.round((width * height) / 24000)));
+      for (let index = 0; index < count; index += 1) {
+        nodes.push({
+          x: ((index * 71) % count) / count * width,
+          y: ((index * 43) % count) / count * height,
+          velocityX: ((index % 7) - 3) * 0.035,
+          velocityY: ((index % 5) - 2) * 0.04,
+          radius: 1.1 + (index % 4) * 0.45
+        });
+      }
+
+      // 固定一组近距离节点，确保低分辨率或稀疏节点时仍能表达连接关系。
+      nodes[1].x = nodes[0].x + Math.min(72, width * 0.08);
+      nodes[1].y = nodes[0].y + Math.min(48, height * 0.08);
+    }
+  };
+
+  const draw = () => {
+    context.clearRect(0, 0, width, height);
+
+    for (let sourceIndex = 0; sourceIndex < nodes.length; sourceIndex += 1) {
+      const source = nodes[sourceIndex];
+      for (let targetIndex = sourceIndex + 1; targetIndex < nodes.length; targetIndex += 1) {
+        const target = nodes[targetIndex];
+        const distance = Math.hypot(source.x - target.x, source.y - target.y);
+        if (distance > 175) continue;
+
+        context.beginPath();
+        context.moveTo(source.x, source.y);
+        context.lineTo(target.x, target.y);
+        context.strokeStyle = `rgb(31 132 210 / ${0.17 * (1 - distance / 175)})`;
+        context.lineWidth = 0.7;
+        context.stroke();
+      }
+
+      context.beginPath();
+      context.arc(source.x, source.y, source.radius, 0, Math.PI * 2);
+      context.fillStyle = 'rgb(29 142 219 / 0.76)';
+      context.fill();
+
+      if (!reduceMotion) {
+        source.x += source.velocityX;
+        source.y += source.velocityY;
+        if (source.x < 0 || source.x > width) source.velocityX *= -1;
+        if (source.y < 0 || source.y > height) source.velocityY *= -1;
+      }
+    }
+
+    if (!reduceMotion) animationFrame = requestAnimationFrame(draw);
+  };
+
+  resize();
+  draw();
+  window.addEventListener('resize', resize);
+
+  return () => {
+    window.removeEventListener('resize', resize);
+    cancelAnimationFrame(animationFrame);
+  };
+}
 
 async function submit() {
   if (submitting.value) return;
@@ -151,49 +234,32 @@ function toDisplayError(reason: unknown): DisplayError {
 
 <template>
   <main class="login-shell">
-    <section class="site-panel" aria-label="平台介绍">
-      <img class="mine-visual" :src="mineLandscapeUrl" alt="" />
-      <div class="site-panel__grid" aria-hidden="true"></div>
-      <div class="particle-field" aria-hidden="true">
-        <i
-          v-for="particle in mineParticles"
-          :key="particle.id"
-          class="mine-particle"
-          :style="{
-            left: `${particle.x}%`,
-            top: `${particle.y}%`,
-            width: `${particle.size}px`,
-            height: `${particle.size}px`,
-            opacity: particle.opacity,
-            '--travel-x': `${particle.travelX}px`,
-            '--travel-y': `${particle.travelY}px`,
-            '--particle-duration': `${particle.duration}s`,
-            animationDelay: `${particle.delay}s`
-          }"
-        ></i>
-      </div>
-      <div class="site-panel__grain" aria-hidden="true"></div>
-      <div class="brand">
-        <span class="brand__mark" aria-hidden="true">
+    <canvas ref="networkCanvas" class="network-canvas" aria-hidden="true"></canvas>
+
+    <section class="brand-stage" aria-label="平台介绍">
+      <div class="brand-stage__mark" aria-hidden="true">
+        <span>
           <svg viewBox="0 0 48 48" role="img">
             <path d="M7 34h34v5H7zM11 30l8-17h10l8 17h-7l-3-8h-6l-3 8z" />
             <circle cx="17" cy="39" r="4" />
             <circle cx="33" cy="39" r="4" />
           </svg>
         </span>
-        <span>智慧矿山数据平台</span>
       </div>
-      <div class="site-copy">
-        <h1><span>智联矿山</span><span>洞见现场</span></h1>
-        <i aria-hidden="true"></i>
-      </div>
-      <div class="coordinates" aria-hidden="true"><span>E 118.3456</span><span>N 34.5678</span></div>
+      <h1>智慧矿山数据平台</h1>
+      <p>设备智联 · 数据洞察 · 生产协同</p>
     </section>
 
     <section class="form-panel">
-      <div class="form-card">
+      <div class="form-card login-card">
         <header class="form-header">
-          <span class="form-header__index">控制台 / 01</span>
+          <span class="form-header__mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48" role="img">
+              <path d="M7 34h34v5H7zM11 30l8-17h10l8 17h-7l-3-8h-6l-3 8z" />
+              <circle cx="17" cy="39" r="4" />
+              <circle cx="33" cy="39" r="4" />
+            </svg>
+          </span>
           <h2>{{ title }}</h2>
           <p v-if="stage === 'login'">使用矿区管理账号登录。连续失败将触发安全限制。</p>
           <p v-else-if="stage === 'password'">当前账号仍在使用初始密码，完成修改后需要重新登录。</p>
@@ -300,341 +366,281 @@ function toDisplayError(reason: unknown): DisplayError {
 </template>
 
 <style scoped>
+/* 深蓝数据星网主题 */
 :global(body) {
   margin: 0;
-  background: #e9ecec;
-  color: #202523;
   font-family: "HarmonyOS Sans SC", MiSans, "Source Han Sans SC", "PingFang SC", sans-serif;
+  overflow: hidden;
+  background: #07122d;
+  color: #eef6ff;
 }
 
 .login-shell {
-  --coal: #202523;
-  --coal-soft: #454c49;
-  --stone: #e9ecec;
-  --surface: #f7f8f7;
-  --line: #c9cece;
-  --signal: #c97824;
+  position: relative;
+  isolation: isolate;
   display: grid;
   min-height: 100vh;
-  grid-template-columns: minmax(480px, 1.16fr) minmax(460px, 0.84fr);
-  background: var(--stone);
-}
-
-.site-panel {
-  position: relative;
-  display: flex;
-  min-height: 100vh;
-  flex-direction: column;
+  grid-template-columns: 66% 34%;
   overflow: hidden;
-  padding: clamp(32px, 5vw, 72px);
   background:
-    radial-gradient(circle at 72% 58%, rgb(201 120 36 / 8%), transparent 32%),
-    linear-gradient(145deg, #181b17, #0c0e0c 72%);
-  color: #f1f3ef;
+    radial-gradient(circle at 38% 52%, rgb(16 57 116 / 42%), transparent 34%),
+    linear-gradient(118deg, #050d25 0%, #081632 58%, #10264b 100%);
 }
 
-.site-panel::before {
+.login-shell::before {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgb(7 8 7 / 30%), transparent 48%, rgb(7 8 7 / 8%));
+  background:
+    linear-gradient(90deg, rgb(4 10 29 / 12%), transparent 46%, rgb(9 24 53 / 18%)),
+    radial-gradient(circle at 75% 42%, rgb(36 126 206 / 8%), transparent 24%);
   content: "";
   pointer-events: none;
-  z-index: 1;
+  z-index: 0;
 }
 
-.site-panel__grid {
-  position: absolute;
-  inset: 0;
-  opacity: 0.16;
-  background-image:
-    linear-gradient(rgb(204 211 201 / 16%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(204 211 201 / 16%) 1px, transparent 1px);
-  background-size: 64px 64px;
-  mask-image: linear-gradient(145deg, black, transparent 78%);
-}
-
-.site-panel__grain {
-  position: absolute;
-  inset: 0;
-  opacity: 0.06;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.72'/%3E%3C/svg%3E");
-  pointer-events: none;
-  z-index: 2;
-}
-
-.mine-visual {
+.network-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: 54% center;
-  opacity: 0;
-  filter: contrast(1.04) saturate(0.92);
-  animation: scene-reveal 1.4s cubic-bezier(0.16, 1, 0.3, 1) 100ms forwards;
-}
-
-.particle-field {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
   pointer-events: none;
-  z-index: 2;
+  z-index: 0;
 }
 
-.mine-particle {
-  position: absolute;
-  border-radius: 50%;
-  background: #e29a49;
-  box-shadow:
-    0 0 5px rgb(218 139 55 / 88%),
-    0 0 12px rgb(201 120 36 / 36%);
-  transform: translate3d(0, 0, 0) scale(0.72);
-  will-change: transform, opacity;
-  animation: particle-drift var(--particle-duration) ease-in-out infinite alternate;
-}
-
-.brand,
-.site-copy,
-.coordinates {
+.brand-stage {
   position: relative;
-  z-index: 3;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-}
-
-.brand__mark {
+  z-index: 1;
   display: grid;
-  width: 40px;
-  height: 40px;
+  align-content: center;
+  justify-items: center;
+  padding: 0 8vw 2vh 4vw;
+  color: #f4f8ff;
+  text-align: center;
+}
+
+.brand-stage__mark,
+.form-header__mark {
+  display: grid;
   place-items: center;
-  background: var(--signal);
-  box-shadow: 0 12px 36px rgb(201 120 36 / 18%);
+  border: 1px solid rgb(92 139 209 / 22%);
+  background: rgb(35 55 99 / 74%);
+  box-shadow: 0 18px 48px rgb(0 5 24 / 34%);
 }
 
-.brand__mark svg {
-  width: 26px;
-  fill: #f4f5f1;
+.brand-stage__mark {
+  width: 66px;
+  height: 66px;
+  border-radius: 17px;
 }
 
-.site-copy {
-  margin: clamp(170px, 30vh, 330px) 0 0 clamp(0px, 1.5vw, 22px);
-}
-
-.site-copy h1 {
+.brand-stage__mark span {
   display: grid;
-  gap: 8px;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #0f8ee1, #3a6ff0);
+  box-shadow: 0 0 26px rgb(31 153 232 / 26%);
+}
+
+.brand-stage__mark svg,
+.form-header__mark svg {
+  width: 27px;
+  fill: #f3f8ff;
+}
+
+.brand-stage h1 {
+  margin: 28px 0 10px;
+  font-size: clamp(30px, 2.25vw, 42px);
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-shadow: 0 8px 24px rgb(0 5 25 / 30%);
+}
+
+.brand-stage p {
   margin: 0;
-  font-size: clamp(38px, 4vw, 62px);
-  font-weight: 450;
-  letter-spacing: 0.08em;
-  line-height: 1.28;
-  text-shadow: 0 3px 24px rgb(0 0 0 / 48%);
-}
-
-.site-copy i {
-  display: block;
-  width: 44px;
-  height: 1px;
-  margin-top: 28px;
-  background: var(--signal);
-}
-
-.coordinates {
-  position: absolute;
-  top: clamp(130px, 18vh, 210px);
-  right: clamp(34px, 5vw, 74px);
-  display: grid;
-  gap: 3px;
-  color: #d18a3c;
+  color: #129fe7;
   font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 10px;
-  letter-spacing: 0.13em;
+  font-size: clamp(12px, 0.9vw, 15px);
+  letter-spacing: 0.08em;
 }
 
 .form-panel {
   position: relative;
+  z-index: 1;
   display: grid;
+  min-width: 0;
   min-height: 100vh;
-  overflow: hidden;
   place-items: center;
-  padding: clamp(32px, 6vw, 100px);
-  background:
-    radial-gradient(circle at 72% 18%, rgb(255 255 255 / 76%), transparent 34%),
-    linear-gradient(145deg, #f1f3f2, #e5e9e9);
+  overflow: visible;
+  padding: 48px clamp(44px, 6vw, 104px) 48px 0;
+  background: transparent;
 }
 
 .form-panel::before {
-  position: absolute;
-  inset: 0;
-  opacity: 0.18;
-  background-image:
-    linear-gradient(rgb(91 102 98 / 8%) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(91 102 98 / 8%) 1px, transparent 1px);
-  background-size: 80px 80px;
-  content: "";
-  mask-image: linear-gradient(120deg, transparent 22%, black 100%);
-  pointer-events: none;
+  display: none;
 }
 
 .form-card {
   position: relative;
-  z-index: 1;
-  width: min(100%, 470px);
-  animation: form-reveal 760ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+  left: 0;
+  box-sizing: border-box;
+  width: min(100%, 438px);
+  border: 1px solid rgb(27 102 160 / 46%);
+  border-radius: 18px;
+  background: rgb(18 50 93 / 84%);
+  padding: 44px 42px 34px;
+  box-shadow:
+    0 28px 80px rgb(0 6 30 / 30%),
+    inset 0 1px 0 rgb(120 185 235 / 8%);
+  backdrop-filter: blur(12px);
+  animation: form-reveal 760ms cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
 }
 
 .form-header {
-  margin-bottom: 42px;
+  display: grid;
+  justify-items: center;
+  margin-bottom: 30px;
+  text-align: center;
 }
 
-.form-header__index {
-  color: var(--signal);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
+.form-header__mark {
+  width: 58px;
+  height: 58px;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #0f8ee1, #3a6ff0);
+  box-shadow: 0 14px 34px rgb(2 18 50 / 36%);
 }
 
 .form-header h2 {
-  margin: 18px 0 12px;
-  color: var(--coal);
-  font-size: clamp(34px, 3.2vw, 48px);
-  font-weight: 520;
-  letter-spacing: -0.045em;
+  margin: 24px 0 8px;
+  color: #f3f8ff;
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
 }
 
 .form-header p {
   margin: 0;
-  color: #68706d;
-  font-size: 14px;
-  line-height: 1.7;
+  color: #8fa6c8;
+  font-size: 12px;
+  line-height: 1.65;
 }
 
 .field {
+  position: relative;
   display: block;
-  margin-bottom: 22px;
+  margin-bottom: 18px;
 }
 
 .field > span {
   display: block;
-  margin-bottom: 9px;
-  color: #414845;
-  font-size: 14px;
-  font-weight: 650;
+  margin-bottom: 7px;
+  color: #a9bddd;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .field input {
   box-sizing: border-box;
   width: 100%;
-  height: 52px;
-  border: 1px solid var(--line);
-  border-radius: 0;
+  height: 48px;
+  border: 1px solid rgb(108 143 193 / 44%);
+  border-radius: 7px;
   outline: none;
-  background: rgb(247 248 247 / 84%);
-  padding: 0 16px;
-  color: var(--coal);
+  background: #dce7f8;
+  padding: 0 15px;
+  color: #17213b;
   font: inherit;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 70%);
+  box-shadow: inset 0 1px 3px rgb(15 35 67 / 12%);
   transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
 }
 
 .field input::placeholder {
-  color: #969e9b;
+  color: #71819c;
 }
 
 .field input:focus {
-  border-color: var(--signal);
-  background: #fafbfa;
-  box-shadow:
-    inset 3px 0 0 rgb(201 120 36 / 82%),
-    0 0 0 3px rgb(201 120 36 / 7%);
+  border-color: #27a9eb;
+  background: #edf4ff;
+  box-shadow: 0 0 0 3px rgb(28 157 228 / 16%);
 }
 
 .field input[aria-invalid="true"] {
-  border-color: #b42318;
+  border-color: #f06f76;
 }
 
 .field-error {
   display: block;
-  margin-top: 7px;
-  color: #b42318;
-  font-size: 12px;
+  margin-top: 6px;
+  color: #ff9da3;
+  font-size: 11px;
 }
 
 .security-note,
 .request-error {
   display: grid;
   gap: 5px;
-  margin-bottom: 24px;
-  border-left: 3px solid var(--signal);
-  background: #dde2e0;
-  padding: 14px 16px;
-  color: #525b57;
-  font-size: 13px;
+  margin-bottom: 18px;
+  border: 1px solid rgb(47 128 188 / 30%);
+  border-radius: 7px;
+  background: rgb(8 28 61 / 52%);
+  padding: 13px 14px;
+  color: #9eb5d5;
+  font-size: 12px;
   line-height: 1.55;
 }
 
 .security-note strong,
 .request-error strong {
-  color: var(--coal);
+  color: #edf6ff;
 }
 
 .request-error {
-  border-left-color: #b42318;
-  background: #fff0ed;
-  color: #8a2c23;
+  border-color: rgb(224 95 105 / 44%);
+  background: rgb(95 27 47 / 40%);
+  color: #ffb2b7;
 }
 
 .submit-button {
   position: relative;
   display: flex;
   width: 100%;
-  height: 54px;
+  height: 50px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   border: 0;
+  border-radius: 7px;
   overflow: hidden;
-  background: linear-gradient(100deg, #252a27, #171a18);
-  padding: 0 20px;
-  color: #f4f5f2;
+  background: linear-gradient(100deg, #078fdc, #32a7df);
+  padding: 0 18px;
+  color: #f5fbff;
   cursor: pointer;
   font: inherit;
   font-weight: 700;
-  transition: transform 180ms ease, box-shadow 180ms ease;
+  letter-spacing: 0.08em;
+  box-shadow: 0 12px 28px rgb(0 105 183 / 22%);
+  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.submit-button span:last-child {
+  position: absolute;
+  right: 18px;
 }
 
 .submit-button::after {
-  position: absolute;
-  right: 40px;
-  width: 110px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--signal));
-  box-shadow: 22px 0 12px 2px rgb(201 120 36 / 24%);
-  content: "";
-  transform: scaleX(0.5);
-  transform-origin: right;
-  transition: transform 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  display: none;
 }
 
 .submit-button:hover:not(:disabled) {
+  filter: brightness(1.08);
   transform: translateY(-1px);
-  box-shadow: 0 12px 30px rgb(31 37 34 / 18%);
-}
-
-.submit-button:hover:not(:disabled)::after {
-  transform: scaleX(1);
+  box-shadow: 0 16px 34px rgb(0 105 183 / 28%);
 }
 
 .submit-button:focus-visible {
-  outline: 3px solid rgb(237 101 0 / 28%);
+  outline: 3px solid rgb(58 177 238 / 32%);
   outline-offset: 3px;
 }
 
@@ -645,39 +651,43 @@ function toDisplayError(reason: unknown): DisplayError {
 
 .complete-state {
   display: grid;
-  gap: 22px;
+  justify-items: center;
+  gap: 20px;
+  color: #bed0e8;
+  text-align: center;
 }
 
 .complete-state__icon {
   display: grid;
-  width: 58px;
-  height: 58px;
+  width: 56px;
+  height: 56px;
   place-items: center;
-  background: #1b7f4b;
-  color: #f5f7f4;
-  font-size: 28px;
+  border-radius: 50%;
+  background: #1d9f7a;
+  color: #f5fbff;
+  font-size: 26px;
 }
 
 .complete-state p {
   margin: 0;
-  color: #59615e;
+  color: #a9bdd7;
   line-height: 1.7;
 }
 
 .form-footer {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
-  margin-top: 34px;
-  border-top: 1px solid var(--line);
+  gap: 18px;
+  margin-top: 28px;
+  border-top: 1px solid rgb(118 154 204 / 20%);
   padding-top: 18px;
-  color: #7b8581;
-  font-size: 12px;
+  color: #7991b2;
+  font-size: 11px;
 }
 
 .form-footer span:first-child {
-  color: #48504d;
-  font-weight: 700;
+  color: #a9bdd7;
+  font-weight: 600;
 }
 
 .status-dot {
@@ -686,13 +696,8 @@ function toDisplayError(reason: unknown): DisplayError {
   height: 7px;
   margin-right: 7px;
   border-radius: 50%;
-  background: #1b9b5a;
-  box-shadow: 0 0 0 3px rgb(27 155 90 / 13%);
-}
-
-@keyframes scene-reveal {
-  from { opacity: 0; transform: scale(1.025); }
-  to { opacity: 1; transform: scale(1); }
+  background: #30c48d;
+  box-shadow: 0 0 0 3px rgb(48 196 141 / 12%);
 }
 
 @keyframes form-reveal {
@@ -700,68 +705,58 @@ function toDisplayError(reason: unknown): DisplayError {
   to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes particle-drift {
-  0% { transform: translate3d(0, 0, 0) scale(0.72); filter: brightness(0.82); }
-  48% { opacity: 0.92; }
-  100% { transform: translate3d(var(--travel-x), var(--travel-y), 0) scale(1.28); filter: brightness(1.22); }
-}
-
-@media (max-width: 920px) {
-  .login-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .site-panel {
-    min-height: 46vh;
-    padding: 28px;
-  }
-
-  .site-copy {
-    margin: auto 0 22px;
-  }
-
-  .site-copy h1 {
-    gap: 2px;
-    font-size: clamp(34px, 8vw, 52px);
-  }
-
-  .form-panel {
-    min-height: auto;
-    padding: 52px 24px 64px;
-  }
-}
-
-@media (max-width: 520px) {
-  .site-panel {
-    padding: 22px;
-  }
-
-  .coordinates {
-    display: none;
-  }
-
-  .form-panel {
-    padding-inline: 20px;
-  }
-
-  .form-footer {
-    flex-direction: column;
-    gap: 8px;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
 
-  .mine-particle {
-    animation: none !important;
+@media (max-width: 920px) {
+  :global(body) {
+    overflow: auto;
+  }
+
+  .login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-stage {
+    min-height: 34vh;
+    padding: 54px 24px 20px;
+  }
+
+  .brand-stage h1 {
+    margin-top: 20px;
+  }
+
+  .form-panel {
+    min-height: 66vh;
+    padding: 24px 20px 56px;
+  }
+
+  .form-card {
+    left: 0;
+    width: min(100%, 438px);
+  }
+}
+
+@media (max-width: 520px) {
+  .brand-stage p {
+    font-size: 11px;
+  }
+
+  .form-card {
+    border-radius: 14px;
+    padding: 34px 24px 28px;
+  }
+
+  .form-footer {
+    flex-direction: column;
+    gap: 7px;
   }
 }
 </style>

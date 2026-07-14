@@ -39,16 +39,35 @@ describe('LoginPage', () => {
     loginMock.mockReset();
   });
 
-  it('应展示精简品牌主张和粒子矿坑场景', async () => {
+  it('应展示智慧矿山品牌和深蓝登录舱', async () => {
     const { wrapper } = await mountPage();
 
-    expect(wrapper.get('.site-copy h1').text()).toBe('智联矿山洞见现场');
-    expect(wrapper.get('.mine-visual').attributes('src')).toContain('login-mine-landscape');
-    expect(wrapper.findAll('.mine-particle')).toHaveLength(144);
-    expect(wrapper.get('.mine-particle').attributes('style')).toContain('--travel-x');
-    expect(wrapper.get('.mine-particle').attributes('style')).toContain('--travel-y');
-    expect(wrapper.find('.capability-list').exists()).toBe(false);
-    expect(wrapper.text()).not.toContain('面向矿区本地部署');
+    expect(wrapper.get('.network-canvas').attributes('aria-hidden')).toBe('true');
+    expect(wrapper.get('.brand-stage').text()).toContain('智慧矿山数据平台');
+    expect(wrapper.get('.login-card').classes()).toContain('login-card');
+    expect(wrapper.find('.mine-visual').exists()).toBe(false);
+  });
+
+  it('应在画布上绘制移动节点和连接线', async () => {
+    const context = {
+      arc: vi.fn(),
+      beginPath: vi.fn(),
+      clearRect: vi.fn(),
+      fill: vi.fn(),
+      lineTo: vi.fn(),
+      moveTo: vi.fn(),
+      setTransform: vi.fn(),
+      stroke: vi.fn()
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as never);
+    vi.stubGlobal('requestAnimationFrame', vi.fn().mockReturnValue(1));
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+    const { wrapper } = await mountPage();
+
+    expect(context.arc).toHaveBeenCalled();
+    expect(context.lineTo).toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it('用户名和密码为空时不应提交登录请求', async () => {
