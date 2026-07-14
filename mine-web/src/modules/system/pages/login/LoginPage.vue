@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import SystemLogo from '@/components/common/system-logo.vue';
 import { changePassword, login } from '../../api/auth';
 import { clearAuthSession, saveAuthSession } from '../../auth/session';
 
@@ -238,13 +239,7 @@ function toDisplayError(reason: unknown): DisplayError {
 
     <section class="brand-stage" aria-label="平台介绍">
       <div class="brand-stage__mark" aria-hidden="true">
-        <span>
-          <svg viewBox="0 0 48 48" role="img">
-            <path d="M7 34h34v5H7zM11 30l8-17h10l8 17h-7l-3-8h-6l-3 8z" />
-            <circle cx="17" cy="39" r="4" />
-            <circle cx="33" cy="39" r="4" />
-          </svg>
-        </span>
+        <SystemLogo class="brand-stage__logo" />
       </div>
       <h1>智慧矿山数据平台</h1>
       <p>设备智联 · 数据洞察 · 生产协同</p>
@@ -254,11 +249,7 @@ function toDisplayError(reason: unknown): DisplayError {
       <div class="form-card login-card">
         <header class="form-header">
           <span class="form-header__mark" aria-hidden="true">
-            <svg viewBox="0 0 48 48" role="img">
-              <path d="M7 34h34v5H7zM11 30l8-17h10l8 17h-7l-3-8h-6l-3 8z" />
-              <circle cx="17" cy="39" r="4" />
-              <circle cx="33" cy="39" r="4" />
-            </svg>
+            <SystemLogo class="form-header__logo" />
           </span>
           <h2>{{ title }}</h2>
           <p v-if="stage === 'login'">使用矿区管理账号登录。连续失败将触发安全限制。</p>
@@ -433,20 +424,14 @@ function toDisplayError(reason: unknown): DisplayError {
   border-radius: 17px;
 }
 
-.brand-stage__mark span {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 12px;
-  background: linear-gradient(145deg, #0f8ee1, #3a6ff0);
-  box-shadow: 0 0 26px rgb(31 153 232 / 26%);
+.brand-stage__logo {
+  width: 54px;
+  height: 46px;
 }
 
-.brand-stage__mark svg,
-.form-header__mark svg {
-  width: 27px;
-  fill: #f3f8ff;
+.form-header__logo {
+  width: 48px;
+  height: 40px;
 }
 
 .brand-stage h1 {
