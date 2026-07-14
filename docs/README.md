@@ -50,6 +50,8 @@
 
 详细实施任务位于 plans/，必须按测试先行、小提交、逐阶段验收执行。
 
+阶段验收结果位于 `reports/`。当前 [Phase 0 工程底座验收报告](reports/phase-0-acceptance.md) 为待复验状态，未闭环项不得按生产就绪处理。
+
 ## 4. Codex 开始开发前的固定动作
 
 1. 读取仓库根目录 AGENTS.md。
