@@ -66,50 +66,65 @@ public class AuthService {
      */
     public LoginResult login(String username, String password, AuditContext context) {
         String normalizedUsername = username == null ? "" : username.strip();
-        if (!loginAttemptLimiter.isAllowed(normalizedUsername, context.clientIp())) {
-            recordLoginFailure(null, normalizedUsername, INVALID_CREDENTIALS.code(), context);
+        String rawPassword = password == null ? "" : password;
+        if (!loginAttemptLimiter.tryAcquire(normalizedUsername, context.clientIp())) {
             throw new MineException(INVALID_CREDENTIALS, Map.of());
         }
-        SystemAuthMapper.AuthUserRecord user = authMapper.findUserByUsername(normalizedUsername).orElse(null);
-        String passwordHash = user == null ? dummyPasswordHash : user.passwordHash();
-        boolean passwordMatches = passwordEncoder.matches(password, passwordHash);
-        if (user == null || !passwordMatches) {
-            loginAttemptLimiter.recordFailure(normalizedUsername, context.clientIp());
-            recordLoginFailure(user, normalizedUsername, INVALID_CREDENTIALS.code(), context);
-            throw new MineException(INVALID_CREDENTIALS, Map.of());
-        }
-        if (!"ENABLED".equals(user.status())) {
-            loginAttemptLimiter.recordFailure(normalizedUsername, context.clientIp());
-            recordLoginFailure(user, normalizedUsername, ACCOUNT_UNAVAILABLE.code(), context);
-            throw new MineException(ACCOUNT_UNAVAILABLE, Map.of());
-        }
-
-        loginAttemptLimiter.recordSuccess(normalizedUsername);
-        authMapper.updateLastLoginAt(user.id());
-        StpUtil.login(user.id().toString());
-        SaTokenInfo tokenInfo = StpUtil.getTokenInfo();
+        boolean settled = false;
         try {
-            authMapper.insertLoginLog(
-                    idGenerator.next(),
-                    user.id(),
-                    user.username(),
-                    "LOGIN",
-                    "SUCCESS",
-                    null,
-                    context.requestId(),
-                    context.traceId(),
-                    context.clientIp(),
-                    context.userAgent()
+            SystemAuthMapper.AuthUserRecord user = authMapper.findUserByUsername(normalizedUsername).orElse(null);
+            boolean validBcryptLength = hasValidBcryptLength(rawPassword);
+            String passwordHash = user == null || !validBcryptLength
+                    ? dummyPasswordHash
+                    : user.passwordHash();
+            String passwordCandidate = validBcryptLength ? rawPassword : "invalid-bcrypt-input";
+            boolean passwordMatches = passwordEncoder.matches(passwordCandidate, passwordHash);
+            if (user == null || !validBcryptLength || !passwordMatches) {
+                loginAttemptLimiter.recordFailure(normalizedUsername, context.clientIp());
+                settled = true;
+                recordLoginFailure(user, normalizedUsername, INVALID_CREDENTIALS.code(), context);
+                throw new MineException(INVALID_CREDENTIALS, Map.of());
+            }
+            if (!"ENABLED".equals(user.status())) {
+                loginAttemptLimiter.recordFailure(normalizedUsername, context.clientIp());
+                settled = true;
+                recordLoginFailure(user, normalizedUsername, ACCOUNT_UNAVAILABLE.code(), context);
+                throw new MineException(ACCOUNT_UNAVAILABLE, Map.of());
+            }
+
+            loginAttemptLimiter.recordSuccess(normalizedUsername, context.clientIp());
+            settled = true;
+            authMapper.updateLastLoginAt(user.id());
+            StpUtil.login(user.id().toString());
+            SaTokenInfo tokenInfo = StpUtil.getTokenInfo();
+            try {
+                authMapper.insertLoginLog(
+                        idGenerator.next(),
+                        user.id(),
+                        user.username(),
+                        "LOGIN",
+                        "SUCCESS",
+                        null,
+                        context.requestId(),
+                        context.traceId(),
+                        context.clientIp(),
+                        context.userAgent()
+                );
+            } catch (RuntimeException exception) {
+                StpUtil.logout();
+                throw exception;
+            }
+            return new LoginResult(
+                    tokenInfo.getTokenName(),
+                    tokenInfo.getTokenValue(),
+                    toProfile(user)
             );
         } catch (RuntimeException exception) {
-            StpUtil.logout();
+            if (!settled) {
+                loginAttemptLimiter.cancel(normalizedUsername, context.clientIp());
+            }
             throw exception;
         }
-        return new LoginResult(
-                tokenInfo.getTokenName(),
-                tokenInfo.getTokenValue(),
-                toProfile(user)
-        );
     }
 
     /**
@@ -140,11 +155,14 @@ public class AuthService {
     @Transactional
     public void changePassword(String currentPassword, String newPassword, AuditContext context) {
         SystemAuthMapper.AuthUserRecord user = currentAuthUser();
-        if (!passwordEncoder.matches(currentPassword, user.passwordHash())) {
+        if (!hasValidBcryptLength(currentPassword)
+                || !passwordEncoder.matches(currentPassword, user.passwordHash())) {
             throw new MineException(CURRENT_PASSWORD_INVALID, Map.of());
         }
-        if (currentPassword.equals(newPassword)
-                || newPassword.getBytes(StandardCharsets.UTF_8).length > 72) {
+        if (newPassword == null
+                || newPassword.length() < 12
+                || currentPassword.equals(newPassword)
+                || !hasValidBcryptLength(newPassword)) {
             throw new MineException(NEW_PASSWORD_INVALID, Map.of());
         }
 
@@ -225,6 +243,10 @@ public class AuthService {
         return authMapper.findUserById(userId)
                 .filter(record -> "ENABLED".equals(record.status()))
                 .orElseThrow(() -> new MineException(INVALID_SESSION, Map.of()));
+    }
+
+    private boolean hasValidBcryptLength(String password) {
+        return password != null && password.getBytes(StandardCharsets.UTF_8).length <= 72;
     }
 
     /**

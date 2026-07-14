@@ -18,15 +18,55 @@ import java.util.List;
 public final class LoginAttemptLimiter {
 
     private static final String KEY_PREFIX = "mine:auth:login-failure:";
-    private static final DefaultRedisScript<Long> REGISTER_FAILURE = new DefaultRedisScript<>("""
-            local current = redis.call('INCR', KEYS[1])
-            if current == 1 then
-                redis.call('PEXPIRE', KEYS[1], ARGV[1])
+    private static final DefaultRedisScript<Long> RESERVE_ATTEMPT = new DefaultRedisScript<>("""
+            local account = tonumber(redis.call('GET', KEYS[1]) or '0')
+            local source = tonumber(redis.call('GET', KEYS[2]) or '0')
+            if account >= tonumber(ARGV[1]) or source >= tonumber(ARGV[2]) then
+                return 0
             end
-            if current >= tonumber(ARGV[2]) then
+            account = redis.call('INCR', KEYS[1])
+            if account == 1 then
                 redis.call('PEXPIRE', KEYS[1], ARGV[3])
             end
-            return current
+            source = redis.call('INCR', KEYS[2])
+            if source == 1 then
+                redis.call('PEXPIRE', KEYS[2], ARGV[3])
+            end
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> RETAIN_FAILURE = new DefaultRedisScript<>("""
+            for index = 1, 2 do
+                local current = tonumber(redis.call('GET', KEYS[index]) or '0')
+                if current == 0 then
+                    current = redis.call('INCR', KEYS[index])
+                    redis.call('PEXPIRE', KEYS[index], ARGV[3])
+                end
+                if current >= tonumber(ARGV[index]) then
+                    redis.call('PEXPIRE', KEYS[index], ARGV[4])
+                end
+            end
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> RELEASE_RESERVATION = new DefaultRedisScript<>("""
+            for index = 1, 2 do
+                local current = tonumber(redis.call('GET', KEYS[index]) or '0')
+                if current <= 1 then
+                    redis.call('DEL', KEYS[index])
+                else
+                    redis.call('DECR', KEYS[index])
+                end
+            end
+            return 1
+            """, Long.class);
+    private static final DefaultRedisScript<Long> RELEASE_SUCCESS = new DefaultRedisScript<>("""
+            redis.call('DEL', KEYS[1])
+            local source = tonumber(redis.call('GET', KEYS[2]) or '0')
+            if source <= 1 then
+                redis.call('DEL', KEYS[2])
+            else
+                redis.call('DECR', KEYS[2])
+            end
+            return 1
             """, Long.class);
 
     private final StringRedisTemplate redisTemplate;
@@ -47,58 +87,62 @@ public final class LoginAttemptLimiter {
     }
 
     /**
-     * 判断账号和来源地址当前是否仍允许执行密码校验。
+     * 在执行密码散列前原子占用账号和来源地址配额。
      *
      * @param username 规范化登录名
      * @param clientIp 客户端来源地址
      * @return 是否允许继续登录
      */
-    public boolean isAllowed(String username, String clientIp) {
-        return count(accountKey(username)) < properties.maxFailuresPerAccount()
-                && count(sourceKey(clientIp)) < properties.maxFailuresPerSource();
+    public boolean tryAcquire(String username, String clientIp) {
+        Long result = redisTemplate.execute(
+                RESERVE_ATTEMPT,
+                keys(username, clientIp),
+                Integer.toString(properties.maxFailuresPerAccount()),
+                Integer.toString(properties.maxFailuresPerSource()),
+                Long.toString(properties.attemptWindow().toMillis())
+        );
+        return Long.valueOf(1L).equals(result);
     }
 
     /**
-     * 同时累计账号和来源地址的失败次数。
+     * 确认本次占位为失败，并在达到阈值后延长限制时间。
      *
      * @param username 规范化登录名
      * @param clientIp 客户端来源地址
      */
     public void recordFailure(String username, String clientIp) {
-        increment(accountKey(username), properties.maxFailuresPerAccount());
-        increment(sourceKey(clientIp), properties.maxFailuresPerSource());
+        redisTemplate.execute(
+                RETAIN_FAILURE,
+                keys(username, clientIp),
+                Integer.toString(properties.maxFailuresPerAccount()),
+                Integer.toString(properties.maxFailuresPerSource()),
+                Long.toString(properties.attemptWindow().toMillis()),
+                Long.toString(properties.lockDuration().toMillis())
+        );
     }
 
     /**
-     * 登录成功后清除账号维度的失败计数；来源维度保留用于阻止批量撞库。
+     * 登录成功后清除账号失败计数，并释放本次来源地址占位。
      *
      * @param username 规范化登录名
+     * @param clientIp 客户端来源地址
      */
-    public void recordSuccess(String username) {
-        redisTemplate.delete(accountKey(username));
+    public void recordSuccess(String username, String clientIp) {
+        redisTemplate.execute(RELEASE_SUCCESS, keys(username, clientIp));
     }
 
-    private long count(String key) {
-        String value = redisTemplate.opsForValue().get(key);
-        if (value == null) {
-            return 0L;
-        }
-        try {
-            return Long.parseLong(value);
-        } catch (NumberFormatException exception) {
-            redisTemplate.delete(key);
-            return 0L;
-        }
+    /**
+     * 在认证流程异常中断时释放尚未结算的占位。
+     *
+     * @param username 规范化登录名
+     * @param clientIp 客户端来源地址
+     */
+    public void cancel(String username, String clientIp) {
+        redisTemplate.execute(RELEASE_RESERVATION, keys(username, clientIp));
     }
 
-    private void increment(String key, int threshold) {
-        redisTemplate.execute(
-                REGISTER_FAILURE,
-                List.of(key),
-                Long.toString(properties.attemptWindow().toMillis()),
-                Integer.toString(threshold),
-                Long.toString(properties.lockDuration().toMillis())
-        );
+    private List<String> keys(String username, String clientIp) {
+        return List.of(accountKey(username), sourceKey(clientIp));
     }
 
     private String accountKey(String username) {

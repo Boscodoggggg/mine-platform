@@ -35,6 +35,10 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -212,7 +216,60 @@ class PermissionIntegrationIT {
                 WHERE username_snapshot = 'test-rate-limit'
                   AND event_type = 'LOGIN_FAILURE'
                   AND error_code = 'AUTH-401-001'
-                """, Long.class)).isEqualTo(4L);
+                """, Long.class)).isEqualTo(3L);
+    }
+
+    @Test
+    void 并发爆破时进入密码校验的请求不得超过账号阈值() throws Exception {
+        createUser("test-concurrent-limit", "correct-password");
+        int requestCount = 20;
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(requestCount)) {
+            var futures = IntStream.range(0, requestCount)
+                    .mapToObj(ignored -> executor.<Void>submit(() -> {
+                        start.await();
+                        loginExpectingInvalidCredentials("test-concurrent-limit", "wrong-password");
+                        return null;
+                    }))
+                    .toList();
+            start.countDown();
+            for (Future<Void> future : futures) {
+                future.get();
+            }
+        }
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM sys_login_log
+                WHERE username_snapshot = 'test-concurrent-limit'
+                  AND event_type = 'LOGIN_FAILURE'
+                  AND error_code = 'AUTH-401-001'
+                """, Long.class)).isEqualTo(3L);
+    }
+
+    @Test
+    void 七十二字节密码附加后缀后必须登录失败() throws Exception {
+        String password = "a".repeat(72);
+        createUser("test-bcrypt-boundary", password);
+
+        login("test-bcrypt-boundary", password);
+        loginExpectingInvalidCredentials("test-bcrypt-boundary", password + "suffix");
+    }
+
+    @Test
+    void 登录后禁用账号应立即使普通登录态接口失效() throws Exception {
+        UUID userId = createUser("test-disabled-session", "disabled-password");
+        LoginSession session = login("test-disabled-session", "disabled-password");
+        jdbcTemplate.update("UPDATE sys_user SET status = 'DISABLED' WHERE id = ?", userId);
+
+        mockMvc.perform(get("/api/v1/test/login-only")
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH-401-002"));
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH-401-002"));
     }
 
     @Test
@@ -385,6 +442,16 @@ class PermissionIntegrationIT {
         @SaCheckPermission("audit:view")
         Map<String, String> permission() {
             return Map.of("permission", "audit:view");
+        }
+
+        /**
+         * 返回仅要求登录、不声明业务权限的探针结果。
+         *
+         * @return 登录态探针结果
+         */
+        @GetMapping("/login-only")
+        Map<String, String> loginOnly() {
+            return Map.of("status", "authenticated");
         }
     }
 

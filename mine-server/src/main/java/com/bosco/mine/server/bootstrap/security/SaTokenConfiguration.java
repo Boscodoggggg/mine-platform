@@ -66,6 +66,12 @@ public class SaTokenConfiguration implements WebMvcConfigurer {
                 );
         SystemAuthMapper authMapper = authMapperProvider.getIfAvailable();
         if (authMapper != null) {
+            registry.addInterceptor(new AccountStatusGuard(authMapper))
+                    .addPathPatterns("/api/v1/**")
+                    .excludePathPatterns(
+                            "/api/v1/auth/login",
+                            "/api/v1/system/status"
+                    );
             registry.addInterceptor(new PasswordChangeGuard(authMapper))
                     .addPathPatterns("/api/v1/**")
                     .excludePathPatterns(

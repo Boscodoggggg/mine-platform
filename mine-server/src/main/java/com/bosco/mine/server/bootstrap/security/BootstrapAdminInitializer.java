@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 
 /**
  * 在全新数据库中从外部 secret 创建唯一的初始超级管理员。
@@ -75,8 +76,9 @@ public final class BootstrapAdminInitializer implements ApplicationRunner {
     private String readInitialPassword(MineSecurityProperties.BootstrapAdmin admin) {
         try {
             String password = Files.readString(admin.passwordFile()).strip();
-            if (password.length() < 12) {
-                throw new IllegalStateException("初始超级管理员密码不得少于 12 个字符");
+            int passwordBytes = password.getBytes(StandardCharsets.UTF_8).length;
+            if (passwordBytes < 12 || passwordBytes > 72) {
+                throw new IllegalStateException("初始超级管理员密码的 UTF-8 编码必须为 12 到 72 字节");
             }
             return password;
         } catch (IOException exception) {
