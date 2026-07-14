@@ -3,6 +3,7 @@ package com.bosco.mine.server.bootstrap.security;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.UUID;
 
 /**
@@ -10,11 +11,13 @@ import java.util.UUID;
  *
  * @param bootstrapAdmin 初始超级管理员配置
  * @param password       密码算法配置
+ * @param loginProtection 登录失败防护配置
  */
 @ConfigurationProperties("mine.security")
 public record MineSecurityProperties(
         BootstrapAdmin bootstrapAdmin,
-        Password password
+        Password password,
+        LoginProtection loginProtection
 ) {
 
     /**
@@ -41,5 +44,21 @@ public record MineSecurityProperties(
      * @param bcryptStrength BCrypt 计算强度
      */
     public record Password(int bcryptStrength) {
+    }
+
+    /**
+     * 登录失败防护配置。
+     *
+     * @param maxFailuresPerAccount 单个账号在窗口内允许的最大失败次数
+     * @param maxFailuresPerSource  单个来源地址在窗口内允许的最大失败次数
+     * @param attemptWindow         普通失败计数窗口
+     * @param lockDuration          达到阈值后的限制时长
+     */
+    public record LoginProtection(
+            int maxFailuresPerAccount,
+            int maxFailuresPerSource,
+            Duration attemptWindow,
+            Duration lockDuration
+    ) {
     }
 }

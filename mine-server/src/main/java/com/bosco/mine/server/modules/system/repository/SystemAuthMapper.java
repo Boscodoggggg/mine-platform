@@ -102,6 +102,26 @@ public interface SystemAuthMapper {
     int updateLastLoginAt(@Param("userId") UUID userId);
 
     /**
+     * 修改密码散列并清除首次改密标记。
+     *
+     * @param userId       用户标识
+     * @param passwordHash 新密码散列
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE sys_user
+            SET password_hash = #{passwordHash},
+                password_change_required = FALSE,
+                updated_at = CURRENT_TIMESTAMP,
+                version = version + 1
+            WHERE id = #{userId}
+            """)
+    int updatePassword(
+            @Param("userId") UUID userId,
+            @Param("passwordHash") String passwordHash
+    );
+
+    /**
      * 追加一条不可变的登录审计记录。
      *
      * @param id               日志标识
@@ -110,16 +130,20 @@ public interface SystemAuthMapper {
      * @param eventType        登录事件类型
      * @param result           处理结果
      * @param errorCode        失败错误码
+     * @param requestId        请求标识
      * @param traceId          HTTP 链路标识
+     * @param clientIp         客户端地址
+     * @param userAgent        客户端标识
      * @return 影响行数
      */
     @Insert("""
             INSERT INTO sys_login_log (
                 id, user_id, username_snapshot, event_type,
-                result, error_code, trace_id
+                result, error_code, request_id, trace_id, client_ip, user_agent
             ) VALUES (
                 #{id}, #{userId}, #{usernameSnapshot}, #{eventType},
-                #{result}, #{errorCode}, #{traceId}
+                #{result}, #{errorCode}, #{requestId}, #{traceId},
+                CAST(#{clientIp} AS inet), #{userAgent}
             )
             """)
     int insertLoginLog(
@@ -129,7 +153,43 @@ public interface SystemAuthMapper {
             @Param("eventType") String eventType,
             @Param("result") String result,
             @Param("errorCode") String errorCode,
-            @Param("traceId") String traceId
+            @Param("requestId") String requestId,
+            @Param("traceId") String traceId,
+            @Param("clientIp") String clientIp,
+            @Param("userAgent") String userAgent
+    );
+
+    /**
+     * 记录一次成功的密码修改操作。
+     *
+     * @param id               日志标识
+     * @param userId           用户标识
+     * @param usernameSnapshot 登录名快照
+     * @param requestId        请求标识
+     * @param traceId          HTTP 链路标识
+     * @param clientIp         客户端地址
+     * @param userAgent        客户端标识
+     * @return 影响行数
+     */
+    @Insert("""
+            INSERT INTO sys_operation_log (
+                id, operator_id, username_snapshot, module, action,
+                resource_type, resource_id, request_id, trace_id,
+                client_ip, user_agent, result, duration_ms
+            ) VALUES (
+                #{id}, #{userId}, #{usernameSnapshot}, 'AUTH', 'CHANGE_PASSWORD',
+                'USER', #{userId}::text, #{requestId}, #{traceId},
+                CAST(#{clientIp} AS inet), #{userAgent}, 'SUCCESS', 0
+            )
+            """)
+    int insertPasswordChangeLog(
+            @Param("id") UUID id,
+            @Param("userId") UUID userId,
+            @Param("usernameSnapshot") String usernameSnapshot,
+            @Param("requestId") String requestId,
+            @Param("traceId") String traceId,
+            @Param("clientIp") String clientIp,
+            @Param("userAgent") String userAgent
     );
 
     /**

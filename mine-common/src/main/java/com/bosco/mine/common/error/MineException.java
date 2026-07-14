@@ -8,7 +8,10 @@ import java.util.Objects;
  */
 public final class MineException extends RuntimeException {
 
+    /** 稳定错误定义。 */
     private final ErrorCode errorCode;
+
+    /** 不包含敏感信息的结构化错误详情。 */
     private final Map<String, Object> details;
 
     /**

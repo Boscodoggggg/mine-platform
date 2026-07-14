@@ -92,6 +92,10 @@ class PermissionIntegrationIT {
         registry.add("mine.security.bootstrap-admin.display-name", () -> "矿区超级管理员");
         registry.add("mine.security.bootstrap-admin.password-file", SUPER_ADMIN_SECRET::toString);
         registry.add("mine.security.password.bcrypt-strength", () -> 10);
+        registry.add("mine.security.login-protection.max-failures-per-account", () -> 3);
+        registry.add("mine.security.login-protection.max-failures-per-source", () -> 50);
+        registry.add("mine.security.login-protection.attempt-window", () -> "PT10M");
+        registry.add("mine.security.login-protection.lock-duration", () -> "PT15M");
     }
 
     @BeforeEach
@@ -102,6 +106,11 @@ class PermissionIntegrationIT {
         jdbcTemplate.update("DELETE FROM sys_menu");
         jdbcTemplate.update("DELETE FROM sys_role");
         jdbcTemplate.update("DELETE FROM sys_user WHERE id <> ?", SUPER_ADMIN_ID);
+        jdbcTemplate.update("""
+                UPDATE sys_user
+                SET password_hash = ?, password_change_required = TRUE
+                WHERE id = ?
+                """, passwordEncoder.encode(SUPER_ADMIN_PASSWORD), SUPER_ADMIN_ID);
         Set<String> keys = redisTemplate.keys("*");
         if (!keys.isEmpty()) {
             redisTemplate.delete(keys);
@@ -109,7 +118,7 @@ class PermissionIntegrationIT {
     }
 
     @Test
-    void 超级管理员应由外部密钥初始化并强制首次改密() throws Exception {
+    void 超级管理员应完成首次改密后才能访问业务且所有旧令牌失效() throws Exception {
         LoginSession session = login("mine-admin", SUPER_ADMIN_PASSWORD);
 
         assertThat(session.userId()).isEqualTo(SUPER_ADMIN_ID.toString());
@@ -120,6 +129,45 @@ class PermissionIntegrationIT {
                 """, Long.class, SUPER_ADMIN_ID)).isOne();
         mockMvc.perform(get("/api/v1/test/permission")
                         .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-003"));
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isOk());
+
+        String secondToken = login("mine-admin", SUPER_ADMIN_PASSWORD).tokenValue();
+        String changedPassword = "mine-admin-changed-password";
+        mockMvc.perform(post("/api/v1/auth/password")
+                        .header(session.tokenName(), session.tokenValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword":"%s",
+                                  "newPassword":"%s"
+                                }
+                                """.formatted(SUPER_ADMIN_PASSWORD, changedPassword)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header(session.tokenName(), secondToken))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"mine-admin","password":"%s"}
+                                """.formatted(SUPER_ADMIN_PASSWORD)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH-401-001"));
+
+        LoginSession changedSession = login("mine-admin", changedPassword);
+        assertThat(changedSession.passwordChangeRequired()).isFalse();
+        mockMvc.perform(get("/api/v1/test/permission")
+                        .header(changedSession.tokenName(), changedSession.tokenValue()))
                 .andExpect(status().isOk());
     }
 
@@ -128,6 +176,8 @@ class PermissionIntegrationIT {
         createUser("test-wrong-password", "correct-password");
 
         mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Request-Id", "request-login-failure")
+                        .header("User-Agent", "mine-integration-test")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"username":"test-wrong-password","password":"wrong-password"}
@@ -141,8 +191,53 @@ class PermissionIntegrationIT {
                   AND event_type = 'LOGIN_FAILURE'
                   AND result = 'FAILURE'
                   AND error_code = 'AUTH-401-001'
+                  AND request_id = 'request-login-failure'
                   AND trace_id <> ''
+                  AND client_ip = '127.0.0.1'::inet
+                  AND user_agent = 'mine-integration-test'
                 """, Long.class)).isOne();
+    }
+
+    @Test
+    void 连续登录失败后应暂时限制账号且保持统一错误响应() throws Exception {
+        createUser("test-rate-limit", "correct-password");
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+            loginExpectingInvalidCredentials("test-rate-limit", "wrong-password");
+        }
+        loginExpectingInvalidCredentials("test-rate-limit", "correct-password");
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM sys_login_log
+                WHERE username_snapshot = 'test-rate-limit'
+                  AND event_type = 'LOGIN_FAILURE'
+                  AND error_code = 'AUTH-401-001'
+                """, Long.class)).isEqualTo(4L);
+    }
+
+    @Test
+    void 退出应记录请求上下文且立即注销当前令牌() throws Exception {
+        createUser("test-logout", "logout-password");
+        LoginSession session = login("test-logout", "logout-password");
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header(session.tokenName(), session.tokenValue())
+                        .header("X-Request-Id", "request-logout")
+                        .header("User-Agent", "mine-logout-test"))
+                .andExpect(status().isNoContent());
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM sys_login_log
+                WHERE username_snapshot = 'test-logout'
+                  AND event_type = 'LOGOUT'
+                  AND result = 'SUCCESS'
+                  AND request_id = 'request-logout'
+                  AND client_ip = '127.0.0.1'::inet
+                  AND user_agent = 'mine-logout-test'
+                """, Long.class)).isOne();
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -176,6 +271,7 @@ class PermissionIntegrationIT {
         LoginSession session = login("test-kickout", "kickout-password");
 
         assertThat(SaManager.getSaTokenDao()).isInstanceOf(SaTokenDaoForRedisTemplate.class);
+        assertThat(SaManager.getConfig().getActiveTimeout()).isEqualTo(1800L);
         assertThat(redisTemplate.keys("*")).isNotEmpty();
         StpUtil.kickout(session.userId());
 
@@ -201,6 +297,17 @@ class PermissionIntegrationIT {
                 JsonPath.read(body, "$.user.id"),
                 JsonPath.read(body, "$.user.passwordChangeRequired")
         );
+    }
+
+    private void loginExpectingInvalidCredentials(String username, String password) throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"%s","password":"%s"}
+                                """.formatted(username, password)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH-401-001"))
+                .andExpect(jsonPath("$.message").value("用户名或密码错误"));
     }
 
     private UUID createUser(String username, String password) {

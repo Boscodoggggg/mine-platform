@@ -5,7 +5,7 @@ spring:
 sa-token:
   token-name: X-Mine-Token
   timeout: 43200
-  active-timeout: -1
+  active-timeout: ${MINE_AUTH_ACTIVE_TIMEOUT_SECONDS:1800}
   is-concurrent: true
   is-share: false
   is-read-cookie: false
@@ -23,3 +23,8 @@ mine:
       password-file: ${MINE_BOOTSTRAP_ADMIN_PASSWORD_FILE:/run/secrets/mine_super_admin_password}
     password:
       bcrypt-strength: ${MINE_PASSWORD_BCRYPT_STRENGTH:12}
+    login-protection:
+      max-failures-per-account: ${MINE_LOGIN_MAX_FAILURES_PER_ACCOUNT:5}
+      max-failures-per-source: ${MINE_LOGIN_MAX_FAILURES_PER_SOURCE:25}
+      attempt-window: ${MINE_LOGIN_ATTEMPT_WINDOW:PT10M}
+      lock-duration: ${MINE_LOGIN_LOCK_DURATION:PT15M}

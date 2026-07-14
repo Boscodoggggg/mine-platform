@@ -15,7 +15,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -41,7 +43,7 @@ class AuthControllerTest {
     @Test
     void 登录成功时应返回令牌和首次改密标记() throws Exception {
         UUID userId = UUID.fromString("0198aef6-2e80-7000-8000-000000000001");
-        when(authService.login("mine-admin", "secret-password"))
+        when(authService.login(anyString(), anyString(), any(AuthService.AuditContext.class)))
                 .thenReturn(new AuthService.LoginResult(
                         "satoken",
                         "test-token",
@@ -65,7 +67,7 @@ class AuthControllerTest {
 
     @Test
     void 密码错误时不得暴露账号是否存在() throws Exception {
-        when(authService.login(anyString(), anyString())).thenThrow(new MineException(
+        when(authService.login(anyString(), anyString(), any(AuthService.AuditContext.class))).thenThrow(new MineException(
                 new ErrorCode("AUTH-401-001", "用户名或密码错误"),
                 Map.of()
         ));
@@ -90,5 +92,35 @@ class AuthControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("REQUEST-400-001"));
+    }
+
+    @Test
+    void 修改密码请求应校验长度并传递请求上下文() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/password")
+                        .header("X-Request-Id", "request-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword":"old-password-value",
+                                  "newPassword":"new-password-value"
+                                }
+                                """))
+                .andExpect(status().isNoContent());
+
+        verify(authService).changePassword(
+                org.mockito.ArgumentMatchers.eq("old-password-value"),
+                org.mockito.ArgumentMatchers.eq("new-password-value"),
+                any(AuthService.AuditContext.class)
+        );
+    }
+
+    @Test
+    void 过短的新密码应在控制器层拒绝() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"currentPassword":"old-password-value","newPassword":"short"}
+                                """))
+                .andExpect(status().isBadRequest());
     }
 }
