@@ -1,0 +1,40 @@
+-- 系统管理菜单属于代码契约，只随版本迁移发布；不预置任何普通角色。
+INSERT INTO sys_menu (
+    id, parent_id, name, type, path, component_key,
+    permission, icon, sort_order, visible
+) VALUES
+    ('019b0000-0000-7000-8000-000000000100', NULL,
+     '系统管理', 'DIRECTORY', '/system', NULL,
+     NULL, 'mdi:cog-outline', 900, TRUE),
+
+    ('019b0000-0000-7000-8000-000000000110', '019b0000-0000-7000-8000-000000000100',
+     '用户管理', 'MENU', '/system/users', 'system-user-list',
+     'system:user:view', 'mdi:account-multiple-outline', 10, TRUE),
+    ('019b0000-0000-7000-8000-000000000111', '019b0000-0000-7000-8000-000000000110',
+     '创建用户', 'BUTTON', NULL, NULL,
+     'system:user:create', NULL, 10, FALSE),
+    ('019b0000-0000-7000-8000-000000000112', '019b0000-0000-7000-8000-000000000110',
+     '修改用户', 'BUTTON', NULL, NULL,
+     'system:user:update', NULL, 20, FALSE),
+    ('019b0000-0000-7000-8000-000000000113', '019b0000-0000-7000-8000-000000000110',
+     '分配角色', 'BUTTON', NULL, NULL,
+     'system:user:assign-role', NULL, 30, FALSE),
+    ('019b0000-0000-7000-8000-000000000114', '019b0000-0000-7000-8000-000000000110',
+     '重置密码', 'BUTTON', NULL, NULL,
+     'system:user:reset-password', NULL, 40, FALSE),
+
+    ('019b0000-0000-7000-8000-000000000120', '019b0000-0000-7000-8000-000000000100',
+     '角色管理', 'MENU', '/system/roles', 'system-role-list',
+     'system:role:view', 'mdi:shield-account-outline', 20, TRUE),
+    ('019b0000-0000-7000-8000-000000000121', '019b0000-0000-7000-8000-000000000120',
+     '创建角色', 'BUTTON', NULL, NULL,
+     'system:role:create', NULL, 10, FALSE),
+    ('019b0000-0000-7000-8000-000000000122', '019b0000-0000-7000-8000-000000000120',
+     '修改角色', 'BUTTON', NULL, NULL,
+     'system:role:update', NULL, 20, FALSE),
+    ('019b0000-0000-7000-8000-000000000123', '019b0000-0000-7000-8000-000000000120',
+     '删除角色', 'BUTTON', NULL, NULL,
+     'system:role:delete', NULL, 30, FALSE),
+    ('019b0000-0000-7000-8000-000000000124', '019b0000-0000-7000-8000-000000000120',
+     '分配权限', 'BUTTON', NULL, NULL,
+     'system:role:assign-menu', NULL, 40, FALSE);

@@ -74,6 +74,44 @@ class DatabaseMigrationIT {
     }
 
     @Test
+    void 应发布只读的用户角色与授权菜单契约() {
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT component_key
+                FROM sys_menu
+                WHERE component_key IS NOT NULL
+                ORDER BY component_key
+                """, String.class)).containsExactly(
+                "system-role-list",
+                "system-user-list"
+        );
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE permission LIKE 'system:%'
+                ORDER BY permission
+                """, String.class)).containsExactly(
+                "system:role:assign-menu",
+                "system:role:create",
+                "system:role:delete",
+                "system:role:update",
+                "system:role:view",
+                "system:user:assign-role",
+                "system:user:create",
+                "system:user:reset-password",
+                "system:user:update",
+                "system:user:view"
+        );
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM sys_menu child
+                JOIN sys_menu parent ON parent.id = child.parent_id
+                WHERE parent.name = '系统管理'
+                  AND parent.type = 'DIRECTORY'
+                  AND child.type = 'MENU'
+                """, Long.class)).isEqualTo(2L);
+    }
+
+    @Test
     void 应由数据库拒绝重复关联和非法业务状态() {
         UUID firstMenuId = UUID.randomUUID();
         UUID secondMenuId = UUID.randomUUID();
