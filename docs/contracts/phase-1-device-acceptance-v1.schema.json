@@ -1,0 +1,252 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mine-platform.local/contracts/phase-1-device-acceptance-v1.schema.json",
+  "title": "Phase 1 真实设备验收记录",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "site",
+    "automatedGates",
+    "issues",
+    "evidence"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "status": { "enum": ["PASS", "FAIL", "BLOCKED"] },
+    "site": { "$ref": "#/$defs/nonEmptyText" },
+    "device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["productKey", "deviceId", "deviceCode", "vendor", "model", "firmwareVersion"],
+      "properties": {
+        "productKey": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$" },
+        "deviceId": { "type": "string", "format": "uuid" },
+        "deviceCode": { "$ref": "#/$defs/nonEmptyText" },
+        "vendor": { "$ref": "#/$defs/nonEmptyText" },
+        "model": { "$ref": "#/$defs/nonEmptyText" },
+        "firmwareVersion": { "$ref": "#/$defs/nonEmptyText" }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startedAt", "endedAt", "durationHours"],
+      "properties": {
+        "startedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" },
+        "durationHours": { "type": "number", "minimum": 0 }
+      }
+    },
+    "automatedGates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repositoryVerify", "standaloneSmoke", "browserE2e"],
+      "properties": {
+        "repositoryVerify": { "$ref": "#/$defs/gate" },
+        "standaloneSmoke": { "$ref": "#/$defs/gate" },
+        "browserE2e": { "$ref": "#/$defs/gate" }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receivedMessages", "persistedMessages", "duplicateMessages", "parseFailures", "unknownMessages", "ratePerSecond", "latencyMillis"],
+      "properties": {
+        "receivedMessages": { "$ref": "#/$defs/nonNegativeInteger" },
+        "persistedMessages": { "$ref": "#/$defs/nonNegativeInteger" },
+        "duplicateMessages": { "$ref": "#/$defs/nonNegativeInteger" },
+        "parseFailures": { "$ref": "#/$defs/nonNegativeInteger" },
+        "unknownMessages": { "$ref": "#/$defs/nonNegativeInteger" },
+        "ratePerSecond": { "$ref": "#/$defs/distribution" },
+        "latencyMillis": { "$ref": "#/$defs/distribution" }
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disconnects", "reconnects", "longestOfflineSeconds", "backlogPeak", "recoverySeconds", "sequenceGapEvents", "missingSequences"],
+      "properties": {
+        "disconnects": { "$ref": "#/$defs/nonNegativeInteger" },
+        "reconnects": { "$ref": "#/$defs/nonNegativeInteger" },
+        "longestOfflineSeconds": { "type": "number", "minimum": 0 },
+        "backlogPeak": { "$ref": "#/$defs/nonNegativeInteger" },
+        "recoverySeconds": { "type": ["number", "null"], "minimum": 0 },
+        "sequenceGapEvents": { "$ref": "#/$defs/nonNegativeInteger" },
+        "missingSequences": { "$ref": "#/$defs/nonNegativeInteger" }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["templateKey", "commandId", "terminalStatus", "roundTripMillis"],
+      "properties": {
+        "templateKey": { "const": "QUERY_STATUS" },
+        "commandId": { "type": ["string", "null"], "format": "uuid" },
+        "terminalStatus": { "enum": ["SUCCEEDED", "REFUSED", "FAILED", "EXPIRED", "TIMEOUT", "CANCELLED", "NOT_EXECUTED"] },
+        "roundTripMillis": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "resources": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["observedAt", "service", "cpuPercent", "memoryBytes"],
+        "properties": {
+          "observedAt": { "type": "string", "format": "date-time" },
+          "service": { "$ref": "#/$defs/nonEmptyText" },
+          "cpuPercent": { "type": "number", "minimum": 0 },
+          "memoryBytes": { "$ref": "#/$defs/nonNegativeInteger" }
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "status", "summary", "disposition"],
+        "properties": {
+          "severity": { "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] },
+          "status": { "enum": ["OPEN", "ACCEPTED", "RESOLVED"] },
+          "summary": { "$ref": "#/$defs/nonEmptyText" },
+          "disposition": { "$ref": "#/$defs/nonEmptyText" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "path", "sha256"],
+        "properties": {
+          "kind": { "enum": ["LOG", "METRICS", "MESSAGE_SAMPLE", "SCREENSHOT", "COMMAND_TIMELINE", "ENVIRONMENT"] },
+          "path": { "$ref": "#/$defs/nonEmptyText" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        }
+      }
+    },
+    "blockedReason": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": ".*\\S.*" },
+    "approvedBy": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyText" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "BLOCKED" } } },
+      "then": { "required": ["blockedReason"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "FAIL" } } },
+      "then": {
+        "required": ["device", "window", "telemetry", "network", "command", "resources"]
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "PASS" } } },
+      "then": {
+        "required": ["device", "window", "telemetry", "network", "command", "resources", "approvedBy"],
+        "properties": {
+          "window": {
+            "properties": {
+              "durationHours": { "minimum": 24 }
+            }
+          },
+          "automatedGates": {
+            "properties": {
+              "repositoryVerify": { "properties": { "status": { "const": "PASS" } } },
+              "standaloneSmoke": { "properties": { "status": { "const": "PASS" } } },
+              "browserE2e": { "properties": { "status": { "const": "PASS" } } }
+            }
+          },
+          "telemetry": {
+            "properties": {
+              "receivedMessages": { "minimum": 1 },
+              "persistedMessages": { "minimum": 1 },
+              "ratePerSecond": { "$ref": "#/$defs/measuredDistribution" },
+              "latencyMillis": { "$ref": "#/$defs/measuredDistribution" }
+            }
+          },
+          "network": {
+            "properties": {
+              "disconnects": { "minimum": 1 },
+              "reconnects": { "minimum": 1 },
+              "recoverySeconds": { "type": "number", "minimum": 0 }
+            }
+          },
+          "command": {
+            "properties": {
+              "commandId": { "type": "string", "format": "uuid" },
+              "terminalStatus": { "const": "SUCCEEDED" },
+              "roundTripMillis": { "type": "number", "minimum": 0 }
+            }
+          },
+          "issues": {
+            "not": {
+              "contains": {
+                "type": "object",
+                "required": ["severity", "status"],
+                "properties": {
+                  "severity": { "enum": ["CRITICAL", "HIGH"] },
+                  "status": { "enum": ["OPEN", "ACCEPTED"] }
+                }
+              }
+            }
+          },
+          "evidence": {
+            "allOf": [
+              { "contains": { "properties": { "kind": { "const": "METRICS" } } } },
+              { "contains": { "properties": { "kind": { "const": "MESSAGE_SAMPLE" } } } },
+              { "contains": { "properties": { "kind": { "const": "COMMAND_TIMELINE" } } } },
+              { "contains": { "properties": { "kind": { "const": "ENVIRONMENT" } } } }
+            ]
+          },
+          "approvedBy": { "minItems": 2, "uniqueItems": true }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonEmptyText": { "type": "string", "minLength": 1, "maxLength": 512, "pattern": ".*\\S.*" },
+    "nonNegativeInteger": { "type": "integer", "minimum": 0 },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "executedAt", "command"],
+      "properties": {
+        "status": { "enum": ["PASS", "FAIL", "SKIPPED"] },
+        "executedAt": { "type": "string", "format": "date-time" },
+        "command": { "$ref": "#/$defs/nonEmptyText" },
+        "note": { "type": ["string", "null"], "maxLength": 2048 }
+      }
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["average", "p95", "p99", "max"],
+      "properties": {
+        "average": { "type": ["number", "null"], "minimum": 0 },
+        "p95": { "type": ["number", "null"], "minimum": 0 },
+        "p99": { "type": ["number", "null"], "minimum": 0 },
+        "max": { "type": ["number", "null"], "minimum": 0 }
+      }
+    },
+    "measuredDistribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["average", "p95", "p99", "max"],
+      "properties": {
+        "average": { "type": "number", "minimum": 0 },
+        "p95": { "type": "number", "minimum": 0 },
+        "p99": { "type": "number", "minimum": 0 },
+        "max": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

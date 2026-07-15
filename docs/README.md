@@ -51,7 +51,10 @@
 详细实施任务位于 plans/，必须按测试先行、小提交、逐阶段验收执行。
 
 阶段验收结果位于 `reports/`。当前 [Phase 0 工程底座验收报告](reports/phase-0-acceptance.md) 为待复验状态；
-[Phase 1 弱网补传自动化验证报告](reports/phase-1-weak-network.md) 仅证明确定性自动化基线，未闭环项不得按生产就绪处理。
+[Phase 1 弱网补传自动化验证报告](reports/phase-1-weak-network.md) 已通过确定性自动化基线；
+[Phase 1 首个真实设备闭环验收报告](reports/phase-1-acceptance.md) 因缺少真实设备和现场窗口保持阻塞，未闭环项不得按生产就绪处理。
+现场执行必须遵循 [MQTT 真实设备现场接入与 24 小时验收手册](runbooks/device-onboarding.md)，并按
+[Phase 1 真实设备验收记录契约](contracts/phase-1-device-acceptance-v1.schema.json) 留存结构化证据。
 
 ## 4. Codex 开始开发前的固定动作
 
