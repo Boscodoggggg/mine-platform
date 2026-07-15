@@ -30,16 +30,17 @@ mine-edge 不是每台矿车必须安装的中心代理。如果厂商终端已�
 ## 3. MQTT 主题
 
 ~~~text
-mine/v1/{productKey}/{deviceId}/up/telemetry
-mine/v1/{productKey}/{deviceId}/up/event
-mine/v1/{productKey}/{deviceId}/up/heartbeat
-mine/v1/{productKey}/{deviceId}/up/command-ack
-mine/v1/{productKey}/{deviceId}/down/command
+mine/v1/{productKey}/{clientId}/up/telemetry
+mine/v1/{productKey}/{clientId}/up/event
+mine/v1/{productKey}/{clientId}/up/heartbeat
+mine/v1/{productKey}/{clientId}/up/command-ack
+mine/v1/{productKey}/{clientId}/down/command
 ~~~
 
 约束：
 
-- 主题层级保持有限，deviceId/productKey 只能使用安全字符。
+- 主题层级保持有限，clientId/productKey 只能使用安全字符。
+- clientId 使用平台签发凭据中的 username；业务 deviceCode 放在报文内，由平台按凭据映射并校验，二者不得混用。
 - 禁止设备在 topic 中插入点号造成 MQTT 到 AMQP 路由歧义。
 - 每个设备只能发布自己的 up 主题、订阅自己的 down 主题。
 - 默认 MQTTS 8883，1883 仅允许受控内网兼容场景。
@@ -169,6 +170,25 @@ ProtocolDefinition
 - 至少一个命令编码及回复样本（如果协议支持下行）。
 
 ## 9. 统一设备消息
+
+Phase 1 的示例 MQTT JSON 报文在进入 gateway 前使用以下最小结构：
+
+~~~json
+{
+  "productKey": "haul-truck",
+  "deviceCode": "simulator-001",
+  "bootId": "simulator-boot-001",
+  "sequence": 4,
+  "occurredAt": "2026-07-15T00:00:03Z",
+  "replayed": true,
+  "properties": {
+    "engine.rpm": 1280,
+    "coolant.temperature": 82.5
+  }
+}
+~~~
+
+该结构仅是首个适配器输入契约，不等于所有厂商必须修改报文。后续协议引擎负责把差异化 JSON、TCP 和二进制报文转换为统一消息。
 
 gateway 输出的消息不暴露厂商原始字段名：
 

@@ -12,6 +12,7 @@
 | Flyway | 12.4.0 | PostgreSQL 数据库版本迁移 | Apache-2.0 |
 | PostgreSQL JDBC Driver | 42.7.11 | PostgreSQL 数据库连接 | BSD-2-Clause |
 | Testcontainers | 2.0.5 | 使用真实 PostgreSQL 进行集成测试 | MIT |
-| Eclipse Paho Java Client | 1.2.5 | 使用真实 MQTT 3.1.1 客户端验证 Broker 权限 | EPL-2.0 / EDL-1.0 |
+| Eclipse Paho Java Client | 1.2.5 | MQTT 3.1.1 设备模拟与 Broker 权限验证 | EPL-2.0 / EDL-1.0 |
+| SnakeYAML | 2.6 | 读取设备模拟器场景配置 | Apache-2.0 |
 
 项目自身采用 Apache License 2.0。第三方软件的版权和许可证不因被本项目引用而发生改变。

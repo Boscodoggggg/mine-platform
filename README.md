@@ -25,6 +25,7 @@ mine-platform 是面向单矿区私有化部署的智慧矿山数据采集与设
 | `mine-gateway` | Netty、MQTT 设备接入和命令下发 |
 | `mine-telemetry` | 遥测处理、告警计算和时序入库 |
 | `mine-server` | 矿山业务、系统管理和管理 API |
+| `examples/device-simulator` | 可重复 MQTT 遥测、弱网与命令回复模拟器 |
 
 ## 开发命令
 
