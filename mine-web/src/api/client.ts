@@ -1,0 +1,96 @@
+import { localStg } from '@/utils/storage';
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/$/, '');
+
+export interface ApiErrorPayload {
+  code?: string;
+  message?: string;
+  traceId?: string;
+  details?: Record<string, unknown>;
+}
+
+/** 平台 API 返回的稳定错误。 */
+export class ApiError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly traceId?: string;
+  readonly details: Record<string, unknown>;
+
+  constructor(payload: ApiErrorPayload, status = 0) {
+    super(payload.message || '请求处理失败');
+    this.name = 'ApiError';
+    this.code = payload.code || 'SYS-UNKNOWN-001';
+    this.status = status;
+    this.traceId = payload.traceId;
+    this.details = payload.details || {};
+  }
+}
+
+/**
+ * 请求平台 REST API。
+ *
+ * 成功响应直接返回 DTO，204 返回 undefined，失败统一抛出 ApiError。
+ */
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set('Accept', 'application/json');
+  if (init.body) {
+    headers.set('Content-Type', 'application/json');
+  }
+  appendToken(headers);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers,
+      cache: 'no-store',
+      credentials: 'same-origin'
+    });
+  } catch {
+    throw new ApiError(
+      {
+        code: 'SYS-NETWORK-001',
+        message: '无法连接矿区服务，请检查网络后重试'
+      },
+      0
+    );
+  }
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearInvalidSession();
+    }
+    throw new ApiError(await readErrorPayload(response), response.status);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return (await response.json()) as T;
+}
+
+function appendToken(headers: Headers) {
+  const token = localStg.get('token');
+  const tokenName = localStg.get('tokenName');
+  if (token && tokenName && /^[A-Za-z0-9-]{1,64}$/.test(tokenName)) {
+    headers.set(tokenName, token);
+  }
+}
+
+function clearInvalidSession() {
+  localStg.remove('token');
+  localStg.remove('tokenName');
+  localStg.remove('userProfile');
+  localStg.remove('refreshToken');
+}
+
+async function readErrorPayload(response: Response): Promise<ApiErrorPayload> {
+  try {
+    return (await response.json()) as ApiErrorPayload;
+  } catch {
+    return {
+      code: `HTTP-${response.status}`,
+      message: '服务返回了无法识别的响应'
+    };
+  }
+}
