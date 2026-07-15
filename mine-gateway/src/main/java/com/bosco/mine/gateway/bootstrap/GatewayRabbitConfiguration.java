@@ -18,6 +18,7 @@ import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.rabbit.listener.api.ChannelAwareMessageListener;
+import org.springframework.boot.actuate.info.InfoContributor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -90,6 +91,17 @@ public class GatewayRabbitConfiguration {
         );
         loader.reload();
         return loader;
+    }
+
+    /**
+     * 把当前生效身份快照的版本、摘要和设备数量加入内部 Actuator 信息。
+     *
+     * @param registry 运行时身份注册表
+     * @return 设备身份快照信息贡献器
+     */
+    @Bean
+    public InfoContributor deviceIdentitySnapshotInfoContributor(DeviceSessionRegistry registry) {
+        return builder -> builder.withDetail("deviceIdentitySnapshot", registry.status());
     }
 
     /**

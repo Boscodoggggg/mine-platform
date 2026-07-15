@@ -86,7 +86,7 @@ class MqttCommandPublisherTest {
 
     private DeviceSessionRegistry registry() {
         DeviceSessionRegistry registry = new DeviceSessionRegistry();
-        registry.replace(List.of(new DeviceSessionRegistry.DeviceIdentity(
+        registry.activate(1, "a".repeat(64), List.of(new DeviceSessionRegistry.DeviceIdentity(
                 "haul-truck", "device-credential-001",
                 "019f64e5-a000-7000-8000-000000000020", "truck-001",
                 "mine-site-001", "mqtt-json-v1"

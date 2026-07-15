@@ -33,7 +33,7 @@ class DeviceMessageNormalizerTest {
     @BeforeEach
     void setUp() {
         DeviceSessionRegistry registry = new DeviceSessionRegistry();
-        registry.replace(List.of(new DeviceSessionRegistry.DeviceIdentity(
+        registry.activate(1, "a".repeat(64), List.of(new DeviceSessionRegistry.DeviceIdentity(
                 "haul-truck",
                 "device-credential-001",
                 DEVICE_ID,

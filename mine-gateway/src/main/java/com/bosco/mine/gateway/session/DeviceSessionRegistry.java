@@ -18,16 +18,56 @@ import java.util.regex.Pattern;
 public final class DeviceSessionRegistry {
 
     private static final Pattern TOPIC_SEGMENT = Pattern.compile("[A-Za-z0-9_-]{1,64}");
+    private static final Pattern SHA_256 = Pattern.compile("[a-f0-9]{64}");
 
     private final AtomicReference<IdentitySnapshot> snapshot =
-            new AtomicReference<>(new IdentitySnapshot(Map.of(), Map.of()));
+            new AtomicReference<>(new IdentitySnapshot(
+                    Map.of(), Map.of(), new SnapshotStatus(0, "", 0)
+            ));
 
     /**
-     * 原子替换全部已签发设备身份。
+     * 校验候选身份并按单调版本规则原子激活完整快照。
      *
-     * @param identities 新身份快照
+     * <p>低版本和同版本异摘要会被拒绝；同版本同摘要属于幂等重复，不会替换当前索引。</p>
+     *
+     * @param version 候选快照版本，必须大于等于 1
+     * @param sha256 候选原始配置的小写 SHA-256
+     * @param identities 候选快照的全部设备身份
+     * @return 实际激活或保持不变
      */
-    public void replace(List<DeviceIdentity> identities) {
+    public ActivationResult activate(long version, String sha256, List<DeviceIdentity> identities) {
+        if (version < 1) {
+            throw new IllegalArgumentException("设备身份快照版本必须大于等于 1");
+        }
+        if (sha256 == null || !SHA_256.matcher(sha256).matches()) {
+            throw new IllegalArgumentException("设备身份快照 SHA-256 必须是 64 位小写十六进制");
+        }
+
+        IdentityIndexes indexes = indexes(identities);
+        SnapshotStatus candidateStatus = new SnapshotStatus(version, sha256, indexes.byTopic().size());
+        IdentitySnapshot candidate = new IdentitySnapshot(
+                indexes.byTopic(), indexes.byDeviceId(), candidateStatus
+        );
+        while (true) {
+            IdentitySnapshot current = snapshot.get();
+            if (version < current.status().version()) {
+                throw new IllegalArgumentException(
+                        "设备身份快照版本 %d 低于当前版本 %d".formatted(version, current.status().version())
+                );
+            }
+            if (version == current.status().version()) {
+                if (sha256.equals(current.status().sha256())) {
+                    return ActivationResult.UNCHANGED;
+                }
+                throw new IllegalArgumentException("设备身份快照相同版本对应不同 SHA-256");
+            }
+            if (snapshot.compareAndSet(current, candidate)) {
+                return ActivationResult.ACTIVATED;
+            }
+        }
+    }
+
+    private IdentityIndexes indexes(List<DeviceIdentity> identities) {
         Objects.requireNonNull(identities, "identities 不能为空");
         Map<IdentityKey, DeviceIdentity> byTopic = new LinkedHashMap<>();
         Map<UUID, DeviceIdentity> byDeviceId = new LinkedHashMap<>();
@@ -42,7 +82,7 @@ public final class DeviceSessionRegistry {
                 throw new IllegalArgumentException("业务设备身份重复: " + deviceId);
             }
         }
-        snapshot.set(new IdentitySnapshot(Map.copyOf(byTopic), Map.copyOf(byDeviceId)));
+        return new IdentityIndexes(Map.copyOf(byTopic), Map.copyOf(byDeviceId));
     }
 
     /**
@@ -68,7 +108,29 @@ public final class DeviceSessionRegistry {
         ));
     }
 
+    /**
+     * 返回与当前身份索引同一次原子激活的版本状态。
+     *
+     * @return 当前生效版本、摘要和设备数量；尚未激活时版本为 0
+     */
+    public SnapshotStatus status() {
+        return snapshot.get().status();
+    }
+
+    /**
+     * 把身份索引和发布元数据绑定为一次不可分割的运行时快照。
+     */
     private record IdentitySnapshot(
+            Map<IdentityKey, DeviceIdentity> byTopic,
+            Map<UUID, DeviceIdentity> byDeviceId,
+            SnapshotStatus status
+    ) {
+    }
+
+    /**
+     * 保存候选快照完成唯一性校验后生成的双向身份索引。
+     */
+    private record IdentityIndexes(
             Map<IdentityKey, DeviceIdentity> byTopic,
             Map<UUID, DeviceIdentity> byDeviceId
     ) {
@@ -78,6 +140,39 @@ public final class DeviceSessionRegistry {
         private IdentityKey {
             productKey = requireTopicSegment(productKey, "productKey");
             clientId = requireTopicSegment(clientId, "clientId");
+        }
+    }
+
+    /**
+     * 描述一次版本化身份快照激活的结果。
+     */
+    public enum ActivationResult {
+        /** 候选快照已成为当前生效快照。 */
+        ACTIVATED,
+        /** 候选版本和摘要与当前快照相同，注册表保持不变。 */
+        UNCHANGED
+    }
+
+    /**
+     * 描述当前生效身份快照的可审计状态。
+     *
+     * @param version 生效版本；0 表示尚未加载版本化快照
+     * @param sha256 生效原始配置的小写 SHA-256；未加载时为空
+     * @param deviceCount 当前快照包含的设备数量
+     */
+    public record SnapshotStatus(long version, String sha256, int deviceCount) {
+        /**
+         * 创建不可变快照状态。
+         */
+        public SnapshotStatus {
+            if (version < 0) throw new IllegalArgumentException("快照版本不能为负数");
+            if (deviceCount < 0) throw new IllegalArgumentException("设备数量不能为负数");
+            if (version == 0 && (sha256 == null || !sha256.isEmpty())) {
+                throw new IllegalArgumentException("未激活快照的 SHA-256 必须为空");
+            }
+            if (version > 0 && (sha256 == null || !SHA_256.matcher(sha256).matches())) {
+                throw new IllegalArgumentException("已激活快照的 SHA-256 格式不合法");
+            }
         }
     }
 

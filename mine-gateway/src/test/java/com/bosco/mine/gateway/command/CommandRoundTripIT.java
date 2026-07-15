@@ -134,7 +134,7 @@ class CommandRoundTripIT {
     @Test
     void 平台命令应经MQTT到达设备且业务ACK应形成独立终态事件() throws Exception {
         DeviceSessionRegistry registry = new DeviceSessionRegistry();
-        registry.replace(List.of(new DeviceSessionRegistry.DeviceIdentity(
+        registry.activate(1, "a".repeat(64), List.of(new DeviceSessionRegistry.DeviceIdentity(
                 "haul-truck", DEVICE_CLIENT_ID, DEVICE_ID.toString(), "truck-command-001",
                 "mine-site-001", "mqtt-json-v1"
         )));

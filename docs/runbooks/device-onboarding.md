@@ -129,11 +129,21 @@ Phase 1 使用 `deploy/config/gateway/device-identities.json` 作为运行时身
 
 要求：
 
-- `version` 每次发布递增，JSON 修改必须经过评审并保留发布记录。当前 loader 只检查它大于等于 1，不提供单调版本保护，不能依赖应用阻止旧快照覆盖。
+- `version` 每次发布递增，JSON 修改必须经过评审并保留发布记录。gateway 会拒绝低版本以及同版本异 SHA-256；同版本同 SHA-256 只作为幂等重复读取。
 - `clientId` 必须等于平台签发值；不要把业务 `deviceCode` 当作 MQTT Client ID。
 - `deviceId` 必须是平台内部 UUID，`productKey` 与 MQTT 主题一致。
 - 当前 Compose 挂载整个 `deploy/config/gateway/` 目录，发布前用 `jq empty` 校验候选 JSON，保存 SHA-256 和上一版副本，再把候选文件原子重命名为 `device-identities.json`，避免 loader 读到半文件。由旧版本升级且容器仍是“单文件 bind mount”时，必须先重建 gateway 容器一次，确认目录挂载已生效后再使用原子发布。
-- 文件写入后等待一个轮询周期，不重启服务。当前 gateway 不暴露已生效版本号或成功日志，因此必须用新 `clientId` 做 MQTTS 连接和单帧上报，并在 gateway、历史和最新值三处验证后，才能认定快照生效。
+- 文件写入后等待一个轮询周期，不重启服务。先在 gateway 容器内查询内部管理端口，确认 `deviceIdentitySnapshot.version`、`sha256` 和 `deviceCount` 与发布记录一致，再用新 `clientId` 做 MQTTS 连接和单帧上报，并在 gateway、历史和最新值三处验证后，才能认定快照生效。查询示例：
+
+~~~bash
+docker compose --env-file deploy/env/standalone.env \
+  -f deploy/compose/compose-standalone.yml exec -T mine-gateway bash -ec '
+    exec 3<>/dev/tcp/127.0.0.1/18081
+    printf "GET /actuator/info HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3
+    cat <&3
+  ' | tr -d '\r' | sed -n '/^{/,$p' | jq '.deviceIdentitySnapshot'
+~~~
+
 - 如果功能探针失败，使用“上一版 devices 内容 + 更高 version”重新发布并调查，不允许直接把旧低版本文件覆盖回去，也不允许带着未确认配置继续验收。
 
 后续前台动态配置发布上线后，应由发布事件维护同一份运行时映射；本文件不再作为人工主入口，但仍可保留为灾备快照。

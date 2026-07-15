@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
+import org.springframework.boot.actuate.info.Info;
+import org.springframework.boot.actuate.info.InfoContributor;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.nio.file.Files;
@@ -52,6 +54,11 @@ class GatewayRabbitConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasSingleBean(DeviceSessionRegistry.class);
                     assertThat(context).hasSingleBean(DeviceIdentitySnapshotLoader.class);
+                    assertThat(context).hasSingleBean(InfoContributor.class);
+                    Info.Builder infoBuilder = new Info.Builder();
+                    context.getBean(InfoContributor.class).contribute(infoBuilder);
+                    assertThat(infoBuilder.build().getDetails())
+                            .containsEntry("deviceIdentitySnapshot", context.getBean(DeviceSessionRegistry.class).status());
                     assertThat(context).hasSingleBean(DeviceMessageConsumer.class);
                     assertThat(context).hasSingleBean(CommandDispatchConsumer.class);
                     assertThat(context).hasSingleBean(CommandAckConsumer.class);

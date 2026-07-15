@@ -117,7 +117,7 @@ class DeviceMessageConsumerIT {
     @Test
     void MQTT遥测应经设备队列标准化并发布到平台遥测队列() throws Exception {
         DeviceSessionRegistry registry = new DeviceSessionRegistry();
-        registry.replace(List.of(new DeviceSessionRegistry.DeviceIdentity(
+        registry.activate(1, "a".repeat(64), List.of(new DeviceSessionRegistry.DeviceIdentity(
                 "haul-truck",
                 DEVICE_CLIENT_ID,
                 DEVICE_ID,
