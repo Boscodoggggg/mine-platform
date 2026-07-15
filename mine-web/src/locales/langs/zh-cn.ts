@@ -51,6 +51,15 @@ const local: App.I18n.Schema = {
     }
   },
   mine: {
+    menu: {
+      system: '系统管理',
+      users: '用户管理',
+      roles: '角色管理',
+      device: '设备管理',
+      products: '产品管理',
+      devices: '设备台账',
+      overview: '运行总览'
+    },
     common: {
       action: '操作',
       edit: '编辑',

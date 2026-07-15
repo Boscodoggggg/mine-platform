@@ -335,6 +335,10 @@ location    → LocationSummary
 `title`、`aria-label` 和图片替代文本。后端返回的实体名称、设备字段和值不翻译，但前端补充的前后缀必须翻译。
 日期和数字格式使用当前 `locale`，不得固定为 `zh-CN`。
 
+动态菜单的数据库 `name` 只作为未注册菜单的回退文案。前端在 `src/app/router/dynamic-routes.ts` 中使用稳定的
+`path` 或 `componentKey` 映射 `i18nKey`，已注册菜单必须同时提供中英文资源；语言切换后菜单、面包屑和标签页
+通过同一个 `i18nKey` 更新。新增菜单时必须同步扩展映射、语言资源和动态路由测试。
+
 业务组件使用示例：
 
 ~~~vue

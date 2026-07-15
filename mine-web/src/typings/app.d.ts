@@ -363,6 +363,7 @@ declare namespace App {
         };
       };
       mine: {
+        menu: Record<'system' | 'users' | 'roles' | 'device' | 'products' | 'devices' | 'overview', string>;
         common: {
           action: string;
           edit: string;

@@ -3,6 +3,7 @@ import type { RouteRecordRaw } from 'vue-router';
 import type { RouteKey, RoutePath } from '@elegant-router/types';
 import BaseLayout from '@/layouts/base-layout/index.vue';
 import { useSvgIcon } from '@/hooks/common/icon';
+import { $t } from '@/locales';
 import type { NavigationMenuNode } from '@/modules/system/api/auth';
 
 type ViewLoader = () => Promise<Component>;
@@ -20,6 +21,19 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
 
 const fallbackView: ViewLoader = () => import('./DynamicFallbackPage.vue');
 const safeRoutePathPattern = /^\/[A-Za-z0-9/_-]*$/;
+const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>>> = {
+  '/system': 'mine.menu.system',
+  '/system/users': 'mine.menu.users',
+  '/system/roles': 'mine.menu.roles',
+  '/device': 'mine.menu.device',
+  '/device/products': 'mine.menu.products',
+  '/device/devices': 'mine.menu.devices'
+};
+const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18nKey>>> = {
+  'home-overview': 'mine.menu.overview',
+  'system-user-list': 'mine.menu.users',
+  'system-role-list': 'mine.menu.roles'
+};
 
 export interface DynamicNavigationResult {
   routes: RouteRecordRaw[];
@@ -43,6 +57,7 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
     }
 
     const routeName = createRouteName('dynamic', node.id);
+    const i18nKey = resolveNavigationI18nKey(node);
     routes.push({
       path: node.path,
       name: `${routeName}-layout`,
@@ -50,6 +65,7 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
       redirect: { name: routeName },
       meta: {
         title: node.name,
+        i18nKey,
         icon: node.icon || undefined,
         hideInMenu: true,
         componentKey: node.componentKey,
@@ -62,6 +78,7 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
           component: component || fallbackView,
           meta: {
             title: node.name,
+            i18nKey,
             icon: node.icon || undefined,
             componentKey: node.componentKey,
             componentFallback
@@ -97,15 +114,23 @@ function buildMenus(nodes: NavigationMenuNode[]): App.Global.Menu[] {
 function createMenu(node: NavigationMenuNode, children?: App.Global.Menu[]): App.Global.Menu {
   const { SvgIconVNode } = useSvgIcon();
   const routeName = createRouteName(node.type === 'DIRECTORY' ? 'dynamic-group' : 'dynamic', node.id);
+  const i18nKey = resolveNavigationI18nKey(node);
 
   return {
     key: routeName,
-    label: node.name,
+    label: i18nKey ? $t(i18nKey) : node.name,
+    i18nKey,
     routeKey: routeName as RouteKey,
     routePath: (node.path || '/') as RoutePath,
     icon: SvgIconVNode({ icon: node.icon || import.meta.env.VITE_MENU_ICON || 'mdi:menu', fontSize: 20 }),
     children
   };
+}
+
+function resolveNavigationI18nKey(node: NavigationMenuNode): App.I18n.I18nKey | undefined {
+  if (node.path && navigationI18nKeyByPath[node.path]) return navigationI18nKeyByPath[node.path];
+  if (node.componentKey) return navigationI18nKeyByComponent[node.componentKey];
+  return undefined;
 }
 
 function visitNodes(nodes: NavigationMenuNode[], visitor: (node: NavigationMenuNode) => void) {

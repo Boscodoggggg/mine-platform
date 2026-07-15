@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { setLocale } from '@/locales';
 import { buildDynamicNavigation } from './dynamic-routes';
 import type { NavigationMenuNode } from '@/modules/system/api/auth';
 
@@ -112,5 +113,43 @@ describe('buildDynamicNavigation', () => {
     expect(result.routes).toHaveLength(2);
     expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
     expect(result.unknownComponentKeys).toEqual([]);
+  });
+
+  it('已注册动态菜单应生成国际化键并按当前语言显示', () => {
+    const systemNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'system-directory',
+        name: '系统管理',
+        path: '/system',
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'system-users',
+            name: '用户管理',
+            path: '/system/users',
+            componentKey: 'system-user-list',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(systemNodes);
+    setLocale('zh-CN');
+
+    expect(result.menus[0]).toMatchObject({
+      i18nKey: 'mine.menu.system',
+      label: 'System Management'
+    });
+    expect(result.menus[0]?.children?.[0]).toMatchObject({
+      i18nKey: 'mine.menu.users',
+      label: 'User Management'
+    });
+    expect(result.routes[0]?.children?.[0]?.meta).toMatchObject({
+      i18nKey: 'mine.menu.users',
+      title: '用户管理'
+    });
   });
 });

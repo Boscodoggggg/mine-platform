@@ -51,6 +51,15 @@ const local: App.I18n.Schema = {
     }
   },
   mine: {
+    menu: {
+      system: 'System Management',
+      users: 'User Management',
+      roles: 'Role Management',
+      device: 'Device Management',
+      products: 'Product Management',
+      devices: 'Device Registry',
+      overview: 'Operations Overview'
+    },
     common: {
       action: 'Actions',
       edit: 'Edit',
