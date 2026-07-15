@@ -8,6 +8,9 @@ server:
   port: ${MINE_SERVER_HTTP_PORT:8080}
   shutdown: graceful
 
+mybatis-plus:
+  type-handlers-package: com.bosco.mine.server.modules.system.repository
+
 management:
   server:
     port: ${MINE_SERVER_MANAGEMENT_PORT:18080}
