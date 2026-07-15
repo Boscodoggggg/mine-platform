@@ -41,8 +41,8 @@ flowchart TB
 
 gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能读取设备上行队列，
 `mine-gateway-platform` 只能写内部遥测交换机。不得让一个账号跨两个 vhost 获得读写全权限。
-`mine-telemetry` 使用第三个服务账号，只能读取 `/mine-platform` 中的 `mine.telemetry.q`，不能声明队列、
-发布消息或读取其他业务队列。
+`mine-telemetry` 使用第三个服务账号，只能读取 `/mine-platform` 中的 `mine.telemetry.q`，并在完成持久化后写入
+`mine.realtime.x`；不能声明业务队列、写其他交换机或读取其他业务队列。
 
 设备 topic 中的 `clientId` 是平台签发的凭据身份，不等于厂商 `deviceCode`。gateway 通过可信身份快照完成
 `productKey + clientId → deviceId` 映射，并校验报文自报的 `productKey/deviceCode`。未知身份、身份冒用、
@@ -54,7 +54,8 @@ gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能�
 快照文件不作为最终配置主数据源。
 
 `mine-telemetry` 对 RabbitMQ 采用至少一次投递和手工确认：先在 TimescaleDB 单事务中写入 Inbox、数值历史、
-经过顺序策略筛选的持久最新值和 boot 状态，再用 Redis Lua 刷新实时加速层，成功后才 ACK。数据库失败时不得
+经过顺序策略筛选的持久最新值和 boot 状态，再用 Redis Lua 刷新实时加速层，最后通过 publisher confirm 发布
+实时事件，三步全部成功后才 ACK。数据库失败时不得
 更新 Redis；Redis 刷新失败时消息重新入队，数据库 Inbox 保证重投幂等，查询端可从持久最新值读模型恢复缓存。
 
 实时最新值使用设备级 Redis Hash，不设置统一 TTL，防止活动设备键同时过期形成缓存雪崩。进程内一级缓存
@@ -90,6 +91,7 @@ Redis 读取、顺序状态恢复或回填临时失败时，latest 接口直接�
 | mine.business.x | topic | 告警、绑定、作业等业务事件 |
 | mine.command.x | topic | 命令下发和状态 |
 | mine.config.x | topic | 配置发布和节点状态 |
+| mine.realtime.x | topic | 已持久化最新值通知各 mine-server 实例 |
 | mine.dlx | topic | 死信 |
 
 建议路由键：
@@ -107,6 +109,7 @@ command.status.{status}
 config.release.gateway
 config.release.telemetry
 config.node.loaded
+realtime.telemetry.{deviceId}
 ~~~
 
 队列由消费者拥有并命名：
@@ -121,7 +124,12 @@ gateway.command.q
 gateway.config.q
 telemetry.config.q
 integration.forwarding.q
+mine.realtime.server.{instanceId}.q
 ~~~
+
+`mine.realtime.server.{instanceId}.q` 是例外：它是 classic、非持久、独占、自动删除队列，每个 server 实例一条，
+使实时事件广播到所有实例，再由各实例只推送给本机 WebSocket 会话。实时事实已经存在 TimescaleDB/Redis 中，
+浏览器断线后通过快照恢复，因此该队列不承担长期积压职责。
 
 ## 4. 队列类型
 
@@ -167,6 +175,10 @@ integration.forwarding.q
 - 开启 publisher confirm。
 - publish 失败进行有限指数退避。
 - mine-server 使用 outbox。
+- Inbox 由消息到达触发并随业务事务写入，禁止为 Inbox 创建定时扫描任务。
+- Outbox 与业务数据同事务写入，并在提交时发送唤醒通知；relay 按通知携带的 eventId 精确认领，不固定间隔扫描整表。
+- 服务启动或数据库重连时只允许执行一次 `status + next_attempt_at` 索引上的有界恢复查询；运行期间失败事件按 eventId
+  进入内存退避或 RabbitMQ 重试链路，不以高频扫表代替可靠性设计。
 - gateway 无数据库事务，失败消息进入本地有界重试或令当前消费不 ACK。
 - messageId/eventId 在重试中保持不变。
 - gateway 标准化事件的 eventId 与 payload.messageId 使用同一个 UUIDv7，跨 vhost 重投时不得重新生成。

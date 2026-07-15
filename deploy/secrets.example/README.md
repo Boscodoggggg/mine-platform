@@ -11,6 +11,7 @@
 - `rabbitmq_gateway_device_password`：gateway 读取 `/mine-device` 上行队列的独立密码。
 - `rabbitmq_gateway_platform_password`：gateway 写入 `/mine-platform` 遥测交换机的独立密码。
 - `rabbitmq_telemetry_password`：telemetry 只读消费 `/mine-platform` 遥测队列的独立密码。
+- `rabbitmq_server_realtime_password`：mine-server 创建本实例临时队列并消费实时事件的独立密码。
 - `mine_super_admin_password`：平台首次启动超级管理员密码，12–72 UTF-8 字节。
 - `grafana_admin_password`：Grafana 运维管理员密码，建议至少 24 个随机字符。
 - `tls.crt`：包含完整证书链的 PEM 证书。

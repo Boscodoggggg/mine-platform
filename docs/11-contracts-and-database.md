@@ -236,24 +236,55 @@ POST      /api/v1/alarms/{id}/close
 
 ## 4. WebSocket 契约
 
-客户端动作：
+统一端点为 `GET /api/v1/realtime`，由 Nginx 以 WSS 反向代理。浏览器握手不携带 Sa-Token 请求头，连接建立后必须首先发送 `AUTH`：
 
-- AUTH：建立连接后的鉴权（如果握手未完成）。
-- SUBSCRIBE：订阅设备、车辆、位置或告警主题。
-- UNSUBSCRIBE。
-- PING。
-- RESYNC：sequence 缺口后请求快照。
+~~~json
+{
+  "action": "AUTH",
+  "requestId": "rt-1",
+  "token": "sa-token-value"
+}
+~~~
+
+一期客户端动作：
+
+- `AUTH`：连接建立后的必选鉴权动作，当前用户必须具有 `device:telemetry:view`。
+- `SUBSCRIBE`：订阅 `DEVICE_LATEST` 设备属性最新值。
+- `UNSUBSCRIBE`：释放设备全部或指定属性订阅。
+- `PING`：应用层心跳，只返回 `PONG`，不查询数据库。
+- `RESYNC`：发现连接内 `sequence` 缺口后，对当前全部订阅重新读取快照。
+
+订阅示例：
+
+~~~json
+{
+  "action": "SUBSCRIBE",
+  "requestId": "rt-2",
+  "topics": [
+    {
+      "type": "DEVICE_LATEST",
+      "ids": ["0198aef6-2e80-7000-8000-000000000101"],
+      "properties": ["speed", "engine.rpm"]
+    }
+  ]
+}
+~~~
 
 服务端：
 
-- ACK：订阅确认。
-- SNAPSHOT：当前全量快照。
-- DATA：增量。
-- STATUS：连接/降级。
-- ERROR。
-- PONG。
+- `ACK`：动作接收确认，原样携带 `requestId` 和 `action`。
+- `SNAPSHOT`：首次订阅或 `RESYNC` 的当前全量快照。
+- `DATA`：已完成 TimescaleDB、持久最新值和 Redis 提交后的增量。
+- `ERROR`：错误码和中文说明。
+- `PONG`：心跳回复。
 
-每个连接有订阅数量、设备数量和下行速率限制。
+除客户端请求中的 `AUTH.token` 外，服务端消息都带连接内单调递增 `sequence` 和 `serverTime`。`sequence` 只用于检测本连接断档，不承诺跨重连连续，也不代表设备原始序号。重连后重新 `AUTH` 和 `SUBSCRIBE`，服务端先返回 `SNAPSHOT` 再继续增量。
+
+浏览器默认每 25 秒发送一次 `PING`，10 秒内未收到 `PONG` 时主动关闭半开连接并进入指数退避重连。`PING` 只重新校验令牌并返回心跳，不读取 Redis、业务库或时序库。
+
+正常增量不查询业务表或时序表：`mine-telemetry` 提交遥测后发布 RabbitMQ 实时事件，每个 `mine-server` 实例通过自己的独占临时队列消费并只分发给本机订阅。只有首次订阅和明确的 `RESYNC` 才读取最新值快照。
+
+默认单连接限制为 64 个订阅、128 台设备、1024 个属性和 64 KiB 客户端文本帧。超限返回 `REALTIME-LIMIT-EXCEEDED`。后续 LOCATION、告警和命令状态主题新增时只能向前兼容扩展，不能改变 `DEVICE_LATEST` 语义。
 
 ## 5. 内部事件目录
 
@@ -474,6 +505,13 @@ last_error VARCHAR NULL
 - PUBLISHING + lease_expires_at，用于 relay 崩溃后的超时重新认领。
 - aggregate_type + aggregate_id。
 - published_at 用于归档。
+
+Outbox 投递约束：
+
+- 业务事务写入事件时同时发送提交后唤醒通知，通知只携带 eventId，不携带大型 payload。
+- relay 被通知后按主键精确认领；发送失败只重试已知 eventId，不固定间隔扫描 PENDING 全表。
+- 服务启动或数据库重连后执行一次有界恢复，必须命中 `status + next_attempt_at` 索引并限制批量。
+- `locked_by + lease_expires_at` 只用于实例崩溃后的接管，不允许用分布式锁替代数据库状态机。
 
 ### sys_inbox_event
 

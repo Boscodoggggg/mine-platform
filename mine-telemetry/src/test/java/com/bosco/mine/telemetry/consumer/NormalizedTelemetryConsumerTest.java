@@ -2,6 +2,7 @@ package com.bosco.mine.telemetry.consumer;
 
 import com.bosco.mine.messaging.MessageEnvelope;
 import com.bosco.mine.messaging.MessageType;
+import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
 import com.bosco.mine.model.message.TelemetryPayload;
 import com.bosco.mine.model.message.UnifiedDeviceMessage;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.MessageKind;
@@ -44,23 +45,35 @@ class NormalizedTelemetryConsumerTest {
     void 应先提交数据库持久读模型再刷新Redis最后确认消息() throws Exception {
         LatestValueRepository latestValues = mock(LatestValueRepository.class);
         TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
+        NormalizedTelemetryConsumer.RealtimePublisher realtimePublisher =
+                mock(NormalizedTelemetryConsumer.RealtimePublisher.class);
         Channel channel = mock(Channel.class);
         when(latestValues.updateEventIfNewer(any())).thenReturn(true);
         when(batchWriter.write(any())).thenReturn(
-                new TelemetryBatchWriter.WriteResult(1, 2, Set.of(EVENT_ID))
+                new TelemetryBatchWriter.WriteResult(
+                        1, 2, Set.of(EVENT_ID), Map.of(EVENT_ID, 41L)
+                )
         );
-        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(latestValues, batchWriter);
+        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
+                latestValues, batchWriter, realtimePublisher
+        );
         Message message = message(17L);
 
         consumer.onMessageBatch(List.of(message), channel);
 
         ArgumentCaptor<List<TelemetrySample>> samples = ArgumentCaptor.forClass(List.class);
-        InOrder order = inOrder(latestValues, batchWriter, channel);
+        InOrder order = inOrder(latestValues, batchWriter, realtimePublisher, channel);
         order.verify(batchWriter).write(samples.capture());
         order.verify(latestValues).updateEventIfNewer(any());
+        ArgumentCaptor<RealtimeTelemetryEvent> realtimeEvent =
+                ArgumentCaptor.forClass(RealtimeTelemetryEvent.class);
+        order.verify(realtimePublisher).publish(realtimeEvent.capture());
         order.verify(channel).basicAck(17L, false);
         assertThat(samples.getValue()).extracting(TelemetrySample::propertyId)
                 .containsExactlyInAnyOrder("engine.rpm", "engine.temperature");
+        assertThat(realtimeEvent.getValue().sourceSequence()).isEqualTo(41L);
+        assertThat(realtimeEvent.getValue().values()).containsEntry("engine.rpm", 1280D)
+                .containsEntry("engine.temperature", 83.5D);
     }
 
     @Test
@@ -70,7 +83,9 @@ class NormalizedTelemetryConsumerTest {
         Channel channel = mock(Channel.class);
         doThrow(new TelemetryBatchWriter.TelemetryStorageException("测试失败", new RuntimeException()))
                 .when(batchWriter).write(any());
-        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(latestValues, batchWriter);
+        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
+                latestValues, batchWriter, event -> { }
+        );
 
         consumer.onMessageBatch(List.of(message(18L)), channel);
 
@@ -83,7 +98,9 @@ class NormalizedTelemetryConsumerTest {
         LatestValueRepository latestValues = mock(LatestValueRepository.class);
         TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
         Channel channel = mock(Channel.class);
-        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(latestValues, batchWriter);
+        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
+                latestValues, batchWriter, event -> { }
+        );
         Message invalid = new Message("not-json".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         invalid.getMessageProperties().setDeliveryTag(19L);
 
@@ -91,6 +108,33 @@ class NormalizedTelemetryConsumerTest {
 
         verify(channel).basicReject(19L, false);
         verify(batchWriter, org.mockito.Mockito.never()).write(any());
+    }
+
+    @Test
+    void 实时事件发布失败时数据库和Redis保持幂等并将原消息重新入队() throws Exception {
+        LatestValueRepository latestValues = mock(LatestValueRepository.class);
+        TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
+        NormalizedTelemetryConsumer.RealtimePublisher realtimePublisher =
+                mock(NormalizedTelemetryConsumer.RealtimePublisher.class);
+        Channel channel = mock(Channel.class);
+        when(latestValues.updateEventIfNewer(any())).thenReturn(true);
+        when(batchWriter.write(any())).thenReturn(new TelemetryBatchWriter.WriteResult(
+                1, 2, Set.of(EVENT_ID), Map.of(EVENT_ID, 42L)
+        ));
+        doThrow(new IllegalStateException("Broker confirm 失败"))
+                .when(realtimePublisher).publish(any());
+        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
+                latestValues, batchWriter, realtimePublisher
+        );
+
+        consumer.onMessageBatch(List.of(message(20L)), channel);
+
+        InOrder order = inOrder(batchWriter, latestValues, realtimePublisher, channel);
+        order.verify(batchWriter).write(any());
+        order.verify(latestValues).updateEventIfNewer(any());
+        order.verify(realtimePublisher).publish(any());
+        order.verify(channel).basicNack(20L, false, true);
+        verify(channel, org.mockito.Mockito.never()).basicAck(20L, false);
     }
 
     private Message message(long deliveryTag) throws Exception {

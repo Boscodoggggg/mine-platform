@@ -140,6 +140,7 @@ docker compose --env-file deploy/env/standalone.env \
 - 单机模式是非高可用模式。至少把数据库备份和配置导出复制到独立 NAS 或离线介质。
 - RabbitMQ 同时承担设备 MQTT Broker 和平台内部消息总线，但通过虚拟主机、用户、权限和交换机隔离；不要再部署第二套 MQ。
 - `mine-telemetry` 使用独立的 `mine-telemetry` 账号，只能读取平台遥测队列；Redis 与 TimescaleDB 均成功后才确认消息，任一侧故障都会触发重新投递。
+- 实时链路由 `mine-telemetry` 在持久化成功后发布到 `mine.realtime.x`，每个 `mine-server` 实例创建独占自动删除队列，再推送给本实例 WebSocket 会话；多实例之间不竞争消费，也不通过定时扫描 Inbox/Outbox 表发现数据。
 - 实时最新值按设备保存在 Redis Hash 中且不设置统一 TTL，避免活动设备键同时过期；历史事实以 TimescaleDB 为准。进程内一级缓存只用于后续版本化物模型、协议和策略配置，并必须采用容量上限、随机抖动 TTL、发布事件失效与 single-flight 回源。
 - 单机 Redis 默认在 512 MiB 容器限制内设置 `384mb + noeviction`。达到上限时写入明确失败并让 RabbitMQ 消息背压，不能静默驱逐 boot/sequence 状态；现场容量评估后可调整 `MINE_REDIS_MAXMEMORY`，但必须为进程和 AOF 留出余量，并对 Redis 内存、RabbitMQ 积压和拒绝写入告警。
 - 弱网设备应使用持久会话、QoS、消息序号和幂等处理，命令必须具有超时、回执和审计记录。

@@ -215,17 +215,26 @@ git commit -am "feat(device): 新增设备实时值与历史查询"
 **Files:**
 
 - Create: mine-server/src/main/java/com/bosco/mine/server/bootstrap/websocket/RealtimeWebSocketHandler.java
-- Create: mine-server/src/test/java/com/bosco/mine/server/bootstrap/websocket/RealtimeWebSocketIT.java
+- Create: mine-server/src/main/java/com/bosco/mine/server/bootstrap/websocket/RealtimeSessionRegistry.java
+- Create: mine-server/src/main/java/com/bosco/mine/server/bootstrap/websocket/RealtimeTelemetryConsumer.java
+- Test: mine-server/src/test/java/com/bosco/mine/server/bootstrap/websocket/RealtimeWebSocketHandlerTest.java
+- Test: mine-server/src/test/java/com/bosco/mine/server/bootstrap/websocket/RealtimeTelemetryConsumerTest.java
+- Test: mine-server/src/test/java/com/bosco/mine/server/bootstrap/websocket/RealtimeRabbitConfigurationTest.java
+- Create: mine-messaging/src/main/java/com/bosco/mine/messaging/realtime/RealtimeTelemetryEvent.java
+- Create: mine-telemetry/src/main/java/com/bosco/mine/telemetry/realtime/ConfirmedRealtimePublisher.java
+- Test: mine-telemetry/src/test/java/com/bosco/mine/telemetry/realtime/ConfirmedRealtimePublisherTest.java
 - Create: mine-web/src/realtime/RealtimeHub.ts
 - Test: mine-web/src/realtime/RealtimeHub.test.ts
 
 **Steps:**
 
-1. 后端测试 AUTH/SUBSCRIBE/UNSUBSCRIBE/RESYNC/限额。
-2. 前端 fake timer 测试重连、引用计数、sequence gap、批量通知。
-3. 实现先 SNAPSHOT 后 DATA。
-4. 运行前后端测试。
-5. 提交：
+1. 后端测试 AUTH/SUBSCRIBE/UNSUBSCRIBE/RESYNC/限额；订阅和 RESYNC 只按需查询一次快照，不创建定时查询任务。
+2. 写 telemetry 数据库与 Redis 成功后发布实时事件、publisher confirm 失败不 ACK 原遥测消息的测试。
+3. 写 server RabbitMQ 消费实时事件并只投递给匹配订阅的测试；每个 server 实例使用独立队列，不让多实例竞争消费导致客户端漏事件。
+4. 前端 fake timer 测试重连、引用计数、sequence gap、批量通知和心跳半开检测。
+5. 实现先 SNAPSHOT 后 DATA；重连和 sequence gap 才发送 RESYNC，正常运行不得轮询 Redis 或 TimescaleDB。
+6. 更新 RabbitMQ 最小权限、Compose、WebSocket 契约和指标，运行前后端测试。
+7. 提交：
 
 ~~~bash
 git commit -am "feat(realtime): 实现统一WebSocket实时通道"
@@ -269,9 +278,10 @@ git commit -am "feat(frontend): 新增设备管理与实时监控"
 
 1. 写所有允许/禁止状态迁移失败测试。
 2. 写命令+outbox 同事务测试。
-3. 实现 LOW 风险示例命令；幂等键重复返回原命令。
-4. 运行测试。
-5. 提交：
+3. 写提交通知唤醒 relay、按 eventId 精确认领、启动/重连一次有界恢复测试；禁止增加固定间隔 Outbox 扫表任务。
+4. 实现 LOW 风险示例命令；幂等键重复返回原命令。
+5. 运行测试，并静态断言命令模块不存在 `@Scheduled` 扫表入口。
+6. 提交：
 
 ~~~bash
 git commit -am "feat(command): 实现命令状态机与可靠出站"

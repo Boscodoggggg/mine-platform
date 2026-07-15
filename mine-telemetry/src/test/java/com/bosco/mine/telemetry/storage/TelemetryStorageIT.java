@@ -321,11 +321,17 @@ class TelemetryStorageIT {
         );
         TelemetryBatchWriter.WriteResult businessRepeated = telemetryBatchWriter.write(List.of(sameBusinessKey));
 
-        assertThat(first).isEqualTo(new TelemetryBatchWriter.WriteResult(1, 2, Set.of(EVENT_ID)));
-        assertThat(repeated).isEqualTo(
-                new TelemetryBatchWriter.WriteResult(0, 0, Set.of(EVENT_ID))
-        );
-        assertThat(businessRepeated).isEqualTo(new TelemetryBatchWriter.WriteResult(0, 0, Set.of()));
+        assertThat(first.claimedEvents()).isOne();
+        assertThat(first.writtenPoints()).isEqualTo(2);
+        assertThat(first.latestEventIds()).containsExactly(EVENT_ID);
+        assertThat(first.latestEventIngestIds().get(EVENT_ID)).isPositive();
+        assertThat(repeated.claimedEvents()).isZero();
+        assertThat(repeated.writtenPoints()).isZero();
+        assertThat(repeated.latestEventIds()).containsExactly(EVENT_ID);
+        assertThat(repeated.latestEventIngestIds())
+                .containsEntry(EVENT_ID, first.latestEventIngestIds().get(EVENT_ID));
+        assertThat(businessRepeated.latestEventIds()).isEmpty();
+        assertThat(businessRepeated.latestEventIngestIds()).isEmpty();
         assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isEqualTo(1L);
         assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isEqualTo(2L);
     }
@@ -376,7 +382,8 @@ class TelemetryStorageIT {
     void 真实RabbitMQ批监听器应在Redis和数据库成功后消费消息() throws Exception {
         NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
                 latestValueRepository,
-                telemetryBatchWriter
+                telemetryBatchWriter,
+                event -> { }
         );
         SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(
                 rabbitConsumerConnectionFactory

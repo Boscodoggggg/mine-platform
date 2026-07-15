@@ -1,6 +1,7 @@
 package com.bosco.mine.telemetry.consumer;
 
 import com.bosco.mine.messaging.MessageEnvelope;
+import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
 import com.bosco.mine.model.message.UnifiedDeviceMessage;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.MessageKind;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
@@ -20,7 +21,9 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -35,6 +38,7 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
 
     private final LatestValueRepository latestValues;
     private final TelemetryBatchWriter batchWriter;
+    private final RealtimePublisher realtimePublisher;
     private final JsonMapper jsonMapper;
 
     /**
@@ -42,12 +46,15 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
      *
      * @param latestValues Redis 实时最新值仓储
      * @param batchWriter  TimescaleDB 事务批写器
+     * @param realtimePublisher 持久化完成后的实时事件发布器
      */
     public NormalizedTelemetryConsumer(
             LatestValueRepository latestValues,
-            TelemetryBatchWriter batchWriter) {
+            TelemetryBatchWriter batchWriter,
+            RealtimePublisher realtimePublisher) {
         this.latestValues = Objects.requireNonNull(latestValues, "最新值仓储不能为空");
         this.batchWriter = Objects.requireNonNull(batchWriter, "历史批写器不能为空");
+        this.realtimePublisher = Objects.requireNonNull(realtimePublisher, "实时事件发布器不能为空");
         this.jsonMapper = JsonMapper.builder().findAndAddModules().build();
     }
 
@@ -76,6 +83,17 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
                             item.samples().getFirst().eventId()
                     ))
                     .forEach(item -> latestValues.updateEventIfNewer(item.samples()));
+            pending.stream()
+                    .filter(item -> result.latestEventIds().contains(
+                            item.samples().getFirst().eventId()
+                    ))
+                    .map(item -> realtimeEvent(
+                            item.samples(),
+                            result.latestEventIngestIds().get(
+                                    item.samples().getFirst().eventId()
+                            )
+                    ))
+                    .forEach(realtimePublisher::publish);
         } catch (RuntimeException exception) {
             LOGGER.error("遥测批次存储失败，{} 条 RabbitMQ 消息将重新投递", pending.size(), exception);
             pending.forEach(item -> nack(item.message(), channel));
@@ -95,6 +113,26 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
             }
         }
         return List.copyOf(pending);
+    }
+
+    private RealtimeTelemetryEvent realtimeEvent(List<TelemetrySample> samples, Long ingestId) {
+        if (ingestId == null) {
+            throw new IllegalStateException("实时事件缺少已提交摄取序号");
+        }
+        TelemetrySample first = samples.getFirst();
+        Map<String, Double> values = new LinkedHashMap<>();
+        samples.forEach(sample -> values.put(sample.propertyId(), sample.value()));
+        return new RealtimeTelemetryEvent(
+                first.eventId(),
+                first.deviceId(),
+                ingestId,
+                first.occurredAt(),
+                first.receivedAt(),
+                first.quality(),
+                first.bootId(),
+                first.sequence(),
+                values
+        );
     }
 
     private List<TelemetrySample> decode(Message message) {
@@ -207,6 +245,20 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
         public InvalidTelemetryMessageException(String message, Throwable cause) {
             super(message, cause);
         }
+    }
+
+    /**
+     * 发布已持久化实时遥测事件的边界。
+     */
+    @FunctionalInterface
+    public interface RealtimePublisher {
+
+        /**
+         * 发布事件并等待 Broker 确认。
+         *
+         * @param event 已持久化实时遥测事件
+         */
+        void publish(RealtimeTelemetryEvent event);
     }
 
     private record PendingMessage(Message message, List<TelemetrySample> samples) {

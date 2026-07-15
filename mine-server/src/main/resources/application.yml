@@ -1,6 +1,9 @@
 spring:
   application:
     name: mine-server
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration
   lifecycle:
     timeout-per-shutdown-phase: 30s
 
@@ -70,3 +73,19 @@ mine:
     maximum-pool-size: ${MINE_TELEMETRY_QUERY_MAXIMUM_POOL_SIZE:5}
     connection-timeout: ${MINE_TELEMETRY_QUERY_CONNECTION_TIMEOUT:PT2S}
     query-timeout: ${MINE_TELEMETRY_QUERY_QUERY_TIMEOUT:PT2S}
+  realtime:
+    enabled: ${MINE_REALTIME_ENABLED:false}
+    path: ${MINE_REALTIME_PATH:/api/v1/realtime}
+    instance-id: ${MINE_REALTIME_INSTANCE_ID:${HOSTNAME:standalone}}
+    max-subscriptions: ${MINE_REALTIME_MAX_SUBSCRIPTIONS:64}
+    max-devices: ${MINE_REALTIME_MAX_DEVICES:128}
+    max-properties: ${MINE_REALTIME_MAX_PROPERTIES:1024}
+    max-message-bytes: ${MINE_REALTIME_MAX_MESSAGE_BYTES:65536}
+    rabbit-enabled: ${MINE_REALTIME_RABBIT_ENABLED:false}
+    rabbit-host: ${MINE_REALTIME_RABBIT_HOST:rabbitmq}
+    rabbit-port: ${MINE_REALTIME_RABBIT_PORT:5672}
+    rabbit-auto-startup: ${MINE_REALTIME_RABBIT_AUTO_STARTUP:true}
+    rabbit-prefetch: ${MINE_REALTIME_RABBIT_PREFETCH:500}
+    account:
+      username: ${MINE_REALTIME_RABBIT_USERNAME:mine-server-realtime}
+      password-file: ${MINE_REALTIME_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_realtime_password}

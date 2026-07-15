@@ -43,6 +43,7 @@ mine:
       prefetch: ${MINE_TELEMETRY_RABBIT_PREFETCH:200}
       batch-size: ${MINE_TELEMETRY_RABBIT_BATCH_SIZE:100}
       receive-timeout-millis: ${MINE_TELEMETRY_RABBIT_RECEIVE_TIMEOUT_MILLIS:1000}
+      confirm-timeout-millis: ${MINE_TELEMETRY_RABBIT_CONFIRM_TIMEOUT_MILLIS:5000}
       account:
         username: ${MINE_TELEMETRY_RABBIT_USERNAME:mine-telemetry}
         password-file: ${MINE_TELEMETRY_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_telemetry_password}

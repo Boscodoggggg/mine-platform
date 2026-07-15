@@ -36,6 +36,12 @@ public final class MineTopology {
     /** 动态配置发布交换机。 */
     public static final String CONFIG_EXCHANGE = "mine.config.x";
 
+    /** 已持久化最新值的实时通知交换机。 */
+    public static final String REALTIME_EXCHANGE = "mine.realtime.x";
+
+    /** 实时遥测事件路由模式。 */
+    public static final String REALTIME_TELEMETRY_ROUTING_PATTERN = "realtime.telemetry.#";
+
     /** 平台内部死信交换机。 */
     public static final String DEAD_LETTER_EXCHANGE = "mine.dlx";
 

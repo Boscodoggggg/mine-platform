@@ -25,12 +25,11 @@ flowchart LR
     T --> TS["TimescaleDB"]
     T --> C["Redis 当前值"]
     T --> B["PostgreSQL 业务库"]
-    T --> MQ["RabbitMQ /mine-platform"]
+    T -->|"实时/业务事件"| MQ["RabbitMQ /mine-platform"]
     MQ --> S["mine-server"]
     S --> B
     S --> O["S3 兼容对象存储"]
-    S --> W["mine-web"]
-    T -->|"WebSocket 数据源"| W
+    S -->|"统一 WebSocket"| W
     W -->|"策略、协议、命令、业务管理"| S
     S -->|"命令事件"| MQ
     MQ --> R
@@ -80,9 +79,9 @@ mine-platform/
 3. gateway 依据设备、产品和已发布配置包选择协议执行计划。
 4. 解析结果转换成 UnifiedDeviceMessage，并发布到 /mine-platform。
 5. telemetry 校验 schema、做字段映射、去重、乱序判断和质量标记。
-6. telemetry 在 TimescaleDB 单事务提交 Inbox、历史、持久化最新值和摄取水位，提交成功后刷新 Redis 最新值读模型，最后 ACK 消息。
-7. 告警、位置、作业事件再次发布为业务事件。
-8. WebSocket 推送经过采样和合并，不逐条广播全部高频原始点。
+6. telemetry 在 TimescaleDB 单事务提交 Inbox、历史、持久化最新值和摄取水位，提交成功后刷新 Redis 最新值读模型。
+7. telemetry 通过 publisher confirm 发布已持久化实时事件，成功后才 ACK 原始遥测消息；失败时依靠 Inbox 幂等重新投递。
+8. 每个 server 实例用独占临时队列接收实时事件，并按设备和属性只推送给本机匹配的 WebSocket 订阅，不广播未订阅的高频原始点。
 
 ### 5.2 命令下行
 
@@ -147,6 +146,11 @@ Compose 私有化部署的服务数量有限，服务地址稳定，不需要动
 - 明确标识“非高可用生产模式”。
 
 ## 10. 架构约束自动化
+
+业务流程默认由请求、RabbitMQ 消息或数据库提交后的通知触发，禁止服务通过固定间隔高频扫描业务表推进状态。
+Inbox 只能在消息消费事务中写入；Outbox relay 由事务提交通知唤醒并按事件标识处理。服务启动或数据库重连时允许执行一次
+带索引、带批量上限的恢复查询，但不得演变成常驻轮询。命令超时、策略定时生效和重试优先使用 RabbitMQ 延迟/重试队列，
+历史数据保留使用 TimescaleDB 原生策略。
 
 后端使用 ArchUnit 或等价架构测试保证：
 

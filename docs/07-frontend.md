@@ -149,8 +149,12 @@ RealtimeHub 职责：
 - 登录过期处理。
 - subscribe/unsubscribe 引用计数。
 - sequence 检测和断线后快照重同步。
-- requestAnimationFrame 或时间窗批量通知。
-- 页面不可见时降低刷新频率。
+- 在同一事件循环内合并组件通知。
+
+首批实现位于 `src/realtime/RealtimeHub.ts`，全站实例由 `src/realtime/index.ts` 导出。页面组件必须通过
+`realtimeHub.subscribe(deviceId, propertyIds, listener)` 获取数据并在卸载时调用返回的释放函数，不允许各页面自行
+创建 WebSocket 或用 `setInterval` 轮询最新值接口。同一设备属性被多个卡片订阅时只向服务端订阅一次；同一事件循环
+到达的多条增量合并后再通知组件，避免高频数据触发整页重复渲染。
 
 ## 6. WebSocket 协议
 
@@ -159,10 +163,13 @@ RealtimeHub 职责：
 ~~~json
 {
   "action": "SUBSCRIBE",
-  "requestId": "uuid",
+  "requestId": "rt-2",
   "topics": [
-    {"type": "DEVICE_LATEST", "ids": ["device-001"]},
-    {"type": "LOCATION", "groupId": "haul-trucks"}
+    {
+      "type": "DEVICE_LATEST",
+      "ids": ["0198aef6-2e80-7000-8000-000000000101"],
+      "properties": ["speed", "engine.rpm"]
+    }
   ]
 }
 ~~~
@@ -175,11 +182,16 @@ RealtimeHub 职责：
   "sequence": 1024,
   "serverTime": "2026-07-14T08:00:00Z",
   "topic": "DEVICE_LATEST",
-  "items": []
+  "deviceId": "0198aef6-2e80-7000-8000-000000000101",
+  "eventId": "0198aef6-2e80-7000-8000-000000000999",
+  "values": {"speed": 15.2, "engine.rpm": 1380}
 }
 ~~~
 
-重连后先请求当前快照，再接增量，不能只靠“从断点继续”假设服务器保留无限历史。
+浏览器连接建立后先发送 `AUTH`，收到鉴权 ACK 才恢复当前引用计数表中的全部订阅。默认每 25 秒发送一次 `PING`
+维持 WSS 空闲连接；10 秒内未收到 `PONG` 时按半开连接主动关闭，这只是连接和令牌校验，不会触发数据库查询。
+断开后按 1、2、4、8 秒指数退避并加入随机抖动，最大 30 秒。重连后先请求当前快照，再接增量，不能只靠“从断点继续”
+假设服务器保留无限历史。
 
 ## 7. 动态设备监控页面
 

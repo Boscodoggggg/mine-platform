@@ -49,6 +49,11 @@ public final class TelemetryBatchWriter {
             SET committed_ingest_id = ?, updated_at = CURRENT_TIMESTAMP
             WHERE singleton_id = 1
             """;
+    private static final String FIND_EVENT_INGESTION_SQL = """
+            SELECT ingest_id
+            FROM telemetry_inbox
+            WHERE event_id = ?
+            """;
 
     private final DataSource dataSource;
     private final DurableLatestWriter latestWriter;
@@ -72,7 +77,7 @@ public final class TelemetryBatchWriter {
     public WriteResult write(List<TelemetrySample> samples) {
         Objects.requireNonNull(samples, "遥测点集合不能为空");
         if (samples.isEmpty()) {
-            return new WriteResult(0, 0, Set.of());
+            return new WriteResult(0, 0, Set.of(), Map.of());
         }
         Map<UUID, List<TelemetrySample>> events = groupAndValidate(samples);
         try (Connection connection = dataSource.getConnection()) {
@@ -102,6 +107,7 @@ public final class TelemetryBatchWriter {
         int claimedEvents = 0;
         int writtenPoints = 0;
         Set<UUID> latestEventIds = new LinkedHashSet<>();
+        Map<UUID, Long> latestEventIngestIds = new LinkedHashMap<>();
         lockIngestionOrder(connection);
         long latestIngestId = -1L;
         try (PreparedStatement claim = connection.prepareStatement(CLAIM_EVENT_SQL);
@@ -116,12 +122,16 @@ public final class TelemetryBatchWriter {
                             connection, first.deviceId(), first.eventId()
                     )) {
                         latestEventIds.add(first.eventId());
+                        latestEventIngestIds.put(
+                                first.eventId(), findEventIngestId(connection, first.eventId())
+                        );
                     }
                     continue;
                 }
                 claimedEvents++;
                 if (latestWriter.apply(connection, eventSamples)) {
                     latestEventIds.add(first.eventId());
+                    latestEventIngestIds.put(first.eventId(), ingestId);
                 }
                 for (TelemetrySample sample : eventSamples) {
                     bindHistory(history, sample, ingestId);
@@ -139,7 +149,21 @@ public final class TelemetryBatchWriter {
         if (latestIngestId >= 0L) {
             updateCommittedIngestion(connection, latestIngestId);
         }
-        return new WriteResult(claimedEvents, writtenPoints, latestEventIds);
+        return new WriteResult(
+                claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds
+        );
+    }
+
+    private long findEventIngestId(Connection connection, UUID eventId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(FIND_EVENT_INGESTION_SQL)) {
+            statement.setObject(1, eventId);
+            try (java.sql.ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    throw new SQLException("幂等遥测事件缺少摄取序号");
+                }
+                return resultSet.getLong(1);
+            }
+        }
     }
 
     private Map<UUID, List<TelemetrySample>> groupAndValidate(List<TelemetrySample> samples) {
@@ -260,11 +284,13 @@ public final class TelemetryBatchWriter {
      * @param claimedEvents 成功声明幂等键的事件数
      * @param writtenPoints 实际写入的历史点数
      * @param latestEventIds 本次应刷新 Redis 的当前生效事件标识集合，包含安全的幂等重投
+     * @param latestEventIngestIds 当前生效事件对应的已提交摄取序号
      */
     public record WriteResult(
             int claimedEvents,
             int writtenPoints,
-            Set<UUID> latestEventIds
+            Set<UUID> latestEventIds,
+            Map<UUID, Long> latestEventIngestIds
     ) {
 
         /**
@@ -277,6 +303,13 @@ public final class TelemetryBatchWriter {
             latestEventIds = Set.copyOf(Objects.requireNonNull(
                     latestEventIds, "最新值事件标识集合不能为空"
             ));
+            latestEventIngestIds = Map.copyOf(Objects.requireNonNull(
+                    latestEventIngestIds, "最新值事件摄取序号不能为空"
+            ));
+            if (!latestEventIngestIds.keySet().equals(latestEventIds)
+                    || latestEventIngestIds.values().stream().anyMatch(value -> value == null || value < 1L)) {
+                throw new IllegalArgumentException("当前生效事件与摄取序号必须一一对应且序号大于 0");
+            }
         }
     }
 

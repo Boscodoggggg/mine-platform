@@ -89,6 +89,11 @@ services:
       MINE_TELEMETRY_QUERY_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
       MINE_TELEMETRY_QUERY_USERNAME: ${TIMESCALE_READER_USER:-mine_ts_reader}
       MINE_TELEMETRY_QUERY_PASSWORD_FILE: /run/secrets/timescale_reader_password
+      MINE_REALTIME_ENABLED: "true"
+      MINE_REALTIME_INSTANCE_ID: standalone
+      MINE_REALTIME_RABBIT_ENABLED: "true"
+      MINE_REALTIME_RABBIT_HOST: rabbitmq
+      MINE_REALTIME_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_realtime_password
     volumes:
       - ../../mine-server/target/mine-server-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
     secrets:
@@ -98,6 +103,7 @@ services:
       - rabbitmq_admin_username
       - rabbitmq_admin_password
       - timescale_reader_password
+      - rabbitmq_server_realtime_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -237,6 +243,7 @@ services:
       - rabbitmq_gateway_device_password
       - rabbitmq_gateway_platform_password
       - rabbitmq_telemetry_password
+      - rabbitmq_server_realtime_password
       - source: tls_certificate
         target: tls_certificate
       - source: tls_private_key
@@ -659,6 +666,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_gateway_platform_password
   rabbitmq_telemetry_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_telemetry_password
+  rabbitmq_server_realtime_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_realtime_password
   mine_super_admin_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/mine_super_admin_password
   grafana_admin_password:

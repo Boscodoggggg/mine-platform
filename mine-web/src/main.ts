@@ -6,6 +6,8 @@ import { setupStore } from './store';
 import { setupRouter } from './router';
 import { getLocale, setupI18n } from './locales';
 import { setupPermissionDirective } from './app/permission/permission';
+import { REALTIME_AUTHENTICATION_EXPIRED_EVENT } from './realtime';
+import { useAuthStore } from './store/modules/auth';
 import App from './App.vue';
 
 async function setupApp() {
@@ -20,6 +22,10 @@ async function setupApp() {
   const app = createApp(App);
 
   setupStore(app);
+
+  window.addEventListener(REALTIME_AUTHENTICATION_EXPIRED_EVENT, () => {
+    void useAuthStore().resetStore();
+  });
 
   setupPermissionDirective(app);
 

@@ -3,9 +3,11 @@ package com.bosco.mine.telemetry.bootstrap;
 import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
+import com.bosco.mine.telemetry.realtime.ConfirmedRealtimePublisher;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -57,12 +59,31 @@ public class TelemetryStorageConfiguration {
     @Bean
     public NormalizedTelemetryConsumer normalizedTelemetryConsumer(
             LatestValueRepository latestValues,
-            TelemetryBatchWriter batchWriter) {
-        return new NormalizedTelemetryConsumer(latestValues, batchWriter);
+            TelemetryBatchWriter batchWriter,
+            ConfirmedRealtimePublisher realtimePublisher) {
+        return new NormalizedTelemetryConsumer(latestValues, batchWriter, realtimePublisher);
     }
 
     /**
-     * 创建访问平台 vhost 的遥测只读连接。
+     * 创建等待 Broker 确认的实时遥测发布器。
+     *
+     * @param telemetryConnectionFactory 平台 vhost 连接
+     * @param properties 遥测 RabbitMQ 参数
+     * @return 实时事件发布器
+     */
+    @Bean
+    public ConfirmedRealtimePublisher confirmedRealtimePublisher(
+            CachingConnectionFactory telemetryConnectionFactory,
+            TelemetryRabbitProperties properties
+    ) {
+        return new ConfirmedRealtimePublisher(
+                new RabbitTemplate(telemetryConnectionFactory),
+                positive(properties.resolvedConfirmTimeoutMillis(), "confirmTimeoutMillis")
+        );
+    }
+
+    /**
+     * 创建访问平台 vhost 的遥测最小权限连接，用于消费标准遥测并发布实时事件。
      *
      * @param properties 遥测 RabbitMQ 参数
      * @return 平台消息消费连接工厂
@@ -82,13 +103,14 @@ public class TelemetryStorageConfiguration {
         factory.setVirtualHost(MineTopology.PLATFORM_VHOST);
         factory.setUsername(account.username());
         factory.setPassword(readSecret(account.passwordFile()));
+        factory.setPublisherConfirmType(CachingConnectionFactory.ConfirmType.SIMPLE);
         return factory;
     }
 
     /**
      * 创建手工确认、消费者侧凑批的 RabbitMQ 监听容器。
      *
-     * @param telemetryConnectionFactory 平台 vhost 只读连接
+     * @param telemetryConnectionFactory 平台 vhost 遥测服务连接
      * @param consumer                    标准化遥测批消费者
      * @param properties                  遥测 RabbitMQ 参数
      * @return 遥测消息监听容器

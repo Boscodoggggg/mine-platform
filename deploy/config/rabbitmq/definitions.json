@@ -129,6 +129,15 @@
       "arguments": {}
     },
     {
+      "name": "mine.realtime.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
       "name": "mine.dlx",
       "vhost": "/mine-platform",
       "type": "topic",

@@ -13,7 +13,8 @@ import java.nio.file.Path;
  * @param prefetch            单消费者预取消息数
  * @param batchSize           单次交付给消费者的最大消息数
  * @param receiveTimeoutMillis 等待凑批的最大毫秒数
- * @param account             平台 vhost 只读账号
+ * @param confirmTimeoutMillis 等待实时事件发布确认的最大毫秒数
+ * @param account             平台 vhost 遥测服务最小权限账号
  */
 @ConfigurationProperties("mine.telemetry.rabbit")
 public record TelemetryRabbitProperties(
@@ -23,6 +24,7 @@ public record TelemetryRabbitProperties(
         Integer prefetch,
         Integer batchSize,
         Long receiveTimeoutMillis,
+        Long confirmTimeoutMillis,
         Account account) {
 
     /**
@@ -65,6 +67,13 @@ public record TelemetryRabbitProperties(
      */
     public long resolvedReceiveTimeoutMillis() {
         return receiveTimeoutMillis == null ? 1000L : receiveTimeoutMillis;
+    }
+
+    /**
+     * @return 实时事件发布确认超时毫秒数
+     */
+    public long resolvedConfirmTimeoutMillis() {
+        return confirmTimeoutMillis == null ? 5000L : confirmTimeoutMillis;
     }
 
     /**

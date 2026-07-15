@@ -2,6 +2,7 @@ package com.bosco.mine.server.bootstrap.security;
 
 import cn.dev33.satoken.interceptor.SaInterceptor;
 import cn.dev33.satoken.stp.StpUtil;
+import com.bosco.mine.server.bootstrap.websocket.RealtimeProperties;
 import com.bosco.mine.server.modules.system.repository.SystemAuthMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -16,23 +17,27 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * 配置 Sa-Token 请求鉴权、注解权限校验和密码散列算法。
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(MineSecurityProperties.class)
+@EnableConfigurationProperties({MineSecurityProperties.class, RealtimeProperties.class})
 public class SaTokenConfiguration implements WebMvcConfigurer {
 
     private final MineSecurityProperties properties;
+    private final RealtimeProperties realtimeProperties;
     private final ObjectProvider<SystemAuthMapper> authMapperProvider;
 
     /**
      * 创建安全配置。
      *
      * @param properties          平台安全配置
+     * @param realtimeProperties 实时端点配置
      * @param authMapperProvider 系统认证数据访问接口延迟提供器
      */
     public SaTokenConfiguration(
             MineSecurityProperties properties,
+            RealtimeProperties realtimeProperties,
             ObjectProvider<SystemAuthMapper> authMapperProvider
     ) {
         this.properties = properties;
+        this.realtimeProperties = realtimeProperties;
         this.authMapperProvider = authMapperProvider;
     }
 
@@ -58,11 +63,13 @@ public class SaTokenConfiguration implements WebMvcConfigurer {
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        String realtimePath = realtimeProperties.resolvedPath();
         registry.addInterceptor(new SaInterceptor(handler -> StpUtil.checkLogin()))
                 .addPathPatterns("/api/v1/**")
                 .excludePathPatterns(
                         "/api/v1/auth/login",
-                        "/api/v1/system/status"
+                        "/api/v1/system/status",
+                        realtimePath
                 );
         SystemAuthMapper authMapper = authMapperProvider.getIfAvailable();
         if (authMapper != null) {
@@ -70,7 +77,8 @@ public class SaTokenConfiguration implements WebMvcConfigurer {
                     .addPathPatterns("/api/v1/**")
                     .excludePathPatterns(
                             "/api/v1/auth/login",
-                            "/api/v1/system/status"
+                            "/api/v1/system/status",
+                            realtimePath
                     );
             registry.addInterceptor(new PasswordChangeGuard(authMapper))
                     .addPathPatterns("/api/v1/**")
@@ -79,7 +87,8 @@ public class SaTokenConfiguration implements WebMvcConfigurer {
                             "/api/v1/auth/me",
                             "/api/v1/auth/password",
                             "/api/v1/auth/logout",
-                            "/api/v1/system/status"
+                            "/api/v1/system/status",
+                            realtimePath
                     );
         }
     }
