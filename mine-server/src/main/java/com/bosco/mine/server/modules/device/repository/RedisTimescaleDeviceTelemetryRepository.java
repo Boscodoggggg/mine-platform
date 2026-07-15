@@ -2,6 +2,7 @@ package com.bosco.mine.server.modules.device.repository;
 
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import com.bosco.mine.server.modules.device.infrastructure.TelemetryQueryConnection;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -131,6 +132,7 @@ public class RedisTimescaleDeviceTelemetryRepository implements DeviceTelemetryR
      * @param redisTemplate Redis 字符串操作模板
      * @param telemetryQueryConnection 遥测时序库受管连接
      */
+    @Autowired
     public RedisTimescaleDeviceTelemetryRepository(
             StringRedisTemplate redisTemplate,
             TelemetryQueryConnection telemetryQueryConnection

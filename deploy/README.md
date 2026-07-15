@@ -77,6 +77,11 @@ docker compose \
   up -d
 ~~~
 
+三个 Java 服务只读挂载各自稳定的 `target/` 目录，启动时由 `run-java-service.sh` 校验并复制完整 JAR 到容器
+`/tmp/mine-runtime/app.jar`，JVM 只运行该不可变副本。禁止把 `target/*.jar` 直接绑定为运行文件；否则容器运行期间执行
+Maven `package`/`verify` 会替换可执行 JAR，造成运行时 classpath 撕裂。构建新版本后必须重建对应服务容器，不能把宿主机
+构建当作热更新。
+
 生产现场建议同时启动可观测组件：
 
 ~~~bash

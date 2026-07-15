@@ -66,10 +66,11 @@ services:
       - |
         export SPRING_DATASOURCE_PASSWORD="$$(cat /run/secrets/postgres_password)"
         export SPRING_DATA_REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"
-        exec java $${JAVA_OPTS:-} -jar /opt/mine/app.jar
+        exec /opt/mine/run-java-service.sh
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
+      MINE_APP_SOURCE_JAR: /opt/mine/source/mine-server-0.1.0-SNAPSHOT.jar
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-mine}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-mine}
       SPRING_DATA_REDIS_HOST: redis
@@ -95,7 +96,8 @@ services:
       MINE_REALTIME_RABBIT_HOST: rabbitmq
       MINE_REALTIME_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_realtime_password
     volumes:
-      - ../../mine-server/target/mine-server-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
+      - ../../mine-server/target:/opt/mine/source:ro
+      - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
     secrets:
       - postgres_password
       - redis_password
@@ -132,9 +134,11 @@ services:
 
   mine-gateway:
     <<: *java-service
-    command: ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-Duser.timezone=UTC", "-jar", "/opt/mine/app.jar"]
+    command: ["/opt/mine/run-java-service.sh"]
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
+      MINE_APP_SOURCE_JAR: /opt/mine/source/mine-gateway-0.1.0-SNAPSHOT.jar
       MINE_MANAGEMENT_ADDRESS: 0.0.0.0
       MINE_GATEWAY_RABBIT_ENABLED: "true"
       MINE_GATEWAY_RABBIT_HOST: rabbitmq
@@ -142,7 +146,8 @@ services:
       MINE_GATEWAY_PLATFORM_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_gateway_platform_password
       MINE_GATEWAY_IDENTITY_SNAPSHOT_FILE: /etc/mine/gateway/device-identities.json
     volumes:
-      - ../../mine-gateway/target/mine-gateway-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
+      - ../../mine-gateway/target:/opt/mine/source:ro
+      - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
       - ../config/gateway/device-identities.json:/etc/mine/gateway/device-identities.json:ro
     secrets:
       - rabbitmq_gateway_device_password
@@ -172,10 +177,11 @@ services:
       - |
         export SPRING_DATASOURCE_PASSWORD="$$(cat /run/secrets/timescale_password)"
         export SPRING_DATA_REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"
-        exec java $${JAVA_OPTS:-} -jar /opt/mine/app.jar
+        exec /opt/mine/run-java-service.sh
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
+      MINE_APP_SOURCE_JAR: /opt/mine/source/mine-telemetry-0.1.0-SNAPSHOT.jar
       SPRING_DATASOURCE_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
       SPRING_DATASOURCE_USERNAME: ${TIMESCALE_USER:-mine_ts}
       SPRING_DATA_REDIS_HOST: redis
@@ -185,7 +191,8 @@ services:
       MINE_TELEMETRY_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_telemetry_password
       MINE_MANAGEMENT_ADDRESS: 0.0.0.0
     volumes:
-      - ../../mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
+      - ../../mine-telemetry/target:/opt/mine/source:ro
+      - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
     secrets:
       - timescale_password
       - redis_password

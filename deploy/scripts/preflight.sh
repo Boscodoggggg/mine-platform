@@ -25,7 +25,7 @@ if [[ -z "${secrets_dir}" ]]; then
   exit 1
 fi
 
-required=(postgres_password timescale_password timescale_reader_password redis_password rabbitmq_admin_username rabbitmq_admin_password rabbitmq_gateway_device_password rabbitmq_gateway_platform_password rabbitmq_telemetry_password mine_super_admin_password tls.crt tls.key)
+required=(postgres_password timescale_password timescale_reader_password redis_password rabbitmq_admin_username rabbitmq_admin_password rabbitmq_gateway_device_password rabbitmq_gateway_platform_password rabbitmq_telemetry_password rabbitmq_server_realtime_password mine_super_admin_password tls.crt tls.key)
 if [[ "${MINE_PREFLIGHT_PROFILE:-}" == "observability" ]]; then
   required+=(grafana_admin_password)
 fi
@@ -50,4 +50,5 @@ if [[ -n "${MINE_PREFLIGHT_PROFILE:-}" ]]; then
   compose_args+=(--profile "${MINE_PREFLIGHT_PROFILE}")
 fi
 docker compose "${compose_args[@]}" config --quiet
+MINE_ENV_FILE="${ENV_FILE}" "${ROOT_DIR}/deploy/tests/java-artifact-isolation.sh"
 echo "PASS: Docker、Compose、磁盘、文件句柄、secret、证书和 Compose 配置检查通过"

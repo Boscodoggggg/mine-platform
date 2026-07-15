@@ -87,6 +87,7 @@ jobs:
           docker compose --profile observability \
             --env-file deploy/env/standalone.env.example \
             -f deploy/compose/compose-standalone.yml config --quiet
+          bash deploy/tests/java-artifact-isolation.sh
       - name: 校验 Prometheus
         run: |
           docker run --rm --entrypoint /bin/promtool \
