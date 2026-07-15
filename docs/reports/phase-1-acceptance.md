@@ -20,9 +20,9 @@ Phase 1 已具备真实 MQTT 设备现场接入所需的平台闭环和可重复
 
 | 验收项 | 命令 | 时间 | 结果 | 说明 |
 |---|---|---|---|---|
-| 全仓质量门禁 | `bash scripts/verify.sh` | 2026-07-15 19:20–19:23 CST | PASS | Maven、前端、配置、SBOM、许可证全部通过 |
+| 全仓质量门禁 | `bash scripts/verify.sh` | 2026-07-15 20:07–20:09 CST | PASS | Maven、前端、离线包回归、配置、SBOM、许可证全部通过 |
 | 单机部署冒烟 | `bash deploy/tests/standalone-smoke.sh` | 2026-07-15 19:23 CST | PASS | 核心服务、HTTPS、MQTTS、数据库、TimescaleDB、RabbitMQ、Redis 正常 |
-| 全新数据卷离线安装 | 待正式离线发行包执行 | 未执行 | BLOCKED | 本次复用了已有开发数据卷，不能冒充全新环境安装 |
+| 全新数据卷离线安装 | `install-offline.sh --project-name mine-offline-acceptance` | 2026-07-15 19:55 CST | PASS | 1.3 GiB 包校验、镜像 ID、空库迁移、HTTPS、MQTTS 和数据层均通过 |
 | 浏览器 E2E | `pnpm --dir mine-web exec playwright test` | 2026-07-15 19:24 CST | PASS | Chromium 4/4，通过实时监控和三种命令终态 |
 | 弱网自动化 | Task 15 定向和完整 Maven 验证 | 2026-07-15 | PASS | 详见弱网补传自动化报告 |
 | 真实设备 24 小时 | 待现场执行 | 未执行 | BLOCKED | 缺少真实设备、协议材料、凭据和现场窗口 |
@@ -44,7 +44,7 @@ Phase 1 已具备真实 MQTT 设备现场接入所需的平台闭环和可重复
 - `mine-server`：单元/架构测试通过，Failsafe 汇总 61 个集成测试通过。
 - `mine-device-simulator`：8 个场景和运行时测试。
 
-Maven Reactor 总耗时约 1 分 53 秒，所有模块 `SUCCESS`。测试日志中故障分支主动制造的异常以及 macOS Netty native DNS、Mockito 动态 agent 警告不属于测试失败；后续应在依赖治理中消除未来 JDK 兼容性警告。
+Maven Reactor 总耗时约 1 分 45 秒，所有模块 `SUCCESS`。测试日志中故障分支主动制造的异常以及 macOS Netty native DNS、Mockito 动态 agent 警告不属于测试失败；后续应在依赖治理中消除未来 JDK 兼容性警告。
 
 ### 3.2 前端
 
@@ -103,9 +103,8 @@ Maven Reactor 总耗时约 1 分 53 秒，所有模块 `SUCCESS`。测试日志�
 3. 设备本地缓存、掉电保护、补传限速、序号回绕和时钟漂移只有厂商与现场才能验证。
 4. 目前只发布低风险 `QUERY_STATUS`，且命令 UI/API 尚无业务原因字段，批准工单只能在外部证据中关联；生产控制命令仍需补齐原因审计、审批、双人复核、联锁和风险评估。
 5. 单机部署没有主机级高可用；生产数据必须外部备份并演练恢复。
-6. 本次单机冒烟复用了已有开发数据卷，没有执行全新数据卷的离线安装；不能据此证明离线包完整、首次迁移和空库初始化可靠。
-7. 当前 Compose 以只读挂载构建制品运行，正式离线发行包和应用镜像 digest 仍需在生产发布阶段固化。
-8. 一期最终质量目标还包括 5000 客户端压测和 72 小时平台稳定性测试；本次 24 小时首设备验收不替代这两项。
+6. 当前离线包已锁定基础镜像 ID、文件 SHA-256、SBOM 和许可证，但三个应用仍以只读 JAR 运行；应用镜像、发行签名和现场架构机复验仍需在生产发布阶段固化。
+7. 一期最终质量目标还包括 5000 客户端压测和 72 小时平台稳定性测试；本次 24 小时首设备验收不替代这两项。
 
 ## 7. 阶段决策
 

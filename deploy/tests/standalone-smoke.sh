@@ -20,7 +20,11 @@ set -a
 source "${ENV_FILE}"
 set +a
 
-compose=(docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
+compose=(docker compose)
+if [[ -n "${MINE_COMPOSE_PROJECT_NAME:-}" ]]; then
+  compose+=(-p "${MINE_COMPOSE_PROJECT_NAME}")
+fi
+compose+=(--env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
 "${compose[@]}" config --quiet
 
 services=(nginx mine-server mine-gateway mine-telemetry rabbitmq postgres timescale redis)

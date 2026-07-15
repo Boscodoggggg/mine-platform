@@ -320,7 +320,7 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/timescale_password
       TIMESCALE_READER_USER: ${TIMESCALE_READER_USER:-mine_ts_reader}
     volumes:
-      - timescale_data:/var/lib/postgresql/data
+      - timescale_data:/var/lib/postgresql
       - ../config/timescale/init.sql:/docker-entrypoint-initdb.d/010-timescale.sql:ro
       - ../scripts/timescale-reader-init.sh:/docker-entrypoint-initdb.d/020-timescale-reader-init.sh:ro
     secrets:

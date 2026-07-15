@@ -37,5 +37,6 @@ docker run --rm \
 
 echo "[5/5] CycloneDX SBOM 与许可证门禁"
 bash "${ROOT_DIR}/scripts/generate-sbom.sh"
+bash "${ROOT_DIR}/deploy/tests/offline-bundle.sh"
 
 echo "PASS: 后端、前端、部署配置、SBOM 与许可证质量门禁全部通过"

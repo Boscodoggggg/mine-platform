@@ -23,7 +23,8 @@
 
 - Linux x86_64/ARM64 主机，推荐至少 8 核、16 GiB 内存和 200 GiB 可用磁盘；最终容量应按设备数、上报频率和保留周期重新核算。
 - Docker Engine 24+，Docker Compose v2。
-- JDK 21、Node.js 20+ 和 pnpm，用于联网构建机编译制品。现场离线机只需要 Docker 和提前导入的镜像。
+- 联网构建机需要 JDK 21、Node.js 20+、pnpm、jq、Docker Engine 24+ 和 Docker Compose v2，用于编译制品、生成并校验 SBOM、归档本地镜像。
+- 现场离线机需要 Bash、Docker Engine 24+、Docker Compose v2、curl、OpenSSL、jq，以及常见 Linux 基础命令：`awk`、`df`、`grep`、`sort`、`stat`、`seq` 和 `sha256sum`（也兼容 `shasum`）。安装器会在导入镜像前统一检查。
 - 已确认 `443`、`8883` 未被占用，系统时间同步正常。
 
 生产环境不要直接使用示例密码或临时自签名证书。
@@ -33,14 +34,20 @@
 在项目根目录执行：
 
 ~~~bash
-./mvnw clean verify
-cd mine-web
-pnpm install --frozen-lockfile
-pnpm build
-cd ..
+bash scripts/verify.sh
 ~~~
 
 Compose 直接以只读方式挂载三个可执行 JAR 和 `mine-web/dist`。正式离线发行后会进一步封装为带 digest 的应用镜像，但应用配置键和数据卷不会改变。
+
+生成包含全部基础镜像、JAR、前端、Compose、配置模板、CycloneDX SBOM、许可证、镜像 ID 锁和 SHA-256 清单的离线包：
+
+~~~bash
+deploy/scripts/build-offline-bundle.sh \
+  --version 0.1.0 \
+  --output-dir target/offline
+~~~
+
+打包脚本只使用本地镜像；任一基线镜像缺失都会失败，不会在打包过程中隐式拉取。输出为 `mine-platform-<version>.tar` 和对应 `.sha256`。
 
 ## 4. 初始化配置与 secret
 
@@ -59,6 +66,19 @@ mkdir -p deploy/secrets
 - `MINE_TLS_SERVER_NAME` 必须与证书名称一致。
 
 环境文件和 `deploy/secrets/` 已被 Git 忽略，不得提交仓库。
+
+将归档和外部 SHA-256 文件传到离线主机，先核对外部校验和再解包。随后在解包目录创建 `deploy/env/standalone.env` 和 `deploy/secrets/`，执行：
+
+~~~bash
+deploy/scripts/install-offline.sh \
+  --bundle-dir . \
+  --env-file deploy/env/standalone.env \
+  --project-name mine-standalone
+~~~
+
+安装器先验证包内全部文件，再 `docker load` 并逐个核对 `manifests/images.lock` 中的镜像 ID，最后使用 `--pull never` 启动、等待健康并执行完整单机冒烟。`--load-only` 只导入和复核镜像，不启动服务。离线包不包含任何现场 secret 或私钥。
+
+启用 `--profile observability` 时项目名必须使用 `mine-standalone`，因为当前 Alloy 和 Grafana 日志查询按该 Compose 项目标签隔离采集；核心服务的临时验收环境可以使用其他项目名。
 
 ## 5. 启动与验收
 
@@ -114,6 +134,17 @@ TimescaleDB 基线固定为 PostgreSQL 18.4 + TimescaleDB 2.28.2 OSS，并在容
 
 已有 PostgreSQL 17 Timescale 数据卷不能直接挂载给 PostgreSQL 18 镜像。升级前必须完成可恢复备份，使用
 `pg_upgrade` 或逻辑备份/恢复迁移，并在独立环境验证扩展版本、hypertable、索引和数据量；禁止直接替换镜像碰运气。
+
+旧版 Compose 把 `timescale_data` 直接挂到 `/var/lib/postgresql/data`，当前 PostgreSQL 18 镜像要求挂到
+`/var/lib/postgresql`。无论旧卷使用 PostgreSQL 17 还是曾尝试 PostgreSQL 18，都不得把旧卷直接交给新版 Compose。
+计划内迁移至少执行以下步骤：
+
+1. 停止设备写入，在旧环境执行 `pg_dump -Fc` 逻辑备份，记录备份文件 SHA-256、旧镜像 ID、扩展版本、数据库大小、hypertable 和行数基线。
+2. 使用新的 Compose 项目名或独立主机创建全新的 `timescale_data`，确认 PostgreSQL 18、TimescaleDB 版本和 `timescaledb.license=apache`，禁止删除旧卷。
+3. 把逻辑备份恢复到新库，重新执行 Flyway 校验；对比 hypertable、索引、最早/最晚时间、逐表行数和关键设备抽样。
+4. 完成遥测写入、历史/latest 查询和备份恢复冒烟，经两人复核后切换；保留旧卷和备份直到观察期结束。
+
+迁移窗口内不得执行 `docker compose down -v`。如果无法证明备份可恢复或新旧数据核对一致，应立即停止切换并保留旧环境。
 
 可观测性单独验收：
 

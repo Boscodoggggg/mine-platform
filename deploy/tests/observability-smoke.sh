@@ -11,7 +11,11 @@ set -a
 source "${ENV_FILE}"
 set +a
 
-compose=(docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
+compose=(docker compose)
+if [[ -n "${MINE_COMPOSE_PROJECT_NAME:-}" ]]; then
+  compose+=(-p "${MINE_COMPOSE_PROJECT_NAME}")
+fi
+compose+=(--profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
 services=(prometheus grafana loki alloy postgres-exporter timescale-exporter)
 deadline=$((SECONDS + ${MINE_OBSERVABILITY_TIMEOUT_SECONDS:-180}))
 while (( SECONDS < deadline )); do
