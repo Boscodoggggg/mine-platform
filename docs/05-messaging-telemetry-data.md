@@ -39,8 +39,9 @@ flowchart TB
 → mine.telemetry.q
 ~~~
 
-gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能读取设备上行队列，
-`mine-gateway-platform` 只能写内部遥测交换机。不得让一个账号跨两个 vhost 获得读写全权限。
+gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能读取设备遥测/命令 ACK 队列并向
+`amq.topic` 写设备下行，`mine-gateway-platform` 只能读取 gateway 命令队列并写内部遥测/命令交换机。
+不得让一个账号跨两个 vhost 获得读写全权限。
 `mine-telemetry` 使用第三个服务账号，只能读取 `/mine-platform` 中的 `mine.telemetry.q`，并在完成持久化后写入
 `mine.realtime.x`；不能声明业务队列、写其他交换机或读取其他业务队列。
 
@@ -52,6 +53,34 @@ gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能�
 阶段 1 使用 `deploy/config/gateway/device-identities.json` 作为启动和现场兜底快照，默认每 5 秒原子热刷新，
 文件更新失败时保留上一有效版本。后续前台“发布配置”通过配置事件调用同一注册表替换入口，不能要求重启 gateway；
 快照文件不作为最终配置主数据源。
+
+### 2.2 MQTT 命令回环链路
+
+~~~text
+mine-server Outbox → mine.command.x / command.dispatch.{deviceId}
+→ mine.gateway.command.q → mine-gateway 校验信封、TTL 和可信设备身份
+→ /mine-device 的 amq.topic / mine.v1.{productKey}.{clientId}.down.command
+→ 设备 QoS 1 接收并以 commandId 做业务幂等
+→ mine.v1.{productKey}.{clientId}.up.command-ack
+→ mine.gateway.command-ack.q → mine-gateway 校验主题身份
+→ mine.command.x / command.status.{status}
+→ mine.server.command-status.q
+~~~
+
+设备域 Broker 确认只产生 `SENT` 事实，不能解释为设备执行成功。只有设备业务 ACK 才能产生
+`SUCCEEDED`、`REFUSED` 或 `FAILED`；终态事件同时携带 `deviceReceivedAt`。设备 ACK 可能与 `SENT` 事件并发到达
+管理服务，状态消费者必须按业务证据幂等推进，不能假设跨消费者线程的到达顺序。命令 JSON 带绝对 `expiresAt`，
+gateway 同时设置剩余消息 TTL；过期命令不得下发。
+
+server 消费状态消息时，在同一 PostgreSQL 事务中先写 `sys_inbox_event`，再以 `FOR UPDATE` 锁定对应
+`cmd_instance` 并推进状态，事务提交后才手工 ACK RabbitMQ。设备终态早于 `SENT` 到达时，以设备 ACK 作为更强业务
+证据补齐 `sent_at`、`device_received_at` 和 `completed_at`；终态之后到达的 `SENT`、重复 ACK 或超时事件只登记 Inbox，
+不得回退或覆盖已确认结果。数据库暂时失败则 NACK 重投，消息结构或身份不一致则拒绝并进入死信。
+
+`SENT` 确认后，gateway 还会把统一格式的 `TIMEOUT` 状态事件以单消息 TTL 投递到
+`mine.command.timeout.wait.q`。消息到达回复截止时间后，由 RabbitMQ 死信路由为 `command.status.timeout` 并进入
+`mine.server.command-status.q`。这是一条持久化的一次性计时消息，不依赖 gateway 内存定时器，也不创建数据库定时
+扫表；如果设备终态先到，server 状态机按命令当前终态幂等忽略迟到的 `TIMEOUT`。
 
 `mine-telemetry` 对 RabbitMQ 采用至少一次投递和手工确认：先在 TimescaleDB 单事务中写入 Inbox、数值历史、
 经过顺序策略筛选的持久最新值和 boot 状态，再用 Redis Lua 刷新实时加速层，最后通过 publisher confirm 发布
@@ -120,7 +149,10 @@ mine.telemetry.q
 telemetry.location.q
 server.device-event.q
 server.alarm-event.q
-gateway.command.q
+mine.gateway.command.q
+mine.server.command-status.q
+mine.gateway.command-ack.q
+mine.command.timeout.wait.q
 gateway.config.q
 telemetry.config.q
 integration.forwarding.q
@@ -179,9 +211,12 @@ mine.realtime.server.{instanceId}.q
 - Outbox 与业务数据同事务写入，并在提交时发送唤醒通知；relay 按通知携带的 eventId 精确认领，不固定间隔扫描整表。
 - 服务启动或 RabbitMQ 重连时只允许执行一次 `status + next_attempt_at` 索引上的有界恢复查询；运行期间失败事件按 eventId
   进入内存退避或 RabbitMQ 重试链路，不以高频扫表代替可靠性设计。
-- mine-server 使用独立 `mine-server-command` 账号，只允许写 `mine.command.x`，不读取任何队列；命令消息持久化并等待
-  publisher confirm 后才把 Outbox 置为 `PUBLISHED`。
+- mine-server 使用独立 `mine-server-command` 账号，只允许写 `mine.command.x`、读取
+  `mine.server.command-status.q`，不访问其他交换机或队列；命令消息持久化并等待 publisher confirm 后才把 Outbox
+  置为 `PUBLISHED`。
 - 命令路由键使用 `command.dispatch.{deviceId}`，同一设备的下行消息共享分区键；命令 eventId 在全部尝试中保持不变。
+- gateway 的下发队列只绑定 `command.dispatch.#`，管理服务状态队列只绑定 `command.status.#`，禁止用 `command.#`
+  让 gateway 再次消费自己发布的状态事件。
 - gateway 无数据库事务，失败消息进入本地有界重试或令当前消费不 ACK。
 - messageId/eventId 在重试中保持不变。
 - gateway 标准化事件的 eventId 与 payload.messageId 使用同一个 UUIDv7，跨 vhost 重投时不得重新生成。

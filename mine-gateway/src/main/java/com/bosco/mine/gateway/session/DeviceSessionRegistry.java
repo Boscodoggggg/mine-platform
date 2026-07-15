@@ -19,8 +19,8 @@ public final class DeviceSessionRegistry {
 
     private static final Pattern TOPIC_SEGMENT = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
-    private final AtomicReference<Map<IdentityKey, DeviceIdentity>> snapshot =
-            new AtomicReference<>(Map.of());
+    private final AtomicReference<IdentitySnapshot> snapshot =
+            new AtomicReference<>(new IdentitySnapshot(Map.of(), Map.of()));
 
     /**
      * 原子替换全部已签发设备身份。
@@ -29,15 +29,20 @@ public final class DeviceSessionRegistry {
      */
     public void replace(List<DeviceIdentity> identities) {
         Objects.requireNonNull(identities, "identities 不能为空");
-        Map<IdentityKey, DeviceIdentity> next = new LinkedHashMap<>();
+        Map<IdentityKey, DeviceIdentity> byTopic = new LinkedHashMap<>();
+        Map<UUID, DeviceIdentity> byDeviceId = new LinkedHashMap<>();
         for (DeviceIdentity identity : identities) {
             Objects.requireNonNull(identity, "设备身份不能为空");
             IdentityKey key = new IdentityKey(identity.productKey(), identity.clientId());
-            if (next.putIfAbsent(key, identity) != null) {
+            if (byTopic.putIfAbsent(key, identity) != null) {
                 throw new IllegalArgumentException("MQTT 设备身份重复: " + key);
             }
+            UUID deviceId = UUID.fromString(identity.deviceId());
+            if (byDeviceId.putIfAbsent(deviceId, identity) != null) {
+                throw new IllegalArgumentException("业务设备身份重复: " + deviceId);
+            }
         }
-        snapshot.set(Map.copyOf(next));
+        snapshot.set(new IdentitySnapshot(Map.copyOf(byTopic), Map.copyOf(byDeviceId)));
     }
 
     /**
@@ -48,7 +53,25 @@ public final class DeviceSessionRegistry {
      * @return 已登记身份，不存在时为空
      */
     public Optional<DeviceIdentity> find(String productKey, String clientId) {
-        return Optional.ofNullable(snapshot.get().get(new IdentityKey(productKey, clientId)));
+        return Optional.ofNullable(snapshot.get().byTopic().get(new IdentityKey(productKey, clientId)));
+    }
+
+    /**
+     * 查询平台设备标识对应的 MQTT 下行身份。
+     *
+     * @param deviceId 平台设备标识
+     * @return 已登记身份，不存在时为空
+     */
+    public Optional<DeviceIdentity> findByDeviceId(UUID deviceId) {
+        return Optional.ofNullable(snapshot.get().byDeviceId().get(
+                Objects.requireNonNull(deviceId, "deviceId 不能为空")
+        ));
+    }
+
+    private record IdentitySnapshot(
+            Map<IdentityKey, DeviceIdentity> byTopic,
+            Map<UUID, DeviceIdentity> byDeviceId
+    ) {
     }
 
     private record IdentityKey(String productKey, String clientId) {

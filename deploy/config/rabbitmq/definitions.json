@@ -39,6 +39,16 @@
       }
     },
     {
+      "name": "mine.gateway.command-ack.q",
+      "vhost": "/mine-device",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.device.dlx"
+      }
+    },
+    {
       "name": "mine.device.dead-letter.q",
       "vhost": "/mine-device",
       "durable": true,
@@ -60,13 +70,34 @@
       }
     },
     {
-      "name": "mine.command.q",
+      "name": "mine.gateway.command.q",
       "vhost": "/mine-platform",
       "durable": true,
       "auto_delete": false,
       "arguments": {
         "x-queue-type": "quorum",
         "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.server.command-status.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.command.timeout.wait.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.command.x",
+        "x-dead-letter-routing-key": "command.status.timeout"
       }
     },
     {
@@ -157,6 +188,14 @@
       "arguments": {}
     },
     {
+      "source": "amq.topic",
+      "vhost": "/mine-device",
+      "destination": "mine.gateway.command-ack.q",
+      "destination_type": "queue",
+      "routing_key": "mine.v1.*.*.up.command-ack",
+      "arguments": {}
+    },
+    {
       "source": "mine.device.dlx",
       "vhost": "/mine-device",
       "destination": "mine.device.dead-letter.q",
@@ -175,9 +214,25 @@
     {
       "source": "mine.command.x",
       "vhost": "/mine-platform",
-      "destination": "mine.command.q",
+      "destination": "mine.gateway.command.q",
       "destination_type": "queue",
-      "routing_key": "command.#",
+      "routing_key": "command.dispatch.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.command.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.server.command-status.q",
+      "destination_type": "queue",
+      "routing_key": "command.status.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.command.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.command.timeout.wait.q",
+      "destination_type": "queue",
+      "routing_key": "command.timeout.schedule",
       "arguments": {}
     },
     {

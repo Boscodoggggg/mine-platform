@@ -1,6 +1,8 @@
 package com.bosco.mine.gateway.bootstrap;
 
 import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
+import com.bosco.mine.gateway.command.CommandAckConsumer;
+import com.bosco.mine.gateway.command.CommandDispatchConsumer;
 import com.bosco.mine.gateway.session.DeviceIdentitySnapshotLoader;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.topology.MineTopology;
@@ -12,6 +14,8 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,6 +53,8 @@ class GatewayRabbitConfigurationTest {
                     assertThat(context).hasSingleBean(DeviceSessionRegistry.class);
                     assertThat(context).hasSingleBean(DeviceIdentitySnapshotLoader.class);
                     assertThat(context).hasSingleBean(DeviceMessageConsumer.class);
+                    assertThat(context).hasSingleBean(CommandDispatchConsumer.class);
+                    assertThat(context).hasSingleBean(CommandAckConsumer.class);
                     CachingConnectionFactory device = context.getBean(
                             "deviceConnectionFactory", CachingConnectionFactory.class
                     );
@@ -63,11 +69,16 @@ class GatewayRabbitConfigurationTest {
                             .isEqualTo("mine-gateway-device");
                     assertThat(platform.getRabbitConnectionFactory().getUsername())
                             .isEqualTo("mine-gateway-platform");
-                    SimpleMessageListenerContainer listener = context.getBean(
-                            SimpleMessageListenerContainer.class
+                    Set<String> listenerQueues = context.getBeansOfType(SimpleMessageListenerContainer.class)
+                            .values().stream()
+                            .peek(listener -> assertThat(listener.isAutoStartup()).isFalse())
+                            .flatMap(listener -> java.util.Arrays.stream(listener.getQueueNames()))
+                            .collect(Collectors.toSet());
+                    assertThat(listenerQueues).containsExactlyInAnyOrder(
+                            MineTopology.DEVICE_UPLINK_QUEUE,
+                            MineTopology.DEVICE_COMMAND_ACK_QUEUE,
+                            MineTopology.COMMAND_QUEUE
                     );
-                    assertThat(listener.getQueueNames()).containsExactly(MineTopology.DEVICE_UPLINK_QUEUE);
-                    assertThat(listener.isAutoStartup()).isFalse();
                 });
     }
 

@@ -54,7 +54,7 @@ class SimulatorRuntimeTest {
     @Test
     void 收到只读查询命令时应发布业务成功回复() throws Exception {
         String command = """
-                {"commandId":"command-001","command":"QUERY_STATUS","parameters":{}}
+                {"commandId":"command-001","command":"QUERY_STATUS","traceId":"trace-command-001","parameters":{}}
                 """;
         FakeTransport transport = new FakeTransport(command.getBytes(StandardCharsets.UTF_8));
         SimulatorRuntime runtime = new SimulatorRuntime(
@@ -74,6 +74,7 @@ class SimulatorRuntimeTest {
         assertThat(ack.topic()).isEqualTo("mine/v1/haul-truck/device-credential-001/up/command-ack");
         JsonNode payload = JSON.readTree(ack.payload());
         assertThat(payload.get("commandId").asString()).isEqualTo("command-001");
+        assertThat(payload.get("traceId").asString()).isEqualTo("trace-command-001");
         assertThat(payload.get("status").asString()).isEqualTo("SUCCEEDED");
         assertThat(payload.get("occurredAt").asString()).isEqualTo("2026-07-15T01:00:00Z");
         assertThat(payload.get("result").get("online").asBoolean()).isTrue();

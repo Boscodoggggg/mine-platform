@@ -89,12 +89,14 @@ public final class SimulatorRuntime {
             JsonNode command = jsonMapper.readTree(bytes);
             String commandId = requiredText(command, "commandId");
             String commandName = requiredText(command, "command");
+            String traceId = requiredText(command, "traceId");
             boolean supported = QUERY_STATUS.equals(commandName);
             Map<String, Object> reply = new LinkedHashMap<>();
             reply.put("commandId", commandId);
             reply.put("command", commandName);
             reply.put("status", supported ? "SUCCEEDED" : "REFUSED");
             reply.put("occurredAt", Instant.now(clock).toString());
+            reply.put("traceId", traceId);
             reply.put("result", supported
                     ? Map.of("online", true, "bootId", scenario.bootId())
                     : Map.of("reason", "UNSUPPORTED_COMMAND"));

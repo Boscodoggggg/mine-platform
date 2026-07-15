@@ -105,6 +105,8 @@ class RabbitTopologyIT {
                 .contains(
                         MineTopology.TELEMETRY_QUEUE,
                         MineTopology.COMMAND_QUEUE,
+                        MineTopology.COMMAND_STATUS_QUEUE,
+                        MineTopology.COMMAND_TIMEOUT_WAIT_QUEUE,
                         MineTopology.CONFIG_QUEUE,
                         MineTopology.DEAD_LETTER_QUEUE
                 );
@@ -131,11 +133,35 @@ class RabbitTopologyIT {
                                 + MineTopology.TELEMETRY_ROUTING_PATTERN,
                         MineTopology.COMMAND_EXCHANGE + "\t"
                                 + MineTopology.COMMAND_QUEUE + "\t"
-                                + MineTopology.COMMAND_ROUTING_PATTERN,
+                                + MineTopology.COMMAND_DISPATCH_ROUTING_PATTERN,
+                        MineTopology.COMMAND_EXCHANGE + "\t"
+                                + MineTopology.COMMAND_STATUS_QUEUE + "\t"
+                                + MineTopology.COMMAND_STATUS_ROUTING_PATTERN,
+                        MineTopology.COMMAND_EXCHANGE + "\t"
+                                + MineTopology.COMMAND_TIMEOUT_WAIT_QUEUE + "\t"
+                                + "command.timeout.schedule",
                         MineTopology.CONFIG_EXCHANGE + "\t"
                                 + MineTopology.CONFIG_QUEUE + "\t"
                                 + MineTopology.CONFIG_ROUTING_PATTERN
                 );
+
+        String deviceQueues = rabbitmqctl(
+                "list_queues", "-p", MineTopology.DEVICE_VHOST,
+                "name", "durable", "arguments"
+        );
+        assertThat(deviceQueues).contains(
+                MineTopology.DEVICE_UPLINK_QUEUE,
+                MineTopology.DEVICE_COMMAND_ACK_QUEUE
+        );
+        String deviceBindings = rabbitmqctl(
+                "list_bindings", "-p", MineTopology.DEVICE_VHOST,
+                "source_name", "destination_name", "routing_key"
+        );
+        assertThat(deviceBindings).contains(
+                MineTopology.MQTT_EXCHANGE + "\t"
+                        + MineTopology.DEVICE_COMMAND_ACK_QUEUE + "\t"
+                        + MineTopology.DEVICE_COMMAND_ACK_ROUTING_PATTERN
+        );
     }
 
     @Test

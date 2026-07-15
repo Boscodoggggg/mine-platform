@@ -52,6 +52,17 @@ rabbitmqctl -q import_definitions /etc/rabbitmq/definitions.json
 rabbitmqctl -q set_permissions -p /mine-platform "${SEED_USERNAME}" '.*' '.*' '.*'
 rabbitmqctl -q set_permissions -p /mine-device "${SEED_USERNAME}" '.*' '.*' '.*'
 
+legacy_command_messages="$(rabbitmqctl -q list_queues -p /mine-platform name messages \
+  | awk '$1 == "mine.command.q" { print $2 }')"
+if [[ -n "${legacy_command_messages}" ]]; then
+  if [[ "${legacy_command_messages}" != "0" ]]; then
+    echo "旧命令队列 mine.command.q 尚有 ${legacy_command_messages} 条消息，请先导出并重放后再升级" >&2
+    shutdown_broker
+    exit 1
+  fi
+  rabbitmqctl -q delete_queue -p /mine-platform mine.command.q >/dev/null
+fi
+
 gateway_device_password="$(cat /run/secrets/rabbitmq_gateway_device_password)"
 gateway_platform_password="$(cat /run/secrets/rabbitmq_gateway_platform_password)"
 telemetry_password="$(cat /run/secrets/rabbitmq_telemetry_password)"
@@ -63,9 +74,9 @@ upsert_user "mine-telemetry" "${telemetry_password}"
 upsert_user "mine-server-realtime" "${server_realtime_password}"
 upsert_user "mine-server-command" "${server_command_password}"
 rabbitmqctl -q set_permissions -p /mine-device "mine-gateway-device" \
-  '^$' '^$' '^mine\.gateway\.uplink\.q$'
+  '^$' '^amq\.topic$' '^(mine\.gateway\.uplink\.q|mine\.gateway\.command-ack\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-gateway-platform" \
-  '^$' '^mine\.telemetry\.x$' '^$'
+  '^$' '^(mine\.telemetry\.x|mine\.command\.x)$' '^mine\.gateway\.command\.q$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-telemetry" \
   '^$' '^mine\.realtime\.x$' '^mine\.telemetry\.q$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-server-realtime" \
@@ -73,8 +84,8 @@ rabbitmqctl -q set_permissions -p /mine-platform "mine-server-realtime" \
   '^(mine\.realtime\.x|mine\.realtime\.server\.[A-Za-z0-9_-]+\.q)$' \
   '^(mine\.realtime\.x|mine\.realtime\.server\.[A-Za-z0-9_-]+\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-server-command" \
-  '^$' '^mine\.command\.x$' '^$'
-unset gateway_device_password gateway_platform_password telemetry_password server_realtime_password server_command_password
+  '^$' '^mine\.command\.x$' '^mine\.server\.command-status\.q$'
+unset legacy_command_messages gateway_device_password gateway_platform_password telemetry_password server_realtime_password server_command_password
 touch /tmp/mine-rabbitmq-bootstrap-complete
 
 wait "${broker_pid}"

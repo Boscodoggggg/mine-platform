@@ -1,8 +1,12 @@
 package com.bosco.mine.server.modules.command.outbox;
 
 import com.bosco.mine.messaging.topology.MineTopology;
+import com.bosco.mine.server.modules.command.status.CommandStatusConsumer;
+import com.bosco.mine.server.modules.command.status.CommandStatusService;
+import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -18,7 +22,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 装配命令 Outbox 的独立 RabbitMQ 发布账号、确认发布器和事件调度器。
+ * 装配命令 Outbox 的独立 RabbitMQ 账号、确认发布器、事件调度器和状态消费者。
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(CommandOutboxProperties.class)
@@ -140,6 +144,40 @@ public class CommandOutboxConfiguration {
             @Qualifier("commandOutboxExecutor") ExecutorService executor
     ) {
         return new CommandOutboxRecovery(relay, connectionFactory, executor);
+    }
+
+    /**
+     * 创建命令状态消息消费者。
+     *
+     * @param service 命令状态服务
+     * @return 命令状态消费者
+     */
+    @Bean
+    public CommandStatusConsumer commandStatusConsumer(CommandStatusService service) {
+        return new CommandStatusConsumer(service);
+    }
+
+    /**
+     * 创建使用手工确认的命令状态监听容器。
+     *
+     * @param connectionFactory 命令专用 RabbitMQ 连接
+     * @param consumer 命令状态消费者
+     * @param properties 命令消息配置
+     * @return 命令状态监听容器
+     */
+    @Bean(destroyMethod = "destroy")
+    public SimpleMessageListenerContainer commandStatusListenerContainer(
+            @Qualifier("commandOutboxConnectionFactory") CachingConnectionFactory connectionFactory,
+            CommandStatusConsumer consumer,
+            CommandOutboxProperties properties
+    ) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
+        container.setQueueNames(MineTopology.COMMAND_STATUS_QUEUE);
+        container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+        container.setPrefetchCount(properties.resolvedStatusPrefetch());
+        container.setDefaultRequeueRejected(false);
+        container.setMessageListener(consumer);
+        return container;
     }
 
     private String readSecret(java.nio.file.Path path) {

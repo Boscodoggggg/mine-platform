@@ -296,8 +296,8 @@ POST      /api/v1/alarms/{id}/close
 | device.offline | telemetry | server | 设备+离线周期 |
 | alarm.raised | telemetry | server | 规则+设备+活动周期 |
 | alarm.recovered | telemetry | server | alarmId |
-| command.created | server | gateway | commandId |
-| command.status.changed | gateway/server | server/web | commandId+状态+attempt |
+| command.dispatch.requested | server | gateway | eventId，业务侧 commandId |
+| command.status.changed | gateway | server/web | eventId，业务侧 commandId+状态 |
 | config.released | server | gateway/telemetry | releaseId |
 | config.node.status | gateway/telemetry | server | releaseId+nodeId+状态 |
 | operation.completed | telemetry/server | server | operationId |
@@ -554,6 +554,10 @@ UNIQUE(created_by, idempotency_key)
 重复幂等键直接返回原命令，不能再写第二条出站事件。状态转换由后端白名单控制：
 `CREATED -> QUEUED/CANCELLED`、`QUEUED -> SENT/EXPIRED`、`SENT -> DEVICE_RECEIVED/TIMEOUT`、
 `DEVICE_RECEIVED -> SUCCEEDED/REFUSED/FAILED/TIMEOUT`，终态不得回退。
+
+状态事件消费采用 `sys_inbox_event + cmd_instance FOR UPDATE` 的单事务模型，事务提交后才确认 RabbitMQ 消息。
+同一 `eventId` 重投不会重复推进版本；不同事件乱序到达时按业务证据处理：设备终态可从 `QUEUED` 直接补全发送和设备接收
+时间线，迟到的 `SENT` 或 `TIMEOUT` 不能覆盖终态。该机制完全由消息到达触发，不允许新增 Inbox 或命令表定时扫描任务。
 
 ## 12. Timescale 表
 

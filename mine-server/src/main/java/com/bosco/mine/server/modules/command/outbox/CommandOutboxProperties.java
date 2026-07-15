@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
  * @param recoveryLimit 启动或重连单次恢复上限
  * @param retryBaseDelay 重试基础间隔
  * @param retryMaxDelay 重试最大间隔
+ * @param statusPrefetch 命令状态消费者预取数量
  * @param account RabbitMQ 发布账号
  */
 @ConfigurationProperties("mine.command-outbox")
@@ -33,6 +34,7 @@ public record CommandOutboxProperties(
         Integer recoveryLimit,
         Duration retryBaseDelay,
         Duration retryMaxDelay,
+        Integer statusPrefetch,
         Account account
 ) {
     private static final Pattern INSTANCE_PATTERN = Pattern.compile("[A-Za-z0-9_-]{1,64}");
@@ -88,6 +90,11 @@ public record CommandOutboxProperties(
             throw new IllegalArgumentException("重试最大间隔不得小于基础间隔");
         }
         return value;
+    }
+
+    /** @return 命令状态消费者预取数量 */
+    public int resolvedStatusPrefetch() {
+        return positive(statusPrefetch, 50, "命令状态消费者预取数量");
     }
 
     private int positive(Integer value, int fallback, String label) {

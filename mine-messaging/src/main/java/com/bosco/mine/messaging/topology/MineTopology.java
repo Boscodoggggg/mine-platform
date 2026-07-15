@@ -18,6 +18,9 @@ public final class MineTopology {
     /** 设备上行原始报文队列。 */
     public static final String DEVICE_UPLINK_QUEUE = "mine.gateway.uplink.q";
 
+    /** 设备命令业务 ACK 原始报文队列。 */
+    public static final String DEVICE_COMMAND_ACK_QUEUE = "mine.gateway.command-ack.q";
+
     /** 设备侧不可重试原始报文死信交换机。 */
     public static final String DEVICE_DEAD_LETTER_EXCHANGE = "mine.device.dlx";
 
@@ -26,6 +29,9 @@ public final class MineTopology {
 
     /** MQTT 遥测上行主题绑定模式。 */
     public static final String DEVICE_UPLINK_ROUTING_PATTERN = "mine.v1.*.*.up.telemetry";
+
+    /** MQTT 命令业务 ACK 上行主题绑定模式。 */
+    public static final String DEVICE_COMMAND_ACK_ROUTING_PATTERN = "mine.v1.*.*.up.command-ack";
 
     /** 标准化遥测消息交换机。 */
     public static final String TELEMETRY_EXCHANGE = "mine.telemetry.x";
@@ -49,7 +55,13 @@ public final class MineTopology {
     public static final String TELEMETRY_QUEUE = "mine.telemetry.q";
 
     /** 接入服务下行指令消费队列。 */
-    public static final String COMMAND_QUEUE = "mine.command.q";
+    public static final String COMMAND_QUEUE = "mine.gateway.command.q";
+
+    /** 管理服务命令状态消费队列。 */
+    public static final String COMMAND_STATUS_QUEUE = "mine.server.command-status.q";
+
+    /** 命令回复超时等待队列，消息到期后死信到状态路由。 */
+    public static final String COMMAND_TIMEOUT_WAIT_QUEUE = "mine.command.timeout.wait.q";
 
     /** 动态配置消费队列。 */
     public static final String CONFIG_QUEUE = "mine.config.q";
@@ -61,7 +73,10 @@ public final class MineTopology {
     public static final String TELEMETRY_ROUTING_PATTERN = "telemetry.#";
 
     /** 下行指令路由模式。 */
-    public static final String COMMAND_ROUTING_PATTERN = "command.#";
+    public static final String COMMAND_DISPATCH_ROUTING_PATTERN = "command.dispatch.#";
+
+    /** 命令状态路由模式。 */
+    public static final String COMMAND_STATUS_ROUTING_PATTERN = "command.status.#";
 
     /** 配置发布路由模式。 */
     public static final String CONFIG_ROUTING_PATTERN = "config.#";

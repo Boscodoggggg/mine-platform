@@ -6,6 +6,8 @@ import com.bosco.mine.server.modules.command.model.CommandStatus;
 import com.bosco.mine.server.modules.command.outbox.OutboxReadyEvent;
 import com.bosco.mine.server.modules.command.outbox.OutboxRelayRepository;
 import com.bosco.mine.server.modules.command.service.CommandService;
+import com.bosco.mine.messaging.command.CommandStatusPayload;
+import com.bosco.mine.server.modules.command.status.CommandStatusService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,6 +26,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -68,10 +71,14 @@ class CommandOutboxIT {
     @Autowired
     private OutboxRelayRepository outboxRelayRepository;
 
+    @Autowired
+    private CommandStatusService commandStatusService;
+
     @BeforeEach
     void 准备低风险命令测试数据() {
         probe.clear();
         jdbcTemplate.update("DELETE FROM sys_outbox_event");
+        jdbcTemplate.update("DELETE FROM sys_inbox_event WHERE consumer_name = 'mine-server-command-status'");
         jdbcTemplate.update("DELETE FROM cmd_instance");
         jdbcTemplate.update("DELETE FROM dev_device");
         jdbcTemplate.update("DELETE FROM dev_product");
@@ -209,7 +216,78 @@ class CommandOutboxIT {
                 .containsExactly(commandEvent);
         assertThat(outboxRelayRepository.claimById(
                 configEvent, "relay-it", Duration.ofSeconds(30)
-        )).isEmpty();
+                )).isEmpty();
+    }
+
+    @Test
+    void 设备终态先于发送状态到达时应补全时间线并保持终态() {
+        CommandInstance command = createCommand("request-out-of-order");
+        Instant receivedAt = Instant.parse("2026-07-15T08:00:02Z");
+        Instant completedAt = receivedAt.plusSeconds(1);
+        UUID succeededEventId = UUID.fromString("019f64e5-a000-7000-8000-000000000071");
+
+        assertThat(commandStatusService.apply(succeededEventId, new CommandStatusPayload(
+                command.id(), DEVICE_ID, "SUCCEEDED", completedAt, receivedAt,
+                Map.of("online", true), null
+        ))).isTrue();
+        assertThat(commandStatusService.apply(succeededEventId, new CommandStatusPayload(
+                command.id(), DEVICE_ID, "SUCCEEDED", completedAt, receivedAt,
+                Map.of("online", true), null
+        ))).isFalse();
+        assertThat(commandStatusService.apply(
+                UUID.fromString("019f64e5-a000-7000-8000-000000000072"),
+                new CommandStatusPayload(
+                        command.id(), DEVICE_ID, "SENT", completedAt.plusSeconds(1),
+                        null, Map.of(), null
+                )
+        )).isFalse();
+
+        Map<String, Object> row = jdbcTemplate.queryForMap("""
+                SELECT status, sent_at, device_received_at, completed_at,
+                       reply ->> 'online' AS online, version
+                FROM cmd_instance
+                WHERE id = ?
+                """, command.id());
+        assertThat(row.get("status")).isEqualTo("SUCCEEDED");
+        assertThat(((java.sql.Timestamp) row.get("sent_at")).toInstant()).isEqualTo(receivedAt);
+        assertThat(((java.sql.Timestamp) row.get("device_received_at")).toInstant()).isEqualTo(receivedAt);
+        assertThat(((java.sql.Timestamp) row.get("completed_at")).toInstant()).isEqualTo(completedAt);
+        assertThat(row.get("online")).isEqualTo("true");
+        assertThat(((Number) row.get("version")).longValue()).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM sys_inbox_event
+                WHERE consumer_name = 'mine-server-command-status'
+                """, Long.class)).isEqualTo(2L);
+    }
+
+    @Test
+    void 发送后未收到设备回复时应进入超时终态() {
+        CommandInstance command = createCommand("request-timeout");
+        Instant sentAt = Instant.parse("2026-07-15T08:10:00Z");
+        Instant timeoutAt = sentAt.plusSeconds(30);
+
+        assertThat(commandStatusService.apply(
+                UUID.fromString("019f64e5-a000-7000-8000-000000000073"),
+                new CommandStatusPayload(command.id(), DEVICE_ID, "SENT", sentAt, null, Map.of(), null)
+        )).isTrue();
+        assertThat(commandStatusService.apply(
+                UUID.fromString("019f64e5-a000-7000-8000-000000000074"),
+                new CommandStatusPayload(
+                        command.id(), DEVICE_ID, "TIMEOUT", timeoutAt, null,
+                        Map.of(), "DEVICE_ACK_TIMEOUT"
+                )
+        )).isTrue();
+
+        Map<String, Object> row = jdbcTemplate.queryForMap("""
+                SELECT status, sent_at, completed_at, last_error_code, version
+                FROM cmd_instance
+                WHERE id = ?
+                """, command.id());
+        assertThat(row.get("status")).isEqualTo("TIMEOUT");
+        assertThat(((java.sql.Timestamp) row.get("sent_at")).toInstant()).isEqualTo(sentAt);
+        assertThat(((java.sql.Timestamp) row.get("completed_at")).toInstant()).isEqualTo(timeoutAt);
+        assertThat(row.get("last_error_code")).isEqualTo("DEVICE_ACK_TIMEOUT");
+        assertThat(((Number) row.get("version")).longValue()).isEqualTo(3L);
     }
 
     private CommandInstance createCommand(String idempotencyKey) {

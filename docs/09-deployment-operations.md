@@ -168,9 +168,17 @@ Compose profiles：
   `mine.realtime.server.<instanceId>.q`。该队列是 classic、非持久、独占、自动删除队列，用于广播到每个服务实例，
   不能改成多实例共享队列，否则浏览器会随机漏掉实时增量。RabbitMQ 执行 `queue.bind` 会校验交换机 read 与队列
   write 权限，因此该账号的 configure/write/read 正则都必须只覆盖实时交换机和本实例队列命名范围。
-- `mine-server` 使用独立 `mine-server-command` 账号发布命令，只授予 `/mine-platform` 中
-  `mine.command.x` 的写权限，不授予配置权限和队列读权限。每台服务实例必须设置唯一
-  `MINE_COMMAND_OUTBOX_INSTANCE_ID`；启动和 RabbitMQ 重连只做一次有界恢复，运行期间禁止定时扫描 Outbox 表。
+- `mine-server` 使用独立 `mine-server-command` 账号发布命令并消费状态，只授予 `/mine-platform` 中
+  `mine.command.x` 的写权限和 `mine.server.command-status.q` 的读权限，不授予配置权限或其他队列权限。每台服务实例必须设置唯一
+  `MINE_COMMAND_OUTBOX_INSTANCE_ID`；启动和 RabbitMQ 重连只做一次有界恢复，运行期间禁止定时扫描 Outbox 表。状态消费者使用手工
+  ACK，必须监控 `mine.server.command-status.q` 的消费者数、ready/unacked 消息数和死信量；消费者数为零时发布健康告警。
+- `mine-gateway-device` 只允许读取 `mine.gateway.uplink.q`、`mine.gateway.command-ack.q` 并写 `amq.topic`；
+  `mine-gateway-platform` 只允许读取 `mine.gateway.command.q` 并写 `mine.telemetry.x`、`mine.command.x`。
+  三条命令队列分别由设备 ACK、gateway 下发和 server 状态消费者拥有，不能合并成通配队列。
+- `mine.command.timeout.wait.q` 使用单消息 TTL，过期后固定死信到 `command.status.timeout`；它替代命令超时扫表和
+  进程内易丢计时器。必须监控该队列 ready 数、最老消息年龄和死信速率。
+- 从旧拓扑升级时，启动脚本会检查旧 `mine.command.q`。队列为空才自动删除；只要存在消息就中止 RabbitMQ 启动，
+  必须先由运维导出、确认语义并重放到 `mine.gateway.command.q`，禁止为了升级直接清空。
 - WSS 反向代理必须转发 `Upgrade` 和 `Connection` 头。浏览器 25 秒应用层心跳只维护连接，不执行 Inbox、Outbox
   或业务表扫描。
 

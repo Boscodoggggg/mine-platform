@@ -100,6 +100,7 @@ mine:
     recovery-limit: ${MINE_COMMAND_OUTBOX_RECOVERY_LIMIT:500}
     retry-base-delay: ${MINE_COMMAND_OUTBOX_RETRY_BASE_DELAY:PT1S}
     retry-max-delay: ${MINE_COMMAND_OUTBOX_RETRY_MAX_DELAY:PT1M}
+    status-prefetch: ${MINE_COMMAND_STATUS_PREFETCH:50}
     account:
       username: ${MINE_COMMAND_OUTBOX_RABBIT_USERNAME:mine-server-command}
       password-file: ${MINE_COMMAND_OUTBOX_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_command_password}

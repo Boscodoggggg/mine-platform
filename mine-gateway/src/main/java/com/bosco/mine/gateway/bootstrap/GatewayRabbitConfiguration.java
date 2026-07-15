@@ -1,6 +1,12 @@
 package com.bosco.mine.gateway.bootstrap;
 
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.gateway.command.CommandAckConsumer;
+import com.bosco.mine.gateway.command.CommandDispatchConsumer;
+import com.bosco.mine.gateway.command.CommandMessageCodec;
+import com.bosco.mine.gateway.command.ConfirmedCommandStatusPublisher;
+import com.bosco.mine.gateway.command.MqttCommandPublisher;
+import com.bosco.mine.gateway.command.RabbitCommandTimeoutScheduler;
 import com.bosco.mine.gateway.mqtt.ConfirmedTelemetryPublisher;
 import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.normalize.DeviceMessageNormalizer;
@@ -11,6 +17,7 @@ import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
+import org.springframework.amqp.rabbit.listener.api.ChannelAwareMessageListener;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -22,9 +29,10 @@ import java.nio.file.Files;
 import java.time.Clock;
 
 /**
- * 装配 gateway 的设备消费连接和平台发布连接。
+ * 装配 gateway 的设备域连接和平台内部连接。
  *
- * <p>两套连接固定进入不同 vhost 并使用不同最小权限账号，避免设备原始报文入口与平台事件权限混用。</p>
+ * <p>两套连接固定进入不同 vhost 并使用不同最小权限账号。设备域连接负责上行消费和 MQTT 下行，平台连接负责
+ * 命令消费以及遥测、命令状态发布，两个安全域的权限不得混用。</p>
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(GatewayRabbitProperties.class)
@@ -33,14 +41,14 @@ import java.time.Clock;
 public class GatewayRabbitConfiguration {
 
     /**
-     * 创建访问设备 vhost 的只读连接。
+     * 创建访问设备 vhost 的连接，并为 MQTT 命令下行启用发布确认。
      *
      * @param properties gateway RabbitMQ 参数
      * @return 设备消费连接工厂
      */
     @Bean(destroyMethod = "destroy")
     public CachingConnectionFactory deviceConnectionFactory(GatewayRabbitProperties properties) {
-        return connectionFactory(properties, properties.device(), MineTopology.DEVICE_VHOST, false);
+        return connectionFactory(properties, properties.device(), MineTopology.DEVICE_VHOST, true);
     }
 
     /**
@@ -138,6 +146,113 @@ public class GatewayRabbitConfiguration {
     }
 
     /**
+     * 创建命令信封和设备 ACK 解码器。
+     *
+     * @param registry 可信设备身份快照
+     * @param properties gateway RabbitMQ 参数
+     * @return 命令消息编解码器
+     */
+    @Bean
+    public CommandMessageCodec commandMessageCodec(
+            DeviceSessionRegistry registry,
+            GatewayRabbitProperties properties
+    ) {
+        return new CommandMessageCodec(registry, properties.resolvedMaxPayloadBytes());
+    }
+
+    /**
+     * 创建向设备 MQTT 主题发布命令的确认发布器。
+     *
+     * @param deviceConnectionFactory 设备 vhost 连接
+     * @param registry 可信设备身份快照
+     * @param properties gateway RabbitMQ 参数
+     * @return MQTT 命令发布器
+     */
+    @Bean
+    public MqttCommandPublisher mqttCommandPublisher(
+            CachingConnectionFactory deviceConnectionFactory,
+            DeviceSessionRegistry registry,
+            GatewayRabbitProperties properties
+    ) {
+        return new MqttCommandPublisher(
+                new RabbitTemplate(deviceConnectionFactory), registry,
+                Clock.systemUTC(), properties.resolvedConfirmTimeoutMillis()
+        );
+    }
+
+    /**
+     * 创建命令状态确认发布器。
+     *
+     * @param platformConnectionFactory 平台 vhost 连接
+     * @param properties gateway RabbitMQ 参数
+     * @return 命令状态发布器
+     */
+    @Bean
+    public ConfirmedCommandStatusPublisher confirmedCommandStatusPublisher(
+            CachingConnectionFactory platformConnectionFactory,
+            GatewayRabbitProperties properties
+    ) {
+        return new ConfirmedCommandStatusPublisher(
+                new RabbitTemplate(platformConnectionFactory), IdGenerator.timeOrdered(),
+                Clock.systemUTC(), properties.resolvedConfirmTimeoutMillis()
+        );
+    }
+
+    /**
+     * 创建基于 RabbitMQ TTL 的一次性命令超时调度器。
+     *
+     * @param platformConnectionFactory 平台 vhost 连接
+     * @param properties gateway RabbitMQ 参数
+     * @return 命令超时调度器
+     */
+    @Bean
+    public RabbitCommandTimeoutScheduler rabbitCommandTimeoutScheduler(
+            CachingConnectionFactory platformConnectionFactory,
+            GatewayRabbitProperties properties
+    ) {
+        return new RabbitCommandTimeoutScheduler(
+                new RabbitTemplate(platformConnectionFactory), IdGenerator.timeOrdered(),
+                Clock.systemUTC(), properties.resolvedConfirmTimeoutMillis()
+        );
+    }
+
+    /**
+     * 创建平台命令消费处理器。
+     *
+     * @param codec 命令信封解码器
+     * @param mqttPublisher MQTT 下行发布器
+     * @param statusPublisher 状态事件发布器
+     * @param timeoutScheduler 命令回复超时调度器
+     * @return 命令消费处理器
+     */
+    @Bean
+    public CommandDispatchConsumer commandDispatchConsumer(
+            CommandMessageCodec codec,
+            MqttCommandPublisher mqttPublisher,
+            ConfirmedCommandStatusPublisher statusPublisher,
+            RabbitCommandTimeoutScheduler timeoutScheduler
+    ) {
+        return new CommandDispatchConsumer(
+                codec, mqttPublisher, statusPublisher, timeoutScheduler, Clock.systemUTC()
+        );
+    }
+
+    /**
+     * 创建设备命令 ACK 消费处理器。
+     *
+     * @param codec ACK 解码器
+     * @param statusPublisher 状态事件发布器
+     * @return ACK 消费处理器
+     */
+    @Bean
+    public CommandAckConsumer commandAckConsumer(
+            CommandMessageCodec codec,
+            ConfirmedCommandStatusPublisher statusPublisher
+    ) {
+        return new CommandAckConsumer(codec, statusPublisher);
+    }
+
+    /**
      * 创建手工确认的设备上行监听容器。
      *
      * @param deviceConnectionFactory 设备 vhost 连接
@@ -155,6 +270,64 @@ public class GatewayRabbitConfiguration {
     ) {
         SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(deviceConnectionFactory);
         container.setQueueNames(MineTopology.DEVICE_UPLINK_QUEUE);
+        container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+        container.setPrefetchCount(positive(properties.resolvedPrefetch(), "prefetch"));
+        container.setDefaultRequeueRejected(false);
+        container.setAutoStartup(properties.resolvedAutoStartup());
+        container.setMessageListener(consumer);
+        return container;
+    }
+
+    /**
+     * 创建手工确认的设备命令 ACK 监听容器。
+     *
+     * @param deviceConnectionFactory 设备 vhost 连接
+     * @param consumer ACK 处理器
+     * @param properties gateway RabbitMQ 参数
+     * @param snapshotLoader 身份快照加载器
+     * @return ACK 监听容器
+     */
+    @Bean(destroyMethod = "destroy")
+    public SimpleMessageListenerContainer commandAckListenerContainer(
+            CachingConnectionFactory deviceConnectionFactory,
+            CommandAckConsumer consumer,
+            GatewayRabbitProperties properties,
+            DeviceIdentitySnapshotLoader snapshotLoader
+    ) {
+        return listenerContainer(
+                deviceConnectionFactory, MineTopology.DEVICE_COMMAND_ACK_QUEUE,
+                consumer, properties
+        );
+    }
+
+    /**
+     * 创建手工确认的平台命令监听容器。
+     *
+     * @param platformConnectionFactory 平台 vhost 连接
+     * @param consumer 命令处理器
+     * @param properties gateway RabbitMQ 参数
+     * @return 命令监听容器
+     */
+    @Bean(destroyMethod = "destroy")
+    public SimpleMessageListenerContainer commandDispatchListenerContainer(
+            CachingConnectionFactory platformConnectionFactory,
+            CommandDispatchConsumer consumer,
+            GatewayRabbitProperties properties
+    ) {
+        return listenerContainer(
+                platformConnectionFactory, MineTopology.COMMAND_QUEUE,
+                consumer, properties
+        );
+    }
+
+    private SimpleMessageListenerContainer listenerContainer(
+            CachingConnectionFactory connectionFactory,
+            String queue,
+            ChannelAwareMessageListener consumer,
+            GatewayRabbitProperties properties
+    ) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(connectionFactory);
+        container.setQueueNames(queue);
         container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
         container.setPrefetchCount(positive(properties.resolvedPrefetch(), "prefetch"));
         container.setDefaultRequeueRejected(false);
