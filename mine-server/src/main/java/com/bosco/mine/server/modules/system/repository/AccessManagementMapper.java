@@ -48,6 +48,15 @@ public interface AccessManagementMapper {
     );
 
     /**
+     * 判断登录名是否已存在。
+     *
+     * @param username 登录名
+     * @return 是否已存在
+     */
+    @Select("SELECT EXISTS (SELECT 1 FROM sys_user WHERE username = #{username})")
+    boolean usernameExists(@Param("username") String username);
+
+    /**
      * 按条件统计用户。
      *
      * @param keyword 登录名或展示名称关键词
@@ -149,6 +158,29 @@ public interface AccessManagementMapper {
             @Param("displayName") String displayName,
             @Param("status") String status,
             @Param("expectedVersion") long expectedVersion,
+            @Param("updatedBy") UUID updatedBy
+    );
+
+    /**
+     * 设置临时密码并要求用户下次登录修改密码。
+     *
+     * @param userId       用户标识
+     * @param passwordHash 临时密码散列
+     * @param updatedBy    更新人标识
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE sys_user
+            SET password_hash = #{passwordHash},
+                password_change_required = TRUE,
+                updated_at = CURRENT_TIMESTAMP,
+                updated_by = #{updatedBy},
+                version = version + 1
+            WHERE id = #{userId}
+            """)
+    int resetUserPassword(
+            @Param("userId") UUID userId,
+            @Param("passwordHash") String passwordHash,
             @Param("updatedBy") UUID updatedBy
     );
 
@@ -332,6 +364,25 @@ public interface AccessManagementMapper {
     long countUsersByRoleId(@Param("roleId") UUID roleId);
 
     /**
+     * 统计给定角色标识中真实存在且启用的数量。
+     *
+     * @param roleIds 角色标识集合
+     * @return 启用角色数量
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*)
+            FROM sys_role
+            WHERE status = 'ENABLED'
+              AND id IN
+            <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+                #{roleId,typeHandler=com.bosco.mine.server.modules.system.repository.PostgreSqlUuidTypeHandler}
+            </foreach>
+            </script>
+            """)
+    long countEnabledRoleIds(@Param("roleIds") List<UUID> roleIds);
+
+    /**
      * 删除用户现有的全部角色关联。
      *
      * @param userId 用户标识
@@ -419,6 +470,53 @@ public interface AccessManagementMapper {
      */
     @Delete("DELETE FROM sys_role_menu WHERE role_id = #{roleId}")
     int deleteRoleMenus(@Param("roleId") UUID roleId);
+
+    /**
+     * 追加成功的访问管理操作审计记录。
+     *
+     * @param id               日志标识
+     * @param operatorId       操作者标识
+     * @param usernameSnapshot 操作者登录名快照
+     * @param action           操作类型
+     * @param permission       所需权限码
+     * @param resourceType     资源类型
+     * @param resourceId       资源标识
+     * @param requestId        请求标识
+     * @param traceId          链路标识
+     * @param clientIp         客户端地址
+     * @param userAgent        客户端标识
+     * @param beforeSummary    操作前脱敏摘要 JSON
+     * @param afterSummary     操作后脱敏摘要 JSON
+     * @return 影响行数
+     */
+    @Insert("""
+            INSERT INTO sys_operation_log (
+                id, operator_id, username_snapshot, module, action, permission,
+                resource_type, resource_id, request_id, trace_id,
+                client_ip, user_agent, result, duration_ms,
+                before_summary, after_summary
+            ) VALUES (
+                #{id}, #{operatorId}, #{usernameSnapshot}, 'SYSTEM_ACCESS', #{action}, #{permission},
+                #{resourceType}, #{resourceId}, #{requestId}, #{traceId},
+                CAST(#{clientIp} AS inet), #{userAgent}, 'SUCCESS', 0,
+                CAST(#{beforeSummary} AS jsonb), CAST(#{afterSummary} AS jsonb)
+            )
+            """)
+    int insertOperationLog(
+            @Param("id") UUID id,
+            @Param("operatorId") UUID operatorId,
+            @Param("usernameSnapshot") String usernameSnapshot,
+            @Param("action") String action,
+            @Param("permission") String permission,
+            @Param("resourceType") String resourceType,
+            @Param("resourceId") String resourceId,
+            @Param("requestId") String requestId,
+            @Param("traceId") String traceId,
+            @Param("clientIp") String clientIp,
+            @Param("userAgent") String userAgent,
+            @Param("beforeSummary") String beforeSummary,
+            @Param("afterSummary") String afterSummary
+    );
 
     /**
      * 用户管理列表投影。
