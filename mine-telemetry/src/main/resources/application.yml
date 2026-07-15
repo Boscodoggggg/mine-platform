@@ -9,6 +9,9 @@ server:
   shutdown: graceful
 
 management:
+  health:
+    rabbit:
+      enabled: ${MINE_TELEMETRY_RABBIT_ENABLED:false}
   server:
     port: ${MINE_TELEMETRY_MANAGEMENT_PORT:18082}
     address: ${MINE_MANAGEMENT_ADDRESS:127.0.0.1}
@@ -29,3 +32,17 @@ info:
     name: ${spring.application.name}
     description: 矿山遥测处理服务
     version: ${MINE_APP_VERSION:0.1.0-SNAPSHOT}
+
+mine:
+  telemetry:
+    rabbit:
+      enabled: ${MINE_TELEMETRY_RABBIT_ENABLED:false}
+      auto-startup: ${MINE_TELEMETRY_RABBIT_AUTO_STARTUP:true}
+      host: ${MINE_TELEMETRY_RABBIT_HOST:rabbitmq}
+      port: ${MINE_TELEMETRY_RABBIT_PORT:5672}
+      prefetch: ${MINE_TELEMETRY_RABBIT_PREFETCH:200}
+      batch-size: ${MINE_TELEMETRY_RABBIT_BATCH_SIZE:100}
+      receive-timeout-millis: ${MINE_TELEMETRY_RABBIT_RECEIVE_TIMEOUT_MILLIS:1000}
+      account:
+        username: ${MINE_TELEMETRY_RABBIT_USERNAME:mine-telemetry}
+        password-file: ${MINE_TELEMETRY_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_telemetry_password}

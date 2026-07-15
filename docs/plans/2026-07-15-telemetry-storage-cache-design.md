@@ -30,6 +30,7 @@ Redis 最新值使用设备级 Hash，属性是 Hash field，避免把全矿区�
 - 缓存击穿：Task 9 的 Redis miss 回源按 `deviceId + propertyId` 做 single-flight；一个请求查询 TimescaleDB，其余等待有限时间或返回允许的旧值。
 - 缓存雪崩：活动设备 latest Hash 不设置统一固定 TTL，由设备归档流程清理；需要 TTL 的配置、空值和会话加入随机抖动。Redis 恢复后的回源重建必须限并发、分批执行。
 - 热点保护：设备级 Hash 拆分 key；批量查询设上限；禁止 `KEYS *`、全矿区一次性回填和无界本地缓存。
+- 容量保护：Redis 必须设置低于容器内存限制的 `maxmemory` 并采用 `noeviction`，禁止静默驱逐 boot/sequence 顺序状态；容量耗尽时通过写失败让 RabbitMQ 背压，并同时告警内存和队列积压。
 - 降级边界：Redis 不是真相源。Redis 故障期间历史仍可写入，但消息保持未确认，待 Redis 恢复后重投；后续可增加“仅历史降级”开关，但必须显式告警并记录待重建范围。
 
 ## 5. 设备标识与部署

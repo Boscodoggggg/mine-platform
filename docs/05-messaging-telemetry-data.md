@@ -41,6 +41,8 @@ flowchart TB
 
 gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能读取设备上行队列，
 `mine-gateway-platform` 只能写内部遥测交换机。不得让一个账号跨两个 vhost 获得读写全权限。
+`mine-telemetry` 使用第三个服务账号，只能读取 `/mine-platform` 中的 `mine.telemetry.q`，不能声明队列、
+发布消息或读取其他业务队列。
 
 设备 topic 中的 `clientId` 是平台签发的凭据身份，不等于厂商 `deviceCode`。gateway 通过可信身份快照完成
 `productKey + clientId → deviceId` 映射，并校验报文自报的 `productKey/deviceCode`。未知身份、身份冒用、
@@ -50,6 +52,15 @@ gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能�
 阶段 1 使用 `deploy/config/gateway/device-identities.json` 作为启动和现场兜底快照，默认每 5 秒原子热刷新，
 文件更新失败时保留上一有效版本。后续前台“发布配置”通过配置事件调用同一注册表替换入口，不能要求重启 gateway；
 快照文件不作为最终配置主数据源。
+
+`mine-telemetry` 对 RabbitMQ 采用至少一次投递和手工确认：先用 Redis Lua 原子更新实时最新值，再在
+TimescaleDB 单事务中写入 Inbox 幂等记录和数值历史，二者成功后才 ACK。Redis 成功而数据库失败时消息会
+重新入队；重投时 Redis 排序游标拒绝重复或更旧值，数据库 Inbox 继续完成历史写入。
+
+实时最新值使用设备级 Redis Hash，不设置统一 TTL，防止活动设备键同时过期形成缓存雪崩。进程内一级缓存
+不保存实时遥测，只预留给已发布的物模型、协议、字段映射与策略版本；实现时必须同时具备有界容量、带随机
+抖动的短 TTL、发布事件主动失效和按 key 的 single-flight 回源。不存在的设备或属性先做权限与物模型校验，
+必要时使用短 TTL 空值缓存，禁止无界回源 TimescaleDB。
 
 ## 3. 内部交换机与队列
 

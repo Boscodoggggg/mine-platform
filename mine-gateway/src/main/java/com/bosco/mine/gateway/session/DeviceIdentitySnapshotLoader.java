@@ -56,6 +56,7 @@ public final class DeviceIdentitySnapshotLoader {
                     text(device, "productKey"),
                     text(device, "clientId"),
                     text(device, "deviceId"),
+                    text(device, "deviceCode"),
                     text(device, "tenantScope"),
                     text(device, "protocolVersion")
             ));

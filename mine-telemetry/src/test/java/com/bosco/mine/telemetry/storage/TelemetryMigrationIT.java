@@ -60,23 +60,26 @@ class TelemetryMigrationIT {
                 SELECT tablename || ':' || indexname
                 FROM pg_indexes
                 WHERE schemaname = 'public'
-                  AND tablename IN ('telemetry_numeric', 'location_point')
+                  AND tablename IN ('telemetry_numeric', 'location_point', 'telemetry_inbox')
                 ORDER BY tablename, indexname
                 """))
                 .contains(
                         "location_point:idx_location_device_time",
                         "location_point:idx_location_tag_time",
                         "location_point:uq_location_event_time",
+                        "telemetry_inbox:idx_ti_processed_at",
+                        "telemetry_inbox:pk_telemetry_inbox",
+                        "telemetry_inbox:uq_ti_business_key",
                         "telemetry_numeric:idx_tn_device_property_time",
                         "telemetry_numeric:idx_tn_product_property_time",
                         "telemetry_numeric:uq_tn_event_property_time"
                 );
         assertThat(queryStrings("""
                 SELECT COALESCE(obj_description(table_name::regclass, 'pg_class'), '')
-                FROM unnest(ARRAY['telemetry_numeric', 'location_point']) AS table_name
+                FROM unnest(ARRAY['telemetry_numeric', 'location_point', 'telemetry_inbox']) AS table_name
                 ORDER BY table_name
                 """))
-                .hasSize(2)
+                .hasSize(3)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(queryStrings("""
                 SELECT COALESCE(col_description(table_class.oid, attribute.attnum), '')
@@ -84,12 +87,12 @@ class TelemetryMigrationIT {
                 JOIN pg_namespace namespace ON namespace.oid = table_class.relnamespace
                 JOIN pg_attribute attribute ON attribute.attrelid = table_class.oid
                 WHERE namespace.nspname = 'public'
-                  AND table_class.relname IN ('telemetry_numeric', 'location_point')
+                  AND table_class.relname IN ('telemetry_numeric', 'location_point', 'telemetry_inbox')
                   AND attribute.attnum > 0
                   AND NOT attribute.attisdropped
                 ORDER BY table_class.relname, attribute.attnum
                 """))
-                .hasSize(24)
+                .hasSize(32)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
 
         MigrateResult repeated = flyway.migrate();
@@ -99,10 +102,10 @@ class TelemetryMigrationIT {
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
-                  AND table_name IN ('telemetry_numeric', 'location_point')
+                  AND table_name IN ('telemetry_numeric', 'location_point', 'telemetry_inbox')
                 ORDER BY table_name
                 """))
-                .containsExactly("location_point", "telemetry_numeric");
+                .containsExactly("location_point", "telemetry_inbox", "telemetry_numeric");
     }
 
     /**

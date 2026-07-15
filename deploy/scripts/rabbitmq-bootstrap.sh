@@ -54,13 +54,17 @@ rabbitmqctl -q set_permissions -p /mine-device "${SEED_USERNAME}" '.*' '.*' '.*'
 
 gateway_device_password="$(cat /run/secrets/rabbitmq_gateway_device_password)"
 gateway_platform_password="$(cat /run/secrets/rabbitmq_gateway_platform_password)"
+telemetry_password="$(cat /run/secrets/rabbitmq_telemetry_password)"
 upsert_user "mine-gateway-device" "${gateway_device_password}"
 upsert_user "mine-gateway-platform" "${gateway_platform_password}"
+upsert_user "mine-telemetry" "${telemetry_password}"
 rabbitmqctl -q set_permissions -p /mine-device "mine-gateway-device" \
   '^$' '^$' '^mine\.gateway\.uplink\.q$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-gateway-platform" \
   '^$' '^mine\.telemetry\.x$' '^$'
-unset gateway_device_password gateway_platform_password
+rabbitmqctl -q set_permissions -p /mine-platform "mine-telemetry" \
+  '^$' '^$' '^mine\.telemetry\.q$'
+unset gateway_device_password gateway_platform_password telemetry_password
 touch /tmp/mine-rabbitmq-bootstrap-complete
 
 wait "${broker_pid}"

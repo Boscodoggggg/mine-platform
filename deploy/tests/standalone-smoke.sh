@@ -55,6 +55,10 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
 "${compose[@]}" exec -T rabbitmq sh -ec \
   'rabbitmqctl -q list_user_permissions "$(cat /run/secrets/rabbitmq_admin_username)"' \
   | grep -q '^/mine-platform'
+"${compose[@]}" exec -T rabbitmq sh -ec \
+  'rabbitmqctl -q authenticate_user mine-telemetry "$(cat /run/secrets/rabbitmq_telemetry_password)"'
+"${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-telemetry \
+  | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\$[[:space:]]+\^mine\\\.telemetry\\\.q\$$'
 "${compose[@]}" exec -T redis sh -ec \
   'redis-cli --no-auth-warning -a "$(cat /run/secrets/redis_password)" ping' | grep -q PONG
 

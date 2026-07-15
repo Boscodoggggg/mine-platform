@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
@@ -63,6 +64,7 @@ public final class DeviceSessionRegistry {
      * @param productKey 产品标识
      * @param clientId MQTT 用户名及客户端标识
      * @param deviceId 平台内部使用的业务设备标识
+     * @param deviceCode 厂商报文和矿区台账使用的设备自然编码
      * @param tenantScope 矿区隔离范围
      * @param protocolVersion 当前解析协议版本
      */
@@ -70,6 +72,7 @@ public final class DeviceSessionRegistry {
             String productKey,
             String clientId,
             String deviceId,
+            String deviceCode,
             String tenantScope,
             String protocolVersion
     ) {
@@ -79,7 +82,8 @@ public final class DeviceSessionRegistry {
         public DeviceIdentity {
             productKey = requireTopicSegment(productKey, "productKey");
             clientId = requireTopicSegment(clientId, "clientId");
-            deviceId = requireText(deviceId, "deviceId");
+            deviceId = requireUuid(deviceId);
+            deviceCode = requireText(deviceCode, "deviceCode");
             tenantScope = requireText(tenantScope, "tenantScope");
             protocolVersion = requireText(protocolVersion, "protocolVersion");
         }
@@ -97,5 +101,13 @@ public final class DeviceSessionRegistry {
             throw new IllegalArgumentException(field + " 不能为空");
         }
         return value;
+    }
+
+    private static String requireUuid(String value) {
+        try {
+            return UUID.fromString(requireText(value, "deviceId")).toString();
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("deviceId 必须是 UUID", exception);
+        }
     }
 }

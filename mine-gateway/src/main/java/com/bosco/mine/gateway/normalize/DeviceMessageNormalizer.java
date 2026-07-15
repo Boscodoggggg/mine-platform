@@ -75,7 +75,7 @@ public final class DeviceMessageNormalizer implements DeviceMessageConsumer.Norm
                 .orElseThrow(() -> new InvalidDeviceMessageException("MQTT 客户端身份未登记"));
         JsonNode root = readRoot(body);
         requireEqual(text(root, "productKey"), identity.productKey(), "productKey 与凭据身份不一致");
-        requireEqual(text(root, "deviceCode"), identity.deviceId(), "deviceCode 与可信设备映射不一致");
+        requireEqual(text(root, "deviceCode"), identity.deviceCode(), "deviceCode 与可信设备映射不一致");
 
         Instant now = Instant.now(clock);
         Instant occurredAt = instant(root, "occurredAt");

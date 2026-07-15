@@ -23,7 +23,7 @@ unset MINE_SIMULATOR_PASSWORD
 
 不得把密码写入 YAML、Git、命令行参数或 shell 历史。
 
-把平台签发响应中的 `username` 和业务设备编码加入
+把平台签发响应中的内部设备 UUID、`username` 和业务设备编码加入
 `deploy/config/gateway/device-identities.json`。gateway 默认 5 秒内热加载，无需重启：
 
 ~~~json
@@ -33,7 +33,8 @@ unset MINE_SIMULATOR_PASSWORD
     {
       "productKey": "haul-truck",
       "clientId": "device-平台签发的标识",
-      "deviceId": "simulator-001",
+      "deviceId": "019f63e2-071f-706a-bd12-4dad7150e75d",
+      "deviceCode": "simulator-001",
       "tenantScope": "mine-site-001",
       "protocolVersion": "mqtt-json-v1"
     }

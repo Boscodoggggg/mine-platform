@@ -41,6 +41,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DeviceMessageConsumerIT {
 
     private static final String DEVICE_CLIENT_ID = "device-credential-001";
+    private static final String DEVICE_ID = "019f63e2-071f-706a-bd12-4dad7150e75d";
     private static final String DEVICE_PASSWORD = "device-password-001";
     private static final String DEVICE_CONSUMER = "gateway-device-consumer";
     private static final String DEVICE_CONSUMER_PASSWORD = "gateway-device-password";
@@ -119,6 +120,7 @@ class DeviceMessageConsumerIT {
         registry.replace(List.of(new DeviceSessionRegistry.DeviceIdentity(
                 "haul-truck",
                 DEVICE_CLIENT_ID,
+                DEVICE_ID,
                 "simulator-001",
                 "mine-site-001",
                 "mqtt-json-v1"
@@ -173,7 +175,7 @@ class DeviceMessageConsumerIT {
         assertThat(json.get("eventId").asString()).isEqualTo(json.get("payload").get("messageId").asString());
         assertThat(json.get("payload").get("messageId").asString())
                 .satisfies(value -> assertThat(java.util.UUID.fromString(value).version()).isEqualTo(7));
-        assertThat(json.get("payload").get("deviceId").asString()).isEqualTo("simulator-001");
+        assertThat(json.get("payload").get("deviceId").asString()).isEqualTo(DEVICE_ID);
         assertThat(json.get("payload").get("properties").get("engine.rpm").asInt()).isEqualTo(1280);
     }
 

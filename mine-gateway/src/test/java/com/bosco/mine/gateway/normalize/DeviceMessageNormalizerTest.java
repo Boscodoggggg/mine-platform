@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 class DeviceMessageNormalizerTest {
 
+    private static final String DEVICE_ID = "019f63e2-071f-706a-bd12-4dad7150e75d";
     private static final String ROUTING_KEY =
             "mine.v1.haul-truck.device-credential-001.up.telemetry";
     private static final Clock CLOCK = Clock.fixed(
@@ -35,6 +36,7 @@ class DeviceMessageNormalizerTest {
         registry.replace(List.of(new DeviceSessionRegistry.DeviceIdentity(
                 "haul-truck",
                 "device-credential-001",
+                DEVICE_ID,
                 "simulator-001",
                 "mine-site-001",
                 "mqtt-json-v1"
@@ -57,10 +59,10 @@ class DeviceMessageNormalizerTest {
         assertThat(envelope.eventId().version()).isEqualTo(7);
         assertThat(envelope.eventId()).isEqualTo(envelope.payload().messageId());
         assertThat(envelope.eventType().value()).isEqualTo("telemetry.normalized");
-        assertThat(envelope.partitionKey()).isEqualTo("simulator-001");
+        assertThat(envelope.partitionKey()).isEqualTo(DEVICE_ID);
         assertThat(envelope.tenantScope()).isEqualTo("mine-site-001");
         assertThat(envelope.publishedAt()).isEqualTo(Instant.parse("2026-07-15T02:00:00Z"));
-        assertThat(envelope.payload().deviceId()).isEqualTo("simulator-001");
+        assertThat(envelope.payload().deviceId()).isEqualTo(DEVICE_ID);
         assertThat(envelope.payload().productKey()).isEqualTo("haul-truck");
         assertThat(envelope.payload().receivedAt()).isEqualTo(Instant.parse("2026-07-15T02:00:00Z"));
         assertThat(envelope.payload().occurredAt()).isEqualTo(Instant.parse("2026-07-15T01:59:58Z"));

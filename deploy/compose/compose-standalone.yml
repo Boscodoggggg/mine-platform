@@ -156,21 +156,31 @@ services:
       - -ec
       - |
         export SPRING_DATASOURCE_PASSWORD="$$(cat /run/secrets/timescale_password)"
+        export SPRING_DATA_REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"
         exec java $${JAVA_OPTS:-} -jar /opt/mine/app.jar
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
       SPRING_DATASOURCE_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
       SPRING_DATASOURCE_USERNAME: ${TIMESCALE_USER:-mine_ts}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      MINE_TELEMETRY_RABBIT_ENABLED: "true"
+      MINE_TELEMETRY_RABBIT_HOST: rabbitmq
+      MINE_TELEMETRY_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_telemetry_password
       MINE_MANAGEMENT_ADDRESS: 0.0.0.0
     volumes:
       - ../../mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
     secrets:
       - timescale_password
+      - redis_password
+      - rabbitmq_telemetry_password
     depends_on:
       rabbitmq:
         condition: service_healthy
       timescale:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - app
@@ -215,6 +225,7 @@ services:
       - rabbitmq_admin_password
       - rabbitmq_gateway_device_password
       - rabbitmq_gateway_platform_password
+      - rabbitmq_telemetry_password
       - source: tls_certificate
         target: tls_certificate
       - source: tls_private_key
@@ -306,7 +317,13 @@ services:
     command:
       - /bin/sh
       - -ec
-      - exec redis-server --appendonly yes --requirepass "$$(cat /run/secrets/redis_password)"
+      - >-
+        exec redis-server --appendonly yes
+        --requirepass "$$(cat /run/secrets/redis_password)"
+        --maxmemory "$${MINE_REDIS_MAXMEMORY}"
+        --maxmemory-policy noeviction
+    environment:
+      MINE_REDIS_MAXMEMORY: ${MINE_REDIS_MAXMEMORY:-384mb}
     volumes:
       - redis_data:/data
     secrets:
@@ -595,6 +612,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_gateway_device_password
   rabbitmq_gateway_platform_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_gateway_platform_password
+  rabbitmq_telemetry_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_telemetry_password
   mine_super_admin_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/mine_super_admin_password
   grafana_admin_password:
