@@ -1,84 +1,98 @@
 # Phase 0 工程底座验收报告
 
-> 验收日期：2026-07-14
+> 验收日期：2026-07-15
 >
 > 验收分支：`feat/phase-0-foundation`
 >
-> 验收范围：`docs/plans/2026-07-14-phase-0-foundation.md` 的 Task 1～14
+> 验收范围：工程骨架、认证授权、管理端底座、单机部署、可观测性与供应链门禁
 >
-> 当前结论：**待复验，不允许标记为完整通过**
+> 当前结论：**Phase 0 工程基线通过；尚未达到矿区现场生产放行条件**
 
 ## 1. 结论摘要
 
-Phase 0 的后端模块骨架、认证与权限加载、RabbitMQ 双 vhost、三个可运行服务、Vue 3 管理端底座、单机 Compose、基础可观测性、CI 和 SBOM 已完成。
+Phase 0 已完成后端九模块工程、Sa-Token 认证、数据库动态权限、RabbitMQ 双 vhost、三个可运行服务、Vue 3 管理端、用户与角色授权闭环、单机 Docker Compose、基础可观测性、CI、SBOM 和许可证门禁。
 
-单机环境已在保留数据卷的情况下使用 `--pull never` 完成离线重启，核心服务、HTTPS、MQTTS、PostgreSQL、TimescaleDB、Redis、RabbitMQ、Prometheus、Grafana、Loki 和 Alloy 均通过自动验收。
+2026-07-15 执行全仓质量脚本 `bash scripts/verify.sh` 返回 0。此前登录页测试与页面不一致的问题已经修复；用户、角色和只读菜单树的管理 API、管理页面、权限校验、操作审计和集成测试均已落地。
 
-当前仍有两个放行项未闭环：
-
-1. 未提交的登录页改动与测试不一致，导致全仓门禁有 1 个前端用例失败。
-2. 当前实现包含五表 RBAC、Sa-Token 权限加载和动态菜单契约，但没有角色/用户/菜单授权的管理端 CRUD API 与页面，因此原计划中的“创建角色并重新授权”无法通过产品界面手工验收。
+现有单机 Compose 环境在保留数据卷的情况下加载了最新后端 JAR 和前端产物。`mine-server` 与 `nginx` 重启后恢复健康，核心基础设施冒烟通过。由于验收过程没有接触现场保管的管理员新密码，需要管理员凭据的业务接口冒烟保持可选，未把密码写入脚本、仓库或执行日志。
 
 ## 2. 自动化验收结果
 
 | 验收项 | 命令或方式 | 结果 | 说明 |
 |---|---|---:|---|
-| 后端单元、集成和架构测试 | `./mvnw -B -ntp verify` | 通过 | 9 个 Maven reactor 模块全部成功，RabbitMQ/PostgreSQL/Redis Testcontainers 集成测试通过 |
-| 前端类型检查 | `pnpm --dir mine-web typecheck` | 通过 | 无 TypeScript/Vue 类型错误 |
-| 前端规范检查 | `pnpm --dir mine-web lint:check` | 通过 | oxlint、ESLint 均为 0 warning / 0 error |
-| 前端单元测试 | `pnpm --dir mine-web test` | **失败** | 10 个用例中 9 个通过；登录页测试期待 `.mine-scene-asset`，当前未提交页面不存在该元素 |
-| 前端生产构建 | `pnpm --dir mine-web build` | 通过 | Vite production build 成功 |
-| GitHub Actions 语法 | `actionlint v1.7.12` | 通过 | `.github/workflows/ci.yml` 无错误 |
-| Compose 配置 | `docker compose --profile observability ... config --quiet` | 通过 | 核心和可观测 profile 均可解析 |
-| 核心服务冒烟 | `deploy/scripts/health-check.sh` | 通过 | HTTPS、MQTTS、数据库、TimescaleDB 扩展、RabbitMQ、Redis 均正常 |
-| 可观测性冒烟 | `deploy/tests/observability-smoke.sh` | 通过 | 6 个 Prometheus target、Grafana dashboard、Loki traceId 日志反查均正常 |
-| 离线重启与持久化 | `down` 后以 `up -d --pull never` 重启 | 通过 | 未重新拉取镜像，保留数据卷后服务和初始管理员仍可用 |
-| 初始管理员登录 | HTTPS `/api/v1/auth/login`、`/me` | 通过 | 登录和当前用户接口返回 200，初始密码强制修改标记为 `true` |
-| 首次改密边界 | 改密前访问 `/api/v1/auth/menus` | 通过 | 返回 403 / `AUTH-403-003`，未改初始密码不能进入业务菜单 |
-| SBOM 和许可证 | `bash scripts/generate-sbom.sh` | 通过 | 生成 CycloneDX 1.6；后端 152、前端 941 个组件，未发现 AGPL、SSPL、Commons Clause |
+| 全仓质量门禁 | `bash scripts/verify.sh` | 通过 | 后端、前端、部署配置、SBOM 与许可证检查全部返回成功 |
+| 后端单元、集成和架构测试 | `./mvnw -B -ntp verify` | 通过 | 9 个 Maven reactor 模块全部成功；`mine-server` 36 个单元测试和 23 个集成测试通过 |
+| 数据访问和权限闭环 | Testcontainers PostgreSQL、Redis、RabbitMQ | 通过 | Flyway 迁移、实时权限、用户角色分配、角色菜单授权、乐观锁、超级管理员保护和审计通过 |
+| 前端类型与规范 | `typecheck`、`lint:check` | 通过 | vue-tsc、oxlint、ESLint 无错误，oxlint 为 0 warning / 0 error |
+| 前端单元测试 | `vitest run` | 通过 | 6 个测试文件、24 个测试全部通过 |
+| 前端生产构建 | `vite build --mode prod` | 通过 | 管理端生产构建成功 |
+| Shell 与 Compose 配置 | `bash -n`、`docker compose ... config --quiet` | 通过 | 单机核心与可观测 profile 可解析 |
+| Prometheus、Loki、Alloy 配置 | 官方镜像配置校验 | 通过 | Prometheus 主配置和 5 条规则、Loki、Alloy 均有效 |
+| SBOM 和许可证 | `scripts/generate-sbom.sh` | 通过 | 已生成前后端 CycloneDX SBOM，未发现 AGPL、SSPL 或 Commons Clause 依赖 |
+| 最新产物重启 | Compose 重启 `mine-server`、`nginx` | 通过 | 两个容器均恢复 `healthy`，未重建或删除数据卷 |
+| 单机核心冒烟 | `deploy/tests/standalone-smoke.sh` | 通过 | HTTPS、MQTTS、PostgreSQL、TimescaleDB、RabbitMQ、Redis 均正常 |
+| 管理业务接口冒烟 | 设置 `MINE_SMOKE_ADMIN_PASSWORD` 后执行 | 未执行 | 现场新密码未提供；脚本已支持登录、动态菜单、用户、角色和菜单树校验 |
 
-## 3. 全仓门禁失败证据
+## 3. 本阶段已闭环能力
 
-执行：
+### 3.1 认证与权限
 
-~~~bash
-bash scripts/verify.sh
-~~~
+- 使用 Sa-Token 和 Redis 共享登录状态，请求头为 `X-Mine-Token`。
+- 首次登录必须修改临时密码，修改密码和重置密码会使旧会话失效。
+- 后端从 PostgreSQL 实时加载角色与权限，授权修改无需重启服务。
+- 用户停用、角色分配、角色菜单授权和接口按钮权限均由后端强制校验。
+- 超级管理员不能被停用、重置密码或修改角色。
 
-后端阶段完整通过，前端类型检查和 lint 通过，随后在以下断言失败：
+### 3.2 用户、角色与菜单管理
 
-~~~text
-LoginPage.test.ts:46
-Unable to get .mine-scene-asset
-~~~
+- 用户支持分页查询、新建、编辑、启停、角色分配和临时密码重置。
+- 角色支持分页查询、新建、编辑、删除和菜单授权。
+- 被用户占用的角色不能删除，更新使用 `version` 做乐观锁保护。
+- 菜单、路由组件键和权限码由代码及 Flyway 管理，前台只读展示和授权，避免配置出不存在的页面或接口权限。
+- 成功的访问管理写操作写入 `sys_operation_log`，密码、散列和令牌不进入审计摘要。
 
-涉及文件均属于当前工作树中尚未提交的登录页设计改动：
+### 3.3 API 与前端
 
-- `mine-web/src/modules/system/pages/login/LoginPage.vue`
-- `mine-web/src/modules/system/pages/login/LoginPage.test.ts`
-- `mine-web/src/assets/images/smart-mine-tunnel.svg`
-- 已删除的 `mine-web/src/assets/images/login-mine-landscape.jpg`
+- 成功响应采用标准 REST DTO，不额外套 `Result<T>`；错误统一返回 `ApiErrorResponse`。
+- 创建返回 `201 Created`，无响应体写操作返回 `204 No Content`，分页直接返回 `PageResponse<T>`。
+- 前端请求层统一处理 token、204、标准错误、401 会话清理和弱网提示。
+- 登录页、用户管理页和角色权限页均有组件测试，生产构建通过。
 
-验收过程没有修改、回退或暂存这些并行改动。
+### 3.4 单机部署与运维
 
-## 4. 尚未完成的手工验收
+- Docker Compose 包含 Nginx、三个 Java 服务、PostgreSQL、TimescaleDB、Redis 和 RabbitMQ。
+- RabbitMQ 同时承载设备 MQTT 接入与平台内部 AMQP，通过独立 vhost、账号和权限隔离。
+- 可观测 profile 包含 Prometheus、Grafana、Loki、Alloy 和数据库 exporter。
+- 冒烟脚本默认不需要管理员密码；设置进程级环境变量 `MINE_SMOKE_ADMIN_PASSWORD` 后才执行访问管理接口校验。
 
-| 项目 | 状态 | 放行要求 |
+## 4. 仍需完成的现场验收
+
+以下项目不阻塞 Phase 0 工程代码基线，但任何一项未完成都不能将系统标记为“矿区生产可用”。
+
+| 项目 | 当前状态 | 现场放行要求 |
 |---|---|---|
-| 首次登录后修改密码并重新登录 | 待执行 | 使用现场保管的新密码完成改密，确认旧会话失效、新密码可登录 |
-| 创建普通角色、分配目录/菜单/按钮权限 | 功能缺口 | 先实现受超级管理员保护的用户、角色、菜单授权 CRUD API 和管理页面 |
-| 授权变更后重新登录生效 | 自动测试已覆盖，手工待执行 | 管理页面完成后按真实操作链路复验 |
-| Grafana 人工查看服务和 RabbitMQ | 自动 API 验收通过，人工待确认 | 现场运维账号登录并确认总览图可读 |
-| 现场断公网启动 | 本机 `--pull never` 已通过，现场待确认 | 离线发行包导入目标服务器后，在真实防火墙策略下复验 |
+| 管理员完整业务链路 | 自动测试通过，现场手工待验 | 首次改密、创建用户与角色、授权、重新登录、停用和审计查询均成功 |
+| 目标服务器离线安装 | 开发机验证通过 | 在矿区真实服务器导入离线包，以断公网方式启动并核对镜像 digest |
+| 真实设备协议 | 尚未接入 | 至少完成首批 TCP/二进制/MQTT 协议解析、异常报文和协议回放验收 |
+| 弱网可靠性 | 架构预留，未做现场数据 | 验证断连重连、本地缓冲、补传、去重、乱序、限流和磁盘水位保护 |
+| MQTT 容量 | 尚未压测 | 按真实报文大小和频率完成 5000 客户端连接、上报和重连风暴压测 |
+| 长稳运行 | 尚未执行 | 目标规格机器至少连续运行 72 小时，无不可接受的数据丢失和资源增长 |
+| 备份恢复 | 脚本基线已具备，未现场演练 | PostgreSQL、TimescaleDB、RabbitMQ 配置和关键文件完成备份恢复演练 |
+| 网络与安全 | 尚未现场验收 | 防火墙、证书、账号交接、最小端口、日志留存、时间同步和漏洞扫描通过 |
+| 三维矿山 | 非 Phase 0 核心 | 模型、坐标系和数据标准明确后再做场景接入，不影响采集平台主链路 |
 
-## 5. 复验步骤
+## 5. 现场复验建议顺序
 
-1. 合并或完成登录页改动，确保 `pnpm --dir mine-web test` 全绿。
-2. 明确角色/用户/菜单授权管理是否纳入 Phase 0；若纳入，完成 API、页面、审计和权限测试。
-3. 重新执行 `bash scripts/verify.sh`，必须返回 0。
-4. 执行首次改密、角色授权、重新登录和 Grafana 人工检查。
-5. 更新本报告结论为“通过”，记录验收人、制品版本、镜像 digest 和现场环境信息。
+1. 固化 Git 提交、版本号、离线镜像清单、SHA-256 和 SBOM。
+2. 在目标服务器断公网安装，执行核心健康检查和无凭据冒烟。
+3. 由现场管理员在终端临时设置 `MINE_SMOKE_ADMIN_PASSWORD`，执行带权限的冒烟，执行结束后立即清理环境变量和终端历史策略。
+4. 按真实角色完成首次改密、用户创建、角色授权、重新登录和审计查询。
+5. 接入首批真实设备，执行正常报文、脏报文、断网补传和重复消息测试。
+6. 完成 MQTT 容量、长稳、备份恢复、断电恢复和磁盘水位演练。
+7. 记录验收人、服务器规格、制品版本、镜像 digest、问题清单和回退方案后再签署生产放行。
 
-## 6. 生产运行边界
+## 6. 生产边界声明
 
-本报告只证明 Phase 0 工程底座和单机运行基线，不代表智慧矿山一期已经具备生产放行条件。真实设备协议、弱网补传、命令闭环、5000 客户端压测、72 小时稳定性、备份恢复演练和矿区网络安全验收仍需在后续阶段完成。
+本报告证明的是 Phase 0 工程底座可构建、可测试、可部署，并且访问管理闭环已经完成。它不证明真实矿区网络、设备协议、吞吐量、长期稳定性和灾难恢复已经验收。
+
+在第 4 节现场项目完成前，系统可以继续用于开发、联调和试运行准备，但不得直接作为无人值守的矿区生产系统交付。

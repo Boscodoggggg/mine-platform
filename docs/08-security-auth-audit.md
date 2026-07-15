@@ -38,7 +38,7 @@ flowchart LR
 使用 Sa-Token：
 
 - 登录状态保存在 Redis，支持多应用节点共享。
-- token 只通过 Authorization 请求头传递，不出现在 URL。
+- token 只通过 `X-Mine-Token` 请求头传递，不出现在 URL。
 - 浏览器不把 token 写入可被任意脚本长期读取的明文日志。
 - 登录失败限流；连续失败按账号和来源 IP 冷却。
 - 支持主动注销、管理员踢下线和密码修改后失效旧会话。
@@ -86,7 +86,8 @@ StpInterface：
 
 - getPermissionList(loginId)：根据用户角色关联 sys_menu.permission。
 - getRoleList(loginId)：返回角色 code。
-- 缓存只作为性能优化；角色/权限修改后主动清理相关会话缓存。
+- 当前实现每次权限判断实时读取 PostgreSQL；角色或菜单授权保存后，已有会话下一次请求立即生效，不需要重启服务或重新登录。
+- 禁用用户和重置临时密码会注销该用户旧会话；`AccountStatusGuard` 还会在每次业务请求前再次确认账号状态。
 
 API 示例：
 
@@ -124,8 +125,16 @@ public ConfigReleaseResponse publish(@Valid @RequestBody ConfigPublishRequest re
 示例：
 
 ~~~text
-system:user:list
-system:role:grant
+system:user:view
+system:user:create
+system:user:update
+system:user:assign-role
+system:user:reset-password
+system:role:view
+system:role:create
+system:role:update
+system:role:delete
+system:role:assign-menu
 system:audit:list
 device:credential:rotate
 protocol:definition:test
@@ -138,11 +147,13 @@ operations:backup:restore
 
 禁止使用模糊权限，如 admin:all，超级管理员机制除外。
 
+当前系统管理权限节点由 Flyway 随版本发布。管理员可以在前台创建用户和角色、分配用户角色、勾选角色权限，但不能自行创建路由、`componentKey` 或权限码。这样可以防止现场配置出前端不存在的组件或后端未实现的权限。
+
 ## 7. 超级管理员
 
 - 系统只预置一个超级管理员身份或可配置超级管理员 ID。
 - 超级管理员跳过普通权限判断，但仍记录全部审计。
-- 超级管理员不能删除自身最后一个有效登录方式。
+- 超级管理员不能被停用、重置密码或修改角色。
 - 其他角色全部由管理员前台创建。
 - 生产环境不提供公开注册。
 
@@ -171,6 +182,8 @@ sys_operation_log 至少记录：
 - 三维模型和插件上传。
 
 敏感字段在审计中脱敏；审计日志不作为异常堆栈垃圾桶。
+
+当前访问管理已落地以下成功操作审计：`CREATE_USER`、`UPDATE_USER`、`ASSIGN_USER_ROLES`、`RESET_USER_PASSWORD`、`CREATE_ROLE`、`UPDATE_ROLE`、`DELETE_ROLE`、`ASSIGN_ROLE_MENUS`。密码重置摘要只记录 `passwordChangeRequired=true`，不记录明文密码、散列或令牌。
 
 ## 9. 设备身份
 

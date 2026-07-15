@@ -23,13 +23,33 @@ GET    /api/v1/auth/me
 POST   /api/v1/auth/password
 GET    /api/v1/auth/menus
 
-GET/POST/PATCH  /api/v1/users
-GET/POST/PATCH  /api/v1/roles
-PUT             /api/v1/roles/{id}/menus
-GET/POST/PATCH  /api/v1/menus
+GET             /api/v1/system/users
+POST            /api/v1/system/users
+PUT             /api/v1/system/users/{id}
+PUT             /api/v1/system/users/{id}/roles
+POST            /api/v1/system/users/{id}/password-reset
+
+GET             /api/v1/system/roles
+POST            /api/v1/system/roles
+PUT             /api/v1/system/roles/{id}
+DELETE          /api/v1/system/roles/{id}
+PUT             /api/v1/system/roles/{id}/menus
+GET             /api/v1/system/menus/tree
+
 GET             /api/v1/operation-logs
 GET             /api/v1/login-logs
 ~~~
+
+访问管理成功响应遵循标准 REST：分页和详情直接返回 DTO，创建返回 `201 Created` 与 `Location`，无响应体写操作返回 `204 No Content`。不使用额外 `Result<T>` 包裹。所有错误统一返回本章第 3 节的错误对象。
+
+访问管理约束：
+
+- 用户更新和角色更新必须携带 `version`，过期版本返回 `409 / SYSTEM-409-003`。
+- 用户只停用，不提供物理删除接口；超级管理员不能被停用、重置密码或修改角色。
+- 临时密码为 12～72 UTF-8 字节，创建和重置后 `passwordChangeRequired=true`，重置会注销旧会话。
+- 角色 `code` 创建后不可修改；仍分配给用户的角色删除返回 `409 / SYSTEM-409-004`。
+- 菜单树只读，节点由 Flyway 维护；角色授权只接受真实存在且启用的节点。
+- 列表页码从 1 开始，`size` 范围为 1～100。
 
 `GET /api/v1/auth/menus` 响应：
 
@@ -148,8 +168,7 @@ POST      /api/v1/alarms/{id}/close
   "items": [],
   "page": 1,
   "size": 20,
-  "total": 0,
-  "hasNext": false
+  "total": 0
 }
 ~~~
 
@@ -246,6 +265,7 @@ username VARCHAR UNIQUE
 password_hash VARCHAR
 display_name VARCHAR
 status VARCHAR
+password_change_required BOOLEAN
 last_login_at TIMESTAMPTZ
 created_at/created_by/updated_at/updated_by
 version BIGINT
@@ -259,6 +279,8 @@ code VARCHAR UNIQUE
 name VARCHAR
 status VARCHAR
 description VARCHAR
+created_at/created_by/updated_at/updated_by
+version BIGINT
 ~~~
 
 ### sys_menu
@@ -272,9 +294,11 @@ path VARCHAR NULL
 component_key VARCHAR NULL
 permission VARCHAR NULL
 icon VARCHAR NULL
-sort INTEGER
+sort_order INTEGER
 visible BOOLEAN
 status VARCHAR
+created_at/created_by/updated_at/updated_by
+version BIGINT
 ~~~
 
 ### 关联

@@ -56,4 +56,47 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
 "${compose[@]}" exec -T redis sh -ec \
   'redis-cli --no-auth-warning -a "$(cat /run/secrets/redis_password)" ping' | grep -q PONG
 
+if [[ -n "${MINE_SMOKE_ADMIN_PASSWORD:-}" ]]; then
+  api_base="https://127.0.0.1:${MINE_HTTPS_PORT:-443}/api/v1"
+  login_payload="$(mktemp)"
+  login_response="$(mktemp)"
+  trap 'rm -f "${login_payload}" "${login_response}"' EXIT
+  chmod 600 "${login_payload}" "${login_response}"
+
+  jq -n \
+    --arg username "${MINE_BOOTSTRAP_ADMIN_USERNAME:-mine-admin}" \
+    --arg password "${MINE_SMOKE_ADMIN_PASSWORD}" \
+    '{username: $username, password: $password}' >"${login_payload}"
+  curl --fail --silent --show-error --insecure \
+    -H 'Content-Type: application/json' \
+    --data-binary "@${login_payload}" \
+    "${api_base}/auth/login" >"${login_response}"
+
+  token_name="$(jq -r '.tokenName' "${login_response}")"
+  token_value="$(jq -r '.tokenValue' "${login_response}")"
+  if [[ ! "${token_name}" =~ ^[A-Za-z0-9-]{1,64}$ || -z "${token_value}" || "${token_value}" == "null" ]]; then
+    echo "FAIL: 管理员登录未返回有效令牌" >&2
+    exit 1
+  fi
+  if [[ "$(jq -r '.user.passwordChangeRequired' "${login_response}")" == "true" ]]; then
+    echo "FAIL: 冒烟管理员仍要求首次改密，请先完成改密后再设置 MINE_SMOKE_ADMIN_PASSWORD" >&2
+    exit 1
+  fi
+
+  auth_header="${token_name}: ${token_value}"
+  curl --fail --silent --show-error --insecure -H "${auth_header}" "${api_base}/auth/me" \
+    | jq -e '.id and .username' >/dev/null
+  curl --fail --silent --show-error --insecure -H "${auth_header}" "${api_base}/auth/menus" \
+    | jq -e '.permissions | type == "array"' >/dev/null
+  curl --fail --silent --show-error --insecure -H "${auth_header}" "${api_base}/system/users?page=1&size=20" \
+    | jq -e '.items | type == "array"' >/dev/null
+  curl --fail --silent --show-error --insecure -H "${auth_header}" "${api_base}/system/roles?page=1&size=20" \
+    | jq -e '.items | type == "array"' >/dev/null
+  curl --fail --silent --show-error --insecure -H "${auth_header}" "${api_base}/system/menus/tree" \
+    | jq -e 'type == "array"' >/dev/null
+  echo "PASS: 管理员登录、动态权限、用户、角色和只读菜单树接口均正常"
+else
+  echo "SKIP: 未设置 MINE_SMOKE_ADMIN_PASSWORD，跳过需要管理员凭据的访问管理冒烟"
+fi
+
 echo "PASS: 单机 Compose 核心服务、HTTPS、MQTTS、数据库、TimescaleDB、RabbitMQ 与 Redis 均正常"
