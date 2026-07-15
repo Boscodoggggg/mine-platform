@@ -363,7 +363,19 @@ declare namespace App {
         };
       };
       mine: {
-        menu: Record<'system' | 'users' | 'roles' | 'device' | 'products' | 'devices' | 'monitor' | 'overview', string>;
+        menu: Record<
+          | 'system'
+          | 'users'
+          | 'roles'
+          | 'device'
+          | 'products'
+          | 'devices'
+          | 'monitor'
+          | 'command'
+          | 'commandCenter'
+          | 'overview',
+          string
+        >;
         common: {
           action: string;
           edit: string;
@@ -496,6 +508,38 @@ declare namespace App {
           waiting: string;
           quality: Record<'good' | 'uncertain' | 'bad' | 'timeUntrusted' | 'unknown', string>;
           property: Record<'engineRpm' | 'coolantTemperature' | 'vehicleSpeed' | 'fuelLevel', string>;
+        };
+        commands: {
+          title: string;
+          subtitle: string;
+          empty: string;
+          column: Record<'device' | 'template' | 'status' | 'createdAt', string>;
+          action: Record<'create' | 'send' | 'confirmSend' | 'detail', string>;
+          modal: Record<'create', string>;
+          field: Record<
+            'id' | 'device' | 'template' | 'status' | 'ttl' | 'timeout' | 'parameters' | 'reply' | 'errorCode',
+            string
+          >;
+          placeholder: Record<'device' | 'status', string>;
+          validation: Record<'required' | 'unsupportedParameters', string>;
+          confirm: Record<'title' | 'content', string>;
+          message: Record<'created', string>;
+          template: Record<'queryStatus', string>;
+          detail: Record<'title' | 'timeline', string>;
+          timeline: Record<'queued' | 'sent' | 'received', string>;
+          status: Record<
+            | 'created'
+            | 'queued'
+            | 'sent'
+            | 'device_received'
+            | 'succeeded'
+            | 'refused'
+            | 'failed'
+            | 'expired'
+            | 'timeout'
+            | 'cancelled',
+            string
+          >;
         };
         fallback: Record<'unconfigured' | 'title' | 'description' | 'help', string>;
       };

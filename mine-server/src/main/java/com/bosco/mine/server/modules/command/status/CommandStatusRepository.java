@@ -49,12 +49,13 @@ public class CommandStatusRepository {
      */
     public Optional<CommandStatusSnapshot> lockById(UUID commandId) {
         List<CommandStatusSnapshot> rows = jdbcTemplate.query("""
-                SELECT device_id, status, sent_at, device_received_at, completed_at
+                SELECT device_id, template_key, status, sent_at, device_received_at, completed_at
                 FROM cmd_instance
                 WHERE id = ?
                 FOR UPDATE
                 """, (resultSet, rowNumber) -> new CommandStatusSnapshot(
                 resultSet.getObject("device_id", UUID.class),
+                resultSet.getString("template_key"),
                 resultSet.getString("status"),
                 instant(resultSet.getTimestamp("sent_at")),
                 instant(resultSet.getTimestamp("device_received_at")),
@@ -102,6 +103,7 @@ public class CommandStatusRepository {
      * 命令当前状态快照。
      *
      * @param deviceId 设备标识
+     * @param templateKey 命令模板编码
      * @param status 当前状态
      * @param sentAt 发送时间
      * @param deviceReceivedAt 设备收到时间
@@ -109,6 +111,7 @@ public class CommandStatusRepository {
      */
     public record CommandStatusSnapshot(
             UUID deviceId,
+            String templateKey,
             String status,
             Instant sentAt,
             Instant deviceReceivedAt,

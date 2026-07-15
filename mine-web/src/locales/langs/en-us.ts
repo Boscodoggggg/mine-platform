@@ -59,6 +59,8 @@ const local: App.I18n.Schema = {
       products: 'Product Management',
       devices: 'Device Registry',
       monitor: 'Device Monitoring',
+      command: 'Command Management',
+      commandCenter: 'Command Center',
       overview: 'Operations Overview'
     },
     common: {
@@ -288,6 +290,50 @@ const local: App.I18n.Schema = {
         coolantTemperature: 'Coolant Temperature',
         vehicleSpeed: 'Vehicle Speed',
         fuelLevel: 'Fuel Level'
+      }
+    },
+    commands: {
+      title: 'Command Center',
+      subtitle: 'Send published low-risk device commands and track reliable delivery through device execution.',
+      empty: 'No commands match the current filters',
+      column: { device: 'Device', template: 'Command Template', status: 'Status', createdAt: 'Created' },
+      action: { create: 'Send Command', send: 'Review Command', confirmSend: 'Confirm Send', detail: 'Details' },
+      modal: { create: 'Send Device Command' },
+      field: {
+        id: 'Command ID',
+        device: 'Target Device',
+        template: 'Command Template',
+        status: 'Current Status',
+        ttl: 'Queue TTL (seconds)',
+        timeout: 'Device Reply Timeout (seconds)',
+        parameters: 'Command Parameters',
+        reply: 'Device Reply (Redacted)',
+        errorCode: 'Error Code'
+      },
+      placeholder: { device: 'Select a device', status: 'All command statuses' },
+      validation: {
+        required: 'Select a target device and command template',
+        unsupportedParameters: 'This page only supports published low-risk templates without parameters'
+      },
+      confirm: {
+        title: 'Confirm Command',
+        content: 'Send “{template}” to “{device}”? Confirm the site and operating conditions are safe.'
+      },
+      message: { created: 'Command entered the reliable delivery queue' },
+      template: { queryStatus: 'Status Query' },
+      detail: { title: 'Command Details', timeline: 'Status Timeline' },
+      timeline: { queued: 'Queued', sent: 'Sent', received: 'Device Received' },
+      status: {
+        created: 'Created',
+        queued: 'Queued',
+        sent: 'Sent',
+        device_received: 'Device Received',
+        succeeded: 'Succeeded',
+        refused: 'Device Refused',
+        failed: 'Failed',
+        expired: 'Queue Expired',
+        timeout: 'Reply Timeout',
+        cancelled: 'Cancelled'
       }
     },
     fallback: {

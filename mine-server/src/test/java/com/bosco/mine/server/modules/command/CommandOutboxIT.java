@@ -1,11 +1,15 @@
 package com.bosco.mine.server.modules.command;
 
 import com.bosco.mine.server.MineServerApplication;
+import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.server.modules.command.model.CommandInstance;
 import com.bosco.mine.server.modules.command.model.CommandStatus;
+import com.bosco.mine.server.modules.command.dto.CommandResponse;
 import com.bosco.mine.server.modules.command.outbox.OutboxReadyEvent;
 import com.bosco.mine.server.modules.command.outbox.OutboxRelayRepository;
+import com.bosco.mine.server.modules.command.repository.CommandMapper;
 import com.bosco.mine.server.modules.command.service.CommandService;
+import com.bosco.mine.server.modules.command.service.CommandQueryService;
 import com.bosco.mine.messaging.command.CommandStatusPayload;
 import com.bosco.mine.server.modules.command.status.CommandStatusService;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +22,8 @@ import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -32,9 +38,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.time.Duration;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mockStatic;
 
 /**
  * 使用真实 PostgreSQL 校验命令、幂等键和提交后 Outbox 唤醒。
@@ -74,6 +85,15 @@ class CommandOutboxIT {
     @Autowired
     private CommandStatusService commandStatusService;
 
+    @Autowired
+    private CommandQueryService commandQueryService;
+
+    @Autowired
+    private CommandMapper commandMapper;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     @BeforeEach
     void 准备低风险命令测试数据() {
         probe.clear();
@@ -104,7 +124,7 @@ class CommandOutboxIT {
                 USER_ID,
                 DEVICE_ID,
                 "QUERY_STATUS",
-                Map.of("includeLocation", true),
+                Map.of(),
                 "request-001",
                 300,
                 30,
@@ -147,12 +167,152 @@ class CommandOutboxIT {
     }
 
     @Test
+    void 原命令创建后设备被停用仍应允许精确幂等重试读取原结果() {
+        CommandInstance first = createCommand("request-retry-after-disabled");
+        jdbcTemplate.update("UPDATE dev_device SET status = 'DISABLED' WHERE id = ?", DEVICE_ID);
+
+        CommandInstance retried = createCommand("request-retry-after-disabled");
+
+        assertThat(retried.id()).isEqualTo(first.id());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM cmd_instance", Long.class)).isOne();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_outbox_event", Long.class)).isOne();
+    }
+
+    @Test
+    void 相同幂等键绑定不同请求时应拒绝而不是返回旧命令() {
+        createCommand("request-conflict");
+
+        assertThatThrownBy(() -> commandService.createLowRiskCommand(
+                USER_ID, DEVICE_ID, "QUERY_STATUS", Map.of(), "request-conflict",
+                600, 30, "trace-command-conflict"
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                assertThat(exception.errorCode().code()).isEqualTo("COMMAND-409-001"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM cmd_instance", Long.class)).isOne();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_outbox_event", Long.class)).isOne();
+    }
+
+    @Test
+    void 无参数模板应拒绝夹带参数且不写命令() {
+        assertThatThrownBy(() -> commandService.createLowRiskCommand(
+                USER_ID, DEVICE_ID, "QUERY_STATUS", Map.of("secret", "unexpected"),
+                "request-parameters", 300, 30, "trace-command-parameters"
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                assertThat(exception.errorCode().code()).isEqualTo("COMMAND-422-003"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM cmd_instance", Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_outbox_event", Long.class)).isZero();
+    }
+
+    @Test
+    void 回复超时大于TTL时应返回可识别业务错误() {
+        assertThatThrownBy(() -> commandService.createLowRiskCommand(
+                USER_ID, DEVICE_ID, "QUERY_STATUS", Map.of(), "request-time-invalid",
+                30, 31, "trace-command-time-invalid"
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                assertThat(exception.errorCode().code()).isEqualTo("COMMAND-422-004"));
+    }
+
+    @Test
+    void 禁用设备应返回可识别业务错误() {
+        jdbcTemplate.update("UPDATE dev_device SET status = 'DISABLED' WHERE id = ?", DEVICE_ID);
+
+        assertThatThrownBy(() -> createCommand("request-disabled"))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("COMMAND-422-002"));
+    }
+
+    @Test
+    void 命令提交持有的设备共享锁应阻止并发禁用越过检查窗口() throws Exception {
+        CountDownLatch locked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var lockHolder = executor.submit(() -> new TransactionTemplate(transactionManager).execute(status -> {
+                assertThat(commandMapper.lockDeviceStatus(DEVICE_ID)).contains("ENABLED");
+                locked.countDown();
+                try {
+                    assertThat(release.await(2, TimeUnit.SECONDS)).isTrue();
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("等待释放设备锁时被中断", exception);
+                }
+                return null;
+            }));
+            assertThat(locked.await(2, TimeUnit.SECONDS)).isTrue();
+            var disable = executor.submit(() -> jdbcTemplate.update(
+                    "UPDATE dev_device SET status = 'DISABLED' WHERE id = ?", DEVICE_ID
+            ));
+
+            assertThatThrownBy(() -> disable.get(150, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+            release.countDown();
+            lockHolder.get(2, TimeUnit.SECONDS);
+            assertThat(disable.get(2, TimeUnit.SECONDS)).isOne();
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void 应按设备和状态查询命令详情与分页() {
+        CommandInstance command = createCommand("request-query");
+
+        CommandResponse detail = commandQueryService.findById(command.id());
+        var page = commandQueryService.findCommands(DEVICE_ID, "queued", 1, 20);
+        var targets = commandQueryService.findTargets("命令", 1, 100);
+
+        assertThat(detail.id()).isEqualTo(command.id());
+        assertThat(detail.parameters()).isEmpty();
+        assertThat(page.total()).isOne();
+        assertThat(page.items()).extracting(CommandResponse::id).containsExactly(command.id());
+        assertThat(commandQueryService.findCommands(DEVICE_ID, "SUCCEEDED", 1, 20).items()).isEmpty();
+        assertThat(targets.items()).singleElement().satisfies(target -> {
+            assertThat(target.id()).isEqualTo(DEVICE_ID);
+            assertThat(target.deviceCode()).isEqualTo("command-device-001");
+        });
+    }
+
+    @Test
+    void 极大页码应返回可识别参数错误而不是算术溢出() {
+        assertThatThrownBy(() -> commandQueryService.findCommands(
+                null, null, Integer.MAX_VALUE, 100
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                assertThat(exception.errorCode().code()).isEqualTo("COMMAND-400-001"));
+    }
+
+    @Test
+    void 管理端下发命令应在同一事务记录脱敏操作审计() {
+        try (var stpUtil = mockStatic(cn.dev33.satoken.stp.StpUtil.class)) {
+            stpUtil.when(cn.dev33.satoken.stp.StpUtil::getLoginIdAsString)
+                    .thenReturn(USER_ID.toString());
+            CommandResponse response = commandService.createCurrentUserCommand(
+                    DEVICE_ID, "QUERY_STATUS", Map.of(), "request-audit",
+                    300, 30, "trace-command-audit"
+            );
+
+            Map<String, Object> audit = jdbcTemplate.queryForMap("""
+                    SELECT module, action, permission, resource_type, resource_id,
+                           after_summary ->> 'templateKey' AS template_key,
+                           after_summary -> 'parameters' IS NOT NULL AS contains_parameters
+                    FROM sys_operation_log
+                    WHERE resource_id = ?
+                    """, response.id().toString());
+            assertThat(audit.get("module")).isEqualTo("COMMAND_CENTER");
+            assertThat(audit.get("action")).isEqualTo("SUBMIT_COMMAND");
+            assertThat(audit.get("permission")).isEqualTo("command:instance:create");
+            assertThat(audit.get("resource_type")).isEqualTo("COMMAND");
+            assertThat(audit.get("template_key")).isEqualTo("QUERY_STATUS");
+            assertThat(audit.get("contains_parameters")).isEqualTo(false);
+        }
+    }
+
+    @Test
     void 应拒绝未发布的命令模板并且不留下半成品() {
         assertThatThrownBy(() -> commandService.createLowRiskCommand(
                 USER_ID, DEVICE_ID, "RESTART_ENGINE", Map.of(), "request-invalid",
                 300, 30, "trace-command-invalid"
-        )).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("低风险命令模板");
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                assertThat(exception.errorCode().code()).isEqualTo("COMMAND-422-001"));
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM cmd_instance", Long.class)).isZero();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_outbox_event", Long.class)).isZero();
@@ -228,7 +388,7 @@ class CommandOutboxIT {
 
         assertThat(commandStatusService.apply(succeededEventId, new CommandStatusPayload(
                 command.id(), DEVICE_ID, "SUCCEEDED", completedAt, receivedAt,
-                Map.of("online", true), null
+                Map.of("online", true, "secretToken", "must-not-be-stored"), null
         ))).isTrue();
         assertThat(commandStatusService.apply(succeededEventId, new CommandStatusPayload(
                 command.id(), DEVICE_ID, "SUCCEEDED", completedAt, receivedAt,
@@ -244,7 +404,8 @@ class CommandOutboxIT {
 
         Map<String, Object> row = jdbcTemplate.queryForMap("""
                 SELECT status, sent_at, device_received_at, completed_at,
-                       reply ->> 'online' AS online, version
+                       reply ->> 'online' AS online,
+                       reply -> 'secretToken' IS NOT NULL AS contains_secret, version
                 FROM cmd_instance
                 WHERE id = ?
                 """, command.id());
@@ -253,6 +414,10 @@ class CommandOutboxIT {
         assertThat(((java.sql.Timestamp) row.get("device_received_at")).toInstant()).isEqualTo(receivedAt);
         assertThat(((java.sql.Timestamp) row.get("completed_at")).toInstant()).isEqualTo(completedAt);
         assertThat(row.get("online")).isEqualTo("true");
+        assertThat(row.get("contains_secret")).isEqualTo(false);
+        assertThat(commandQueryService.findById(command.id()).reply())
+                .containsEntry("online", true)
+                .doesNotContainKey("secretToken");
         assertThat(((Number) row.get("version")).longValue()).isEqualTo(2L);
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM sys_inbox_event

@@ -1,11 +1,13 @@
 package com.bosco.mine.server.modules.command.repository;
 
 import com.bosco.mine.server.modules.command.model.CommandInstance;
+import com.bosco.mine.server.modules.command.dto.CommandTargetResponse;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,13 +18,58 @@ import java.util.UUID;
 public interface CommandMapper {
 
     /**
-     * 判断设备是否存在且允许接收命令。
+     * 以共享行锁读取设备状态，使并发禁用与命令提交形成明确顺序。
      *
      * @param deviceId 设备标识
-     * @return 是否为启用设备
+     * @return 设备状态
      */
-    @Select("SELECT EXISTS (SELECT 1 FROM dev_device WHERE id = #{deviceId} AND status = 'ENABLED')")
-    boolean isEnabledDevice(@Param("deviceId") UUID deviceId);
+    @Select("SELECT status FROM dev_device WHERE id = #{deviceId} FOR SHARE")
+    Optional<String> lockDeviceStatus(@Param("deviceId") UUID deviceId);
+
+    /**
+     * 分页读取启用的命令目标设备。
+     *
+     * @param keyword 设备编码或名称关键词，可为空
+     * @param offset 起始偏移
+     * @param limit 返回上限
+     * @return 目标设备摘要
+     */
+    @Select("""
+            <script>
+            SELECT id, device_code AS deviceCode, name
+            FROM dev_device
+            WHERE status = 'ENABLED'
+            <if test="keyword != null and keyword != ''">
+              AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
+                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            ORDER BY name, device_code, id
+            OFFSET #{offset} LIMIT #{limit}
+            </script>
+            """)
+    List<CommandTargetResponse> findEnabledTargets(
+            @Param("keyword") String keyword,
+            @Param("offset") int offset,
+            @Param("limit") int limit
+    );
+
+    /**
+     * 统计启用的命令目标设备。
+     *
+     * @param keyword 设备编码或名称关键词，可为空
+     * @return 目标设备数量
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM dev_device
+            WHERE status = 'ENABLED'
+            <if test="keyword != null and keyword != ''">
+              AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
+                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            </script>
+            """)
+    long countEnabledTargets(@Param("keyword") String keyword);
 
     /**
      * 插入命令；同一创建人和幂等键已存在时不修改原记录。
@@ -84,4 +131,78 @@ public interface CommandMapper {
             @Param("createdBy") UUID createdBy,
             @Param("idempotencyKey") String idempotencyKey
     );
+
+    /**
+     * 按标识读取命令。
+     *
+     * @param commandId 命令标识
+     * @return 命令持久化行
+     */
+    @Select("""
+            SELECT id, device_id AS deviceId, template_key AS templateKey,
+                   template_version AS templateVersion, parameters::TEXT AS parametersJson,
+                   reason, risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
+                   timeout_seconds AS timeoutSeconds, idempotency_key AS idempotencyKey,
+                   protocol_version AS protocolVersion, config_release_id AS configReleaseId,
+                   created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
+                   queued_at AS queuedAt, sent_at AS sentAt,
+                   device_received_at AS deviceReceivedAt, completed_at AS completedAt,
+                   expires_at AS expiresAt, last_error_code AS lastErrorCode,
+                   reply::TEXT AS replyJson, version
+            FROM cmd_instance WHERE id = #{commandId}
+            """)
+    Optional<StoredCommand> findById(@Param("commandId") UUID commandId);
+
+    /**
+     * 按设备和状态分页查询命令。
+     *
+     * @param deviceId 设备筛选，可为空
+     * @param status 状态筛选，可为空
+     * @param offset 起始偏移
+     * @param limit 返回上限
+     * @return 命令列表
+     */
+    @Select("""
+            <script>
+            SELECT id, device_id AS deviceId, template_key AS templateKey,
+                   template_version AS templateVersion, parameters::TEXT AS parametersJson,
+                   reason, risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
+                   timeout_seconds AS timeoutSeconds, idempotency_key AS idempotencyKey,
+                   protocol_version AS protocolVersion, config_release_id AS configReleaseId,
+                   created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
+                   queued_at AS queuedAt, sent_at AS sentAt,
+                   device_received_at AS deviceReceivedAt, completed_at AS completedAt,
+                   expires_at AS expiresAt, last_error_code AS lastErrorCode,
+                   reply::TEXT AS replyJson, version
+            FROM cmd_instance
+            WHERE 1 = 1
+            <if test="deviceId != null">AND device_id = #{deviceId}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            ORDER BY created_at DESC, id DESC
+            OFFSET #{offset} LIMIT #{limit}
+            </script>
+            """)
+    List<StoredCommand> findCommands(
+            @Param("deviceId") UUID deviceId,
+            @Param("status") String status,
+            @Param("offset") int offset,
+            @Param("limit") int limit
+    );
+
+    /**
+     * 统计符合条件的命令。
+     *
+     * @param deviceId 设备筛选，可为空
+     * @param status 状态筛选，可为空
+     * @return 命令数量
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM cmd_instance
+            WHERE 1 = 1
+            <if test="deviceId != null">AND device_id = #{deviceId}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            </script>
+            """)
+    long countCommands(@Param("deviceId") UUID deviceId, @Param("status") String status);
 }

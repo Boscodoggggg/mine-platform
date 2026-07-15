@@ -19,7 +19,8 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'system-role-list': () => import('@/modules/system/pages/roles/RoleManagementPage.vue'),
   'device-product-list': () => import('@/modules/device/pages/product-list/ProductListPage.vue'),
   'device-device-list': () => import('@/modules/device/pages/device-list/DeviceListPage.vue'),
-  'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue')
+  'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
+  'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue')
 };
 
 const fallbackView: ViewLoader = () => import('./DynamicFallbackPage.vue');
@@ -31,7 +32,9 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/device': 'mine.menu.device',
   '/device/products': 'mine.menu.products',
   '/device/devices': 'mine.menu.devices',
-  '/device/monitor': 'mine.menu.monitor'
+  '/device/monitor': 'mine.menu.monitor',
+  '/command': 'mine.menu.command',
+  '/command/center': 'mine.menu.commandCenter'
 };
 const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18nKey>>> = {
   'home-overview': 'mine.menu.overview',
@@ -39,7 +42,8 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'system-role-list': 'mine.menu.roles',
   'device-product-list': 'mine.menu.products',
   'device-device-list': 'mine.menu.devices',
-  'device-monitor': 'mine.menu.monitor'
+  'device-monitor': 'mine.menu.monitor',
+  'command-center': 'mine.menu.commandCenter'
 };
 
 export interface DynamicNavigationResult {

@@ -1,8 +1,12 @@
 package com.bosco.mine.server.modules.command.service;
 
+import cn.dev33.satoken.stp.StpUtil;
+import com.bosco.mine.common.error.ErrorCode;
+import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.common.time.MineClock;
 import com.bosco.mine.messaging.command.CommandDispatchPayload;
+import com.bosco.mine.server.modules.command.dto.CommandResponse;
 import com.bosco.mine.server.modules.command.model.CommandInstance;
 import com.bosco.mine.server.modules.command.model.CommandRiskLevel;
 import com.bosco.mine.server.modules.command.model.CommandStatus;
@@ -10,6 +14,7 @@ import com.bosco.mine.server.modules.command.outbox.OutboxCommitNotifier;
 import com.bosco.mine.server.modules.command.outbox.OutboxMapper;
 import com.bosco.mine.server.modules.command.repository.CommandMapper;
 import com.bosco.mine.server.modules.command.repository.StoredCommand;
+import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -26,11 +31,17 @@ import java.util.UUID;
  */
 @Service
 public class CommandService {
-    private static final String LOW_RISK_TEMPLATE = "QUERY_STATUS";
+    private static final ErrorCode DEVICE_UNAVAILABLE =
+            new ErrorCode("COMMAND-422-002", "目标设备不存在或未启用");
+    private static final ErrorCode TIME_CONSTRAINT_INVALID =
+            new ErrorCode("COMMAND-422-004", "命令 TTL 或回复超时不合法");
+    private static final ErrorCode IDEMPOTENCY_CONFLICT =
+            new ErrorCode("COMMAND-409-001", "幂等键已用于其他命令请求");
 
     private final CommandMapper commandMapper;
     private final OutboxMapper outboxMapper;
     private final OutboxCommitNotifier commitNotifier;
+    private final OperationAuditService auditService;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
     private final MineClock clock = MineClock.systemUtc();
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
@@ -41,15 +52,64 @@ public class CommandService {
      * @param commandMapper 命令数据访问接口
      * @param outboxMapper Outbox 数据访问接口
      * @param commitNotifier 事务提交通知器
+     * @param auditService 操作审计服务
      */
     public CommandService(
             CommandMapper commandMapper,
             OutboxMapper outboxMapper,
-            OutboxCommitNotifier commitNotifier
+            OutboxCommitNotifier commitNotifier,
+            OperationAuditService auditService
     ) {
         this.commandMapper = commandMapper;
         this.outboxMapper = outboxMapper;
         this.commitNotifier = commitNotifier;
+        this.auditService = auditService;
+    }
+
+    /**
+     * 以当前登录用户身份创建低风险命令。
+     *
+     * @param deviceId 目标设备标识
+     * @param templateKey 模板编码
+     * @param parameters 命令参数
+     * @param idempotencyKey 幂等键
+     * @param ttlSeconds TTL 秒数
+     * @param timeoutSeconds 回复超时秒数
+     * @param traceId 链路标识
+     * @return 新创建或原幂等命令响应
+     */
+    @Transactional
+    public CommandResponse createCurrentUserCommand(
+            UUID deviceId,
+            String templateKey,
+            Map<String, Object> parameters,
+            String idempotencyKey,
+            int ttlSeconds,
+            int timeoutSeconds,
+            String traceId
+    ) {
+        UUID userId = UUID.fromString(StpUtil.getLoginIdAsString());
+        CommandResponse response = CommandResponse.from(createLowRiskCommand(
+                userId, deviceId, templateKey, parameters, idempotencyKey,
+                ttlSeconds, timeoutSeconds, traceId
+        ));
+        auditService.recordSuccess(
+                "COMMAND_CENTER",
+                "SUBMIT_COMMAND",
+                "command:instance:create",
+                "COMMAND",
+                response.id(),
+                Map.of(),
+                Map.of(
+                        "deviceId", response.deviceId(),
+                        "templateKey", response.templateKey(),
+                        "riskLevel", response.riskLevel(),
+                        "status", response.status(),
+                        "ttlSeconds", response.ttlSeconds(),
+                        "timeoutSeconds", response.timeoutSeconds()
+                )
+        );
+        return response;
     }
 
     /**
@@ -79,13 +139,20 @@ public class CommandService {
         Objects.requireNonNull(createdBy, "命令创建人不能为空");
         Objects.requireNonNull(deviceId, "设备标识不能为空");
         String normalizedTemplate = requireText(templateKey, 128, "命令模板编码");
-        if (!LOW_RISK_TEMPLATE.equals(normalizedTemplate)) {
-            throw new IllegalArgumentException("低风险命令模板未发布: " + normalizedTemplate);
-        }
+        PublishedCommandTemplates.validateParameters(normalizedTemplate, parameters);
+        validateTimeConstraints(ttlSeconds, timeoutSeconds);
         String normalizedKey = requireText(idempotencyKey, 128, "幂等键");
         String normalizedTraceId = requireText(traceId, 64, "链路追踪标识");
-        if (!commandMapper.isEnabledDevice(deviceId)) {
-            throw new IllegalArgumentException("目标设备不存在或未启用");
+        var storedExisting = commandMapper.findByIdempotencyKey(createdBy, normalizedKey);
+        if (storedExisting.isPresent()) {
+            CommandInstance existing = toCommandInstance(storedExisting.orElseThrow());
+            verifySameIdempotentRequest(
+                    existing, deviceId, normalizedTemplate, parameters, ttlSeconds, timeoutSeconds
+            );
+            return existing;
+        }
+        if (!"ENABLED".equals(commandMapper.lockDeviceStatus(deviceId).orElse(null))) {
+            throw new MineException(DEVICE_UNAVAILABLE, Map.of("deviceId", deviceId));
         }
 
         Instant now = clock.instant();
@@ -96,7 +163,11 @@ public class CommandService {
         ).transitionTo(CommandStatus.QUEUED, now);
         int inserted = commandMapper.insert(queued, writeJson(queued.parameters()));
         if (inserted == 0) {
-            return loadByIdempotencyKey(createdBy, normalizedKey);
+            CommandInstance existing = loadByIdempotencyKey(createdBy, normalizedKey);
+            verifySameIdempotentRequest(
+                    existing, deviceId, normalizedTemplate, parameters, ttlSeconds, timeoutSeconds
+            );
+            return existing;
         }
 
         UUID eventId = idGenerator.next();
@@ -121,6 +192,16 @@ public class CommandService {
     private CommandInstance loadByIdempotencyKey(UUID createdBy, String idempotencyKey) {
         StoredCommand stored = commandMapper.findByIdempotencyKey(createdBy, idempotencyKey)
                 .orElseThrow(() -> new IllegalStateException("幂等命令写入后无法读取"));
+        return toCommandInstance(stored);
+    }
+
+    /**
+     * 将数据库命令行转换为不可变领域快照。
+     *
+     * @param stored 数据库命令行
+     * @return 命令领域快照
+     */
+    private CommandInstance toCommandInstance(StoredCommand stored) {
         return new CommandInstance(
                 stored.id(), stored.deviceId(), stored.templateKey(), stored.templateVersion(),
                 readMap(stored.parametersJson()), stored.reason(), CommandRiskLevel.valueOf(stored.riskLevel()),
@@ -131,6 +212,42 @@ public class CommandService {
                 stored.lastErrorCode(), stored.replyJson() == null ? null : readMap(stored.replyJson()),
                 stored.version()
         );
+    }
+
+    /**
+     * 核对同一用户和幂等键对应的请求语义是否完全一致。
+     *
+     * @param existing 已存在命令
+     * @param deviceId 本次目标设备标识
+     * @param templateKey 本次模板编码
+     * @param parameters 本次命令参数
+     * @param ttlSeconds 本次 TTL 秒数
+     * @param timeoutSeconds 本次回复超时秒数
+     */
+    private void verifySameIdempotentRequest(
+            CommandInstance existing,
+            UUID deviceId,
+            String templateKey,
+            Map<String, Object> parameters,
+            int ttlSeconds,
+            int timeoutSeconds
+    ) {
+        boolean sameRequest = existing.deviceId().equals(deviceId)
+                && existing.templateKey().equals(templateKey)
+                && existing.templateVersion() == 1
+                && existing.parameters().equals(parameters)
+                && existing.ttlSeconds() == ttlSeconds
+                && existing.timeoutSeconds() == timeoutSeconds;
+        if (!sameRequest) {
+            throw new MineException(IDEMPOTENCY_CONFLICT, Map.of("commandId", existing.id()));
+        }
+    }
+
+    private void validateTimeConstraints(int ttlSeconds, int timeoutSeconds) {
+        if (ttlSeconds < 1 || ttlSeconds > 86_400
+                || timeoutSeconds < 1 || timeoutSeconds > ttlSeconds) {
+            throw new MineException(TIME_CONSTRAINT_INVALID, Map.of());
+        }
     }
 
     private String writeJson(Object value) {

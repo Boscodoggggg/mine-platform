@@ -59,6 +59,8 @@ const local: App.I18n.Schema = {
       products: '产品管理',
       devices: '设备台账',
       monitor: '设备监控',
+      command: '命令管理',
+      commandCenter: '命令中心',
       overview: '运行总览'
     },
     common: {
@@ -277,6 +279,50 @@ const local: App.I18n.Schema = {
         coolantTemperature: '冷却液温度',
         vehicleSpeed: '运行速度',
         fuelLevel: '燃油液位'
+      }
+    },
+    commands: {
+      title: '命令中心',
+      subtitle: '下发已发布的低风险设备命令，跟踪消息从排队到设备执行的可靠状态。',
+      empty: '当前筛选条件下没有命令',
+      column: { device: '设备', template: '命令模板', status: '状态', createdAt: '下发时间' },
+      action: { create: '下发命令', send: '准备下发', confirmSend: '确认下发', detail: '详情' },
+      modal: { create: '下发设备命令' },
+      field: {
+        id: '命令编号',
+        device: '目标设备',
+        template: '命令模板',
+        status: '当前状态',
+        ttl: '排队存活时间（秒）',
+        timeout: '设备回复超时（秒）',
+        parameters: '命令参数',
+        reply: '设备回复（已脱敏）',
+        errorCode: '错误码'
+      },
+      placeholder: { device: '请选择设备', status: '全部命令状态' },
+      validation: {
+        required: '请选择目标设备和命令模板',
+        unsupportedParameters: '当前页面只允许下发已发布的无参数低风险模板'
+      },
+      confirm: {
+        title: '确认下发命令',
+        content: '即将向“{device}”下发“{template}”。请确认现场设备和作业条件安全。'
+      },
+      message: { created: '命令已进入可靠下发队列' },
+      template: { queryStatus: '状态查询' },
+      detail: { title: '命令详情', timeline: '状态时间线' },
+      timeline: { queued: '已排队', sent: '已发送', received: '设备已接收' },
+      status: {
+        created: '已创建',
+        queued: '已排队',
+        sent: '已发送',
+        device_received: '设备已接收',
+        succeeded: '执行成功',
+        refused: '设备拒绝',
+        failed: '执行失败',
+        expired: '排队过期',
+        timeout: '回复超时',
+        cancelled: '已取消'
       }
     },
     fallback: {

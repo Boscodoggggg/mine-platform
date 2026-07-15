@@ -199,4 +199,38 @@ describe('buildDynamicNavigation', () => {
       title: '用户管理'
     });
   });
+
+  it('命令中心组件键应命中白名单并提供国际化菜单', () => {
+    const commandNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'command-directory',
+        name: '命令管理',
+        path: '/command',
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'command-center',
+            name: '命令中心',
+            path: '/command/center',
+            componentKey: 'command-center',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(commandNodes);
+    setLocale('zh-CN');
+
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.meta?.componentFallback).toBe(false);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]).toMatchObject({ label: 'Command Management', i18nKey: 'mine.menu.command' });
+    expect(result.menus[0]?.children?.[0]).toMatchObject({
+      label: 'Command Center',
+      i18nKey: 'mine.menu.commandCenter'
+    });
+  });
 });

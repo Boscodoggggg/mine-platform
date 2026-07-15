@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     智慧矿山平台对管理端开放的 REST 契约。本文件固化阶段 1 已实现的产品、设备台账和遥测查询接口。
-    所有时间均为带时区的 ISO-8601 UTC 时间。
+    所有时间均为带时区的 ISO-8601 UTC 时间。命令中心只开放已发布的低风险命令模板。
 servers:
   - url: /api/v1
 security:
@@ -14,7 +14,112 @@ tags:
     description: 产品和设备台账管理
   - name: DeviceTelemetry
     description: 设备最新值与数值遥测历史
+  - name: CommandCenter
+    description: 设备命令下发与可靠状态时间线
 paths:
+  /command-templates:
+    get:
+      tags: [CommandCenter]
+      operationId: listCommandTemplates
+      summary: 查询可下发命令模板
+      responses:
+        '200':
+          description: 已发布的低风险命令模板。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CommandTemplate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /command-targets:
+    get:
+      tags: [CommandCenter]
+      operationId: listCommandTargets
+      summary: 分页查询可接收命令的启用设备
+      parameters:
+        - name: keyword
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 1000000, default: 1 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+      responses:
+        '200':
+          description: 命令目标设备分页。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandTargetPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /commands:
+    get:
+      tags: [CommandCenter]
+      operationId: listCommands
+      summary: 分页查询命令
+      parameters:
+        - name: deviceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/CommandStatus' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 命令分页。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [CommandCenter]
+      operationId: createCommand
+      summary: 幂等创建并下发命令
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommandCreateRequest' }
+      responses:
+        '201':
+          description: 命令已创建并进入可靠出站队列。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Command' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /commands/{commandId}:
+    get:
+      tags: [CommandCenter]
+      operationId: getCommand
+      summary: 查询命令详情与状态时间线
+      parameters:
+        - $ref: '#/components/parameters/CommandId'
+      responses:
+        '200':
+          description: 命令详情。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Command' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CommandNotFound' }
   /products:
     get:
       tags: [DeviceRegistry]
@@ -339,6 +444,14 @@ components:
       schema:
         type: string
         format: uuid
+    CommandId:
+      name: commandId
+      in: path
+      required: true
+      description: 命令 UUID。
+      schema:
+        type: string
+        format: uuid
     Keyword:
       name: keyword
       in: query
@@ -351,6 +464,7 @@ components:
       schema:
         type: integer
         minimum: 1
+        maximum: 1000000
         default: 1
     PageSize:
       name: size
@@ -361,6 +475,80 @@ components:
         maximum: 100
         default: 20
   schemas:
+    CommandStatus:
+      type: string
+      enum: [CREATED, QUEUED, SENT, DEVICE_RECEIVED, SUCCEEDED, REFUSED, FAILED, EXPIRED, TIMEOUT, CANCELLED]
+    CommandRiskLevel:
+      type: string
+      enum: [LOW, MEDIUM, HIGH]
+    CommandTemplate:
+      type: object
+      required: [key, version, riskLevel, defaultTtlSeconds, defaultTimeoutSeconds, parameterSchema]
+      properties:
+        key: { type: string, maxLength: 128 }
+        version: { type: integer, minimum: 1 }
+        riskLevel: { $ref: '#/components/schemas/CommandRiskLevel' }
+        defaultTtlSeconds: { type: integer, minimum: 1 }
+        defaultTimeoutSeconds: { type: integer, minimum: 1 }
+        parameterSchema: { type: object, additionalProperties: true }
+    Command:
+      type: object
+      required: [id, deviceId, templateKey, templateVersion, parameters, riskLevel, status, ttlSeconds, timeoutSeconds, idempotencyKey, createdAt, updatedAt, queuedAt, expiresAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        templateKey: { type: string }
+        templateVersion: { type: integer, minimum: 1 }
+        parameters: { type: object, additionalProperties: true }
+        riskLevel: { $ref: '#/components/schemas/CommandRiskLevel' }
+        status: { $ref: '#/components/schemas/CommandStatus' }
+        ttlSeconds: { type: integer, minimum: 1 }
+        timeoutSeconds: { type: integer, minimum: 1 }
+        idempotencyKey: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        queuedAt: { type: string, format: date-time }
+        sentAt: { type: [string, 'null'], format: date-time }
+        deviceReceivedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        expiresAt: { type: string, format: date-time }
+        lastErrorCode: { type: [string, 'null'] }
+        reply: { type: [object, 'null'], additionalProperties: true }
+        version: { type: integer, format: int64, minimum: 0 }
+    CommandPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Command' }
+    CommandTarget:
+      type: object
+      required: [id, deviceCode, name]
+      properties:
+        id: { type: string, format: uuid }
+        deviceCode: { type: string }
+        name: { type: string }
+    CommandTargetPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/CommandTarget' }
+    CommandCreateRequest:
+      type: object
+      required: [deviceId, templateKey, parameters, ttlSeconds, timeoutSeconds]
+      properties:
+        deviceId: { type: string, format: uuid }
+        templateKey: { type: string, minLength: 1, maxLength: 128 }
+        parameters: { type: object, additionalProperties: true }
+        ttlSeconds: { type: integer, minimum: 1, maximum: 86400 }
+        timeoutSeconds: { type: integer, minimum: 1, maximum: 86400 }
     ProductStatus:
       type: string
       enum: [DRAFT, ACTIVE, ARCHIVED]
@@ -590,7 +778,7 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
     Forbidden:
-      description: 缺少当前操作要求的设备域权限。
+      description: 缺少当前操作要求的权限。
       content:
         application/json:
           schema:
@@ -601,6 +789,12 @@ components:
         application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+    CommandNotFound:
+      description: 命令不存在，错误码 COMMAND-404-001。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
     ProductNotFound:
       description: 产品不存在，错误码 DEVICE-404-001。
       content:
@@ -609,6 +803,12 @@ components:
             $ref: '#/components/schemas/ApiError'
     Conflict:
       description: 编码重复、状态冲突或乐观锁版本冲突。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    UnprocessableEntity:
+      description: 命令模板、目标设备、参数或时间约束不允许下发。
       content:
         application/json:
           schema:

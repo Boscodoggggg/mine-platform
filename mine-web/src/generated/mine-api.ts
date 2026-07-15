@@ -4,692 +4,987 @@
  */
 
 export interface paths {
-  '/products': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/command-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询可下发命令模板 */
+        get: operations["listCommandTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 分页查询产品 */
-    get: operations['listProducts'];
-    put?: never;
-    /** 创建产品 */
-    post: operations['createProduct'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/products/{productId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/command-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询可接收命令的启用设备 */
+        get: operations["listCommandTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 修改产品 */
-    put: operations['updateProduct'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/products/{productId}/archive': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询命令 */
+        get: operations["listCommands"];
+        put?: never;
+        /** 幂等创建并下发命令 */
+        post: operations["createCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 归档产品 */
-    post: operations['archiveProduct'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/commands/{commandId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询命令详情与状态时间线 */
+        get: operations["getCommand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 分页查询设备 */
-    get: operations['listDevices'];
-    put?: never;
-    /** 创建设备 */
-    post: operations['createDevice'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices/{deviceId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询产品 */
+        get: operations["listProducts"];
+        put?: never;
+        /** 创建产品 */
+        post: operations["createProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 修改设备 */
-    put: operations['updateDevice'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices/{deviceId}/archive': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/products/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改产品 */
+        put: operations["updateProduct"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 归档设备 */
-    post: operations['archiveDevice'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices/{deviceId}/latest': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/products/{productId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档产品 */
+        post: operations["archiveProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * 查询设备指定属性的最新值
-     * @description 需要 `device:telemetry:view` 权限。优先读取 Redis；缓存缺失时按设备和属性键合并并发请求，
-     *     从 TimescaleDB 回源最近历史并使用 HSETNX 回填，避免旧历史覆盖并发到达的新数据。
-     */
-    get: operations['getDeviceLatestTelemetry'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices/{deviceId}/telemetry': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询设备 */
+        get: operations["listDevices"];
+        put?: never;
+        /** 创建设备 */
+        post: operations["createDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * 分页查询设备单个数值属性历史
-     * @description 需要 `device:telemetry:view` 权限。时间范围采用 `[from, to)`；RAW 最多查询 7 天且不能传 bucket；
-     *     AVG、MIN、MAX 最多查询 366 天，bucket 必须在 1 分钟至 24 小时之间且最多产生 10000 个桶。
-     *     bucket 只接受整秒精度。聚合结果的 quality 取桶内最差质量，sampleCount 表示桶内样本数；
-     *     分页 offset 不得超过 1000000。首页可省略 watermark，响应会返回数据库已提交事件的摄取水位；
-     *     后续页必须原样传回，以排除 RabbitMQ 积压、数据库重试和弱网迟到点在翻页期间造成的重复或遗漏。
-     */
-    get: operations['getDeviceTelemetryHistory'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
+    "/devices/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改设备 */
+        put: operations["updateDevice"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{deviceId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档设备 */
+        post: operations["archiveDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{deviceId}/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询设备指定属性的最新值
+         * @description 需要 `device:telemetry:view` 权限。优先读取 Redis；缓存缺失时按设备和属性键合并并发请求，
+         *     从 TimescaleDB 回源最近历史并使用 HSETNX 回填，避免旧历史覆盖并发到达的新数据。
+         */
+        get: operations["getDeviceLatestTelemetry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{deviceId}/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分页查询设备单个数值属性历史
+         * @description 需要 `device:telemetry:view` 权限。时间范围采用 `[from, to)`；RAW 最多查询 7 天且不能传 bucket；
+         *     AVG、MIN、MAX 最多查询 366 天，bucket 必须在 1 分钟至 24 小时之间且最多产生 10000 个桶。
+         *     bucket 只接受整秒精度。聚合结果的 quality 取桶内最差质量，sampleCount 表示桶内样本数；
+         *     分页 offset 不得超过 1000000。首页可省略 watermark，响应会返回数据库已提交事件的摄取水位；
+         *     后续页必须原样传回，以排除 RabbitMQ 积压、数据库重试和弱网迟到点在翻页期间造成的重复或遗漏。
+         */
+        get: operations["getDeviceTelemetryHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    /** @enum {string} */
-    ProductStatus: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
-    /** @enum {string} */
-    DeviceStatus: 'ENABLED' | 'DISABLED' | 'ARCHIVED';
-    Product: {
-      /** Format: uuid */
-      id: string;
-      productKey: string;
-      name: string;
-      deviceType: string;
-      status: components['schemas']['ProductStatus'];
-      /** Format: date-time */
-      archivedAt?: string | null;
-      /** Format: date-time */
-      createdAt: string;
-      /** Format: date-time */
-      updatedAt: string;
-      /** Format: int64 */
-      version: number;
+    schemas: {
+        /** @enum {string} */
+        CommandStatus: "CREATED" | "QUEUED" | "SENT" | "DEVICE_RECEIVED" | "SUCCEEDED" | "REFUSED" | "FAILED" | "EXPIRED" | "TIMEOUT" | "CANCELLED";
+        /** @enum {string} */
+        CommandRiskLevel: "LOW" | "MEDIUM" | "HIGH";
+        CommandTemplate: {
+            key: string;
+            version: number;
+            riskLevel: components["schemas"]["CommandRiskLevel"];
+            defaultTtlSeconds: number;
+            defaultTimeoutSeconds: number;
+            parameterSchema: {
+                [key: string]: unknown;
+            };
+        };
+        Command: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deviceId: string;
+            templateKey: string;
+            templateVersion: number;
+            parameters: {
+                [key: string]: unknown;
+            };
+            riskLevel: components["schemas"]["CommandRiskLevel"];
+            status: components["schemas"]["CommandStatus"];
+            ttlSeconds: number;
+            timeoutSeconds: number;
+            idempotencyKey: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            queuedAt: string;
+            /** Format: date-time */
+            sentAt?: string | null;
+            /** Format: date-time */
+            deviceReceivedAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: date-time */
+            expiresAt: string;
+            lastErrorCode?: string | null;
+            reply?: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: int64 */
+            version: number;
+        };
+        CommandPage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["Command"][];
+        };
+        CommandTarget: {
+            /** Format: uuid */
+            id: string;
+            deviceCode: string;
+            name: string;
+        };
+        CommandTargetPage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["CommandTarget"][];
+        };
+        CommandCreateRequest: {
+            /** Format: uuid */
+            deviceId: string;
+            templateKey: string;
+            parameters: {
+                [key: string]: unknown;
+            };
+            ttlSeconds: number;
+            timeoutSeconds: number;
+        };
+        /** @enum {string} */
+        ProductStatus: "DRAFT" | "ACTIVE" | "ARCHIVED";
+        /** @enum {string} */
+        DeviceStatus: "ENABLED" | "DISABLED" | "ARCHIVED";
+        Product: {
+            /** Format: uuid */
+            id: string;
+            productKey: string;
+            name: string;
+            deviceType: string;
+            status: components["schemas"]["ProductStatus"];
+            /** Format: date-time */
+            archivedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        ProductPage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["Product"][];
+        };
+        ProductCreateRequest: {
+            productKey: string;
+            name: string;
+            deviceType: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ACTIVE";
+        };
+        ProductUpdateRequest: {
+            name: string;
+            deviceType: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ACTIVE";
+            /** Format: int64 */
+            version: number;
+        };
+        Device: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            deviceCode: string;
+            name: string;
+            status: components["schemas"]["DeviceStatus"];
+            /** Format: date-time */
+            archivedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        DevicePage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["Device"][];
+        };
+        DeviceCreateRequest: {
+            /** Format: uuid */
+            productId: string;
+            deviceCode: string;
+            name: string;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+        };
+        DeviceUpdateRequest: {
+            name: string;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            /** Format: int64 */
+            version: number;
+        };
+        ArchiveRequest: {
+            /** Format: int64 */
+            version: number;
+        };
+        PageMetadata: {
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        PropertyId: string;
+        /** @enum {string} */
+        TelemetryQuality: "GOOD" | "UNCERTAIN" | "BAD" | "TIME_UNTRUSTED";
+        DeviceLatest: {
+            /** Format: uuid */
+            deviceId: string;
+            items: components["schemas"]["TelemetryLatestItem"][];
+            missingPropertyIds: components["schemas"]["PropertyId"][];
+        };
+        TelemetryLatestItem: {
+            propertyId: components["schemas"]["PropertyId"];
+            /** Format: double */
+            value: number;
+            /** Format: date-time */
+            occurredAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            quality: components["schemas"]["TelemetryQuality"];
+            /** Format: uuid */
+            eventId: string;
+            bootId?: string | null;
+            /** Format: int64 */
+            sequence?: number | null;
+            /** @enum {string} */
+            source: "REDIS" | "TIMESCALEDB";
+        };
+        TelemetryHistory: {
+            /** Format: uuid */
+            deviceId: string;
+            propertyId: components["schemas"]["PropertyId"];
+            /** @enum {string} */
+            aggregation: "RAW" | "AVG" | "MIN" | "MAX";
+            /** Format: duration */
+            bucket?: string | null;
+            /**
+             * Format: int64
+             * @description 本次分页数据集固定使用的数据库摄取水位上限。
+             */
+            watermark: number;
+            items: components["schemas"]["TelemetryHistoryPoint"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        TelemetryHistoryPoint: {
+            /** Format: date-time */
+            occurredAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: double */
+            value: number;
+            quality: components["schemas"]["TelemetryQuality"];
+            /** Format: uuid */
+            eventId?: string | null;
+            /** Format: int64 */
+            sampleCount: number;
+        };
+        ApiError: {
+            code: string;
+            message: string;
+            traceId: string;
+            /** Format: date-time */
+            timestamp: string;
+            details: {
+                [key: string]: unknown;
+            };
+        };
     };
-    ProductPage: components['schemas']['PageMetadata'] & {
-      items: components['schemas']['Product'][];
+    responses: {
+        /** @description 参数、属性标识、时间范围或聚合参数不合法。 */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 登录状态无效。 */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 缺少当前操作要求的权限。 */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 设备不存在，错误码 DEVICE-404-002。 */
+        DeviceNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 命令不存在，错误码 COMMAND-404-001。 */
+        CommandNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 产品不存在，错误码 DEVICE-404-001。 */
+        ProductNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 编码重复、状态冲突或乐观锁版本冲突。 */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 命令模板、目标设备、参数或时间约束不允许下发。 */
+        UnprocessableEntity: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 等待同一属性的共享回源超过 2 秒或时序库查询超时，错误码 TELEMETRY-503-001。 */
+        TelemetryBusy: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
     };
-    ProductCreateRequest: {
-      productKey: string;
-      name: string;
-      deviceType: string;
-      /** @enum {string} */
-      status: 'DRAFT' | 'ACTIVE';
+    parameters: {
+        ProductId: string;
+        /** @description 设备 UUID。 */
+        DeviceId: string;
+        /** @description 命令 UUID。 */
+        CommandId: string;
+        Keyword: string;
+        Page: number;
+        PageSize: number;
     };
-    ProductUpdateRequest: {
-      name: string;
-      deviceType: string;
-      /** @enum {string} */
-      status: 'DRAFT' | 'ACTIVE';
-      /** Format: int64 */
-      version: number;
-    };
-    Device: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      productId: string;
-      deviceCode: string;
-      name: string;
-      status: components['schemas']['DeviceStatus'];
-      /** Format: date-time */
-      archivedAt?: string | null;
-      /** Format: date-time */
-      createdAt: string;
-      /** Format: date-time */
-      updatedAt: string;
-      /** Format: int64 */
-      version: number;
-    };
-    DevicePage: components['schemas']['PageMetadata'] & {
-      items: components['schemas']['Device'][];
-    };
-    DeviceCreateRequest: {
-      /** Format: uuid */
-      productId: string;
-      deviceCode: string;
-      name: string;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-    };
-    DeviceUpdateRequest: {
-      name: string;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      /** Format: int64 */
-      version: number;
-    };
-    ArchiveRequest: {
-      /** Format: int64 */
-      version: number;
-    };
-    PageMetadata: {
-      page: number;
-      size: number;
-      /** Format: int64 */
-      total: number;
-    };
-    PropertyId: string;
-    /** @enum {string} */
-    TelemetryQuality: 'GOOD' | 'UNCERTAIN' | 'BAD' | 'TIME_UNTRUSTED';
-    DeviceLatest: {
-      /** Format: uuid */
-      deviceId: string;
-      items: components['schemas']['TelemetryLatestItem'][];
-      missingPropertyIds: components['schemas']['PropertyId'][];
-    };
-    TelemetryLatestItem: {
-      propertyId: components['schemas']['PropertyId'];
-      /** Format: double */
-      value: number;
-      /** Format: date-time */
-      occurredAt: string;
-      /** Format: date-time */
-      receivedAt: string;
-      quality: components['schemas']['TelemetryQuality'];
-      /** Format: uuid */
-      eventId: string;
-      bootId?: string | null;
-      /** Format: int64 */
-      sequence?: number | null;
-      /** @enum {string} */
-      source: 'REDIS' | 'TIMESCALEDB';
-    };
-    TelemetryHistory: {
-      /** Format: uuid */
-      deviceId: string;
-      propertyId: components['schemas']['PropertyId'];
-      /** @enum {string} */
-      aggregation: 'RAW' | 'AVG' | 'MIN' | 'MAX';
-      /** Format: duration */
-      bucket?: string | null;
-      /**
-       * Format: int64
-       * @description 本次分页数据集固定使用的数据库摄取水位上限。
-       */
-      watermark: number;
-      items: components['schemas']['TelemetryHistoryPoint'][];
-      page: number;
-      size: number;
-      /** Format: int64 */
-      total: number;
-    };
-    TelemetryHistoryPoint: {
-      /** Format: date-time */
-      occurredAt: string;
-      /** Format: date-time */
-      receivedAt: string;
-      /** Format: double */
-      value: number;
-      quality: components['schemas']['TelemetryQuality'];
-      /** Format: uuid */
-      eventId?: string | null;
-      /** Format: int64 */
-      sampleCount: number;
-    };
-    ApiError: {
-      code: string;
-      message: string;
-      traceId: string;
-      /** Format: date-time */
-      timestamp: string;
-      details: {
-        [key: string]: unknown;
-      };
-    };
-  };
-  responses: {
-    /** @description 参数、属性标识、时间范围或聚合参数不合法。 */
-    BadRequest: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 登录状态无效。 */
-    Unauthorized: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 缺少当前操作要求的设备域权限。 */
-    Forbidden: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 设备不存在，错误码 DEVICE-404-002。 */
-    DeviceNotFound: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 产品不存在，错误码 DEVICE-404-001。 */
-    ProductNotFound: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 编码重复、状态冲突或乐观锁版本冲突。 */
-    Conflict: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 等待同一属性的共享回源超过 2 秒或时序库查询超时，错误码 TELEMETRY-503-001。 */
-    TelemetryBusy: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-  };
-  parameters: {
-    ProductId: string;
-    /** @description 设备 UUID。 */
-    DeviceId: string;
-    Keyword: string;
-    Page: number;
-    PageSize: number;
-  };
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  listProducts: {
-    parameters: {
-      query?: {
-        keyword?: components['parameters']['Keyword'];
-        status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
-        page?: components['parameters']['Page'];
-        size?: components['parameters']['PageSize'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 产品分页。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    listCommandTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          'application/json': components['schemas']['ProductPage'];
+        requestBody?: never;
+        responses: {
+            /** @description 已发布的低风险命令模板。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTemplate"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
     };
-  };
-  createProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ProductCreateRequest'];
-      };
-    };
-    responses: {
-      /** @description 产品已创建。 */
-      201: {
-        headers: {
-          [name: string]: unknown;
+    listCommandTargets: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          'application/json': components['schemas']['Product'];
+        requestBody?: never;
+        responses: {
+            /** @description 命令目标设备分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTargetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
     };
-  };
-  updateProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        productId: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ProductUpdateRequest'];
-      };
-    };
-    responses: {
-      /** @description 修改后的产品。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    listCommands: {
+        parameters: {
+            query?: {
+                deviceId?: string;
+                status?: components["schemas"]["CommandStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          'application/json': components['schemas']['Product'];
+        requestBody?: never;
+        responses: {
+            /** @description 命令分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-      409: components['responses']['Conflict'];
     };
-  };
-  archiveProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        productId: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ArchiveRequest'];
-      };
-    };
-    responses: {
-      /** @description 产品已归档。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
+    createCommand: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
         };
-        content?: never;
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  listDevices: {
-    parameters: {
-      query?: {
-        productId?: string;
-        keyword?: components['parameters']['Keyword'];
-        status?: 'ENABLED' | 'DISABLED' | 'ARCHIVED';
-        page?: components['parameters']['Page'];
-        size?: components['parameters']['PageSize'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 设备分页。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandCreateRequest"];
+            };
         };
-        content: {
-          'application/json': components['schemas']['DevicePage'];
+        responses: {
+            /** @description 命令已创建并进入可靠出站队列。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Command"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
         };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
     };
-  };
-  createDevice: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DeviceCreateRequest'];
-      };
-    };
-    responses: {
-      /** @description 设备已创建。 */
-      201: {
-        headers: {
-          [name: string]: unknown;
+    getCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 命令 UUID。 */
+                commandId: components["parameters"]["CommandId"];
+            };
+            cookie?: never;
         };
-        content: {
-          'application/json': components['schemas']['Device'];
+        requestBody?: never;
+        responses: {
+            /** @description 命令详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Command"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["CommandNotFound"];
         };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-      409: components['responses']['Conflict'];
     };
-  };
-  updateDevice: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description 设备 UUID。 */
-        deviceId: components['parameters']['DeviceId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DeviceUpdateRequest'];
-      };
-    };
-    responses: {
-      /** @description 修改后的设备。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    listProducts: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: "DRAFT" | "ACTIVE" | "ARCHIVED";
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          'application/json': components['schemas']['Device'];
+        requestBody?: never;
+        responses: {
+            /** @description 产品分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['DeviceNotFound'];
-      409: components['responses']['Conflict'];
     };
-  };
-  archiveDevice: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description 设备 UUID。 */
-        deviceId: components['parameters']['DeviceId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ArchiveRequest'];
-      };
-    };
-    responses: {
-      /** @description 设备已归档。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
+    createProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content?: never;
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['DeviceNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  getDeviceLatestTelemetry: {
-    parameters: {
-      query: {
-        /** @description 传入数量为 1 至 100；服务去重后按首次出现顺序返回。 */
-        propertyIds: components['schemas']['PropertyId'][];
-      };
-      header?: never;
-      path: {
-        /** @description 设备 UUID。 */
-        deviceId: components['parameters']['DeviceId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 最新值快照；没有历史的属性出现在 missingPropertyIds。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductCreateRequest"];
+            };
         };
-        content: {
-          'application/json': components['schemas']['DeviceLatest'];
+        responses: {
+            /** @description 产品已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
         };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['DeviceNotFound'];
-      503: components['responses']['TelemetryBusy'];
     };
-  };
-  getDeviceTelemetryHistory: {
-    parameters: {
-      query: {
-        propertyId: components['schemas']['PropertyId'];
-        /** @description 开始时间，包含。 */
-        from: string;
-        /** @description 结束时间，不包含。 */
-        to: string;
-        aggregation?: 'RAW' | 'AVG' | 'MIN' | 'MAX';
-        /** @description 聚合时间桶，使用 ISO-8601 Duration，例如 PT5M；RAW 查询不能传入。 */
-        bucket?: string;
-        /** @description 分页数据集的全局摄取水位上限；首页省略，后续页传回首页响应中的 watermark，不得大于服务端当前已提交水位。 */
-        watermark?: number;
-        page?: number;
-        size?: number;
-      };
-      header?: never;
-      path: {
-        /** @description 设备 UUID。 */
-        deviceId: components['parameters']['DeviceId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 原始遥测点或聚合时间桶分页。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    updateProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
         };
-        content: {
-          'application/json': components['schemas']['TelemetryHistory'];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductUpdateRequest"];
+            };
         };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['DeviceNotFound'];
-      503: components['responses']['TelemetryBusy'];
+        responses: {
+            /** @description 修改后的产品。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+            409: components["responses"]["Conflict"];
+        };
     };
-  };
+    archiveProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 产品已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listDevices: {
+        parameters: {
+            query?: {
+                productId?: string;
+                keyword?: components["parameters"]["Keyword"];
+                status?: "ENABLED" | "DISABLED" | "ARCHIVED";
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设备分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 设备已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的设备。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 设备已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getDeviceLatestTelemetry: {
+        parameters: {
+            query: {
+                /** @description 传入数量为 1 至 100；服务去重后按首次出现顺序返回。 */
+                propertyIds: components["schemas"]["PropertyId"][];
+            };
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最新值快照；没有历史的属性出现在 missingPropertyIds。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceLatest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            503: components["responses"]["TelemetryBusy"];
+        };
+    };
+    getDeviceTelemetryHistory: {
+        parameters: {
+            query: {
+                propertyId: components["schemas"]["PropertyId"];
+                /** @description 开始时间，包含。 */
+                from: string;
+                /** @description 结束时间，不包含。 */
+                to: string;
+                aggregation?: "RAW" | "AVG" | "MIN" | "MAX";
+                /** @description 聚合时间桶，使用 ISO-8601 Duration，例如 PT5M；RAW 查询不能传入。 */
+                bucket?: string;
+                /** @description 分页数据集的全局摄取水位上限；首页省略，后续页传回首页响应中的 watermark，不得大于服务端当前已提交水位。 */
+                watermark?: number;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 原始遥测点或聚合时间桶分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryHistory"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            503: components["responses"]["TelemetryBusy"];
+        };
+    };
 }

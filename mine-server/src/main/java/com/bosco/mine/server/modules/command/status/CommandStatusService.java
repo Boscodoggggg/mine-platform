@@ -1,6 +1,7 @@
 package com.bosco.mine.server.modules.command.status;
 
 import com.bosco.mine.messaging.command.CommandStatusPayload;
+import com.bosco.mine.server.modules.command.service.PublishedCommandTemplates;
 import com.bosco.mine.server.modules.command.status.CommandStatusRepository.CommandStateUpdate;
 import com.bosco.mine.server.modules.command.status.CommandStatusRepository.CommandStatusSnapshot;
 import org.springframework.stereotype.Service;
@@ -77,7 +78,7 @@ public class CommandStatusService {
                         target, payload.occurredAt(),
                         current.sentAt() == null ? payload.deviceReceivedAt() : null,
                         payload.deviceReceivedAt(), payload.occurredAt(),
-                        writeReply(payload), payload.errorCode()
+                        writeReply(current, payload), payload.errorCode()
                 );
             }
             return null;
@@ -90,23 +91,25 @@ public class CommandStatusService {
             case "SENT->DEVICE_RECEIVED" -> new CommandStateUpdate(
                     "DEVICE_RECEIVED", payload.occurredAt(), null,
                     payload.deviceReceivedAt() == null ? payload.occurredAt() : payload.deviceReceivedAt(),
-                    null, writeReply(payload), payload.errorCode()
+                    null, writeReply(current, payload), payload.errorCode()
             );
             case "QUEUED->EXPIRED" -> new CommandStateUpdate(
                     "EXPIRED", payload.occurredAt(), null, null,
-                    payload.occurredAt(), writeReply(payload), payload.errorCode()
+                    payload.occurredAt(), writeReply(current, payload), payload.errorCode()
             );
             case "SENT->TIMEOUT", "DEVICE_RECEIVED->TIMEOUT" -> new CommandStateUpdate(
                     "TIMEOUT", payload.occurredAt(), null, null,
-                    payload.occurredAt(), writeReply(payload), payload.errorCode()
+                    payload.occurredAt(), writeReply(current, payload), payload.errorCode()
             );
             default -> null;
         };
     }
 
-    private String writeReply(CommandStatusPayload payload) {
+    private String writeReply(CommandStatusSnapshot current, CommandStatusPayload payload) {
         try {
-            return jsonMapper.writeValueAsString(payload.reply());
+            return jsonMapper.writeValueAsString(PublishedCommandTemplates.sanitizeReply(
+                    current.templateKey(), payload.reply()
+            ));
         } catch (JacksonException exception) {
             throw new InvalidCommandStatusMessageException("命令回复无法序列化", exception);
         }

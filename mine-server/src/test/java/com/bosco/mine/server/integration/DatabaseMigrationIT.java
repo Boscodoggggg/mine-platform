@@ -100,6 +100,7 @@ class DatabaseMigrationIT {
                 WHERE component_key IS NOT NULL
                 ORDER BY component_key
                 """, String.class)).containsExactly(
+                "command-center",
                 "device-device-list",
                 "device-monitor",
                 "device-product-list",
@@ -142,6 +143,16 @@ class DatabaseMigrationIT {
                 "device:product:view",
                 "device:telemetry:view"
         );
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE permission LIKE 'command:%'
+                ORDER BY permission
+                """, String.class)).containsExactly(
+                "command:instance:create",
+                "command:instance:view",
+                "command:template:view"
+        );
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu child
@@ -156,6 +167,12 @@ class DatabaseMigrationIT {
                 WHERE visible = TRUE
                   AND path IN ('/device', '/device/products', '/device/devices', '/device/monitor')
                 """, Long.class)).isEqualTo(4L);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM sys_menu
+                WHERE visible = TRUE
+                  AND path IN ('/command', '/command/center')
+                """, Long.class)).isEqualTo(2L);
     }
 
     @Test
