@@ -23,6 +23,26 @@ unset MINE_SIMULATOR_PASSWORD
 
 不得把密码写入 YAML、Git、命令行参数或 shell 历史。
 
+把平台签发响应中的 `username` 和业务设备编码加入
+`deploy/config/gateway/device-identities.json`。gateway 默认 5 秒内热加载，无需重启：
+
+~~~json
+{
+  "version": 1,
+  "devices": [
+    {
+      "productKey": "haul-truck",
+      "clientId": "device-平台签发的标识",
+      "deviceId": "simulator-001",
+      "tenantScope": "mine-site-001",
+      "protocolVersion": "mqtt-json-v1"
+    }
+  ]
+}
+~~~
+
+该文件是阶段 1 的现场兜底快照；后续由前台配置发布事件维护同一份运行时身份映射。
+
 ## 启动
 
 受控内网明文 MQTT 示例：

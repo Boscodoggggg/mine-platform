@@ -36,15 +36,31 @@ if [[ -z "${users}" ]] && ! rabbitmqctl -q list_users >/dev/null 2>&1; then
   exit 1
 fi
 
-if awk -v username="${SEED_USERNAME}" '$1 == username { found = 1 } END { exit !found }' <<<"${users}"; then
-  rabbitmqctl -q change_password "${SEED_USERNAME}" "${SEED_USER_PASSWORD}" >/dev/null 2>&1
-else
-  rabbitmqctl -q add_user "${SEED_USERNAME}" "${SEED_USER_PASSWORD}" >/dev/null 2>&1
-fi
+upsert_user() {
+  local username="$1"
+  local password="$2"
+  if rabbitmqctl -q list_users | awk -v expected="${username}" '$1 == expected { found = 1 } END { exit !found }'; then
+    rabbitmqctl -q change_password "${username}" "${password}" >/dev/null 2>&1
+  else
+    rabbitmqctl -q add_user "${username}" "${password}" >/dev/null 2>&1
+  fi
+}
+
+upsert_user "${SEED_USERNAME}" "${SEED_USER_PASSWORD}"
 rabbitmqctl -q set_user_tags "${SEED_USERNAME}" administrator
 rabbitmqctl -q import_definitions /etc/rabbitmq/definitions.json
 rabbitmqctl -q set_permissions -p /mine-platform "${SEED_USERNAME}" '.*' '.*' '.*'
 rabbitmqctl -q set_permissions -p /mine-device "${SEED_USERNAME}" '.*' '.*' '.*'
+
+gateway_device_password="$(cat /run/secrets/rabbitmq_gateway_device_password)"
+gateway_platform_password="$(cat /run/secrets/rabbitmq_gateway_platform_password)"
+upsert_user "mine-gateway-device" "${gateway_device_password}"
+upsert_user "mine-gateway-platform" "${gateway_platform_password}"
+rabbitmqctl -q set_permissions -p /mine-device "mine-gateway-device" \
+  '^$' '^$' '^mine\.gateway\.uplink\.q$'
+rabbitmqctl -q set_permissions -p /mine-platform "mine-gateway-platform" \
+  '^$' '^mine\.telemetry\.x$' '^$'
+unset gateway_device_password gateway_platform_password
 touch /tmp/mine-rabbitmq-bootstrap-complete
 
 wait "${broker_pid}"

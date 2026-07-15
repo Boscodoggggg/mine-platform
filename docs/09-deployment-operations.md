@@ -147,6 +147,8 @@ Compose profiles：
 - 数据库地址、线程数、JVM、监听端口属于部署配置。
 - 物模型、协议、映射、告警和保留属于平台策略。
 - secret 只能由 secret 文件/受控环境注入。
+- gateway 访问 RabbitMQ 使用两个独立密码文件：`rabbitmq_gateway_device_password` 只读设备上行队列，
+  `rabbitmq_gateway_platform_password` 只写平台遥测交换机；不得复用 RabbitMQ 管理员密码。
 
 所有服务启动时输出“非敏感有效配置摘要”和版本，不打印 secret。
 

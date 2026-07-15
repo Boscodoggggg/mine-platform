@@ -15,6 +15,18 @@ public final class MineTopology {
     /** MQTT 插件使用的主题交换机。 */
     public static final String MQTT_EXCHANGE = "amq.topic";
 
+    /** 设备上行原始报文队列。 */
+    public static final String DEVICE_UPLINK_QUEUE = "mine.gateway.uplink.q";
+
+    /** 设备侧不可重试原始报文死信交换机。 */
+    public static final String DEVICE_DEAD_LETTER_EXCHANGE = "mine.device.dlx";
+
+    /** 设备侧不可重试原始报文死信队列。 */
+    public static final String DEVICE_DEAD_LETTER_QUEUE = "mine.device.dead-letter.q";
+
+    /** MQTT 遥测上行主题绑定模式。 */
+    public static final String DEVICE_UPLINK_ROUTING_PATTERN = "mine.v1.*.*.up.telemetry";
+
     /** 标准化遥测消息交换机。 */
     public static final String TELEMETRY_EXCHANGE = "mine.telemetry.x";
 

@@ -1,12 +1,17 @@
 package com.bosco.mine.gateway;
 
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration;
+import org.springframework.boot.amqp.autoconfigure.health.RabbitHealthContributorAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
  * 矿山设备接入服务启动入口。
  */
-@SpringBootApplication(proxyBeanMethods = false)
+@SpringBootApplication(
+        proxyBeanMethods = false,
+        exclude = {RabbitAutoConfiguration.class, RabbitHealthContributorAutoConfiguration.class}
+)
 public class MineGatewayApplication {
 
     /**

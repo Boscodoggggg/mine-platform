@@ -25,6 +25,32 @@ flowchart TB
 
 两个 vhost 是权限、命名和配额隔离，不是物理故障隔离。RabbitMQ 集群级磁盘或内存告警仍可能同时影响二者。
 
+### 2.1 MQTT 遥测跨 vhost 链路
+
+阶段 1 的实际链路为：
+
+~~~text
+设备 MQTT publish
+→ /mine-device 的 amq.topic
+→ mine.gateway.uplink.q
+→ mine-gateway 身份校验和 JSON 标准化
+→ publisher confirm
+→ /mine-platform 的 mine.telemetry.x
+→ mine.telemetry.q
+~~~
+
+gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能读取设备上行队列，
+`mine-gateway-platform` 只能写内部遥测交换机。不得让一个账号跨两个 vhost 获得读写全权限。
+
+设备 topic 中的 `clientId` 是平台签发的凭据身份，不等于厂商 `deviceCode`。gateway 通过可信身份快照完成
+`productKey + clientId → deviceId` 映射，并校验报文自报的 `productKey/deviceCode`。未知身份、身份冒用、
+非法结构和超过 64 KiB 的报文拒绝重试并进入 `mine.device.dead-letter.q`；内部事件未获 Broker confirm 时，
+原始消息不 ACK 并重新投递。
+
+阶段 1 使用 `deploy/config/gateway/device-identities.json` 作为启动和现场兜底快照，默认每 5 秒原子热刷新，
+文件更新失败时保留上一有效版本。后续前台“发布配置”通过配置事件调用同一注册表替换入口，不能要求重启 gateway；
+快照文件不作为最终配置主数据源。
+
 ## 3. 内部交换机与队列
 
 建议交换机：
@@ -57,7 +83,8 @@ config.node.loaded
 队列由消费者拥有并命名：
 
 ~~~text
-telemetry.ingest.q
+mine.gateway.uplink.q
+mine.telemetry.q
 telemetry.location.q
 server.device-event.q
 server.alarm-event.q
@@ -113,6 +140,7 @@ integration.forwarding.q
 - mine-server 使用 outbox。
 - gateway 无数据库事务，失败消息进入本地有界重试或令当前消费不 ACK。
 - messageId/eventId 在重试中保持不变。
+- gateway 标准化事件的 eventId 与 payload.messageId 使用同一个 UUIDv7，跨 vhost 重投时不得重新生成。
 
 消费者：
 

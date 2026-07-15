@@ -29,3 +29,22 @@ info:
     name: ${spring.application.name}
     description: 矿山设备接入服务
     version: ${MINE_APP_VERSION:0.1.0-SNAPSHOT}
+
+mine:
+  gateway:
+    rabbit:
+      enabled: ${MINE_GATEWAY_RABBIT_ENABLED:false}
+      auto-startup: ${MINE_GATEWAY_RABBIT_AUTO_STARTUP:true}
+      host: ${MINE_GATEWAY_RABBIT_HOST:rabbitmq}
+      port: ${MINE_GATEWAY_RABBIT_PORT:5672}
+      max-payload-bytes: ${MINE_GATEWAY_MAX_PAYLOAD_BYTES:65536}
+      confirm-timeout-millis: ${MINE_GATEWAY_CONFIRM_TIMEOUT_MILLIS:5000}
+      prefetch: ${MINE_GATEWAY_RABBIT_PREFETCH:50}
+      identity-snapshot-file: ${MINE_GATEWAY_IDENTITY_SNAPSHOT_FILE:/etc/mine/gateway/device-identities.json}
+      identity-refresh-millis: ${MINE_GATEWAY_IDENTITY_REFRESH_MILLIS:5000}
+      device:
+        username: ${MINE_GATEWAY_DEVICE_RABBIT_USERNAME:mine-gateway-device}
+        password-file: ${MINE_GATEWAY_DEVICE_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_gateway_device_password}
+      platform:
+        username: ${MINE_GATEWAY_PLATFORM_RABBIT_USERNAME:mine-gateway-platform}
+        password-file: ${MINE_GATEWAY_PLATFORM_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_gateway_platform_password}

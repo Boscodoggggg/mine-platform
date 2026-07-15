@@ -5,6 +5,8 @@
 | 软件 | 版本 | 用途 | 许可证 |
 |---|---:|---|---|
 | Spring Boot | 4.1.0 | Maven 依赖管理与后续服务运行底座 | Apache-2.0 |
+| Spring AMQP | 4.1.0 | RabbitMQ 消息消费、发布确认与连接管理 | Apache-2.0 |
+| RabbitMQ Java Client | 5.30.0 | AMQP 0-9-1 客户端通信 | Apache-2.0 / GPL-2.0 / MPL-2.0 |
 | ArchUnit | 1.4.1 | 模块依赖边界测试 | Apache-2.0 |
 | Jackson Databind | 3.1.4 | 统一消息 JSON 序列化与反序列化 | Apache-2.0 |
 | Jackson Annotations | 2.21 | 消息契约兼容性与值对象注解 | Apache-2.0 |

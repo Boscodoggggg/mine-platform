@@ -121,8 +121,17 @@ services:
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       MINE_MANAGEMENT_ADDRESS: 0.0.0.0
+      MINE_GATEWAY_RABBIT_ENABLED: "true"
+      MINE_GATEWAY_RABBIT_HOST: rabbitmq
+      MINE_GATEWAY_DEVICE_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_gateway_device_password
+      MINE_GATEWAY_PLATFORM_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_gateway_platform_password
+      MINE_GATEWAY_IDENTITY_SNAPSHOT_FILE: /etc/mine/gateway/device-identities.json
     volumes:
       - ../../mine-gateway/target/mine-gateway-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
+      - ../config/gateway/device-identities.json:/etc/mine/gateway/device-identities.json:ro
+    secrets:
+      - rabbitmq_gateway_device_password
+      - rabbitmq_gateway_platform_password
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -194,6 +203,8 @@ services:
     secrets:
       - rabbitmq_admin_username
       - rabbitmq_admin_password
+      - rabbitmq_gateway_device_password
+      - rabbitmq_gateway_platform_password
       - source: tls_certificate
         target: tls_certificate
       - source: tls_private_key
@@ -570,6 +581,10 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_admin_username
   rabbitmq_admin_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_admin_password
+  rabbitmq_gateway_device_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_gateway_device_password
+  rabbitmq_gateway_platform_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_gateway_platform_password
   mine_super_admin_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/mine_super_admin_password
   grafana_admin_password:

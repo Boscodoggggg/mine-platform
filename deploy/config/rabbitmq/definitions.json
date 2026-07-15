@@ -29,6 +29,27 @@
   "policies": [],
   "queues": [
     {
+      "name": "mine.gateway.uplink.q",
+      "vhost": "/mine-device",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.device.dlx"
+      }
+    },
+    {
+      "name": "mine.device.dead-letter.q",
+      "vhost": "/mine-device",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-max-length-bytes": 1073741824,
+        "x-overflow": "drop-head"
+      }
+    },
+    {
       "name": "mine.telemetry.q",
       "vhost": "/mine-platform",
       "durable": true,
@@ -72,6 +93,15 @@
   ],
   "exchanges": [
     {
+      "name": "mine.device.dlx",
+      "vhost": "/mine-device",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
       "name": "mine.telemetry.x",
       "vhost": "/mine-platform",
       "type": "topic",
@@ -109,6 +139,22 @@
     }
   ],
   "bindings": [
+    {
+      "source": "amq.topic",
+      "vhost": "/mine-device",
+      "destination": "mine.gateway.uplink.q",
+      "destination_type": "queue",
+      "routing_key": "mine.v1.*.*.up.telemetry",
+      "arguments": {}
+    },
+    {
+      "source": "mine.device.dlx",
+      "vhost": "/mine-device",
+      "destination": "mine.device.dead-letter.q",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    },
     {
       "source": "mine.telemetry.x",
       "vhost": "/mine-platform",
