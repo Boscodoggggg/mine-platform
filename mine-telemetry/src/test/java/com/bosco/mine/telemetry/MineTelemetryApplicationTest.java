@@ -16,7 +16,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 校验遥测处理服务可以独立启动并对现场运维暴露基础端点。
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = "spring.autoconfigure.exclude="
+                + "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration,"
+                + "org.springframework.boot.flyway.autoconfigure.FlywayAutoConfiguration"
+)
 class MineTelemetryApplicationTest {
 
     private final HttpClient httpClient = HttpClient.newBuilder()

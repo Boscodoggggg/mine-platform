@@ -151,12 +151,22 @@ services:
 
   mine-telemetry:
     <<: *java-service
-    command: ["java", "-XX:MaxRAMPercentage=75", "-XX:+ExitOnOutOfMemoryError", "-Duser.timezone=UTC", "-jar", "/opt/mine/app.jar"]
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        export SPRING_DATASOURCE_PASSWORD="$$(cat /run/secrets/timescale_password)"
+        exec java $${JAVA_OPTS:-} -jar /opt/mine/app.jar
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
+      SPRING_DATASOURCE_USERNAME: ${TIMESCALE_USER:-mine_ts}
       MINE_MANAGEMENT_ADDRESS: 0.0.0.0
     volumes:
       - ../../mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
+    secrets:
+      - timescale_password
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -256,7 +266,7 @@ services:
     logging: *default-logging
 
   timescale:
-    image: ${MINE_TIMESCALE_IMAGE:-timescale/timescaledb:2.22.1-pg17}
+    image: ${MINE_TIMESCALE_IMAGE:-timescale/timescaledb:2.28.2-pg18-oss@sha256:8ed8d7336f00a3a90bb6fe709d506172012c7e673e0cf71465491d06e2db5fbd}
     restart: unless-stopped
     init: true
     security_opt:
@@ -274,7 +284,7 @@ services:
     networks:
       - data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} && psql -U $${POSTGRES_USER} -d $${POSTGRES_DB} -tAc 'SHOW timescaledb.license' | grep -qx apache"]
       interval: 10s
       timeout: 5s
       retries: 15

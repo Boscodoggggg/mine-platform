@@ -103,6 +103,13 @@ docker compose --env-file deploy/env/standalone.env \
   -f deploy/compose/compose-standalone.yml logs --tail=200 mine-server
 ~~~
 
+TimescaleDB 基线固定为 PostgreSQL 18.4 + TimescaleDB 2.28.2 OSS，并在容器健康检查和冒烟测试中要求
+`timescaledb.license=apache`。已经从旧示例复制过 `deploy/env/standalone.env` 的开发环境，需要同步更新
+`MINE_TIMESCALE_IMAGE`；生产环境应改为现场离线仓库中复核过的同一 digest。
+
+已有 PostgreSQL 17 Timescale 数据卷不能直接挂载给 PostgreSQL 18 镜像。升级前必须完成可恢复备份，使用
+`pg_upgrade` 或逻辑备份/恢复迁移，并在独立环境验证扩展版本、hypertable、索引和数据量；禁止直接替换镜像碰运气。
+
 可观测性单独验收：
 
 ~~~bash

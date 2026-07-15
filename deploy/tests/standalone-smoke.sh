@@ -47,6 +47,8 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
 "${compose[@]}" exec -T postgres pg_isready -U "${POSTGRES_USER:-mine}" -d "${POSTGRES_DB:-mine}"
 "${compose[@]}" exec -T timescale psql -U "${TIMESCALE_USER:-mine_ts}" -d "${TIMESCALE_DB:-mine_telemetry}" \
   -tAc "SELECT extname FROM pg_extension WHERE extname = 'timescaledb'" | grep -q timescaledb
+"${compose[@]}" exec -T timescale psql -U "${TIMESCALE_USER:-mine_ts}" -d "${TIMESCALE_DB:-mine_telemetry}" \
+  -tAc "SHOW timescaledb.license" | grep -qx apache
 "${compose[@]}" exec -T rabbitmq rabbitmq-diagnostics -q ping
 "${compose[@]}" exec -T rabbitmq sh -ec \
   'rabbitmqctl -q authenticate_user "$(cat /run/secrets/rabbitmq_admin_username)" "$(cat /run/secrets/rabbitmq_admin_password)"'

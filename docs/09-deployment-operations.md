@@ -224,6 +224,10 @@ Compose profiles：
 
 ## 13. 升级
 
+TimescaleDB 的 PostgreSQL major 版本升级不是普通容器重建。PG17 数据目录不得直接交给 PG18；必须先备份，
+再通过 `pg_upgrade` 或逻辑备份/恢复迁移，并验证 `timescaledb.license=apache`、扩展版本、hypertable、索引、
+行数和抽样查询结果。新建矿区直接使用当前 PG18 OSS 基线，已有矿区单独编写并演练升级方案。
+
 升级包包含：
 
 - 镜像 tar。
