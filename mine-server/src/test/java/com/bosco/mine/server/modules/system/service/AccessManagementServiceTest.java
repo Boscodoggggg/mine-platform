@@ -179,6 +179,128 @@ class AccessManagementServiceTest {
         verify(mapper, never()).resetUserPassword(any(), anyString(), any());
     }
 
+    @Test
+    void 角色分页应附带授权节点并正确计算偏移() {
+        UUID roleId = UUID.randomUUID();
+        UUID menuId = UUID.randomUUID();
+        when(mapper.findRoles("调度", "ENABLED", 10, 10))
+                .thenReturn(List.of(role(roleId, 0)));
+        when(mapper.findMenuIdsByRoleId(roleId)).thenReturn(List.of(menuId));
+        when(mapper.countRoles("调度", "ENABLED")).thenReturn(11L);
+
+        PageResponse<AccessManagementService.RoleView> response =
+                service.findRoles(" 调度 ", " ENABLED ", 2, 10);
+
+        assertThat(response.total()).isEqualTo(11);
+        assertThat(response.items()).singleElement().satisfies(item -> {
+            assertThat(item.id()).isEqualTo(roleId);
+            assertThat(item.menuIds()).containsExactly(menuId);
+        });
+    }
+
+    @Test
+    void 创建角色应规范化编码并记录脱敏审计() {
+        when(mapper.findManagedRoleById(any(UUID.class)))
+                .thenAnswer(invocation -> Optional.of(role(invocation.getArgument(0), 0)));
+
+        AccessManagementService.RoleView created = service.createRole(
+                " dispatcher ",
+                " 调度员 ",
+                "enabled",
+                " 负责车辆调度 "
+        );
+
+        verify(mapper).insertRole(
+                org.mockito.ArgumentMatchers.eq(created.id()),
+                org.mockito.ArgumentMatchers.eq("DISPATCHER"),
+                org.mockito.ArgumentMatchers.eq("调度员"),
+                org.mockito.ArgumentMatchers.eq("ENABLED"),
+                org.mockito.ArgumentMatchers.eq("负责车辆调度"),
+                any()
+        );
+        verify(auditService).recordSuccess(
+                org.mockito.ArgumentMatchers.eq("CREATE_ROLE"),
+                org.mockito.ArgumentMatchers.eq("system:role:create"),
+                org.mockito.ArgumentMatchers.eq("ROLE"),
+                org.mockito.ArgumentMatchers.eq(created.id()),
+                any(),
+                any()
+        );
+    }
+
+    @Test
+    void 角色删除应拒绝仍被用户使用的角色() {
+        UUID roleId = UUID.randomUUID();
+        when(mapper.findManagedRoleById(roleId)).thenReturn(Optional.of(role(roleId, 0)));
+        when(mapper.deleteUnusedRole(roleId)).thenReturn(0);
+
+        assertThatThrownBy(() -> service.deleteRole(roleId))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("SYSTEM-409-004"));
+    }
+
+    @Test
+    void 菜单授权应去重并拒绝停用或未知节点() {
+        UUID roleId = UUID.randomUUID();
+        UUID menuId = UUID.randomUUID();
+        when(mapper.findManagedRoleById(roleId)).thenReturn(Optional.of(role(roleId, 0)));
+        when(mapper.countEnabledMenuIds(List.of(menuId))).thenReturn(1L);
+
+        service.replaceRoleMenus(roleId, List.of(menuId, menuId));
+
+        verify(mapper).deleteRoleMenus(roleId);
+        verify(mapper).insertRoleMenu(any(UUID.class),
+                org.mockito.ArgumentMatchers.eq(roleId),
+                org.mockito.ArgumentMatchers.eq(menuId),
+                any());
+
+        UUID unknownMenuId = UUID.randomUUID();
+        when(mapper.countEnabledMenuIds(List.of(unknownMenuId))).thenReturn(0L);
+        assertThatThrownBy(() -> service.replaceRoleMenus(roleId, List.of(unknownMenuId)))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("SYSTEM-404-003"));
+    }
+
+    @Test
+    void 只读菜单应按父子关系构建树并保留按钮权限码() {
+        UUID rootId = UUID.randomUUID();
+        UUID buttonId = UUID.randomUUID();
+        when(mapper.findAllMenus()).thenReturn(List.of(
+                new AccessManagementMapper.ManagedMenuRecord(
+                        rootId,
+                        null,
+                        "系统管理",
+                        "DIRECTORY",
+                        null,
+                        null,
+                        null,
+                        "setting",
+                        100,
+                        true,
+                        "ENABLED"
+                ),
+                new AccessManagementMapper.ManagedMenuRecord(
+                        buttonId,
+                        rootId,
+                        "查看用户",
+                        "BUTTON",
+                        null,
+                        null,
+                        "system:user:view",
+                        null,
+                        10,
+                        false,
+                        "ENABLED"
+                )
+        ));
+
+        assertThat(service.findMenuTree()).singleElement().satisfies(root -> {
+            assertThat(root.id()).isEqualTo(rootId);
+            assertThat(root.children()).singleElement().satisfies(button ->
+                    assertThat(button.permission()).isEqualTo("system:user:view"));
+        });
+    }
+
     private AccessManagementMapper.ManagedUserRecord user(UUID userId, long version) {
         Instant now = Instant.parse("2026-07-15T00:00:00Z");
         return new AccessManagementMapper.ManagedUserRecord(
@@ -188,6 +310,20 @@ class AccessManagementServiceTest {
                 "ENABLED",
                 true,
                 null,
+                now,
+                now,
+                version
+        );
+    }
+
+    private AccessManagementMapper.ManagedRoleRecord role(UUID roleId, long version) {
+        Instant now = Instant.parse("2026-07-15T00:00:00Z");
+        return new AccessManagementMapper.ManagedRoleRecord(
+                roleId,
+                "DISPATCHER",
+                "调度员",
+                "ENABLED",
+                "负责车辆调度",
                 now,
                 now,
                 version

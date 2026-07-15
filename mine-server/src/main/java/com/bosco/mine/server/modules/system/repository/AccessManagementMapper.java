@@ -212,6 +212,15 @@ public interface AccessManagementMapper {
     );
 
     /**
+     * 判断角色编码是否已存在。
+     *
+     * @param code 角色编码
+     * @return 是否已存在
+     */
+    @Select("SELECT EXISTS (SELECT 1 FROM sys_role WHERE code = #{code})")
+    boolean roleCodeExists(@Param("code") String code);
+
+    /**
      * 按条件统计角色。
      *
      * @param keyword 角色编码或名称关键词
@@ -314,6 +323,21 @@ public interface AccessManagementMapper {
             @Param("expectedVersion") long expectedVersion,
             @Param("updatedBy") UUID updatedBy
     );
+
+    /**
+     * 仅当角色尚未分配给用户时删除角色。
+     *
+     * @param roleId 角色标识
+     * @return 影响行数
+     */
+    @Delete("""
+            DELETE FROM sys_role role
+            WHERE role.id = #{roleId}
+              AND NOT EXISTS (
+                  SELECT 1 FROM sys_user_role user_role WHERE user_role.role_id = role.id
+              )
+            """)
+    int deleteUnusedRole(@Param("roleId") UUID roleId);
 
     /**
      * 新增用户角色关联。
@@ -422,6 +446,25 @@ public interface AccessManagementMapper {
             </script>
             """)
     long countExistingMenuIds(@Param("menuIds") List<UUID> menuIds);
+
+    /**
+     * 统计给定菜单标识中真实存在且启用的数量。
+     *
+     * @param menuIds 菜单标识集合
+     * @return 启用菜单数量
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*)
+            FROM sys_menu
+            WHERE status = 'ENABLED'
+              AND id IN
+            <foreach collection="menuIds" item="menuId" open="(" separator="," close=")">
+                #{menuId,typeHandler=com.bosco.mine.server.modules.system.repository.PostgreSqlUuidTypeHandler}
+            </foreach>
+            </script>
+            """)
+    long countEnabledMenuIds(@Param("menuIds") List<UUID> menuIds);
 
     /**
      * 新增角色菜单关联。

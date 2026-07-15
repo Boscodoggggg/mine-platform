@@ -136,4 +136,65 @@ class AccessManagementIT {
         )).isInstanceOfSatisfying(MineException.class, exception ->
                 assertThat(exception.errorCode().code()).isEqualTo("SYSTEM-409-003"));
     }
+
+    @Test
+    void 应完成角色创建修改授权与删除闭环() {
+        AccessManagementService.RoleView created = service.createRole(
+                "auditor",
+                "审计员",
+                "ENABLED",
+                "查看系统审计"
+        );
+        UUID menuId = mapper.findAllMenus().stream()
+                .filter(menu -> "system:user:view".equals(menu.permission()))
+                .findFirst()
+                .orElseThrow()
+                .id();
+
+        service.replaceRoleMenus(created.id(), List.of(menuId));
+        AccessManagementService.RoleView updated = service.updateRole(
+                created.id(),
+                "安全审计员",
+                "DISABLED",
+                "暂停授权",
+                created.version()
+        );
+
+        assertThat(updated.code()).isEqualTo("AUDITOR");
+        assertThat(updated.menuIds()).containsExactly(menuId);
+        assertThat(service.findMenuTree()).isNotEmpty();
+        service.deleteRole(created.id());
+        assertThat(mapper.findManagedRoleById(created.id())).isEmpty();
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT action FROM sys_operation_log ORDER BY occurred_at",
+                String.class
+        )).containsExactly(
+                "CREATE_ROLE",
+                "ASSIGN_ROLE_MENUS",
+                "UPDATE_ROLE",
+                "DELETE_ROLE"
+        );
+    }
+
+    @Test
+    void 应拒绝删除仍分配给用户的角色() {
+        AccessManagementService.UserView user = service.createUser(
+                "role-owner",
+                "角色用户",
+                "temporary-password",
+                "ENABLED"
+        );
+        AccessManagementService.RoleView role = service.createRole(
+                "ROLE_OWNER",
+                "占用角色",
+                "ENABLED",
+                null
+        );
+        service.replaceUserRoles(user.id(), List.of(role.id()));
+
+        assertThatThrownBy(() -> service.deleteRole(role.id()))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("SYSTEM-409-004"));
+        assertThat(mapper.findManagedRoleById(role.id())).isPresent();
+    }
 }

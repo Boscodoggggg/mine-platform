@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,10 +35,16 @@ public class AccessManagementService {
             new ErrorCode("SYSTEM-409-001", "用户名已存在");
     private static final ErrorCode VERSION_CONFLICT =
             new ErrorCode("SYSTEM-409-003", "数据已被其他管理员修改，请刷新后重试");
+    private static final ErrorCode ROLE_IN_USE =
+            new ErrorCode("SYSTEM-409-004", "角色仍被用户使用，请先解除关联");
     private static final ErrorCode SUPER_ADMIN_PROTECTED =
             new ErrorCode("SYSTEM-403-001", "禁止修改超级管理员");
     private static final ErrorCode PASSWORD_INVALID =
             new ErrorCode("SYSTEM-422-001", "临时密码不符合安全要求");
+    private static final ErrorCode ROLE_CODE_CONFLICT =
+            new ErrorCode("SYSTEM-409-002", "角色编码已存在");
+    private static final ErrorCode MENU_NOT_FOUND =
+            new ErrorCode("SYSTEM-404-003", "菜单或权限节点不存在或未启用");
 
     private final AccessManagementMapper mapper;
     private final PasswordEncoder passwordEncoder;
@@ -243,6 +250,186 @@ public class AccessManagementService {
         StpUtil.logout(userId.toString());
     }
 
+    /**
+     * 分页查询角色及其菜单授权标识。
+     *
+     * @param keyword 角色编码或名称关键词
+     * @param status  角色状态
+     * @param page    页码，从一开始
+     * @param size    每页数量
+     * @return 角色分页数据
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<RoleView> findRoles(String keyword, String status, int page, int size) {
+        String normalizedKeyword = normalizeOptional(keyword);
+        String normalizedStatus = normalizeOptional(status);
+        int offset = Math.multiplyExact(page - 1, size);
+        List<RoleView> roles = mapper.findRoles(normalizedKeyword, normalizedStatus, offset, size)
+                .stream()
+                .map(this::toRoleView)
+                .toList();
+        return new PageResponse<>(
+                roles,
+                page,
+                size,
+                mapper.countRoles(normalizedKeyword, normalizedStatus)
+        );
+    }
+
+    /**
+     * 创建角色，角色编码创建后不可修改。
+     *
+     * @param code        角色编码
+     * @param name        角色名称
+     * @param status      角色状态
+     * @param description 角色说明
+     * @return 新角色快照
+     */
+    @Transactional
+    public RoleView createRole(String code, String name, String status, String description) {
+        String normalizedCode = code.strip().toUpperCase(Locale.ROOT);
+        if (mapper.roleCodeExists(normalizedCode)) {
+            throw new MineException(ROLE_CODE_CONFLICT, Map.of("code", normalizedCode));
+        }
+        UUID roleId = idGenerator.next();
+        try {
+            mapper.insertRole(
+                    roleId,
+                    normalizedCode,
+                    name.strip(),
+                    normalizeStatus(status),
+                    normalizeOptional(description),
+                    currentOperatorId()
+            );
+        } catch (DuplicateKeyException exception) {
+            throw new MineException(ROLE_CODE_CONFLICT, Map.of("code", normalizedCode));
+        }
+        RoleView created = roleById(roleId);
+        auditService.recordSuccess(
+                "CREATE_ROLE",
+                "system:role:create",
+                "ROLE",
+                roleId,
+                Map.of(),
+                roleSummary(created)
+        );
+        return created;
+    }
+
+    /**
+     * 通过乐观锁修改角色可变信息。
+     *
+     * @param roleId      角色标识
+     * @param name        角色名称
+     * @param status      角色状态
+     * @param description 角色说明
+     * @param version     期望版本号
+     * @return 更新后的角色快照
+     */
+    @Transactional
+    public RoleView updateRole(
+            UUID roleId,
+            String name,
+            String status,
+            String description,
+            long version
+    ) {
+        RoleView before = roleById(roleId);
+        int affected = mapper.updateRole(
+                roleId,
+                name.strip(),
+                normalizeStatus(status),
+                normalizeOptional(description),
+                version,
+                currentOperatorId()
+        );
+        if (affected == 0) {
+            throw new MineException(VERSION_CONFLICT, Map.of("roleId", roleId));
+        }
+        RoleView updated = roleById(roleId);
+        auditService.recordSuccess(
+                "UPDATE_ROLE",
+                "system:role:update",
+                "ROLE",
+                roleId,
+                roleSummary(before),
+                roleSummary(updated)
+        );
+        return updated;
+    }
+
+    /**
+     * 删除未分配给任何用户的角色。
+     *
+     * @param roleId 角色标识
+     */
+    @Transactional
+    public void deleteRole(UUID roleId) {
+        RoleView before = roleById(roleId);
+        if (mapper.deleteUnusedRole(roleId) == 0) {
+            throw new MineException(ROLE_IN_USE, Map.of("roleId", roleId));
+        }
+        auditService.recordSuccess(
+                "DELETE_ROLE",
+                "system:role:delete",
+                "ROLE",
+                roleId,
+                roleSummary(before),
+                Map.of()
+        );
+    }
+
+    /**
+     * 原子替换角色拥有的全部目录、页面和按钮节点。
+     *
+     * @param roleId  角色标识
+     * @param menuIds 新授权节点标识集合
+     */
+    @Transactional
+    public void replaceRoleMenus(UUID roleId, List<UUID> menuIds) {
+        requireRole(roleId);
+        List<UUID> previousMenuIds = mapper.findMenuIdsByRoleId(roleId);
+        List<UUID> uniqueMenuIds = List.copyOf(new LinkedHashSet<>(menuIds));
+        if (!uniqueMenuIds.isEmpty()
+                && mapper.countEnabledMenuIds(uniqueMenuIds) != uniqueMenuIds.size()) {
+            throw new MineException(MENU_NOT_FOUND, Map.of());
+        }
+
+        mapper.deleteRoleMenus(roleId);
+        UUID operatorId = currentOperatorId();
+        uniqueMenuIds.forEach(menuId -> mapper.insertRoleMenu(
+                idGenerator.next(),
+                roleId,
+                menuId,
+                operatorId
+        ));
+        auditService.recordSuccess(
+                "ASSIGN_ROLE_MENUS",
+                "system:role:assign-menu",
+                "ROLE",
+                roleId,
+                Map.of("menuIds", previousMenuIds),
+                Map.of("menuIds", uniqueMenuIds)
+        );
+    }
+
+    /**
+     * 获取由发布迁移维护的完整只读菜单树。
+     *
+     * @return 菜单树根节点
+     */
+    @Transactional(readOnly = true)
+    public List<MenuNode> findMenuTree() {
+        Map<UUID, List<AccessManagementMapper.ManagedMenuRecord>> children = new HashMap<>();
+        for (AccessManagementMapper.ManagedMenuRecord menu : mapper.findAllMenus()) {
+            children.computeIfAbsent(menu.parentId(), ignored -> new java.util.ArrayList<>()).add(menu);
+        }
+        return children.getOrDefault(null, List.of())
+                .stream()
+                .map(menu -> toMenuNode(menu, children))
+                .toList();
+    }
+
     private UserView userById(UUID userId) {
         return toUserView(requireUser(userId));
     }
@@ -250,6 +437,15 @@ public class AccessManagementService {
     private AccessManagementMapper.ManagedUserRecord requireUser(UUID userId) {
         return mapper.findManagedUserById(userId)
                 .orElseThrow(() -> new MineException(USER_NOT_FOUND, Map.of("userId", userId)));
+    }
+
+    private RoleView roleById(UUID roleId) {
+        return toRoleView(requireRole(roleId));
+    }
+
+    private AccessManagementMapper.ManagedRoleRecord requireRole(UUID roleId) {
+        return mapper.findManagedRoleById(roleId)
+                .orElseThrow(() -> new MineException(ROLE_NOT_FOUND, Map.of("roleId", roleId)));
     }
 
     private UserView toUserView(AccessManagementMapper.ManagedUserRecord user) {
@@ -264,6 +460,43 @@ public class AccessManagementService {
                 user.updatedAt(),
                 user.version(),
                 mapper.findRoleIdsByUserId(user.id())
+        );
+    }
+
+    private RoleView toRoleView(AccessManagementMapper.ManagedRoleRecord role) {
+        return new RoleView(
+                role.id(),
+                role.code(),
+                role.name(),
+                role.status(),
+                role.description(),
+                role.createdAt(),
+                role.updatedAt(),
+                role.version(),
+                mapper.findMenuIdsByRoleId(role.id())
+        );
+    }
+
+    private MenuNode toMenuNode(
+            AccessManagementMapper.ManagedMenuRecord menu,
+            Map<UUID, List<AccessManagementMapper.ManagedMenuRecord>> children
+    ) {
+        return new MenuNode(
+                menu.id(),
+                menu.parentId(),
+                menu.name(),
+                menu.type(),
+                menu.path(),
+                menu.componentKey(),
+                menu.permission(),
+                menu.icon(),
+                menu.sortOrder(),
+                menu.visible(),
+                menu.status(),
+                children.getOrDefault(menu.id(), List.of())
+                        .stream()
+                        .map(child -> toMenuNode(child, children))
+                        .toList()
         );
     }
 
@@ -308,6 +541,18 @@ public class AccessManagementService {
         );
     }
 
+    private Map<String, ?> roleSummary(RoleView role) {
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("code", role.code());
+        summary.put("name", role.name());
+        summary.put("status", role.status());
+        summary.put("menuIds", role.menuIds());
+        if (role.description() != null) {
+            summary.put("description", role.description());
+        }
+        return Map.copyOf(summary);
+    }
+
     /**
      * 管理端可见的用户快照，不包含密码及其散列。
      *
@@ -340,6 +585,78 @@ public class AccessManagementService {
          */
         public UserView {
             roleIds = List.copyOf(roleIds);
+        }
+    }
+
+    /**
+     * 管理端可见的角色快照。
+     *
+     * @param id          角色标识
+     * @param code        不可变角色编码
+     * @param name        角色名称
+     * @param status      角色状态
+     * @param description 角色说明
+     * @param createdAt   创建时间
+     * @param updatedAt   更新时间
+     * @param version     乐观锁版本号
+     * @param menuIds     已授权菜单节点标识
+     */
+    public record RoleView(
+            UUID id,
+            String code,
+            String name,
+            String status,
+            String description,
+            Instant createdAt,
+            Instant updatedAt,
+            long version,
+            List<UUID> menuIds
+    ) {
+
+        /**
+         * 创建不可变角色快照。
+         */
+        public RoleView {
+            menuIds = List.copyOf(menuIds);
+        }
+    }
+
+    /**
+     * 管理端只读权限树节点。
+     *
+     * @param id           节点标识
+     * @param parentId     父节点标识
+     * @param name         展示名称
+     * @param type         节点类型
+     * @param path         路由路径
+     * @param componentKey 前端组件键
+     * @param permission   权限码
+     * @param icon         图标键
+     * @param sortOrder    排序值
+     * @param visible      是否在导航显示
+     * @param status       节点状态
+     * @param children     子节点
+     */
+    public record MenuNode(
+            UUID id,
+            UUID parentId,
+            String name,
+            String type,
+            String path,
+            String componentKey,
+            String permission,
+            String icon,
+            int sortOrder,
+            boolean visible,
+            String status,
+            List<MenuNode> children
+    ) {
+
+        /**
+         * 创建不可变权限树节点。
+         */
+        public MenuNode {
+            children = List.copyOf(children);
         }
     }
 }
