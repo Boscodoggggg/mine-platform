@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { createPinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { localStg } from '@/utils/storage';
@@ -8,6 +9,22 @@ const { changePasswordMock, loginMock } = vi.hoisted(() => ({
   changePasswordMock: vi.fn(),
   loginMock: vi.fn()
 }));
+
+function mockPreferredDarkMode(matches: boolean) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn().mockReturnValue({
+      matches,
+      media: '(prefers-color-scheme: dark)',
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    })
+  );
+}
 
 vi.mock('@/modules/system/api/auth', () => ({
   changePassword: changePasswordMock,
@@ -27,7 +44,7 @@ async function mountPage() {
 
   const wrapper = mount(LoginPage, {
     global: {
-      plugins: [router]
+      plugins: [createPinia(), router]
     }
   });
   return { router, wrapper };
@@ -37,37 +54,57 @@ describe('LoginPage', () => {
   beforeEach(() => {
     changePasswordMock.mockReset();
     loginMock.mockReset();
+    window.localStorage.removeItem('mine-login-theme');
+    mockPreferredDarkMode(false);
   });
 
   it('应展示智慧矿山品牌和深蓝登录舱', async () => {
     const { wrapper } = await mountPage();
 
-    expect(wrapper.get('.network-canvas').attributes('aria-hidden')).toBe('true');
+    expect(wrapper.find('.network-canvas').exists()).toBe(false);
+    expect(wrapper.get('.mine-scene-asset').attributes('src')).toContain('smart-mine-tunnel.svg');
     expect(wrapper.get('.brand-stage').text()).toContain('智慧矿山数据平台');
+    expect(wrapper.get('.brand-stage').classes()).toContain('brand-stage--lower-left');
     expect(wrapper.get('.login-card').classes()).toContain('login-card');
+    expect(wrapper.get('.login-card').classes()).toContain('liquid-glass');
+    expect(wrapper.find('#liquid-glass-distortion').exists()).toBe(true);
     expect(wrapper.find('.mine-visual').exists()).toBe(false);
   });
 
-  it('应在画布上绘制移动节点和连接线', async () => {
-    const context = {
-      arc: vi.fn(),
-      beginPath: vi.fn(),
-      clearRect: vi.fn(),
-      fill: vi.fn(),
-      lineTo: vi.fn(),
-      moveTo: vi.fn(),
-      setTransform: vi.fn(),
-      stroke: vi.fn()
-    };
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(context as never);
-    vi.stubGlobal('requestAnimationFrame', vi.fn().mockReturnValue(1));
-    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  it('液态玻璃高光应保持静态并展示表单语义图标', async () => {
+    const { wrapper } = await mountPage();
+    const card = wrapper.get('.liquid-glass');
+
+    await card.trigger('pointermove', { clientX: 110, clientY: 60 });
+
+    expect(card.attributes('style')).toBeUndefined();
+    expect(wrapper.find('[data-login-icon="username"]').exists()).toBe(true);
+    expect(wrapper.find('[data-login-icon="password"]').exists()).toBe(true);
+    expect(wrapper.find('[data-login-icon="submit"]').exists()).toBe(true);
+    expect(wrapper.find('[data-login-icon="service"]').exists()).toBe(true);
+  });
+
+  it('应读取并记住登录页的亮暗主题偏好', async () => {
+    window.localStorage.setItem('mine-login-theme', 'dark');
+    const { wrapper } = await mountPage();
+    const switchButton = wrapper.get('[data-login-theme-switch]');
+
+    expect(wrapper.get('.login-shell').classes()).toContain('login-shell--dark');
+    expect(switchButton.attributes('aria-label')).toBe('切换为亮色模式');
+
+    await switchButton.trigger('click');
+
+    expect(wrapper.get('.login-shell').classes()).toContain('login-shell--light');
+    expect(window.localStorage.getItem('mine-login-theme')).toBe('light');
+    expect(switchButton.attributes('aria-label')).toBe('切换为暗色模式');
+  });
+
+  it('没有本地偏好时应跟随系统深色模式', async () => {
+    mockPreferredDarkMode(true);
 
     const { wrapper } = await mountPage();
 
-    expect(context.arc).toHaveBeenCalled();
-    expect(context.lineTo).toHaveBeenCalled();
-    wrapper.unmount();
+    expect(wrapper.get('.login-shell').classes()).toContain('login-shell--dark');
   });
 
   it('用户名和密码为空时不应提交登录请求', async () => {
