@@ -1,6 +1,7 @@
 package com.bosco.mine.server.modules.device.repository;
 
 import com.bosco.mine.server.modules.device.model.Device;
+import com.bosco.mine.server.modules.device.model.DeviceCredential;
 import com.bosco.mine.server.modules.device.model.Product;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
@@ -417,5 +418,88 @@ public interface DeviceMapper {
             @Param("secretHint") String secretHint,
             @Param("topicRoot") String topicRoot,
             @Param("createdBy") UUID createdBy
+    );
+
+    /**
+     * 按标识查询设备凭据安全快照。
+     *
+     * @param credentialId 凭据标识
+     * @return 不含明文密钥的凭据快照
+     */
+    @Select("""
+            SELECT id, device_id AS deviceId, username, secret_hash AS secretHash,
+                   secret_hint AS secretHint, topic_root AS topicRoot, status,
+                   updated_at AS updatedAt, version
+            FROM dev_device_credential
+            WHERE id = #{credentialId}
+            """)
+    Optional<DeviceCredential> findCredentialById(@Param("credentialId") UUID credentialId);
+
+    /**
+     * 判断设备是否已有活动凭据。
+     *
+     * @param deviceId 设备标识
+     * @return 是否已有活动凭据
+     */
+    @Select("""
+            SELECT EXISTS (
+                SELECT 1 FROM dev_device_credential
+                WHERE device_id = #{deviceId} AND status = 'ACTIVE'
+            )
+            """)
+    boolean activeCredentialExists(@Param("deviceId") UUID deviceId);
+
+    /**
+     * 使用乐观锁更新凭据密钥散列。
+     *
+     * @param credentialId   凭据标识
+     * @param secretHash     新密钥散列
+     * @param secretHint     新密钥提示
+     * @param expectedVersion 期望版本号
+     * @param updatedBy      更新人标识
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE dev_device_credential
+            SET secret_hash = #{secretHash},
+                secret_hint = #{secretHint},
+                updated_at = CURRENT_TIMESTAMP,
+                updated_by = #{updatedBy},
+                version = version + 1
+            WHERE id = #{credentialId}
+              AND status = 'ACTIVE'
+              AND version = #{expectedVersion}
+            """)
+    int rotateCredential(
+            @Param("credentialId") UUID credentialId,
+            @Param("secretHash") String secretHash,
+            @Param("secretHint") String secretHint,
+            @Param("expectedVersion") long expectedVersion,
+            @Param("updatedBy") UUID updatedBy
+    );
+
+    /**
+     * 使用乐观锁吊销活动凭据。
+     *
+     * @param credentialId    凭据标识
+     * @param expectedVersion 期望版本号
+     * @param updatedBy       更新人标识
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE dev_device_credential
+            SET status = 'REVOKED',
+                revoked_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP,
+                updated_by = #{updatedBy},
+                version = version + 1
+            WHERE id = #{credentialId}
+              AND status = 'ACTIVE'
+              AND version = #{expectedVersion}
+            """)
+    int revokeCredential(
+            @Param("credentialId") UUID credentialId,
+            @Param("expectedVersion") long expectedVersion,
+            @Param("updatedBy") UUID updatedBy
     );
 }

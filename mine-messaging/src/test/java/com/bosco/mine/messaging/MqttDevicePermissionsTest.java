@@ -35,4 +35,18 @@ class MqttDevicePermissionsTest {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> MqttDevicePermissions.forDevice("truck+"));
     }
+
+    @Test
+    void 指定产品时应锁定完整产品设备主题根() {
+        MqttDevicePermissions permissions = MqttDevicePermissions.forDevice(
+                "haul-truck", "device-001"
+        );
+
+        assertThat(permissions.topicWritePattern())
+                .isEqualTo("^mine\\.v1\\.haul-truck\\.device-001\\.up\\.[^.]+$");
+        assertThat(permissions.topicReadPattern())
+                .isEqualTo("^mine\\.v1\\.haul-truck\\.device-001\\.down\\.[^.]+$");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> MqttDevicePermissions.forDevice("haul.truck", "device-001"));
+    }
 }

@@ -82,16 +82,23 @@ services:
       MINE_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/mine_super_admin_password
       MINE_PASSWORD_BCRYPT_STRENGTH: ${MINE_PASSWORD_BCRYPT_STRENGTH:-12}
       MINE_AUTH_ACTIVE_TIMEOUT_SECONDS: ${MINE_AUTH_ACTIVE_TIMEOUT_SECONDS:-1800}
+      MINE_RABBITMQ_ADMIN_BASE_URL: http://rabbitmq:15672
+      MINE_RABBITMQ_ADMIN_USERNAME_FILE: /run/secrets/rabbitmq_admin_username
+      MINE_RABBITMQ_ADMIN_PASSWORD_FILE: /run/secrets/rabbitmq_admin_password
     volumes:
       - ../../mine-server/target/mine-server-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
     secrets:
       - postgres_password
       - redis_password
       - mine_super_admin_password
+      - rabbitmq_admin_username
+      - rabbitmq_admin_password
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - app

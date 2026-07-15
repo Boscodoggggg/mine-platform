@@ -109,6 +109,9 @@ class DatabaseMigrationIT {
                 WHERE permission LIKE 'device:%'
                 ORDER BY permission
                 """, String.class)).containsExactly(
+                "device:credential:create",
+                "device:credential:revoke",
+                "device:credential:rotate",
                 "device:device:archive",
                 "device:device:create",
                 "device:device:update",

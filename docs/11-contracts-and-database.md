@@ -130,6 +130,17 @@ POST             /api/v1/thing-model-versions/{id}/validate
 - 产品和设备成功写操作统一写入 `sys_operation_log` 的 `DEVICE_MANAGEMENT` 模块。
 - 设备列表与详情响应不返回凭据、密钥散列或密钥提示。
 
+设备 MQTT 凭据约束：
+
+- `POST /devices/{id}/credentials` 需要 `device:credential:create`；只有 `ENABLED` 设备可以签发，且每台设备同时只允许一个 `ACTIVE` 凭据。
+- `POST /device-credentials/{id}/rotate` 需要 `device:credential:rotate`，请求体为 `{"version":0}`；轮换成功后平台主动关闭该用户的现有连接，旧密码不能再次建立 MQTT 连接。
+- `DELETE /device-credentials/{id}?version=0` 需要 `device:credential:revoke`；吊销会同时删除 RabbitMQ 设备用户。
+- 签发和轮换响应包含 `username`、`clientId`、`secret`、`topicRoot`、`upTopic`、`downTopic` 和 `version`。`secret` 只在当次成功响应返回，平台不提供再次查看接口。
+- `username` 与 `clientId` 使用平台生成的安全不透明标识，不直接复用第三方 `deviceCode`；这允许设备编码包含冒号、点号等厂商字符，同时避免污染 RabbitMQ 权限正则。
+- 设备只可发布 `mine/v1/{productKey}/{clientId}/up/{messageType}`，只可订阅 `mine/v1/{productKey}/{clientId}/down/{messageType}`；RabbitMQ 在 `/mine-device` vhost 同时执行资源权限与 topic permission 双重隔离。
+- 业务库只保存 BCrypt 散列和末尾 8 位提示，响应、审计和异常不得记录明文密钥。RabbitMQ 管理员凭据通过只读 secret 文件挂载，不进入环境变量或数据库。
+- 数据库事务失败时会尽力删除刚创建的 RabbitMQ 用户；管理接口失败会回滚数据库变更。数据库提交与 Broker 管理接口无法形成分布式原子事务，后续需由凭据对账任务发现并修复极低概率的提交窗口不一致。
+
 ### 2.3 协议与策略
 
 ~~~text

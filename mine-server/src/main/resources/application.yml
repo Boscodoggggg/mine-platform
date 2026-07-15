@@ -50,3 +50,11 @@ mine:
       max-failures-per-source: ${MINE_LOGIN_MAX_FAILURES_PER_SOURCE:25}
       attempt-window: ${MINE_LOGIN_ATTEMPT_WINDOW:PT10M}
       lock-duration: ${MINE_LOGIN_LOCK_DURATION:PT15M}
+  rabbitmq:
+    admin:
+      base-url: ${MINE_RABBITMQ_ADMIN_BASE_URL:http://rabbitmq:15672}
+      username-file: ${MINE_RABBITMQ_ADMIN_USERNAME_FILE:/run/secrets/rabbitmq_admin_username}
+      password-file: ${MINE_RABBITMQ_ADMIN_PASSWORD_FILE:/run/secrets/rabbitmq_admin_password}
+      vhost: ${MINE_RABBITMQ_DEVICE_VHOST:/mine-device}
+      connect-timeout: ${MINE_RABBITMQ_ADMIN_CONNECT_TIMEOUT:PT5S}
+      request-timeout: ${MINE_RABBITMQ_ADMIN_REQUEST_TIMEOUT:PT10S}

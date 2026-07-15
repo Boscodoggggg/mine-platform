@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 public final class MqttDevicePermissions {
 
     private static final Pattern SAFE_DEVICE_ID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
+    private static final Pattern SAFE_PRODUCT_KEY = Pattern.compile("[a-z][a-z0-9-]{2,63}");
 
     private final String configurePattern;
     private final String writePattern;
@@ -37,6 +38,24 @@ public final class MqttDevicePermissions {
      * @return 设备最小权限
      */
     public static MqttDevicePermissions forDevice(String deviceId) {
+        return forDevicePattern("[^.]+", deviceId);
+    }
+
+    /**
+     * 为指定产品下的安全设备标识生成精确 RabbitMQ 权限正则。
+     *
+     * @param productKey 产品编码
+     * @param deviceId   设备标识，同时作为 MQTT clientId
+     * @return 锁定产品和设备两级身份的最小权限
+     */
+    public static MqttDevicePermissions forDevice(String productKey, String deviceId) {
+        if (productKey == null || !SAFE_PRODUCT_KEY.matcher(productKey).matches()) {
+            throw new IllegalArgumentException("productKey 必须符合小写字母、数字和连字符编码规则");
+        }
+        return forDevicePattern(productKey, deviceId);
+    }
+
+    private static MqttDevicePermissions forDevicePattern(String productPattern, String deviceId) {
         if (deviceId == null || !SAFE_DEVICE_ID.matcher(deviceId).matches()) {
             throw new IllegalArgumentException("deviceId 只能包含字母、数字、下划线和连字符，长度为 1 到 64");
         }
@@ -46,8 +65,8 @@ public final class MqttDevicePermissions {
                 queuePattern,
                 resourcePattern,
                 resourcePattern,
-                "^mine\\.v1\\.[^.]+\\." + deviceId + "\\.up\\.[^.]+$",
-                "^mine\\.v1\\.[^.]+\\." + deviceId + "\\.down\\.[^.]+$"
+                "^mine\\.v1\\." + productPattern + "\\." + deviceId + "\\.up\\.[^.]+$",
+                "^mine\\.v1\\." + productPattern + "\\." + deviceId + "\\.down\\.[^.]+$"
         );
     }
 
