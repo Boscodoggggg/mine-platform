@@ -39,7 +39,8 @@ class DatabaseMigrationIT {
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
-            "sys_inbox_event"
+            "sys_inbox_event",
+            "cmd_instance"
     );
 
     @Container
@@ -71,6 +72,24 @@ class DatabaseMigrationIT {
         assertThat(constraintColumns("pk_sys_inbox_event"))
                 .containsExactly("consumer_name", "event_id");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_role", Long.class)).isZero();
+    }
+
+    @Test
+    void 命令表和所有字段必须有中文注释() {
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT obj_description('cmd_instance'::regclass, 'pg_class')",
+                String.class
+        )).isNotBlank();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid = 'cmd_instance'::regclass
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_cmd_instance_creator_idempotency"))
+                .containsExactly("created_by", "idempotency_key");
     }
 
     @Test

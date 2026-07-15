@@ -166,7 +166,11 @@ Compose profiles：
 - `mine-telemetry` 账号在读取 `mine.telemetry.q` 之外只允许写 `mine.realtime.x`；`mine-server` 使用独立
   `mine-server-realtime` 账号，每个实例必须配置唯一 `MINE_REALTIME_INSTANCE_ID`，并只允许创建、绑定和读取
   `mine.realtime.server.<instanceId>.q`。该队列是 classic、非持久、独占、自动删除队列，用于广播到每个服务实例，
-  不能改成多实例共享队列，否则浏览器会随机漏掉实时增量。
+  不能改成多实例共享队列，否则浏览器会随机漏掉实时增量。RabbitMQ 执行 `queue.bind` 会校验交换机 read 与队列
+  write 权限，因此该账号的 configure/write/read 正则都必须只覆盖实时交换机和本实例队列命名范围。
+- `mine-server` 使用独立 `mine-server-command` 账号发布命令，只授予 `/mine-platform` 中
+  `mine.command.x` 的写权限，不授予配置权限和队列读权限。每台服务实例必须设置唯一
+  `MINE_COMMAND_OUTBOX_INSTANCE_ID`；启动和 RabbitMQ 重连只做一次有界恢复，运行期间禁止定时扫描 Outbox 表。
 - WSS 反向代理必须转发 `Upgrade` 和 `Connection` 头。浏览器 25 秒应用层心跳只维护连接，不执行 Inbox、Outbox
   或业务表扫描。
 

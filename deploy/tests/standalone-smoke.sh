@@ -59,6 +59,14 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
   'rabbitmqctl -q authenticate_user mine-telemetry "$(cat /run/secrets/rabbitmq_telemetry_password)"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-telemetry \
   | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^mine\\\.realtime\\\.x\$[[:space:]]+\^mine\\\.telemetry\\\.q\$$'
+"${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-realtime \
+  | awk -F '\t' '$1 == "/mine-platform" && $2 == $3 && $3 == $4 && index($2, "mine\\.realtime\\.server") { found = 1 } END { exit !found }'
+"${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \
+  | awk '$1 == "mine.realtime.server.standalone.q" && $2 >= 1 { found = 1 } END { exit !found }'
+"${compose[@]}" exec -T rabbitmq sh -ec \
+  'rabbitmqctl -q authenticate_user mine-server-command "$(cat /run/secrets/rabbitmq_server_command_password)"'
+"${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-command \
+  | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^mine\\\.command\\\.x\$[[:space:]]+\^\$$'
 "${compose[@]}" exec -T redis sh -ec \
   'redis-cli --no-auth-warning -a "$(cat /run/secrets/redis_password)" ping' | grep -q PONG
 

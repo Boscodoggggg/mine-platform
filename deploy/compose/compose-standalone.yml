@@ -95,6 +95,10 @@ services:
       MINE_REALTIME_RABBIT_ENABLED: "true"
       MINE_REALTIME_RABBIT_HOST: rabbitmq
       MINE_REALTIME_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_realtime_password
+      MINE_COMMAND_OUTBOX_ENABLED: "true"
+      MINE_COMMAND_OUTBOX_INSTANCE_ID: standalone
+      MINE_COMMAND_OUTBOX_RABBIT_HOST: rabbitmq
+      MINE_COMMAND_OUTBOX_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_command_password
     volumes:
       - ../../mine-server/target:/opt/mine/source:ro
       - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
@@ -106,6 +110,7 @@ services:
       - rabbitmq_admin_password
       - timescale_reader_password
       - rabbitmq_server_realtime_password
+      - rabbitmq_server_command_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -251,6 +256,7 @@ services:
       - rabbitmq_gateway_platform_password
       - rabbitmq_telemetry_password
       - rabbitmq_server_realtime_password
+      - rabbitmq_server_command_password
       - source: tls_certificate
         target: tls_certificate
       - source: tls_private_key
@@ -675,6 +681,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_telemetry_password
   rabbitmq_server_realtime_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_realtime_password
+  rabbitmq_server_command_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_command_password
   mine_super_admin_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/mine_super_admin_password
   grafana_admin_password:

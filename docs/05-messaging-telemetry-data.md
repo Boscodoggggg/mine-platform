@@ -104,7 +104,7 @@ device.offline
 alarm.raised
 alarm.recovered
 operation.completed
-command.dispatch.{productKey}
+command.dispatch.{deviceId}
 command.status.{status}
 config.release.gateway
 config.release.telemetry
@@ -177,8 +177,11 @@ mine.realtime.server.{instanceId}.q
 - mine-server 使用 outbox。
 - Inbox 由消息到达触发并随业务事务写入，禁止为 Inbox 创建定时扫描任务。
 - Outbox 与业务数据同事务写入，并在提交时发送唤醒通知；relay 按通知携带的 eventId 精确认领，不固定间隔扫描整表。
-- 服务启动或数据库重连时只允许执行一次 `status + next_attempt_at` 索引上的有界恢复查询；运行期间失败事件按 eventId
+- 服务启动或 RabbitMQ 重连时只允许执行一次 `status + next_attempt_at` 索引上的有界恢复查询；运行期间失败事件按 eventId
   进入内存退避或 RabbitMQ 重试链路，不以高频扫表代替可靠性设计。
+- mine-server 使用独立 `mine-server-command` 账号，只允许写 `mine.command.x`，不读取任何队列；命令消息持久化并等待
+  publisher confirm 后才把 Outbox 置为 `PUBLISHED`。
+- 命令路由键使用 `command.dispatch.{deviceId}`，同一设备的下行消息共享分区键；命令 eventId 在全部尝试中保持不变。
 - gateway 无数据库事务，失败消息进入本地有界重试或令当前消费不 ACK。
 - messageId/eventId 在重试中保持不变。
 - gateway 标准化事件的 eventId 与 payload.messageId 使用同一个 UUIDv7，跨 vhost 重投时不得重新生成。

@@ -89,3 +89,17 @@ mine:
     account:
       username: ${MINE_REALTIME_RABBIT_USERNAME:mine-server-realtime}
       password-file: ${MINE_REALTIME_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_realtime_password}
+  command-outbox:
+    enabled: ${MINE_COMMAND_OUTBOX_ENABLED:false}
+    instance-id: ${MINE_COMMAND_OUTBOX_INSTANCE_ID:${HOSTNAME:standalone}}
+    rabbit-host: ${MINE_COMMAND_OUTBOX_RABBIT_HOST:rabbitmq}
+    rabbit-port: ${MINE_COMMAND_OUTBOX_RABBIT_PORT:5672}
+    confirm-timeout: ${MINE_COMMAND_OUTBOX_CONFIRM_TIMEOUT:PT5S}
+    lease-duration: ${MINE_COMMAND_OUTBOX_LEASE_DURATION:PT30S}
+    max-attempts: ${MINE_COMMAND_OUTBOX_MAX_ATTEMPTS:8}
+    recovery-limit: ${MINE_COMMAND_OUTBOX_RECOVERY_LIMIT:500}
+    retry-base-delay: ${MINE_COMMAND_OUTBOX_RETRY_BASE_DELAY:PT1S}
+    retry-max-delay: ${MINE_COMMAND_OUTBOX_RETRY_MAX_DELAY:PT1M}
+    account:
+      username: ${MINE_COMMAND_OUTBOX_RABBIT_USERNAME:mine-server-command}
+      password-file: ${MINE_COMMAND_OUTBOX_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_command_password}

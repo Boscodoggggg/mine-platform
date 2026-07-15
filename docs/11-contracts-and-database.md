@@ -523,6 +523,38 @@ result VARCHAR
 PRIMARY KEY(consumer_name, event_id)
 ~~~
 
+### cmd_instance
+
+每次下行意图创建一条不可复用的命令实例，核心字段如下：
+
+~~~text
+id UUID PK
+device_id UUID FK
+template_key VARCHAR
+template_version INTEGER
+parameters JSONB
+risk_level VARCHAR
+status VARCHAR
+ttl_seconds INTEGER
+timeout_seconds INTEGER
+retry_policy JSONB
+idempotency_key VARCHAR
+protocol_version VARCHAR NULL
+config_release_id UUID NULL
+created_by UUID FK
+queued_at/sent_at/device_received_at/completed_at TIMESTAMPTZ NULL
+expires_at TIMESTAMPTZ
+last_error_code VARCHAR NULL
+reply JSONB NULL
+version BIGINT
+UNIQUE(created_by, idempotency_key)
+~~~
+
+一期只发布 `QUERY_STATUS` 低风险示例模板。创建命令与 `command.dispatch.requested` Outbox 事件必须处于同一事务；
+重复幂等键直接返回原命令，不能再写第二条出站事件。状态转换由后端白名单控制：
+`CREATED -> QUEUED/CANCELLED`、`QUEUED -> SENT/EXPIRED`、`SENT -> DEVICE_RECEIVED/TIMEOUT`、
+`DEVICE_RECEIVED -> SUCCEEDED/REFUSED/FAILED/TIMEOUT`，终态不得回退。
+
 ## 12. Timescale 表
 
 示意 DDL：
