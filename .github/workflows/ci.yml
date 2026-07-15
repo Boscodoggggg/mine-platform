@@ -63,6 +63,12 @@ jobs:
       - name: 单元测试
         working-directory: mine-web
         run: mkdir -p reports && pnpm test:ci
+      - name: 安装 Chromium
+        working-directory: mine-web
+        run: pnpm exec playwright install --with-deps chromium
+      - name: 设备实时监控端到端测试
+        working-directory: mine-web
+        run: pnpm test:e2e --project=chromium
       - name: 生产构建
         working-directory: mine-web
         run: pnpm build

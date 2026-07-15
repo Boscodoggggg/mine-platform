@@ -1,0 +1,86 @@
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { i18n, setLocale } from '@/locales';
+import ProductListPage from './ProductListPage.vue';
+
+const api = vi.hoisted(() => ({
+  archiveProduct: vi.fn(),
+  createProduct: vi.fn(),
+  getProducts: vi.fn(),
+  updateProduct: vi.fn()
+}));
+const authState = vi.hoisted(() => ({ userInfo: { buttons: [] as string[] } }));
+
+vi.mock('@/modules/device/api/device', () => api);
+vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
+
+const product = {
+  id: 'product-1',
+  productKey: 'haul-truck',
+  name: '矿用运输车',
+  deviceType: 'VEHICLE',
+  status: 'ACTIVE' as const,
+  archivedAt: null,
+  createdAt: '2026-07-15T00:00:00Z',
+  updatedAt: '2026-07-15T00:00:00Z',
+  version: 0
+};
+
+describe('ProductListPage', () => {
+  beforeEach(() => {
+    setLocale('zh-CN');
+    Object.values(api).forEach(mock => mock.mockReset());
+    api.getProducts.mockResolvedValue({ items: [product], page: 1, size: 20, total: 1 });
+    api.createProduct.mockResolvedValue(product);
+    window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
+  });
+
+  it('应加载产品并按权限显示创建入口', async () => {
+    const wrapper = mountPage(['device:product:create']);
+    await flushPromises();
+
+    expect(api.getProducts).toHaveBeenCalledWith(expect.objectContaining({ page: 1, size: 20 }));
+    expect(wrapper.text()).toContain('产品管理');
+    expect(wrapper.text()).toContain('矿用运输车');
+    expect(wrapper.find('[data-action="create-product"]').exists()).toBe(true);
+  });
+
+  it('创建产品时应提交稳定产品编码和初始状态', async () => {
+    const wrapper = mountPage(['device:product:create']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      productForm: Record<string, string>;
+      openCreate: () => void;
+      saveProduct: () => Promise<void>;
+    };
+
+    page.openCreate();
+    Object.assign(page.productForm, {
+      productKey: 'loader',
+      name: '井下装载机',
+      deviceType: 'VEHICLE',
+      status: 'ACTIVE'
+    });
+    await page.saveProduct();
+
+    expect(api.createProduct).toHaveBeenCalledWith({
+      productKey: 'loader',
+      name: '井下装载机',
+      deviceType: 'VEHICLE',
+      status: 'ACTIVE'
+    });
+  });
+
+  it('空列表应提供可执行的引导信息', async () => {
+    api.getProducts.mockResolvedValue({ items: [], page: 1, size: 20, total: 0 });
+    const wrapper = mountPage(['device:product:create']);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('先创建产品，再接入设备');
+  });
+});
+
+function mountPage(permissions: string[]) {
+  authState.userInfo.buttons = permissions;
+  return mount(ProductListPage, { global: { plugins: [i18n] } });
+}

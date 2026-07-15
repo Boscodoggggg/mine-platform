@@ -217,6 +217,43 @@ location    → LocationSummary
 
 未知 widget 使用通用只读组件并记录前端告警，不能导致整页白屏。
 
+### 7.1 首批设备页面实现
+
+首批页面使用后端菜单的 `componentKey` 动态注册，不在前端写死用户角色：
+
+| componentKey | 页面 | 主要权限 |
+|---|---|---|
+| `device-product-list` | 产品管理 | `device:product:view/create/update/archive` |
+| `device-device-list` | 设备管理 | `device:device:view/create/update/archive` |
+| `device-monitor` | 设备实时监控 | `device:telemetry:view` |
+
+产品和设备页面支持分页、条件查询、创建、修改、乐观锁并发控制和归档。编码与归属产品在创建后不可修改，
+前端仅做交互层校验，后端仍是数据约束和权限的最终边界。
+
+实时监控页面的字段集合不是固定 Java DTO：页面先以字段标识查询一次最新快照，然后向全站单例 `RealtimeHub`
+订阅同一批字段。监控中可动态增删私有厂商字段；未识别的字段使用通用数值卡展示，值缺失时显示“等待数据”，不将缺失值伪造为 `0`。
+
+OpenAPI 是前后端契约的唯一类型来源。修改 `docs/openapi/mine-api.yaml` 后执行：
+
+~~~bash
+cd mine-web
+pnpm gen:api
+pnpm typecheck
+~~~
+
+生成的 `src/generated/mine-api.ts` 需要随契约一起提交；业务页只通过 `modules/device/api/device.ts` 包装后的函数访问接口，
+不在组件内拼接请求。
+
+相关质量门禁：
+
+~~~bash
+pnpm test
+pnpm lint:check
+pnpm typecheck
+pnpm test:e2e --project=chromium
+pnpm build
+~~~
+
 ## 8. 协议工作台
 
 采用三栏或上下组合：

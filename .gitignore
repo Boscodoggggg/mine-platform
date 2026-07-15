@@ -8,6 +8,8 @@ target/
 
 # 前端
 node_modules/
+mine-web/test-results/
+mine-web/playwright-report/
 dist/
 coverage/
 .vite/

@@ -131,6 +131,12 @@ class DatabaseMigrationIT {
                   AND parent.type = 'DIRECTORY'
                   AND child.type = 'MENU'
                 """, Long.class)).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM sys_menu
+                WHERE visible = TRUE
+                  AND path IN ('/device', '/device/products', '/device/devices', '/device/monitor')
+                """, Long.class)).isEqualTo(4L);
     }
 
     @Test

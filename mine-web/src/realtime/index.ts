@@ -6,7 +6,10 @@ export const REALTIME_AUTHENTICATION_EXPIRED_EVENT = 'mine:authentication-expire
 
 /** 全站共享的单一实时连接管理器。 */
 export const realtimeHub = new RealtimeHub({
-  url: buildRealtimeUrl(import.meta.env.VITE_SERVICE_BASE_URL, window.location.origin),
+  url: buildRealtimeUrl(
+    import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_SERVICE_BASE_URL,
+    window.location.origin
+  ),
   token: () => localStg.get('token') ?? '',
   onAuthenticationFailed: message => {
     localStg.remove('token');

@@ -3,16 +3,200 @@ info:
   title: 智慧矿山平台 API
   version: 0.1.0
   description: |
-    智慧矿山平台对管理端开放的 REST 契约。本文件当前固化阶段 1 已实现的设备遥测查询接口，
-    其他模块随实现逐步纳入。所有时间均为带时区的 ISO-8601 UTC 时间。
+    智慧矿山平台对管理端开放的 REST 契约。本文件固化阶段 1 已实现的产品、设备台账和遥测查询接口。
+    所有时间均为带时区的 ISO-8601 UTC 时间。
 servers:
   - url: /api/v1
 security:
   - MineToken: []
 tags:
+  - name: DeviceRegistry
+    description: 产品和设备台账管理
   - name: DeviceTelemetry
     description: 设备最新值与数值遥测历史
 paths:
+  /products:
+    get:
+      tags: [DeviceRegistry]
+      operationId: listProducts
+      summary: 分页查询产品
+      parameters:
+        - $ref: '#/components/parameters/Keyword'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, ACTIVE, ARCHIVED]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 产品分页。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPage'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [DeviceRegistry]
+      operationId: createProduct
+      summary: 创建产品
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreateRequest'
+      responses:
+        '201':
+          description: 产品已创建。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{productId}:
+    put:
+      tags: [DeviceRegistry]
+      operationId: updateProduct
+      summary: 修改产品
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdateRequest'
+      responses:
+        '200':
+          description: 修改后的产品。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ProductNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /products/{productId}/archive:
+    post:
+      tags: [DeviceRegistry]
+      operationId: archiveProduct
+      summary: 归档产品
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveRequest'
+      responses:
+        '204': { description: 产品已归档。 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ProductNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /devices:
+    get:
+      tags: [DeviceRegistry]
+      operationId: listDevices
+      summary: 分页查询设备
+      parameters:
+        - name: productId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/Keyword'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ENABLED, DISABLED, ARCHIVED]
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 设备分页。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevicePage'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [DeviceRegistry]
+      operationId: createDevice
+      summary: 创建设备
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceCreateRequest'
+      responses:
+        '201':
+          description: 设备已创建。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ProductNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /devices/{deviceId}:
+    put:
+      tags: [DeviceRegistry]
+      operationId: updateDevice
+      summary: 修改设备
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceUpdateRequest'
+      responses:
+        '200':
+          description: 修改后的设备。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DeviceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /devices/{deviceId}/archive:
+    post:
+      tags: [DeviceRegistry]
+      operationId: archiveDevice
+      summary: 归档设备
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveRequest'
+      responses:
+        '204': { description: 设备已归档。 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DeviceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /devices/{deviceId}/latest:
     get:
       tags: [DeviceTelemetry]
@@ -140,6 +324,13 @@ components:
       in: header
       name: X-Mine-Token
   parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     DeviceId:
       name: deviceId
       in: path
@@ -148,7 +339,121 @@ components:
       schema:
         type: string
         format: uuid
+    Keyword:
+      name: keyword
+      in: query
+      schema:
+        type: string
+        maxLength: 128
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
   schemas:
+    ProductStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, ARCHIVED]
+    DeviceStatus:
+      type: string
+      enum: [ENABLED, DISABLED, ARCHIVED]
+    Product:
+      type: object
+      required: [id, productKey, name, deviceType, status, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        productKey: { type: string, pattern: '^[a-z][a-z0-9-]{2,63}$' }
+        name: { type: string, maxLength: 128 }
+        deviceType: { type: string, maxLength: 64 }
+        status: { $ref: '#/components/schemas/ProductStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    ProductPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Product' }
+    ProductCreateRequest:
+      type: object
+      required: [productKey, name, deviceType, status]
+      properties:
+        productKey: { type: string, pattern: '^[a-z][a-z0-9-]{2,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        deviceType: { type: string, minLength: 1, maxLength: 64 }
+        status: { type: string, enum: [DRAFT, ACTIVE] }
+    ProductUpdateRequest:
+      type: object
+      required: [name, deviceType, status, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        deviceType: { type: string, minLength: 1, maxLength: 64 }
+        status: { type: string, enum: [DRAFT, ACTIVE] }
+        version: { type: integer, format: int64, minimum: 0 }
+    Device:
+      type: object
+      required: [id, productId, deviceCode, name, status, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        deviceCode: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$' }
+        name: { type: string, maxLength: 128 }
+        status: { $ref: '#/components/schemas/DeviceStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    DevicePage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Device' }
+    DeviceCreateRequest:
+      type: object
+      required: [productId, deviceCode, name, status]
+      properties:
+        productId: { type: string, format: uuid }
+        deviceCode: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+    DeviceUpdateRequest:
+      type: object
+      required: [name, status, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        version: { type: integer, format: int64, minimum: 0 }
+    ArchiveRequest:
+      type: object
+      required: [version]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+    PageMetadata:
+      type: object
+      required: [page, size, total]
+      properties:
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
     PropertyId:
       type: string
       pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'
@@ -285,13 +590,25 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
     Forbidden:
-      description: 缺少 device:telemetry:view 权限。
+      description: 缺少当前操作要求的设备域权限。
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
     DeviceNotFound:
       description: 设备不存在，错误码 DEVICE-404-002。
+      content:
+        application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+    ProductNotFound:
+      description: 产品不存在，错误码 DEVICE-404-001。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    Conflict:
+      description: 编码重复、状态冲突或乐观锁版本冲突。
       content:
         application/json:
           schema:

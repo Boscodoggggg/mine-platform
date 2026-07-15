@@ -58,6 +58,7 @@ const local: App.I18n.Schema = {
       device: 'Device Management',
       products: 'Product Management',
       devices: 'Device Registry',
+      monitor: 'Device Monitoring',
       overview: 'Operations Overview'
     },
     common: {
@@ -229,6 +230,64 @@ const local: App.I18n.Schema = {
       tip: {
         permissions:
           'Configuring {name}. Directory, page, and button nodes can be assigned; button nodes display stable permission codes.'
+      }
+    },
+    products: {
+      title: 'Product Management',
+      subtitle: 'Maintain stable product identities for thing models, protocols, and policy releases.',
+      search: 'Search product name or key',
+      empty: 'Create a product before onboarding devices',
+      emptyDescription: 'Products group similar devices. Product keys cannot be changed after publication.',
+      column: { key: 'Product Key', name: 'Product Name', type: 'Device Type', status: 'Status', updatedAt: 'Updated' },
+      action: { create: 'Create Product', archive: 'Archive' },
+      modal: { create: 'Create Product', edit: 'Edit Product' },
+      field: { key: 'Product Key', name: 'Product Name', type: 'Device Type', status: 'Status' },
+      placeholder: { key: 'For example, haul-truck', type: 'For example, VEHICLE' },
+      status: { draft: 'Draft', active: 'Published', archived: 'Archived' },
+      validation: { required: 'Enter a valid product key, name, and device type' },
+      message: { created: 'Product created', updated: 'Product updated', archived: 'Product archived' },
+      confirmArchive: 'Archive product “{name}”? All devices under it must be archived first.'
+    },
+    devices: {
+      title: 'Device Registry',
+      subtitle: 'Maintain mine device identities and products used for access control and data tracing.',
+      search: 'Search device name or code',
+      empty: 'No devices match the current filters',
+      column: { code: 'Device Code', name: 'Device Name', product: 'Product', status: 'Status', updatedAt: 'Updated' },
+      action: { create: 'Create Device', archive: 'Archive' },
+      modal: { create: 'Create Device', edit: 'Edit Device' },
+      field: { code: 'Device Code', name: 'Device Name', product: 'Product', status: 'Status' },
+      placeholder: { product: 'Select a published product', code: 'For example, truck-001' },
+      status: { enabled: 'Enabled', disabled: 'Disabled', archived: 'Archived' },
+      validation: { required: 'Select a product and enter a valid device code and name' },
+      message: { created: 'Device created', updated: 'Device updated', archived: 'Device archived' },
+      confirmArchive: 'Archive device “{name}”? Historical data will be retained.'
+    },
+    monitor: {
+      title: 'Live Device Monitoring',
+      subtitle: 'Subscribe only to required fields. Snapshots are reloaded only after reconnects or sequence gaps.',
+      selectDevice: 'Select Device',
+      selectPlaceholder: 'Select a device to monitor',
+      propertyTitle: 'Monitored Fields',
+      propertyHelp: 'Fields come from thing models or protocol mappings and can be changed for each vendor device.',
+      noDevice: 'Select a device to view live data',
+      noDeviceDescription: 'The platform loads one latest snapshot before opening the WebSocket subscription.',
+      connected: 'Live subscription active',
+      snapshot: 'Latest snapshot loaded',
+      updatedAt: 'Updated: {time}',
+      waiting: 'Waiting for device data',
+      quality: {
+        good: 'Trusted',
+        uncertain: 'Uncertain',
+        bad: 'Invalid',
+        timeUntrusted: 'Device time untrusted',
+        unknown: 'Waiting for quality'
+      },
+      property: {
+        engineRpm: 'Engine Speed',
+        coolantTemperature: 'Coolant Temperature',
+        vehicleSpeed: 'Vehicle Speed',
+        fuelLevel: 'Fuel Level'
       }
     },
     fallback: {

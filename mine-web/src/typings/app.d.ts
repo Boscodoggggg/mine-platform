@@ -363,7 +363,7 @@ declare namespace App {
         };
       };
       mine: {
-        menu: Record<'system' | 'users' | 'roles' | 'device' | 'products' | 'devices' | 'overview', string>;
+        menu: Record<'system' | 'users' | 'roles' | 'device' | 'products' | 'devices' | 'monitor' | 'overview', string>;
         common: {
           action: string;
           edit: string;
@@ -449,6 +449,53 @@ declare namespace App {
           field: Record<'code' | 'name' | 'status' | 'description', string>;
           placeholder: Record<'code', string>;
           tip: Record<'permissions', string>;
+        };
+        products: {
+          title: string;
+          subtitle: string;
+          search: string;
+          empty: string;
+          emptyDescription: string;
+          column: Record<'key' | 'name' | 'type' | 'status' | 'updatedAt', string>;
+          action: Record<'create' | 'archive', string>;
+          modal: Record<'create' | 'edit', string>;
+          field: Record<'key' | 'name' | 'type' | 'status', string>;
+          placeholder: Record<'key' | 'type', string>;
+          status: Record<'draft' | 'active' | 'archived', string>;
+          validation: Record<'required', string>;
+          message: Record<'created' | 'updated' | 'archived', string>;
+          confirmArchive: string;
+        };
+        devices: {
+          title: string;
+          subtitle: string;
+          search: string;
+          empty: string;
+          column: Record<'code' | 'name' | 'product' | 'status' | 'updatedAt', string>;
+          action: Record<'create' | 'archive', string>;
+          modal: Record<'create' | 'edit', string>;
+          field: Record<'code' | 'name' | 'product' | 'status', string>;
+          placeholder: Record<'product' | 'code', string>;
+          status: Record<'enabled' | 'disabled' | 'archived', string>;
+          validation: Record<'required', string>;
+          message: Record<'created' | 'updated' | 'archived', string>;
+          confirmArchive: string;
+        };
+        monitor: {
+          title: string;
+          subtitle: string;
+          selectDevice: string;
+          selectPlaceholder: string;
+          propertyTitle: string;
+          propertyHelp: string;
+          noDevice: string;
+          noDeviceDescription: string;
+          connected: string;
+          snapshot: string;
+          updatedAt: string;
+          waiting: string;
+          quality: Record<'good' | 'uncertain' | 'bad' | 'timeUntrusted' | 'unknown', string>;
+          property: Record<'engineRpm' | 'coolantTemperature' | 'vehicleSpeed' | 'fuelLevel', string>;
         };
         fallback: Record<'unconfigured' | 'title' | 'description' | 'help', string>;
       };

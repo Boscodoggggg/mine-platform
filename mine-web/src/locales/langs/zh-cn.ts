@@ -58,6 +58,7 @@ const local: App.I18n.Schema = {
       device: '设备管理',
       products: '产品管理',
       devices: '设备台账',
+      monitor: '设备监控',
       overview: '运行总览'
     },
     common: {
@@ -219,6 +220,64 @@ const local: App.I18n.Schema = {
       field: { code: '角色编码', name: '角色名称', status: '状态', description: '角色说明' },
       placeholder: { code: '例如 DISPATCHER' },
       tip: { permissions: '正在配置 {name}。目录、页面和按钮节点均可授权；按钮节点会显示稳定权限码。' }
+    },
+    products: {
+      title: '产品管理',
+      subtitle: '按设备族维护稳定产品编码，为后续物模型、协议和策略发布提供边界。',
+      search: '搜索产品名称或编码',
+      empty: '先创建产品，再接入设备',
+      emptyDescription: '产品用于归集同类设备。产品编码发布后不可修改。',
+      column: { key: '产品编码', name: '产品名称', type: '设备类型', status: '状态', updatedAt: '更新时间' },
+      action: { create: '创建产品', archive: '归档' },
+      modal: { create: '创建产品', edit: '编辑产品' },
+      field: { key: '产品编码', name: '产品名称', type: '设备类型', status: '状态' },
+      placeholder: { key: '例如 haul-truck', type: '例如 VEHICLE' },
+      status: { draft: '草稿', active: '已发布', archived: '已归档' },
+      validation: { required: '请填写合法的产品编码、名称和设备类型' },
+      message: { created: '产品已创建', updated: '产品已更新', archived: '产品已归档' },
+      confirmArchive: '确认归档产品“{name}”吗？产品下的设备需先全部归档。'
+    },
+    devices: {
+      title: '设备台账',
+      subtitle: '维护矿区设备身份与所属产品；设备编码用于接入鉴权和数据追踪。',
+      search: '搜索设备名称或编码',
+      empty: '当前筛选条件下没有设备',
+      column: { code: '设备编码', name: '设备名称', product: '所属产品', status: '状态', updatedAt: '更新时间' },
+      action: { create: '创建设备', archive: '归档' },
+      modal: { create: '创建设备', edit: '编辑设备' },
+      field: { code: '设备编码', name: '设备名称', product: '所属产品', status: '状态' },
+      placeholder: { product: '请选择已发布产品', code: '例如 truck-001' },
+      status: { enabled: '已启用', disabled: '已停用', archived: '已归档' },
+      validation: { required: '请选择产品并填写合法的设备编码和名称' },
+      message: { created: '设备已创建', updated: '设备已更新', archived: '设备已归档' },
+      confirmArchive: '确认归档设备“{name}”吗？历史数据仍会保留。'
+    },
+    monitor: {
+      title: '设备实时监控',
+      subtitle: '按设备订阅所需字段；正常运行只接收实时推送，弱网重连或序号断档时才同步快照。',
+      selectDevice: '选择设备',
+      selectPlaceholder: '请选择需要监控的设备',
+      propertyTitle: '监控字段',
+      propertyHelp: '字段来自物模型或协议映射；当前可直接增删字段，适配不同厂商设备。',
+      noDevice: '选择设备后查看实时数据',
+      noDeviceDescription: '平台会先读取一次最新快照，再建立 WebSocket 订阅。',
+      connected: '实时订阅中',
+      snapshot: '已同步最新快照',
+      updatedAt: '数据更新：{time}',
+      waiting: '等待设备上报',
+      quality: {
+        good: '数据可信',
+        uncertain: '数据存疑',
+        bad: '数据异常',
+        timeUntrusted: '设备时间不可信',
+        unknown: '等待质量信息'
+      },
+      property: {
+        engineRpm: '发动机转速',
+        coolantTemperature: '冷却液温度',
+        vehicleSpeed: '运行速度',
+        fuelLevel: '燃油液位'
+      }
     },
     fallback: {
       unconfigured: '未配置',

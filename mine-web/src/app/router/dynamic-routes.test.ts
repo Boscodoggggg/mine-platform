@@ -115,6 +115,53 @@ describe('buildDynamicNavigation', () => {
     expect(result.unknownComponentKeys).toEqual([]);
   });
 
+  it('设备产品台账和监控组件键应命中本地白名单并提供国际化菜单', () => {
+    const deviceNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'device-products',
+            name: '产品管理',
+            path: '/device/products',
+            componentKey: 'device-product-list',
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'device-devices',
+            name: '设备台账',
+            path: '/device/devices',
+            componentKey: 'device-device-list',
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'device-monitor',
+            name: '设备监控',
+            path: '/device/monitor',
+            componentKey: 'device-monitor',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(deviceNodes);
+    setLocale('zh-CN');
+
+    expect(result.routes).toHaveLength(3);
+    expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]?.children?.map(menu => menu.label)).toEqual([
+      'Product Management',
+      'Device Registry',
+      'Device Monitoring'
+    ]);
+  });
+
   it('已注册动态菜单应生成国际化键并按当前语言显示', () => {
     const systemNodes: NavigationMenuNode[] = [
       {

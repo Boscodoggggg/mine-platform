@@ -16,7 +16,10 @@ type ViewLoader = () => Promise<Component>;
 const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'home-overview': () => import('@/views/home/index.vue'),
   'system-user-list': () => import('@/modules/system/pages/users/UserManagementPage.vue'),
-  'system-role-list': () => import('@/modules/system/pages/roles/RoleManagementPage.vue')
+  'system-role-list': () => import('@/modules/system/pages/roles/RoleManagementPage.vue'),
+  'device-product-list': () => import('@/modules/device/pages/product-list/ProductListPage.vue'),
+  'device-device-list': () => import('@/modules/device/pages/device-list/DeviceListPage.vue'),
+  'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue')
 };
 
 const fallbackView: ViewLoader = () => import('./DynamicFallbackPage.vue');
@@ -27,12 +30,16 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/system/roles': 'mine.menu.roles',
   '/device': 'mine.menu.device',
   '/device/products': 'mine.menu.products',
-  '/device/devices': 'mine.menu.devices'
+  '/device/devices': 'mine.menu.devices',
+  '/device/monitor': 'mine.menu.monitor'
 };
 const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18nKey>>> = {
   'home-overview': 'mine.menu.overview',
   'system-user-list': 'mine.menu.users',
-  'system-role-list': 'mine.menu.roles'
+  'system-role-list': 'mine.menu.roles',
+  'device-product-list': 'mine.menu.products',
+  'device-device-list': 'mine.menu.devices',
+  'device-monitor': 'mine.menu.monitor'
 };
 
 export interface DynamicNavigationResult {
