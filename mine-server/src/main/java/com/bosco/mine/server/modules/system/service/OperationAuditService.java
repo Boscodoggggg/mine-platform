@@ -65,6 +65,37 @@ public class OperationAuditService {
             Map<String, ?> beforeSummary,
             Map<String, ?> afterSummary
     ) {
+        recordSuccess(
+                "SYSTEM_ACCESS",
+                action,
+                permission,
+                resourceType,
+                resourceId,
+                beforeSummary,
+                afterSummary
+        );
+    }
+
+    /**
+     * 追加指定业务模块的一条成功操作记录，摘要中不得传入密码、散列或令牌。
+     *
+     * @param module        业务模块编码
+     * @param action        操作类型
+     * @param permission    所需权限码
+     * @param resourceType  资源类型
+     * @param resourceId    资源标识
+     * @param beforeSummary 操作前脱敏摘要
+     * @param afterSummary  操作后脱敏摘要
+     */
+    public void recordSuccess(
+            String module,
+            String action,
+            String permission,
+            String resourceType,
+            UUID resourceId,
+            Map<String, ?> beforeSummary,
+            Map<String, ?> afterSummary
+    ) {
         HttpServletRequest request = currentRequest();
         String traceId = traceId(request);
         UUID operatorId = currentOperatorId();
@@ -75,6 +106,7 @@ public class OperationAuditService {
                 idGenerator.next(),
                 operatorId,
                 username,
+                module,
                 action,
                 permission,
                 resourceType,

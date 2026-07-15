@@ -100,8 +100,15 @@ GET             /api/v1/login-logs
 ### 2.2 设备与模型
 
 ~~~text
-GET/POST/PATCH  /api/v1/products
-GET/POST/PATCH  /api/v1/devices
+GET             /api/v1/products
+POST            /api/v1/products
+PUT             /api/v1/products/{id}
+POST            /api/v1/products/{id}/archive
+
+GET             /api/v1/devices
+POST            /api/v1/devices
+PUT             /api/v1/devices/{id}
+POST            /api/v1/devices/{id}/archive
 POST            /api/v1/devices/{id}/credentials
 POST            /api/v1/device-credentials/{id}/rotate
 DELETE          /api/v1/device-credentials/{id}
@@ -112,6 +119,16 @@ GET/POST         /api/v1/thing-models
 POST             /api/v1/thing-models/{id}/versions
 POST             /api/v1/thing-model-versions/{id}/validate
 ~~~
+
+产品和设备管理约束：
+
+- `productKey` 和 `deviceCode` 在单矿区数据库内永久唯一，归档后也不复用。
+- 产品编码、设备编码和设备所属产品创建后不可修改，避免遥测、命令和审计引用漂移。
+- 产品与设备更新、归档必须携带 `version`；过期版本返回 `409 / DEVICE-409-003`。
+- 归档是不可逆的软删除，已归档记录仍可按状态查询；产品下存在未归档设备时不能归档产品。
+- 只有 `ACTIVE` 产品可以创建设备。
+- 产品和设备成功写操作统一写入 `sys_operation_log` 的 `DEVICE_MANAGEMENT` 模块。
+- 设备列表与详情响应不返回凭据、密钥散列或密钥提示。
 
 ### 2.3 协议与策略
 

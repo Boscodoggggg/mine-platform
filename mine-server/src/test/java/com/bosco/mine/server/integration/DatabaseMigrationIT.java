@@ -74,13 +74,15 @@ class DatabaseMigrationIT {
     }
 
     @Test
-    void 应发布只读的用户角色与授权菜单契约() {
+    void 应发布只读的系统与设备授权菜单契约() {
         assertThat(jdbcTemplate.queryForList("""
                 SELECT component_key
                 FROM sys_menu
                 WHERE component_key IS NOT NULL
                 ORDER BY component_key
                 """, String.class)).containsExactly(
+                "device-device-list",
+                "device-product-list",
                 "system-role-list",
                 "system-user-list"
         );
@@ -101,6 +103,21 @@ class DatabaseMigrationIT {
                 "system:user:update",
                 "system:user:view"
         );
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE permission LIKE 'device:%'
+                ORDER BY permission
+                """, String.class)).containsExactly(
+                "device:device:archive",
+                "device:device:create",
+                "device:device:update",
+                "device:device:view",
+                "device:product:archive",
+                "device:product:create",
+                "device:product:update",
+                "device:product:view"
+        );
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu child
@@ -117,12 +134,12 @@ class DatabaseMigrationIT {
         UUID secondMenuId = UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO sys_menu (id, name, type, permission)
-                VALUES (?, '设备查看', 'BUTTON', 'device:device:view')
+                VALUES (?, '测试权限', 'BUTTON', 'test:device:view')
                 """, firstMenuId);
 
         assertRejected("""
                 INSERT INTO sys_menu (id, name, type, permission)
-                VALUES (?, '重复权限', 'BUTTON', 'device:device:view')
+                VALUES (?, '重复权限', 'BUTTON', 'test:device:view')
                 """, secondMenuId);
         assertRejected("""
                 INSERT INTO sys_user_role (id, user_id, role_id)

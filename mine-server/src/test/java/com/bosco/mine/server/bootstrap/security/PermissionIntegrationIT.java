@@ -305,6 +305,24 @@ class PermissionIntegrationIT {
     }
 
     @Test
+    void 未携带令牌访问产品接口应返回未授权() throws Exception {
+        mockMvc.perform(get("/api/v1/products"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH-401-002"));
+    }
+
+    @Test
+    void 普通用户没有产品查看权限时应返回禁止访问() throws Exception {
+        createUser("test-device-permission", "device-permission-password");
+        LoginSession session = login("test-device-permission", "device-permission-password");
+
+        mockMvc.perform(get("/api/v1/products")
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+    }
+
+    @Test
     void 应实时读取五表权限并区分缺权限和有权限() throws Exception {
         UUID userId = createUser("test-permission", "permission-password");
         LoginSession session = login("test-permission", "permission-password");

@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -45,6 +46,72 @@ public interface DeviceMapper {
     );
 
     /**
+     * 判断产品编码是否存在。
+     *
+     * @param productKey 产品编码
+     * @return 是否存在
+     */
+    @Select("SELECT EXISTS (SELECT 1 FROM dev_product WHERE product_key = #{productKey})")
+    boolean productKeyExists(@Param("productKey") String productKey);
+
+    /**
+     * 按条件统计产品。
+     *
+     * @param keyword 名称或编码关键词
+     * @param status  产品状态
+     * @return 产品数量
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*)
+            FROM dev_product
+            WHERE 1 = 1
+            <if test="keyword != null and keyword != ''">
+              AND (product_key ILIKE CONCAT('%', #{keyword}, '%')
+                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="status != null and status != ''">
+              AND status = #{status}
+            </if>
+            </script>
+            """)
+    long countProducts(@Param("keyword") String keyword, @Param("status") String status);
+
+    /**
+     * 分页查询产品。
+     *
+     * @param keyword 名称或编码关键词
+     * @param status  产品状态
+     * @param offset  起始偏移
+     * @param limit   最大返回数量
+     * @return 产品列表
+     */
+    @Select("""
+            <script>
+            SELECT id, product_key AS productKey, name, device_type AS deviceType, status,
+                   archived_at AS archivedAt, created_at AS createdAt,
+                   updated_at AS updatedAt, version
+            FROM dev_product
+            WHERE 1 = 1
+            <if test="keyword != null and keyword != ''">
+              AND (product_key ILIKE CONCAT('%', #{keyword}, '%')
+                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="status != null and status != ''">
+              AND status = #{status}
+            </if>
+            ORDER BY created_at DESC, id
+            OFFSET #{offset} LIMIT #{limit}
+            </script>
+            """)
+    List<Product> findProducts(
+            @Param("keyword") String keyword,
+            @Param("status") String status,
+            @Param("offset") int offset,
+            @Param("limit") int limit
+    );
+
+    /**
      * 按标识查询产品。
      *
      * @param productId 产品标识
@@ -58,6 +125,63 @@ public interface DeviceMapper {
             WHERE id = #{productId}
             """)
     Optional<Product> findProductById(@Param("productId") UUID productId);
+
+    /**
+     * 使用乐观锁修改产品可变信息。
+     *
+     * @param productId        产品标识
+     * @param name             产品名称
+     * @param deviceType       设备类型
+     * @param status           产品状态
+     * @param expectedVersion 期望版本号
+     * @param updatedBy       更新人标识
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE dev_product
+            SET name = #{name},
+                device_type = #{deviceType},
+                status = #{status},
+                updated_at = CURRENT_TIMESTAMP,
+                updated_by = #{updatedBy},
+                version = version + 1
+            WHERE id = #{productId}
+              AND status <> 'ARCHIVED'
+              AND version = #{expectedVersion}
+            """)
+    int updateProduct(
+            @Param("productId") UUID productId,
+            @Param("name") String name,
+            @Param("deviceType") String deviceType,
+            @Param("status") String status,
+            @Param("expectedVersion") long expectedVersion,
+            @Param("updatedBy") UUID updatedBy
+    );
+
+    /**
+     * 归档产品并保留台账。
+     *
+     * @param productId       产品标识
+     * @param expectedVersion 期望版本号
+     * @param updatedBy       更新人标识
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE dev_product
+            SET status = 'ARCHIVED',
+                archived_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP,
+                updated_by = #{updatedBy},
+                version = version + 1
+            WHERE id = #{productId}
+              AND status <> 'ARCHIVED'
+              AND version = #{expectedVersion}
+            """)
+    int archiveProduct(
+            @Param("productId") UUID productId,
+            @Param("expectedVersion") long expectedVersion,
+            @Param("updatedBy") UUID updatedBy
+    );
 
     /**
      * 新增设备。
@@ -84,6 +208,85 @@ public interface DeviceMapper {
             @Param("name") String name,
             @Param("status") String status,
             @Param("createdBy") UUID createdBy
+    );
+
+    /**
+     * 判断设备编码是否存在。
+     *
+     * @param deviceCode 设备编码
+     * @return 是否存在
+     */
+    @Select("SELECT EXISTS (SELECT 1 FROM dev_device WHERE device_code = #{deviceCode})")
+    boolean deviceCodeExists(@Param("deviceCode") String deviceCode);
+
+    /**
+     * 按条件统计设备。
+     *
+     * @param productId 产品标识筛选
+     * @param keyword   名称或编码关键词
+     * @param status    设备状态
+     * @return 设备数量
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*)
+            FROM dev_device
+            WHERE 1 = 1
+            <if test="productId != null">
+              AND product_id = #{productId}
+            </if>
+            <if test="keyword != null and keyword != ''">
+              AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
+                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="status != null and status != ''">
+              AND status = #{status}
+            </if>
+            </script>
+            """)
+    long countDevices(
+            @Param("productId") UUID productId,
+            @Param("keyword") String keyword,
+            @Param("status") String status
+    );
+
+    /**
+     * 分页查询设备。
+     *
+     * @param productId 产品标识筛选
+     * @param keyword   名称或编码关键词
+     * @param status    设备状态
+     * @param offset    起始偏移
+     * @param limit     最大返回数量
+     * @return 设备列表
+     */
+    @Select("""
+            <script>
+            SELECT id, product_id AS productId, device_code AS deviceCode, name, status,
+                   archived_at AS archivedAt, created_at AS createdAt,
+                   updated_at AS updatedAt, version
+            FROM dev_device
+            WHERE 1 = 1
+            <if test="productId != null">
+              AND product_id = #{productId}
+            </if>
+            <if test="keyword != null and keyword != ''">
+              AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
+                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            <if test="status != null and status != ''">
+              AND status = #{status}
+            </if>
+            ORDER BY created_at DESC, id
+            OFFSET #{offset} LIMIT #{limit}
+            </script>
+            """)
+    List<Device> findDevices(
+            @Param("productId") UUID productId,
+            @Param("keyword") String keyword,
+            @Param("status") String status,
+            @Param("offset") int offset,
+            @Param("limit") int limit
     );
 
     /**
@@ -116,6 +319,49 @@ public interface DeviceMapper {
               AND status <> 'ARCHIVED'
             """)
     Optional<Device> findActiveDeviceByCode(@Param("deviceCode") String deviceCode);
+
+    /**
+     * 统计产品下尚未归档的设备。
+     *
+     * @param productId 产品标识
+     * @return 未归档设备数量
+     */
+    @Select("""
+            SELECT COUNT(*)
+            FROM dev_device
+            WHERE product_id = #{productId}
+              AND status <> 'ARCHIVED'
+            """)
+    long countUnarchivedDevices(@Param("productId") UUID productId);
+
+    /**
+     * 使用乐观锁修改设备可变信息。
+     *
+     * @param deviceId        设备标识
+     * @param name            设备名称
+     * @param status          设备状态
+     * @param expectedVersion 期望版本号
+     * @param updatedBy      更新人标识
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE dev_device
+            SET name = #{name},
+                status = #{status},
+                updated_at = CURRENT_TIMESTAMP,
+                updated_by = #{updatedBy},
+                version = version + 1
+            WHERE id = #{deviceId}
+              AND status <> 'ARCHIVED'
+              AND version = #{expectedVersion}
+            """)
+    int updateDevice(
+            @Param("deviceId") UUID deviceId,
+            @Param("name") String name,
+            @Param("status") String status,
+            @Param("expectedVersion") long expectedVersion,
+            @Param("updatedBy") UUID updatedBy
+    );
 
     /**
      * 使用乐观锁归档设备并保留台账。

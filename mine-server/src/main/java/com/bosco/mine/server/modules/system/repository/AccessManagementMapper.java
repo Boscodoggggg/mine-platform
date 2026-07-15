@@ -520,6 +520,7 @@ public interface AccessManagementMapper {
      * @param id               日志标识
      * @param operatorId       操作者标识
      * @param usernameSnapshot 操作者登录名快照
+     * @param module           业务模块编码
      * @param action           操作类型
      * @param permission       所需权限码
      * @param resourceType     资源类型
@@ -539,7 +540,7 @@ public interface AccessManagementMapper {
                 client_ip, user_agent, result, duration_ms,
                 before_summary, after_summary
             ) VALUES (
-                #{id}, #{operatorId}, #{usernameSnapshot}, 'SYSTEM_ACCESS', #{action}, #{permission},
+                #{id}, #{operatorId}, #{usernameSnapshot}, #{module}, #{action}, #{permission},
                 #{resourceType}, #{resourceId}, #{requestId}, #{traceId},
                 CAST(#{clientIp} AS inet), #{userAgent}, 'SUCCESS', 0,
                 CAST(#{beforeSummary} AS jsonb), CAST(#{afterSummary} AS jsonb)
@@ -549,6 +550,7 @@ public interface AccessManagementMapper {
             @Param("id") UUID id,
             @Param("operatorId") UUID operatorId,
             @Param("usernameSnapshot") String usernameSnapshot,
+            @Param("module") String module,
             @Param("action") String action,
             @Param("permission") String permission,
             @Param("resourceType") String resourceType,
