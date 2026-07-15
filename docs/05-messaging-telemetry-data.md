@@ -53,14 +53,32 @@ gateway 使用两个独立服务账号和连接：`mine-gateway-device` 只能�
 文件更新失败时保留上一有效版本。后续前台“发布配置”通过配置事件调用同一注册表替换入口，不能要求重启 gateway；
 快照文件不作为最终配置主数据源。
 
-`mine-telemetry` 对 RabbitMQ 采用至少一次投递和手工确认：先用 Redis Lua 原子更新实时最新值，再在
-TimescaleDB 单事务中写入 Inbox 幂等记录和数值历史，二者成功后才 ACK。Redis 成功而数据库失败时消息会
-重新入队；重投时 Redis 排序游标拒绝重复或更旧值，数据库 Inbox 继续完成历史写入。
+`mine-telemetry` 对 RabbitMQ 采用至少一次投递和手工确认：先在 TimescaleDB 单事务中写入 Inbox、数值历史、
+经过顺序策略筛选的持久最新值和 boot 状态，再用 Redis Lua 刷新实时加速层，成功后才 ACK。数据库失败时不得
+更新 Redis；Redis 刷新失败时消息重新入队，数据库 Inbox 保证重投幂等，查询端可从持久最新值读模型恢复缓存。
 
 实时最新值使用设备级 Redis Hash，不设置统一 TTL，防止活动设备键同时过期形成缓存雪崩。进程内一级缓存
 不保存实时遥测，只预留给已发布的物模型、协议、字段映射与策略版本；实现时必须同时具备有界容量、带随机
 抖动的短 TTL、发布事件主动失效和按 key 的 single-flight 回源。不存在的设备或属性先做权限与物模型校验，
 必要时使用短 TTL 空值缓存，禁止无界回源 TimescaleDB。
+
+阶段 1 的查询 API 已按 `deviceId + propertyId` 实现进程内 single-flight，等待上限 2 秒；一次请求的冷属性
+合并为一条 TimescaleDB 查询。回源只读取持久最新值读模型，不能从包含乱序事实的历史表猜测最新值；同时恢复
+当前 boot、最高序号和全部退役 boot。Redis Lua 原子回填避免查询线程用旧快照覆盖采集线程的新值；回填后必须重读 Redis 并
+返回与采集线程竞争后的最终值。当前先校验设备台账、属性格式、属性数量和查询时间窗；物模型发布完成后再
+增加属性存在性校验与带随机抖动的短 TTL 空值缓存，不能在物模型缺失时把任意属性永久缓存为空。
+Redis 读取、顺序状态恢复或回填临时失败时，latest 接口直接返回持久最新值读模型结果并标记来源为
+`TIMESCALEDB`，不能因为加速层故障把仍可读取的权威数据降级成 500。
+
+历史写入事务通过全局单例水位行锁按提交顺序分配 `ingest_id`，并在同一事务更新已提交水位。历史分页首页返回当前已提交摄取水位
+`watermark`，后续页必须原样传回；查询统一增加 `ingest_id <= watermark`。该边界不依赖设备时间或
+平台接收时间，即使弱网数据已接收但因 RabbitMQ 积压、数据库重试延后提交，也不会插入已开始的分页数据集。
+水位行锁以批次为单位持有，后续吞吐压测应优先增加单批事件数，不能移除该锁后继续宣称跨请求快照稳定。
+
+从 V5 及更早版本升级时，V7 迁移先按 `telemetry_inbox.processed_at + event_id` 为存量事件生成确定性
+`ingest_id`，再按照同一顺序重放顺序判定，回填当前 boot、最高序号、退役 boot 和各属性最新值。没有 Inbox
+记录的早期历史以 `received_at + event_id` 作为兼容回放顺序。迁移完成且 `mine-server` 的
+`telemetryQuery` readiness 验证必需表、摄取字段和 SELECT 权限后，查询入口才可进入就绪状态。
 
 ## 3. 内部交换机与队列
 
@@ -252,7 +270,7 @@ location_point(
 - 写入失败可重试，eventId 保持不变。
 - 单批失败时能定位坏记录并隔离，不能无限二分拖垮消费。
 - JDBC COPY 或 batch insert 需要通过基准测试选择。
-- ACK 必须在持久化成功后；如果 Redis 先写成功而 DB 失败，重试必须幂等。
+- ACK 必须在持久化历史和最新值读模型成功、Redis 刷新完成后；数据库失败时禁止提前修改 Redis。
 
 ## 11. Redis 数据
 
@@ -260,7 +278,9 @@ Redis 只保存可重建数据：
 
 ~~~text
 mine:latest:{deviceId}             当前属性哈希
-mine:latest-time:{deviceId}        每属性最近发生时间
+mine:latest-order:{deviceId}       每属性有效时间、boot、序号和事件排序游标
+mine:latest-state:{deviceId}       设备当前 boot、最高序号和最近生效事件
+mine:latest-retired-boots:{deviceId} 设备已退役 boot 集合
 mine:presence:{deviceId}           在线会话与过期
 mine:config:{nodeId}               节点当前配置版本
 mine:ws:subscription:{sessionId}   短期订阅信息
@@ -268,8 +288,8 @@ mine:ws:subscription:{sessionId}   短期订阅信息
 
 规则：
 
-- 迟到消息不覆盖更晚 latest-time。
-- Redis 丢失后从新消息和 Timescale 最近值重建。
+- 迟到消息、同 boot 小序号和已退役 boot 不覆盖最新值。
+- Redis 丢失后从新消息和 Timescale 持久最新值、boot 状态及退役 boot 集合重建。
 - 不把用户、设备档案、命令结果只存 Redis。
 - key 必须有清晰 TTL 和命名空间。
 

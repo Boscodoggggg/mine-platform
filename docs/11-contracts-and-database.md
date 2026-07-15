@@ -120,6 +120,17 @@ POST             /api/v1/thing-models/{id}/versions
 POST             /api/v1/thing-model-versions/{id}/validate
 ~~~
 
+设备遥测查询约束：
+
+- 两个接口均需要 `device:telemetry:view`；该权限由隐藏的“设备监控”菜单节点承载，页面交付后再切换为可见。
+- latest 必须显式传入 1 至 100 个 `propertyIds`，优先读取 Redis；缓存缺失时按设备和属性合并并发回源 TimescaleDB，回填不得覆盖并发到达的新值。
+- history 每次只查询一个数值属性，时间范围采用 `[from, to)`；`RAW` 最多 7 天，`AVG/MIN/MAX` 最多 366 天。
+- history 首页返回已提交事件的 `watermark` 摄取水位，后续页必须原样传回；历史查询使用
+  `ingest_id <= watermark` 固定数据集，确保弱网迟到、MQ 积压和数据库重试期间跨请求分页稳定；客户端传入的
+  水位不得超过服务端当前已提交水位。
+- 聚合查询必须传 1 分钟至 24 小时且为整秒精度的 ISO-8601 `bucket`，单次最多形成 10000 个时间桶；每页最多 1000 条，分页 offset 不得超过 1000000。
+- 聚合质量取桶内最差值，响应必须同时给出样本数；完整契约见 `docs/openapi/mine-api.yaml`。
+
 产品和设备管理约束：
 
 - `productKey` 和 `deviceCode` 在单矿区数据库内永久唯一，归档后也不复用。
@@ -526,8 +537,8 @@ CREATE TABLE location_point (
 Redis hash 保存物模型值及独立发生时间。API 查询设备 latest 时：
 
 1. 优先读取 Redis。
-2. Redis miss 时查 Timescale 最近值。
-3. 写回 Redis。
+2. Redis miss 时查询 Timescale 持久最新值读模型；禁止从包含乱序、退役 boot 数据的历史表按时间猜测。
+3. 同步恢复设备当前 boot、最高序号和退役 boot 集合，并以 HSETNX 写回 Redis。
 4. 返回 value、occurredAt、receivedAt、quality 和 source。
 
 ## 14. 时间和 ID

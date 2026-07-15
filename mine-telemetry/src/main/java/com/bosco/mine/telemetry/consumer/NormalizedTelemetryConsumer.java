@@ -25,7 +25,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 批量消费 gateway 输出的标准化遥测，先更新 Redis 读模型，再事务写入 TimescaleDB 历史。
+ * 批量消费 gateway 输出的标准化遥测，先事务持久化历史和最新读模型，再刷新 Redis 加速层。
  */
 public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessageListener {
 
@@ -70,8 +70,12 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
                 .flatMap(item -> item.samples().stream())
                 .toList();
         try {
-            pending.forEach(item -> latestValues.updateEventIfNewer(item.samples()));
-            batchWriter.write(samples);
+            TelemetryBatchWriter.WriteResult result = batchWriter.write(samples);
+            pending.stream()
+                    .filter(item -> result.latestEventIds().contains(
+                            item.samples().getFirst().eventId()
+                    ))
+                    .forEach(item -> latestValues.updateEventIfNewer(item.samples()));
         } catch (RuntimeException exception) {
             LOGGER.error("遥测批次存储失败，{} 条 RabbitMQ 消息将重新投递", pending.size(), exception);
             pending.forEach(item -> nack(item.message(), channel));

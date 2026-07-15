@@ -80,7 +80,7 @@ mine-platform/
 3. gateway 依据设备、产品和已发布配置包选择协议执行计划。
 4. 解析结果转换成 UnifiedDeviceMessage，并发布到 /mine-platform。
 5. telemetry 校验 schema、做字段映射、去重、乱序判断和质量标记。
-6. 新值写入 Redis；历史按类型批量写入 TimescaleDB。
+6. telemetry 在 TimescaleDB 单事务提交 Inbox、历史、持久化最新值和摄取水位，提交成功后刷新 Redis 最新值读模型，最后 ACK 消息。
 7. 告警、位置、作业事件再次发布为业务事件。
 8. WebSocket 推送经过采样和合并，不逐条广播全部高频原始点。
 

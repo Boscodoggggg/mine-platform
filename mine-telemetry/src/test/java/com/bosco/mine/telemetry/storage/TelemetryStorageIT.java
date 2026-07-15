@@ -43,6 +43,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -143,7 +144,10 @@ class TelemetryStorageIT {
     @BeforeEach
     void 清空存储() throws Exception {
         connectionFactory.getConnection().serverCommands().flushDb();
-        execute("TRUNCATE TABLE telemetry_inbox, telemetry_numeric");
+        execute("""
+                TRUNCATE TABLE telemetry_inbox, telemetry_numeric, telemetry_latest_numeric,
+                               telemetry_latest_state, telemetry_retired_boot
+                """);
         rabbitAdmin.purgeQueue(TEST_QUEUE, false);
     }
 
@@ -209,6 +213,99 @@ class TelemetryStorageIT {
     }
 
     @Test
+    void 持久最新值应拒绝已退役启动周期且历史仍保留迟到数据() throws Exception {
+        TelemetrySample bootA = sample(EVENT_ID, 7L, 1280D, OCCURRED_AT);
+        TelemetrySample bootB = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e767"),
+                "boot-b",
+                0L,
+                "engine.rpm",
+                1400D,
+                OCCURRED_AT.plusSeconds(10)
+        );
+        TelemetrySample retiredBootA = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e768"),
+                "boot-a",
+                9L,
+                "engine.rpm",
+                1600D,
+                OCCURRED_AT.plusSeconds(60)
+        );
+
+        assertThat(telemetryBatchWriter.write(List.of(bootA)).latestEventIds())
+                .containsExactly(bootA.eventId());
+        assertThat(telemetryBatchWriter.write(List.of(bootB)).latestEventIds())
+                .containsExactly(bootB.eventId());
+        assertThat(telemetryBatchWriter.write(List.of(retiredBootA)).latestEventIds()).isEmpty();
+
+        assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isEqualTo(3L);
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_latest_numeric
+                WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                  AND property_id = 'engine.rpm' AND value_double = 1400
+                """)).isOne();
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_retired_boot
+                WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                  AND boot_id = 'boot-a'
+                """)).isOne();
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_latest_state
+                WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                  AND current_boot_id = 'boot-b' AND highest_sequence = 0
+                """)).isOne();
+    }
+
+    @Test
+    void 首个可靠启动周期即使时间较早也应记录序号并拒绝后续小序号() throws Exception {
+        TelemetrySample unreliable = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e769"),
+                null,
+                null,
+                "engine.rpm",
+                1000D,
+                OCCURRED_AT.plusSeconds(100)
+        );
+        TelemetrySample reliableTen = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e76a"),
+                "boot-a",
+                10L,
+                "engine.rpm",
+                1100D,
+                OCCURRED_AT.plusSeconds(90)
+        );
+        TelemetrySample reliableFive = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e76b"),
+                "boot-a",
+                5L,
+                "engine.rpm",
+                1200D,
+                OCCURRED_AT.plusSeconds(110)
+        );
+
+        assertThat(latestValueRepository.updateIfNewer(unreliable)).isTrue();
+        assertThat(latestValueRepository.updateIfNewer(reliableTen)).isFalse();
+        assertThat(latestValueRepository.updateIfNewer(reliableFive)).isFalse();
+        assertThat(latestValueRepository.find(DEVICE_ID, "engine.rpm").orElseThrow().value())
+                .isEqualTo(1000D);
+
+        assertThat(telemetryBatchWriter.write(List.of(unreliable)).latestEventIds())
+                .containsExactly(unreliable.eventId());
+        assertThat(telemetryBatchWriter.write(List.of(reliableTen)).latestEventIds()).isEmpty();
+        assertThat(telemetryBatchWriter.write(List.of(reliableFive)).latestEventIds()).isEmpty();
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_latest_state
+                WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                  AND current_boot_id = 'boot-a' AND highest_sequence = 10
+                """)).isOne();
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_latest_numeric
+                WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                  AND property_id = 'engine.rpm' AND value_double = 1000
+                """)).isOne();
+    }
+
+    @Test
     void 历史批写应以事件和可靠业务键幂等且同一事件允许多个属性() throws Exception {
         TelemetrySample rpm = sample(EVENT_ID, 7L, "engine.rpm", 1280D, OCCURRED_AT);
         TelemetrySample temperature = sample(EVENT_ID, 7L, "engine.temperature", 83.5D, OCCURRED_AT);
@@ -224,9 +321,11 @@ class TelemetryStorageIT {
         );
         TelemetryBatchWriter.WriteResult businessRepeated = telemetryBatchWriter.write(List.of(sameBusinessKey));
 
-        assertThat(first).isEqualTo(new TelemetryBatchWriter.WriteResult(1, 2));
-        assertThat(repeated).isEqualTo(new TelemetryBatchWriter.WriteResult(0, 0));
-        assertThat(businessRepeated).isEqualTo(new TelemetryBatchWriter.WriteResult(0, 0));
+        assertThat(first).isEqualTo(new TelemetryBatchWriter.WriteResult(1, 2, Set.of(EVENT_ID)));
+        assertThat(repeated).isEqualTo(
+                new TelemetryBatchWriter.WriteResult(0, 0, Set.of(EVENT_ID))
+        );
+        assertThat(businessRepeated).isEqualTo(new TelemetryBatchWriter.WriteResult(0, 0, Set.of()));
         assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isEqualTo(1L);
         assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isEqualTo(2L);
     }

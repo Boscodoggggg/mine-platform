@@ -14,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.LinkedHashSet;
 import java.util.UUID;
 
 /**
@@ -23,19 +25,33 @@ public final class TelemetryBatchWriter {
 
     private static final String CLAIM_EVENT_SQL = """
             INSERT INTO telemetry_inbox (
-                event_id, device_id, message_type, boot_id, sequence, received_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                event_id, device_id, message_type, boot_id, sequence, received_at, ingest_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT DO NOTHING
             """;
     private static final String INSERT_HISTORY_SQL = """
             INSERT INTO telemetry_numeric (
                 time, occurred_at, device_id, product_key, property_id, value_double,
-                quality, boot_id, sequence, event_id, received_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                quality, boot_id, sequence, event_id, received_at, ingest_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT DO NOTHING
+            """;
+    private static final String LOCK_INGESTION_SQL = """
+            SELECT committed_ingest_id
+            FROM telemetry_ingestion_watermark
+            WHERE singleton_id = 1
+            FOR UPDATE
+            """;
+    private static final String NEXT_INGESTION_SQL =
+            "SELECT nextval('telemetry_ingest_seq')";
+    private static final String UPDATE_INGESTION_SQL = """
+            UPDATE telemetry_ingestion_watermark
+            SET committed_ingest_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE singleton_id = 1
             """;
 
     private final DataSource dataSource;
+    private final DurableLatestWriter latestWriter;
 
     /**
      * 创建遥测历史批写器。
@@ -44,6 +60,7 @@ public final class TelemetryBatchWriter {
      */
     public TelemetryBatchWriter(DataSource dataSource) {
         this.dataSource = Objects.requireNonNull(dataSource, "数据源不能为空");
+        this.latestWriter = new DurableLatestWriter();
     }
 
     /**
@@ -55,7 +72,7 @@ public final class TelemetryBatchWriter {
     public WriteResult write(List<TelemetrySample> samples) {
         Objects.requireNonNull(samples, "遥测点集合不能为空");
         if (samples.isEmpty()) {
-            return new WriteResult(0, 0);
+            return new WriteResult(0, 0, Set.of());
         }
         Map<UUID, List<TelemetrySample>> events = groupAndValidate(samples);
         try (Connection connection = dataSource.getConnection()) {
@@ -84,17 +101,30 @@ public final class TelemetryBatchWriter {
             Map<UUID, List<TelemetrySample>> events) throws SQLException {
         int claimedEvents = 0;
         int writtenPoints = 0;
+        Set<UUID> latestEventIds = new LinkedHashSet<>();
+        lockIngestionOrder(connection);
+        long latestIngestId = -1L;
         try (PreparedStatement claim = connection.prepareStatement(CLAIM_EVENT_SQL);
              PreparedStatement history = connection.prepareStatement(INSERT_HISTORY_SQL)) {
             for (List<TelemetrySample> eventSamples : events.values()) {
                 TelemetrySample first = eventSamples.getFirst();
-                bindClaim(claim, first);
+                long ingestId = nextIngestId(connection);
+                latestIngestId = ingestId;
+                bindClaim(claim, first, ingestId);
                 if (claim.executeUpdate() == 0) {
+                    if (latestWriter.isCurrentEvent(
+                            connection, first.deviceId(), first.eventId()
+                    )) {
+                        latestEventIds.add(first.eventId());
+                    }
                     continue;
                 }
                 claimedEvents++;
+                if (latestWriter.apply(connection, eventSamples)) {
+                    latestEventIds.add(first.eventId());
+                }
                 for (TelemetrySample sample : eventSamples) {
-                    bindHistory(history, sample);
+                    bindHistory(history, sample, ingestId);
                     history.addBatch();
                 }
             }
@@ -106,7 +136,10 @@ public final class TelemetryBatchWriter {
                 }
             }
         }
-        return new WriteResult(claimedEvents, writtenPoints);
+        if (latestIngestId >= 0L) {
+            updateCommittedIngestion(connection, latestIngestId);
+        }
+        return new WriteResult(claimedEvents, writtenPoints, latestEventIds);
     }
 
     private Map<UUID, List<TelemetrySample>> groupAndValidate(List<TelemetrySample> samples) {
@@ -134,7 +167,11 @@ public final class TelemetryBatchWriter {
         }
     }
 
-    private void bindClaim(PreparedStatement statement, TelemetrySample sample) throws SQLException {
+    private void bindClaim(
+            PreparedStatement statement,
+            TelemetrySample sample,
+            long ingestId
+    ) throws SQLException {
         statement.setObject(1, sample.eventId());
         statement.setObject(2, sample.deviceId());
         statement.setString(3, sample.messageType().name());
@@ -145,9 +182,14 @@ public final class TelemetryBatchWriter {
             statement.setLong(5, sample.sequence());
         }
         statement.setTimestamp(6, Timestamp.from(sample.receivedAt()));
+        statement.setLong(7, ingestId);
     }
 
-    private void bindHistory(PreparedStatement statement, TelemetrySample sample) throws SQLException {
+    private void bindHistory(
+            PreparedStatement statement,
+            TelemetrySample sample,
+            long ingestId
+    ) throws SQLException {
         statement.setTimestamp(1, Timestamp.from(sample.effectiveAt()));
         statement.setTimestamp(2, Timestamp.from(sample.occurredAt()));
         statement.setObject(3, sample.deviceId());
@@ -163,6 +205,36 @@ public final class TelemetryBatchWriter {
         }
         statement.setObject(10, sample.eventId());
         statement.setTimestamp(11, Timestamp.from(sample.receivedAt()));
+        statement.setLong(12, ingestId);
+    }
+
+    private void lockIngestionOrder(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(LOCK_INGESTION_SQL);
+             java.sql.ResultSet resultSet = statement.executeQuery()) {
+            if (!resultSet.next()) {
+                throw new SQLException("遥测摄取水位单例记录不存在");
+            }
+        }
+    }
+
+    private long nextIngestId(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(NEXT_INGESTION_SQL);
+             java.sql.ResultSet resultSet = statement.executeQuery()) {
+            if (!resultSet.next()) {
+                throw new SQLException("无法生成遥测摄取水位");
+            }
+            return resultSet.getLong(1);
+        }
+    }
+
+    private void updateCommittedIngestion(Connection connection, long ingestId)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(UPDATE_INGESTION_SQL)) {
+            statement.setLong(1, ingestId);
+            if (statement.executeUpdate() != 1) {
+                throw new SQLException("遥测摄取水位更新失败");
+            }
+        }
     }
 
     private short qualityCode(Quality quality) {
@@ -187,8 +259,13 @@ public final class TelemetryBatchWriter {
      *
      * @param claimedEvents 成功声明幂等键的事件数
      * @param writtenPoints 实际写入的历史点数
+     * @param latestEventIds 本次应刷新 Redis 的当前生效事件标识集合，包含安全的幂等重投
      */
-    public record WriteResult(int claimedEvents, int writtenPoints) {
+    public record WriteResult(
+            int claimedEvents,
+            int writtenPoints,
+            Set<UUID> latestEventIds
+    ) {
 
         /**
          * 创建并校验批写结果。
@@ -197,6 +274,9 @@ public final class TelemetryBatchWriter {
             if (claimedEvents < 0 || writtenPoints < 0) {
                 throw new IllegalArgumentException("批写结果计数不能为负数");
             }
+            latestEventIds = Set.copyOf(Objects.requireNonNull(
+                    latestEventIds, "最新值事件标识集合不能为空"
+            ));
         }
     }
 

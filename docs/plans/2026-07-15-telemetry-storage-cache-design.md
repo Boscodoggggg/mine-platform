@@ -2,7 +2,7 @@
 
 ## 1. 目标
 
-Task 8 将标准化遥测可靠地写入 TimescaleDB，并把设备最新值原子更新到 Redis。系统按 RabbitMQ 至少一次投递设计，必须保证重复消息、弱网补传、乱序数据以及“Redis 已更新但数据库写入失败”时不会重复产生历史数据，也不会用旧值覆盖新值。
+Task 8 将标准化遥测可靠地写入 TimescaleDB，并把设备最新值刷新到 Redis。系统按 RabbitMQ 至少一次投递设计，必须保证重复消息、弱网补传、乱序数据以及“数据库已提交但 Redis 刷新失败”时不会重复产生历史数据，也不会用旧值覆盖新值。
 
 本阶段不把设备最新值复制到 Java 进程内缓存。多台 `mine-telemetry` 和 `mine-server` 必须通过 Redis 看到同一份最新状态，避免节点间失效广播尚未完成时出现脏读。进程内缓存只预留给产品、物模型、协议、字段映射和策略配置等读多写少、按版本发布的数据。
 
@@ -18,9 +18,11 @@ L1 在后续配置发布任务中实现，本阶段只定义边界，不引入 C
 
 ## 3. 写入与确认顺序
 
-一批 RabbitMQ 消息解析成按属性展开的数值遥测点。消费者先通过 Redis Lua 脚本尝试更新最新值，再在单个 TimescaleDB 事务中占用 Inbox 幂等键并批量写历史。只有两侧操作都成功后才手工 ACK；任一步失败都 NACK 并重新入队。
-
-Redis 先成功、TimescaleDB 后失败时，消息重投会再次执行 Lua。相同或更旧的排序游标被拒绝，因此不会回退最新值；数据库事务失败时 Inbox 占位同步回滚，重试仍可正常写入历史。TimescaleDB 的 `event_id` 主键和 `(device_id, boot_id, sequence, message_type)` 部分唯一约束共同防止消息重投和厂商更换 messageId 后的业务重复。
+一批 RabbitMQ 消息解析成按属性展开的数值遥测点。消费者始终先提交 TimescaleDB：Inbox、历史、持久最新值和
+boot 状态在同一事务内完成，然后才用 Redis Lua 刷新实时加速层。只有两侧操作都成功后才手工 ACK；数据库失败
+不会修改 Redis，Redis 刷新失败则 NACK 并重新入队。重投会识别仍为当前生效事件并安全补刷缓存。TimescaleDB
+的 `event_id` 主键和 `(device_id, boot_id, sequence, message_type)` 部分唯一约束共同防止消息重投和厂商更换
+messageId 后的业务重复。
 
 Redis 最新值使用设备级 Hash，属性是 Hash field，避免把全矿区设备集中到单个热点 key。排序游标由有效时间和稳定决胜信息构成，Lua 在 Redis 内完成比较与写入，禁止 Java 侧“先读后写”。
 
@@ -43,7 +45,7 @@ TimescaleDB 使用平台内部 UUID 作为 `device_id`。gateway 身份快照必
 
 - 正常遥测产生一组历史属性行并更新 Redis 最新值。
 - 相同 eventId 或相同可靠业务幂等键只写一次历史。
-- Redis 成功、TimescaleDB 失败后重投可恢复，最新值不回退且历史不重复。
+- TimescaleDB 提交后 Redis 刷新失败，消息重投可安全补刷，最新值不回退且历史不重复。
 - 迟到、乱序或旧 boot 数据可以保存历史，但不得覆盖 Redis 最新值。
 - RabbitMQ 仅在持久化成功后 ACK，失败批次重新投递。
 - 新增 Inbox 表及全部字段具有中文数据库注释，并由真实 TimescaleDB 测试校验。

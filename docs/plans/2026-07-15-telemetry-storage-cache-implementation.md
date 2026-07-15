@@ -4,7 +4,7 @@
 
 **Goal:** 实现 RabbitMQ 标准化遥测的手工确认消费、TimescaleDB 幂等批写和 Redis 最新值原子更新，并为后续选择性多级缓存建立清晰边界。
 
-**Architecture:** gateway 输出内部 UUID 设备标识；mine-telemetry 将消息展开为数值遥测点，Redis Lua 原子更新设备级最新值，TimescaleDB Inbox 与历史行在同一事务中写入。消费者采用至少一次投递、手工 ACK 和数据库业务唯一约束，Redis 只保存可重建读模型。
+**Architecture:** gateway 输出内部 UUID 设备标识；mine-telemetry 将消息展开为数值遥测点，先在 TimescaleDB 单事务提交 Inbox、历史、持久化最新值和摄取水位，再用 Redis Lua 刷新设备级最新值，最后确认 RabbitMQ 消息。消费者采用至少一次投递、手工 ACK 和数据库业务唯一约束，Redis 只保存可重建读模型，失败时不得改变数据库优先的一致性边界。
 
 **Tech Stack:** Java 21、Spring Boot 4.1、Spring AMQP、Spring Data Redis、JDBC、TimescaleDB OSS、RabbitMQ、Redis、JUnit 6、Testcontainers。
 
@@ -67,9 +67,9 @@
 - Modify: `mine-telemetry/src/test/java/com/bosco/mine/telemetry/storage/TelemetryStorageIT.java`
 
 1. 先写真实 RabbitMQ + Redis + TimescaleDB 失败测试，发布标准化事件并启动手工 ACK 批监听器。
-2. 覆盖正常消费、重复重投、Redis 已成功后数据库失败再恢复、迟到不覆盖。
+2. 覆盖正常消费、重复重投、数据库提交后 Redis 刷新失败再恢复、迟到不覆盖。
 3. 消费者解析 `MessageEnvelope<UnifiedDeviceMessage>`，只把数值属性展开成 `TelemetrySample`。
-4. 先原子更新 Redis，再事务批写 TimescaleDB；全部成功逐条 ACK，失败逐条 NACK 并重新入队。
+4. 先在 TimescaleDB 单事务提交 Inbox、历史、持久化最新值和摄取水位，再原子刷新 Redis；两步均成功后逐条 ACK，失败逐条 NACK 并重新入队。
 5. 限制 batch size、prefetch 和 max wait，禁止无界缓冲。
 
 ### Task 6: 完成依赖、配置和现场部署

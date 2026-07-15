@@ -180,7 +180,7 @@ git commit -am "feat(telemetry): 实现幂等乱序与迟到判定"
 **Steps:**
 
 1. 写真实 Timescale/Redis/Rabbit 集成失败测试。
-2. 覆盖正常、重复重投、Redis 先成功后 DB 失败、迟到不覆盖。
+2. 覆盖正常、重复重投、数据库先提交后 Redis 刷新失败重投、迟到不覆盖。
 3. 实现手工 ACK 和批量写。
 4. 断言 eventId 业务幂等。
 5. 提交：

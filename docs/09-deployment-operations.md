@@ -64,6 +64,7 @@ flowchart TB
     G --> R
     R --> T
     S --> P
+    S -->|只读查询账号| TS
     T --> TS
     T --> C
     S --> O
@@ -149,6 +150,16 @@ Compose profiles：
 - secret 只能由 secret 文件/受控环境注入。
 - gateway 访问 RabbitMQ 使用两个独立密码文件：`rabbitmq_gateway_device_password` 只读设备上行队列，
   `rabbitmq_gateway_platform_password` 只写平台遥测交换机；不得复用 RabbitMQ 管理员密码。
+- `mine-telemetry` 使用 `TIMESCALE_USER` 完成迁移和写入；`mine-server` 必须使用独立的
+  `TIMESCALE_READER_USER` 与 `timescale_reader_password`，数据库仅授予 CONNECT、schema USAGE 和遥测表 SELECT。
+- `timescale-reader-bootstrap` 在每次 Compose 启动时幂等创建/授权只读账号并应用密码轮换，兼容已有数据卷；
+  `mine-server` 与 `mine-telemetry` 必须等待该任务成功。角色通过数据库注释标识为平台托管账号；同名但没有标识的
+  现场账号一律拒绝接管。脚本会清除托管角色的高权限属性、角色成员关系和全部非系统 schema 的已有对象权限，
+  再只授予 CONNECT、public USAGE 与表 SELECT；如果角色已拥有业务对象则拒绝启动，必须先人工迁移所有权。
+  只读账号禁止与 Timescale 写入账号或 `postgres` 同名。
+- `mine-server` 的 `telemetryQuery` readiness 不只执行连通性探测，还会以只读账号访问
+  `telemetry_inbox.ingest_id`、`telemetry_numeric.ingest_id`、已提交水位表和三个持久最新值表。迁移未完成或授权缺失时服务保持
+  not-ready，Nginx 不得向其转发流量。
 
 所有服务启动时输出“非敏感有效配置摘要”和版本，不打印 secret。
 

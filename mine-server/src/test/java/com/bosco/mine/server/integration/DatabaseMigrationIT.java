@@ -82,6 +82,7 @@ class DatabaseMigrationIT {
                 ORDER BY component_key
                 """, String.class)).containsExactly(
                 "device-device-list",
+                "device-monitor",
                 "device-product-list",
                 "system-role-list",
                 "system-user-list"
@@ -119,7 +120,8 @@ class DatabaseMigrationIT {
                 "device:product:archive",
                 "device:product:create",
                 "device:product:update",
-                "device:product:view"
+                "device:product:view",
+                "device:telemetry:view"
         );
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)

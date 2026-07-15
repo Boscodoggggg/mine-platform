@@ -36,6 +36,7 @@ public final class LatestValueRepository {
             local reliableOrder = bootId ~= '' and sequence >= 0
             local firstReliableBoot = reliableOrder and (not currentBoot or currentBoot == '')
             local newBoot = false
+            local sameBoot = false
 
             if reliableOrder then
                 if redis.call('SISMEMBER', KEYS[4], bootId) == 1 then
@@ -46,14 +47,11 @@ public final class LatestValueRepository {
                         if sequence <= highestSequence then
                             return 0
                         end
+                        sameBoot = true
                     else
-                        redis.call('SADD', KEYS[4], currentBoot)
                         newBoot = true
                     end
                 end
-                redis.call('HSET', KEYS[3],
-                        'currentBootId', bootId,
-                        'highestSequence', sequence)
             end
 
             local updateLatest = false
@@ -67,10 +65,23 @@ public final class LatestValueRepository {
                     updateLatest = true
                 end
             end
+            if reliableOrder and (sameBoot or firstReliableBoot) then
+                redis.call('HSET', KEYS[3],
+                        'currentBootId', bootId,
+                        'highestSequence', sequence)
+            end
             if not updateLatest then
                 return 0
             end
 
+            if reliableOrder then
+                if newBoot then
+                    redis.call('SADD', KEYS[4], currentBoot)
+                end
+                redis.call('HSET', KEYS[3],
+                        'currentBootId', bootId,
+                        'highestSequence', sequence)
+            end
             redis.call('HSET', KEYS[3],
                     'latestEffectiveAt', incomingTime,
                     'latestEventId', eventId)

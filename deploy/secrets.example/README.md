@@ -4,6 +4,7 @@
 
 - `postgres_password`：业务 PostgreSQL 密码。
 - `timescale_password`：TimescaleDB 密码。
+- `timescale_reader_password`：mine-server 查询 TimescaleDB 的独立只读账号密码。
 - `redis_password`：Redis 密码，建议至少 32 个随机字符。
 - `rabbitmq_admin_username`：RabbitMQ 运维账号，仅使用字母、数字、点、下划线和连字符。
 - `rabbitmq_admin_password`：RabbitMQ 运维密码，使用十六进制随机值，避免配置语法字符。

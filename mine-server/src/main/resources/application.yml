@@ -23,6 +23,10 @@ management:
     health:
       probes:
         enabled: true
+      validate-group-membership: false
+      group:
+        readiness:
+          include: readinessState,db,redis,telemetryQuery
 
 sa-token:
   token-name: X-Mine-Token
@@ -58,3 +62,11 @@ mine:
       vhost: ${MINE_RABBITMQ_DEVICE_VHOST:/mine-device}
       connect-timeout: ${MINE_RABBITMQ_ADMIN_CONNECT_TIMEOUT:PT5S}
       request-timeout: ${MINE_RABBITMQ_ADMIN_REQUEST_TIMEOUT:PT10S}
+  telemetry-query:
+    enabled: ${MINE_TELEMETRY_QUERY_ENABLED:false}
+    url: ${MINE_TELEMETRY_QUERY_URL:jdbc:postgresql://timescale:5432/mine_telemetry}
+    username: ${MINE_TELEMETRY_QUERY_USERNAME:mine_ts_reader}
+    password-file: ${MINE_TELEMETRY_QUERY_PASSWORD_FILE:/run/secrets/timescale_reader_password}
+    maximum-pool-size: ${MINE_TELEMETRY_QUERY_MAXIMUM_POOL_SIZE:5}
+    connection-timeout: ${MINE_TELEMETRY_QUERY_CONNECTION_TIMEOUT:PT2S}
+    query-timeout: ${MINE_TELEMETRY_QUERY_QUERY_TIMEOUT:PT2S}

@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,11 +41,14 @@ class NormalizedTelemetryConsumerTest {
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
     @Test
-    void 应先更新Redis再写数据库最后确认消息() throws Exception {
+    void 应先提交数据库持久读模型再刷新Redis最后确认消息() throws Exception {
         LatestValueRepository latestValues = mock(LatestValueRepository.class);
         TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
         Channel channel = mock(Channel.class);
         when(latestValues.updateEventIfNewer(any())).thenReturn(true);
+        when(batchWriter.write(any())).thenReturn(
+                new TelemetryBatchWriter.WriteResult(1, 2, Set.of(EVENT_ID))
+        );
         NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(latestValues, batchWriter);
         Message message = message(17L);
 
@@ -52,26 +56,25 @@ class NormalizedTelemetryConsumerTest {
 
         ArgumentCaptor<List<TelemetrySample>> samples = ArgumentCaptor.forClass(List.class);
         InOrder order = inOrder(latestValues, batchWriter, channel);
-        order.verify(latestValues).updateEventIfNewer(any());
         order.verify(batchWriter).write(samples.capture());
+        order.verify(latestValues).updateEventIfNewer(any());
         order.verify(channel).basicAck(17L, false);
         assertThat(samples.getValue()).extracting(TelemetrySample::propertyId)
                 .containsExactlyInAnyOrder("engine.rpm", "engine.temperature");
     }
 
     @Test
-    void 数据库失败时应保留Redis读模型并将消息重新入队() throws Exception {
+    void 数据库失败时不得更新Redis并应将消息重新入队() throws Exception {
         LatestValueRepository latestValues = mock(LatestValueRepository.class);
         TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
         Channel channel = mock(Channel.class);
-        when(latestValues.updateEventIfNewer(any())).thenReturn(true);
         doThrow(new TelemetryBatchWriter.TelemetryStorageException("测试失败", new RuntimeException()))
                 .when(batchWriter).write(any());
         NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(latestValues, batchWriter);
 
         consumer.onMessageBatch(List.of(message(18L)), channel);
 
-        verify(latestValues).updateEventIfNewer(any());
+        verify(latestValues, org.mockito.Mockito.never()).updateEventIfNewer(any());
         verify(channel).basicNack(18L, false, true);
     }
 

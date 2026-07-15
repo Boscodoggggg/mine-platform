@@ -85,6 +85,10 @@ services:
       MINE_RABBITMQ_ADMIN_BASE_URL: http://rabbitmq:15672
       MINE_RABBITMQ_ADMIN_USERNAME_FILE: /run/secrets/rabbitmq_admin_username
       MINE_RABBITMQ_ADMIN_PASSWORD_FILE: /run/secrets/rabbitmq_admin_password
+      MINE_TELEMETRY_QUERY_ENABLED: "true"
+      MINE_TELEMETRY_QUERY_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
+      MINE_TELEMETRY_QUERY_USERNAME: ${TIMESCALE_READER_USER:-mine_ts_reader}
+      MINE_TELEMETRY_QUERY_PASSWORD_FILE: /run/secrets/timescale_reader_password
     volumes:
       - ../../mine-server/target/mine-server-0.1.0-SNAPSHOT.jar:/opt/mine/app.jar:ro
     secrets:
@@ -93,6 +97,7 @@ services:
       - mine_super_admin_password
       - rabbitmq_admin_username
       - rabbitmq_admin_password
+      - timescale_reader_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,6 +105,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      timescale:
+        condition: service_healthy
+      timescale-reader-bootstrap:
+        condition: service_completed_successfully
     networks:
       - app
       - data
@@ -180,6 +189,8 @@ services:
         condition: service_healthy
       timescale:
         condition: service_healthy
+      timescale-reader-bootstrap:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     networks:
@@ -287,11 +298,14 @@ services:
       POSTGRES_DB: ${TIMESCALE_DB:-mine_telemetry}
       POSTGRES_USER: ${TIMESCALE_USER:-mine_ts}
       POSTGRES_PASSWORD_FILE: /run/secrets/timescale_password
+      TIMESCALE_READER_USER: ${TIMESCALE_READER_USER:-mine_ts_reader}
     volumes:
       - timescale_data:/var/lib/postgresql/data
       - ../config/timescale/init.sql:/docker-entrypoint-initdb.d/010-timescale.sql:ro
+      - ../scripts/timescale-reader-init.sh:/docker-entrypoint-initdb.d/020-timescale-reader-init.sh:ro
     secrets:
       - timescale_password
+      - timescale_reader_password
     networks:
       - data
     healthcheck:
@@ -305,6 +319,35 @@ services:
         limits:
           cpus: "2.0"
           memory: 2g
+    logging: *default-logging
+
+  timescale-reader-bootstrap:
+    image: ${MINE_TIMESCALE_IMAGE:-timescale/timescaledb:2.28.2-pg18-oss@sha256:8ed8d7336f00a3a90bb6fe709d506172012c7e673e0cf71465491d06e2db5fbd}
+    restart: "no"
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    command: ["/opt/mine/timescale-reader-init.sh"]
+    environment:
+      PGHOST: timescale
+      POSTGRES_DB: ${TIMESCALE_DB:-mine_telemetry}
+      POSTGRES_USER: ${TIMESCALE_USER:-mine_ts}
+      TIMESCALE_READER_USER: ${TIMESCALE_READER_USER:-mine_ts_reader}
+    volumes:
+      - ../scripts/timescale-reader-init.sh:/opt/mine/timescale-reader-init.sh:ro
+    secrets:
+      - timescale_password
+      - timescale_reader_password
+    depends_on:
+      timescale:
+        condition: service_healthy
+    networks:
+      - data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
     logging: *default-logging
 
   redis:
@@ -602,6 +645,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/postgres_password
   timescale_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/timescale_password
+  timescale_reader_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/timescale_reader_password
   redis_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/redis_password
   rabbitmq_admin_username:
