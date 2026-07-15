@@ -39,6 +39,7 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
     private final LatestValueRepository latestValues;
     private final TelemetryBatchWriter batchWriter;
     private final RealtimePublisher realtimePublisher;
+    private final TelemetrySequenceGapObserver sequenceGapObserver;
     private final JsonMapper jsonMapper;
 
     /**
@@ -52,9 +53,28 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
             LatestValueRepository latestValues,
             TelemetryBatchWriter batchWriter,
             RealtimePublisher realtimePublisher) {
+        this(latestValues, batchWriter, realtimePublisher, ignored -> { });
+    }
+
+    /**
+     * 创建带设备序列缺口观察器的标准化遥测批消费者。
+     *
+     * @param latestValues Redis 实时最新值仓储
+     * @param batchWriter TimescaleDB 事务批写器
+     * @param realtimePublisher 持久化完成后的实时事件发布器
+     * @param sequenceGapObserver 持久顺序状态确认后的序列缺口观察器
+     */
+    public NormalizedTelemetryConsumer(
+            LatestValueRepository latestValues,
+            TelemetryBatchWriter batchWriter,
+            RealtimePublisher realtimePublisher,
+            TelemetrySequenceGapObserver sequenceGapObserver) {
         this.latestValues = Objects.requireNonNull(latestValues, "最新值仓储不能为空");
         this.batchWriter = Objects.requireNonNull(batchWriter, "历史批写器不能为空");
         this.realtimePublisher = Objects.requireNonNull(realtimePublisher, "实时事件发布器不能为空");
+        this.sequenceGapObserver = Objects.requireNonNull(
+                sequenceGapObserver, "序列缺口观察器不能为空"
+        );
         this.jsonMapper = JsonMapper.builder().findAndAddModules().build();
     }
 
@@ -78,6 +98,7 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
                 .toList();
         try {
             TelemetryBatchWriter.WriteResult result = batchWriter.write(samples);
+            observeSequenceGaps(result.sequenceGaps());
             pending.stream()
                     .filter(item -> result.latestEventIds().contains(
                             item.samples().getFirst().eventId()
@@ -100,6 +121,19 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
             return;
         }
         pending.forEach(item -> ack(item.message(), channel));
+    }
+
+    private void observeSequenceGaps(List<TelemetryBatchWriter.SequenceGap> sequenceGaps) {
+        for (TelemetryBatchWriter.SequenceGap gap : sequenceGaps) {
+            try {
+                sequenceGapObserver.observe(gap);
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "遥测序列缺口指标记录失败，不阻塞已持久化事件: eventId={}, deviceId={}",
+                        gap.eventId(), gap.deviceId(), exception
+                );
+            }
+        }
     }
 
     private List<PendingMessage> decodeValidMessages(List<Message> messages, Channel channel) {

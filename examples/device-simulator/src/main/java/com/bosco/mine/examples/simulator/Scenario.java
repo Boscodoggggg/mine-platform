@@ -74,8 +74,18 @@ public final class Scenario {
         Instant startAt = Instant.parse(text(source, "startAt"));
         long intervalMillis = positiveLong(source, "intervalMillis");
         List<Long> sequenceOrder = longList(source, "sequenceOrder");
-        Set<Long> replayedSequences = Set.copyOf(longList(source, "replayedSequences"));
+        List<String> bootOrder = optionalBootOrder(source, sequenceOrder.size(), bootId);
+        List<Long> occurredAtOffsets = optionalOccurredAtOffsets(source, sequenceOrder.size());
+        Set<Integer> replayedIndexes = source.containsKey("replayedIndexes")
+                ? new HashSet<>(integerList(source, "replayedIndexes"))
+                : legacyReplayedIndexes(source, sequenceOrder);
         Set<Integer> disconnectIndexes = new HashSet<>(integerList(source, "disconnectBeforeIndexes"));
+        Set<Integer> restartIndexes = source.containsKey("restartBeforeIndexes")
+                ? new HashSet<>(integerList(source, "restartBeforeIndexes"))
+                : Set.of();
+        validateIndexes("replayedIndexes", replayedIndexes, sequenceOrder.size());
+        validateIndexes("disconnectBeforeIndexes", disconnectIndexes, sequenceOrder.size());
+        validateIndexes("restartBeforeIndexes", restartIndexes, sequenceOrder.size());
         long disconnectMillis = positiveLong(source, "disconnectMillis");
         int qos = Math.toIntExact(longValue(source, "qos"));
         if (qos < 0 || qos > 1) {
@@ -87,13 +97,20 @@ public final class Scenario {
             if (disconnectIndexes.contains(index)) {
                 steps.add(new DisconnectStep(disconnectMillis));
             }
+            if (restartIndexes.contains(index)) {
+                steps.add(new RestartStep(bootOrder.get(index)));
+            }
             long sequence = sequenceOrder.get(index);
             if (sequence <= 0) throw new IllegalArgumentException("sequenceOrder 必须使用正整数");
-            Instant occurredAt = startAt.plusMillis(Math.multiplyExact(sequence - 1, intervalMillis));
+            long occurredAtOffset = occurredAtOffsets == null
+                    ? Math.multiplyExact(sequence - 1, intervalMillis)
+                    : occurredAtOffsets.get(index);
+            Instant occurredAt = startAt.plusMillis(occurredAtOffset);
             steps.add(new TelemetryStep(
                     sequence,
+                    bootOrder.get(index),
                     occurredAt,
-                    replayedSequences.contains(sequence),
+                    replayedIndexes.contains(index),
                     telemetry(seed, sequence)
             ));
         }
@@ -157,6 +174,62 @@ public final class Scenario {
 
     private static List<Integer> integerList(Map<String, Object> source, String key) {
         return longList(source, key).stream().map(Math::toIntExact).toList();
+    }
+
+    private static Set<Integer> legacyReplayedIndexes(
+            Map<String, Object> source,
+            List<Long> sequenceOrder
+    ) {
+        Set<Long> replayedSequences = Set.copyOf(longList(source, "replayedSequences"));
+        Set<Integer> result = new HashSet<>();
+        for (int index = 0; index < sequenceOrder.size(); index++) {
+            if (replayedSequences.contains(sequenceOrder.get(index))) {
+                result.add(index);
+            }
+        }
+        return result;
+    }
+
+    private static void validateIndexes(String key, Set<Integer> indexes, int stepCount) {
+        if (indexes.stream().anyMatch(index -> index < 0 || index >= stepCount)) {
+            throw new IllegalArgumentException(
+                    key + " 必须位于 sequenceOrder 的有效范围 0 至 " + (stepCount - 1)
+            );
+        }
+    }
+
+    private static List<String> optionalBootOrder(
+            Map<String, Object> source,
+            int expectedSize,
+            String defaultBootId
+    ) {
+        Object value = source.get("bootOrder");
+        if (value == null) {
+            return java.util.Collections.nCopies(expectedSize, defaultBootId);
+        }
+        if (!(value instanceof List<?> list) || list.size() != expectedSize) {
+            throw new IllegalArgumentException("bootOrder 必须与 sequenceOrder 等长");
+        }
+        return list.stream().map(item -> {
+            if (!(item instanceof String text) || text.isBlank() || text.length() > 64) {
+                throw new IllegalArgumentException("bootOrder 只能包含 1 至 64 位非空字符串");
+            }
+            return text;
+        }).toList();
+    }
+
+    private static List<Long> optionalOccurredAtOffsets(
+            Map<String, Object> source,
+            int expectedSize
+    ) {
+        if (!source.containsKey("occurredAtOffsetsMillis")) {
+            return null;
+        }
+        List<Long> offsets = longList(source, "occurredAtOffsetsMillis");
+        if (offsets.size() != expectedSize || offsets.stream().anyMatch(offset -> offset < 0)) {
+            throw new IllegalArgumentException("occurredAtOffsetsMillis 必须与 sequenceOrder 等长且不能为负数");
+        }
+        return offsets;
     }
 
     /** @return 产品标识 */
@@ -227,22 +300,32 @@ public final class Scenario {
     }
 
     /** 表示一个场景执行步骤。 */
-    public sealed interface Step permits TelemetryStep, DisconnectStep {
+    public sealed interface Step permits TelemetryStep, DisconnectStep, RestartStep {
     }
 
     /**
      * 表示一次确定性的遥测发布。
      *
      * @param sequence 序号
+     * @param bootId 设备启动周期标识
      * @param occurredAt 发生时间
      * @param replayed 是否补传
      * @param properties 遥测属性
      */
-    public record TelemetryStep(long sequence, Instant occurredAt, boolean replayed, Map<String, Object> properties)
+    public record TelemetryStep(
+            long sequence,
+            String bootId,
+            Instant occurredAt,
+            boolean replayed,
+            Map<String, Object> properties
+    )
             implements Step {
 
         /** 创建不可变遥测步骤。 */
         public TelemetryStep {
+            if (bootId == null || bootId.isBlank() || bootId.length() > 64) {
+                throw new IllegalArgumentException("设备启动标识必须为 1 至 64 位非空字符串");
+            }
             properties = Map.copyOf(properties);
         }
     }
@@ -253,5 +336,20 @@ public final class Scenario {
      * @param durationMillis 断线毫秒数
      */
     public record DisconnectStep(long durationMillis) implements Step {
+    }
+
+    /**
+     * 表示设备进入新的启动周期并重新建立 MQTT 连接。
+     *
+     * @param bootId 新启动周期标识
+     */
+    public record RestartStep(String bootId) implements Step {
+
+        /** 创建并校验设备重启步骤。 */
+        public RestartStep {
+            if (bootId == null || bootId.isBlank() || bootId.length() > 64) {
+                throw new IllegalArgumentException("重启步骤的启动标识必须为 1 至 64 位非空字符串");
+            }
+        }
     }
 }

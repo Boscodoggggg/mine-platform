@@ -2,6 +2,8 @@ package com.bosco.mine.telemetry.bootstrap;
 
 import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
+import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapMetrics;
+import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapObserver;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
 import com.bosco.mine.telemetry.realtime.ConfirmedRealtimePublisher;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
@@ -14,6 +16,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import io.micrometer.core.instrument.MeterRegistry;
 
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -54,14 +57,32 @@ public class TelemetryStorageConfiguration {
      *
      * @param latestValues Redis 实时最新值仓储
      * @param batchWriter  TimescaleDB 历史批写器
+     * @param realtimePublisher 实时遥测发布器
+     * @param sequenceGapObserver 设备序列缺口观察器
      * @return 批消息处理器
      */
     @Bean
     public NormalizedTelemetryConsumer normalizedTelemetryConsumer(
             LatestValueRepository latestValues,
             TelemetryBatchWriter batchWriter,
-            ConfirmedRealtimePublisher realtimePublisher) {
-        return new NormalizedTelemetryConsumer(latestValues, batchWriter, realtimePublisher);
+            ConfirmedRealtimePublisher realtimePublisher,
+            TelemetrySequenceGapObserver sequenceGapObserver) {
+        return new NormalizedTelemetryConsumer(
+                latestValues, batchWriter, realtimePublisher, sequenceGapObserver
+        );
+    }
+
+    /**
+     * 创建持久化设备序列缺口指标观察器。
+     *
+     * @param meterRegistry Micrometer 指标注册表
+     * @return 遥测序列缺口观察器
+     */
+    @Bean
+    public TelemetrySequenceGapObserver telemetrySequenceGapObserver(
+            MeterRegistry meterRegistry
+    ) {
+        return new TelemetrySequenceGapMetrics(meterRegistry);
     }
 
     /**

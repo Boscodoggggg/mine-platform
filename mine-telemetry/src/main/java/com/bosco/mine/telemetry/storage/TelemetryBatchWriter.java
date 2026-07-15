@@ -77,7 +77,7 @@ public final class TelemetryBatchWriter {
     public WriteResult write(List<TelemetrySample> samples) {
         Objects.requireNonNull(samples, "遥测点集合不能为空");
         if (samples.isEmpty()) {
-            return new WriteResult(0, 0, Set.of(), Map.of());
+            return new WriteResult(0, 0, Set.of(), Map.of(), List.of());
         }
         Map<UUID, List<TelemetrySample>> events = groupAndValidate(samples);
         try (Connection connection = dataSource.getConnection()) {
@@ -108,6 +108,7 @@ public final class TelemetryBatchWriter {
         int writtenPoints = 0;
         Set<UUID> latestEventIds = new LinkedHashSet<>();
         Map<UUID, Long> latestEventIngestIds = new LinkedHashMap<>();
+        List<SequenceGap> sequenceGaps = new ArrayList<>();
         lockIngestionOrder(connection);
         long latestIngestId = -1L;
         try (PreparedStatement claim = connection.prepareStatement(CLAIM_EVENT_SQL);
@@ -129,7 +130,13 @@ public final class TelemetryBatchWriter {
                     continue;
                 }
                 claimedEvents++;
-                if (latestWriter.apply(connection, eventSamples)) {
+                DurableLatestWriter.ApplyResult latestResult = latestWriter.apply(
+                        connection, eventSamples
+                );
+                if (latestResult.sequenceGap() != null) {
+                    sequenceGaps.add(latestResult.sequenceGap());
+                }
+                if (latestResult.latestUpdated()) {
                     latestEventIds.add(first.eventId());
                     latestEventIngestIds.put(first.eventId(), ingestId);
                 }
@@ -150,7 +157,7 @@ public final class TelemetryBatchWriter {
             updateCommittedIngestion(connection, latestIngestId);
         }
         return new WriteResult(
-                claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds
+                claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds, sequenceGaps
         );
     }
 
@@ -285,13 +292,32 @@ public final class TelemetryBatchWriter {
      * @param writtenPoints 实际写入的历史点数
      * @param latestEventIds 本次应刷新 Redis 的当前生效事件标识集合，包含安全的幂等重投
      * @param latestEventIngestIds 当前生效事件对应的已提交摄取序号
+     * @param sequenceGaps 本批唯一事件确认的设备序列缺口
      */
     public record WriteResult(
             int claimedEvents,
             int writtenPoints,
             Set<UUID> latestEventIds,
-            Map<UUID, Long> latestEventIngestIds
+            Map<UUID, Long> latestEventIngestIds,
+            List<SequenceGap> sequenceGaps
     ) {
+
+        /**
+         * 创建不包含序列缺口的兼容批写结果。
+         *
+         * @param claimedEvents 成功声明幂等键的事件数
+         * @param writtenPoints 实际写入的历史点数
+         * @param latestEventIds 当前生效事件标识
+         * @param latestEventIngestIds 当前生效事件摄取序号
+         */
+        public WriteResult(
+                int claimedEvents,
+                int writtenPoints,
+                Set<UUID> latestEventIds,
+                Map<UUID, Long> latestEventIngestIds
+        ) {
+            this(claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds, List.of());
+        }
 
         /**
          * 创建并校验批写结果。
@@ -306,9 +332,46 @@ public final class TelemetryBatchWriter {
             latestEventIngestIds = Map.copyOf(Objects.requireNonNull(
                     latestEventIngestIds, "最新值事件摄取序号不能为空"
             ));
+            sequenceGaps = List.copyOf(Objects.requireNonNull(
+                    sequenceGaps, "设备序列缺口集合不能为空"
+            ));
             if (!latestEventIngestIds.keySet().equals(latestEventIds)
                     || latestEventIngestIds.values().stream().anyMatch(value -> value == null || value < 1L)) {
                 throw new IllegalArgumentException("当前生效事件与摄取序号必须一一对应且序号大于 0");
+            }
+        }
+    }
+
+    /**
+     * 表示由设备持久顺序状态确认的一段遥测序列缺口。
+     *
+     * @param eventId 形成缺口的唯一事件标识
+     * @param deviceId 设备标识
+     * @param bootId 设备启动周期标识
+     * @param previousSequence 缺口前已接收的最高序号
+     * @param incomingSequence 本次到达序号
+     * @param missingCount 中间暂未到达的序号数量
+     */
+    public record SequenceGap(
+            UUID eventId,
+            UUID deviceId,
+            String bootId,
+            long previousSequence,
+            long incomingSequence,
+            long missingCount
+    ) {
+
+        /** 创建并校验设备序列缺口。 */
+        public SequenceGap {
+            Objects.requireNonNull(eventId, "缺口事件标识不能为空");
+            Objects.requireNonNull(deviceId, "缺口设备标识不能为空");
+            if (bootId == null || bootId.isBlank()) {
+                throw new IllegalArgumentException("缺口启动周期标识不能为空");
+            }
+            if (previousSequence < 0L || incomingSequence <= previousSequence
+                    || missingCount < 1L
+                    || missingCount != incomingSequence - previousSequence - 1L) {
+                throw new IllegalArgumentException("设备序列缺口范围非法");
             }
         }
     }

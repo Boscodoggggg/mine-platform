@@ -47,23 +47,30 @@ class NormalizedTelemetryConsumerTest {
         TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
         NormalizedTelemetryConsumer.RealtimePublisher realtimePublisher =
                 mock(NormalizedTelemetryConsumer.RealtimePublisher.class);
+        TelemetrySequenceGapObserver gapObserver = mock(TelemetrySequenceGapObserver.class);
         Channel channel = mock(Channel.class);
         when(latestValues.updateEventIfNewer(any())).thenReturn(true);
         when(batchWriter.write(any())).thenReturn(
                 new TelemetryBatchWriter.WriteResult(
-                        1, 2, Set.of(EVENT_ID), Map.of(EVENT_ID, 41L)
+                        1, 2, Set.of(EVENT_ID), Map.of(EVENT_ID, 41L),
+                        List.of(new TelemetryBatchWriter.SequenceGap(
+                                EVENT_ID, DEVICE_ID, "boot-a", 3L, 7L, 3L
+                        ))
                 )
         );
         NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
-                latestValues, batchWriter, realtimePublisher
+                latestValues, batchWriter, realtimePublisher, gapObserver
         );
         Message message = message(17L);
 
         consumer.onMessageBatch(List.of(message), channel);
 
         ArgumentCaptor<List<TelemetrySample>> samples = ArgumentCaptor.forClass(List.class);
-        InOrder order = inOrder(latestValues, batchWriter, realtimePublisher, channel);
+        InOrder order = inOrder(
+                latestValues, batchWriter, realtimePublisher, gapObserver, channel
+        );
         order.verify(batchWriter).write(samples.capture());
+        order.verify(gapObserver).observe(any());
         order.verify(latestValues).updateEventIfNewer(any());
         ArgumentCaptor<RealtimeTelemetryEvent> realtimeEvent =
                 ArgumentCaptor.forClass(RealtimeTelemetryEvent.class);
@@ -135,6 +142,35 @@ class NormalizedTelemetryConsumerTest {
         order.verify(realtimePublisher).publish(any());
         order.verify(channel).basicNack(20L, false, true);
         verify(channel, org.mockito.Mockito.never()).basicAck(20L, false);
+    }
+
+    @Test
+    void 缺口指标观察失败时不得阻塞遥测存储和消息确认() throws Exception {
+        LatestValueRepository latestValues = mock(LatestValueRepository.class);
+        TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
+        NormalizedTelemetryConsumer.RealtimePublisher realtimePublisher =
+                mock(NormalizedTelemetryConsumer.RealtimePublisher.class);
+        TelemetrySequenceGapObserver gapObserver = mock(TelemetrySequenceGapObserver.class);
+        Channel channel = mock(Channel.class);
+        TelemetryBatchWriter.SequenceGap gap = new TelemetryBatchWriter.SequenceGap(
+                EVENT_ID, DEVICE_ID, "boot-a", 3L, 7L, 3L
+        );
+        when(latestValues.updateEventIfNewer(any())).thenReturn(true);
+        when(batchWriter.write(any())).thenReturn(new TelemetryBatchWriter.WriteResult(
+                1, 2, Set.of(EVENT_ID), Map.of(EVENT_ID, 43L), List.of(gap)
+        ));
+        doThrow(new IllegalStateException("测试指标异常")).when(gapObserver).observe(gap);
+        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
+                latestValues, batchWriter, realtimePublisher, gapObserver
+        );
+
+        consumer.onMessageBatch(List.of(message(21L)), channel);
+
+        verify(gapObserver).observe(gap);
+        verify(latestValues).updateEventIfNewer(any());
+        verify(realtimePublisher).publish(any());
+        verify(channel).basicAck(21L, false);
+        verify(channel, org.mockito.Mockito.never()).basicNack(21L, false, true);
     }
 
     private Message message(long deliveryTag) throws Exception {

@@ -73,10 +73,10 @@ final class DurableLatestWriter {
      *
      * @param connection 当前遥测历史事务连接
      * @param samples 同一设备事件的数值遥测点
-     * @return 该帧实际更新持久化最新值时返回 {@code true}
+     * @return 最新值更新结果和由持久顺序状态确认的序列缺口
      * @throws SQLException 数据库访问失败
      */
-    boolean apply(Connection connection, List<TelemetrySample> samples) throws SQLException {
+    ApplyResult apply(Connection connection, List<TelemetrySample> samples) throws SQLException {
         Objects.requireNonNull(connection, "数据库连接不能为空");
         if (samples == null || samples.isEmpty()) {
             throw new IllegalArgumentException("最新值事件不能为空");
@@ -89,14 +89,14 @@ final class DurableLatestWriter {
             updateState(connection, first.deviceId(), decision.state());
         }
         if (!decision.updateLatest()) {
-            return false;
+            return new ApplyResult(false, decision.sequenceGap());
         }
         if (decision.bootToRetire() != null) {
             retireBoot(connection, first.deviceId(), decision.bootToRetire());
         }
         updateState(connection, first.deviceId(), decision.state());
         upsertValues(connection, samples);
-        return true;
+        return new ApplyResult(true, decision.sequenceGap());
     }
 
     /**
@@ -163,6 +163,15 @@ final class DurableLatestWriter {
                 && sample.sequence() <= state.highestSequence()) {
             return Decision.rejected(state);
         }
+        TelemetryBatchWriter.SequenceGap sequenceGap = sameBoot
+                && state.highestSequence() != null
+                && sample.sequence() > state.highestSequence() + 1L
+                ? new TelemetryBatchWriter.SequenceGap(
+                        sample.eventId(), sample.deviceId(), sample.bootId(),
+                        state.highestSequence(), sample.sequence(),
+                        sample.sequence() - state.highestSequence() - 1L
+                )
+                : null;
 
         boolean wins = state.latestEffectiveAt() == null
                 || sample.effectiveAt().isAfter(state.latestEffectiveAt());
@@ -179,7 +188,7 @@ final class DurableLatestWriter {
                             state.latestEventId()
                     )
                     : state;
-            return new Decision(false, orderingStateAdvanced, advanced, null);
+            return new Decision(false, orderingStateAdvanced, advanced, null, sequenceGap);
         }
 
         String currentBoot = reliable ? sample.bootId() : state.currentBootId();
@@ -191,7 +200,8 @@ final class DurableLatestWriter {
                 sample.eventId()
         );
         return new Decision(
-                true, orderingStateAdvanced, accepted, newBoot ? state.currentBootId() : null
+                true, orderingStateAdvanced, accepted, newBoot ? state.currentBootId() : null,
+                sequenceGap
         );
     }
 
@@ -281,11 +291,24 @@ final class DurableLatestWriter {
             boolean updateLatest,
             boolean orderingStateAdvanced,
             State state,
-            String bootToRetire
+            String bootToRetire,
+            TelemetryBatchWriter.SequenceGap sequenceGap
     ) {
 
         private static Decision rejected(State state) {
-            return new Decision(false, false, state, null);
+            return new Decision(false, false, state, null, null);
         }
+    }
+
+    /**
+     * 表示一帧事件对最新值和序列缺口状态的应用结果。
+     *
+     * @param latestUpdated 是否更新了持久最新值
+     * @param sequenceGap 本事件确认的序列缺口，没有缺口时为空
+     */
+    record ApplyResult(
+            boolean latestUpdated,
+            TelemetryBatchWriter.SequenceGap sequenceGap
+    ) {
     }
 }

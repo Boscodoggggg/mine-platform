@@ -1,0 +1,27 @@
+productKey: haul-truck
+deviceCode: simulator-weak-001
+bootId: weak-boot-a
+seed: 20260715
+startAt: "2026-07-15T00:00:00Z"
+intervalMillis: 1000
+sequenceOrder: [1, 2, 3, 3, 7, 7, 4, 5, 6, 8, 1, 2, 9]
+bootOrder:
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-a
+  - weak-boot-b
+  - weak-boot-b
+  - weak-boot-a
+occurredAtOffsetsMillis: [0, 1000, 2000, 2000, 6000, 6000, 3000, 4000, 5000, 7000, 608000, 609000, 700000]
+replayedIndexes: [6, 7, 8, 12]
+disconnectBeforeIndexes: [4]
+disconnectMillis: 600000
+restartBeforeIndexes: [10]
+qos: 1

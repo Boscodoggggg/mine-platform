@@ -330,6 +330,8 @@ git commit -am "feat(frontend): 新增命令下发与状态时间线"
 
 ### Task 15：弱网端到端
 
+**状态：已完成（2026-07-15，自动化弱网基线；真实设备长稳运行转 Task 16）**
+
 **Files:**
 
 - Create: examples/device-simulator/scenarios/weak-network.yaml

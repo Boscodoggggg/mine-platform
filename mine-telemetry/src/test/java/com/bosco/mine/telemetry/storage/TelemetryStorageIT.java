@@ -257,6 +257,34 @@ class TelemetryStorageIT {
     }
 
     @Test
+    void 设备序号从零跳到二时应记录一个缺失序号而不是回滚() throws Exception {
+        TelemetrySample sequenceZero = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e770"),
+                "boot-zero",
+                0L,
+                "engine.rpm",
+                1000D,
+                OCCURRED_AT
+        );
+        TelemetrySample sequenceTwo = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e772"),
+                "boot-zero",
+                2L,
+                "engine.rpm",
+                1002D,
+                OCCURRED_AT.plusSeconds(2)
+        );
+
+        assertThat(telemetryBatchWriter.write(List.of(sequenceZero)).sequenceGaps()).isEmpty();
+        assertThat(telemetryBatchWriter.write(List.of(sequenceTwo)).sequenceGaps())
+                .containsExactly(new TelemetryBatchWriter.SequenceGap(
+                        sequenceTwo.eventId(), DEVICE_ID, "boot-zero", 0L, 2L, 1L
+                ));
+        assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isEqualTo(2L);
+        assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isEqualTo(2L);
+    }
+
+    @Test
     void 首个可靠启动周期即使时间较早也应记录序号并拒绝后续小序号() throws Exception {
         TelemetrySample unreliable = sample(
                 UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e769"),

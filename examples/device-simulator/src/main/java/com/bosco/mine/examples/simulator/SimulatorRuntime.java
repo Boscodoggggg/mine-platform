@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -25,6 +26,7 @@ public final class SimulatorRuntime {
     private final Sleeper sleeper;
     private final Clock clock;
     private final JsonMapper jsonMapper;
+    private final AtomicReference<String> activeBootId;
 
     /**
      * 创建模拟器运行时。
@@ -48,6 +50,7 @@ public final class SimulatorRuntime {
         this.sleeper = Objects.requireNonNull(sleeper, "sleeper 不能为空");
         this.clock = Objects.requireNonNull(clock, "clock 不能为空");
         this.jsonMapper = JsonMapper.builder().build();
+        this.activeBootId = new AtomicReference<>(scenario.bootId());
     }
 
     /**
@@ -59,6 +62,10 @@ public final class SimulatorRuntime {
             if (step instanceof Scenario.DisconnectStep disconnect) {
                 transport.disconnect();
                 sleeper.sleep(disconnect.durationMillis());
+                connectAndSubscribe();
+            } else if (step instanceof Scenario.RestartStep restart) {
+                activeBootId.set(restart.bootId());
+                transport.disconnect();
                 connectAndSubscribe();
             } else if (step instanceof Scenario.TelemetryStep telemetry) {
                 transport.publish(scenario.upTopic(mqttClientId), telemetryPayload(telemetry), scenario.qos());
@@ -76,7 +83,7 @@ public final class SimulatorRuntime {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("productKey", scenario.productKey());
         payload.put("deviceCode", scenario.deviceCode());
-        payload.put("bootId", scenario.bootId());
+        payload.put("bootId", telemetry.bootId());
         payload.put("sequence", telemetry.sequence());
         payload.put("occurredAt", telemetry.occurredAt().toString());
         payload.put("replayed", telemetry.replayed());
@@ -98,7 +105,7 @@ public final class SimulatorRuntime {
             reply.put("occurredAt", Instant.now(clock).toString());
             reply.put("traceId", traceId);
             reply.put("result", supported
-                    ? Map.of("online", true, "bootId", scenario.bootId())
+                    ? Map.of("online", true, "bootId", activeBootId.get())
                     : Map.of("reason", "UNSUPPORTED_COMMAND"));
             transport.publish(scenario.upCommandAckTopic(mqttClientId), writeJson(reply), 1);
         } catch (IllegalArgumentException | JacksonException exception) {

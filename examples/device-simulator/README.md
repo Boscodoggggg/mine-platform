@@ -3,6 +3,11 @@
 该模块用于 Phase 1 开发和自动化回归，不代表真实矿区设备验收。默认场景使用固定种子生成稳定遥测，并包含重复序号、
 乱序补传和一次主动断线。模拟器只处理安全的 `QUERY_STATUS` 查询命令，其他命令回复 `REFUSED`。
 
+`scenarios/weak-network.yaml` 用于弱网处理逻辑回归，包含 10 分钟主动 MQTT 优雅离线、重复报文、乱序补传、设备重启、序号归零，
+以及重启后继续补传旧启动周期报文。自动化测试会注入虚拟等待器，因此不会真的等待 10 分钟；直接运行 JAR 时会按配置真实断开和等待。
+
+该脚本不等价于真实弱网故障注入：Paho 会发送正常 `DISCONNECT`，不能覆盖骤断、半开连接、KeepAlive 超时、丢包、抖动和 QoS 在途重投。上述网络故障必须使用网络代理或现场网络完成 Task 16 验收。
+
 ## 构建
 
 ~~~bash
@@ -57,6 +62,31 @@ java -jar examples/device-simulator/target/mine-device-simulator-0.1.0-SNAPSHOT.
 ~~~
 
 生产式验证应使用 `ssl://...:8883`。私有 CA 通过 JVM trustStore 配置，不允许关闭证书校验。
+
+## 场景配置
+
+| 字段 | 说明 |
+|---|---|
+| `sequenceOrder` | 报文实际发布顺序，可重复或乱序 |
+| `bootOrder` | 与报文等长的启动周期标识；不配置时统一使用顶层 `bootId` |
+| `occurredAtOffsetsMillis` | 与报文等长、相对 `startAt` 的发生时间偏移；用于表达补传原始时间 |
+| `replayedIndexes` | 标记为断网补传的报文索引，避免不同启动周期使用相同序号时误判 |
+| `disconnectBeforeIndexes` | 在指定报文索引前主动断开 MQTT |
+| `disconnectMillis` | 每次主动断开的持续时间 |
+| `restartBeforeIndexes` | 在指定报文索引前进入新启动周期并重新建立 MQTT 连接 |
+
+所有索引从 0 开始，且必须落在 `sequenceOrder` 的有效范围内，越界配置会在启动时直接拒绝。
+旧场景仍兼容 `replayedSequences`，新场景必须使用能够区分启动周期的 `replayedIndexes`。
+
+弱网场景启动方式：
+
+~~~bash
+java -jar examples/device-simulator/target/mine-device-simulator-0.1.0-SNAPSHOT.jar \
+  --scenario=examples/device-simulator/scenarios/weak-network.yaml \
+  --broker=ssl://127.0.0.1:8883 \
+  --username=device-<平台签发的标识> \
+  --password-file=/tmp/mine-simulator-password
+~~~
 
 ## 报文
 
