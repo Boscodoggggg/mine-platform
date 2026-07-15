@@ -56,6 +56,7 @@ describe('LoginPage', () => {
     const { wrapper } = await mountPage();
 
     expect(wrapper.text()).toContain('智慧矿山数据平台');
+    expect(wrapper.get('[data-login-background]').attributes('src')).toContain('smart-mine-tunnel.svg');
     expect(wrapper.find('.n-card').exists()).toBe(true);
     expect(wrapper.findComponent({ name: 'ThemeSchemaSwitch' }).exists()).toBe(true);
     expect(wrapper.findComponent({ name: 'LangSwitch' }).exists()).toBe(true);

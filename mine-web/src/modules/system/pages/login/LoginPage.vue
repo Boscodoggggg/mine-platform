@@ -17,6 +17,7 @@ import {
   NText,
   NThing
 } from 'naive-ui';
+import smartMineTunnelUrl from '@/assets/images/smart-mine-tunnel.svg';
 import LangSwitch from '@/components/common/lang-switch.vue';
 import SystemLogo from '@/components/common/system-logo.vue';
 import ThemeSchemaSwitch from '@/components/common/theme-schema-switch.vue';
@@ -156,8 +157,16 @@ function toDisplayError(reason: unknown): DisplayError {
 </script>
 
 <template>
-  <main class="min-h-screen flex items-center justify-center bg-layout p-4 sm:p-8">
-    <div class="absolute right-4 top-4 flex items-center gap-2 sm:right-8 sm:top-8">
+  <main class="relative min-h-screen overflow-hidden bg-layout">
+    <img
+      data-login-background
+      :src="smartMineTunnelUrl"
+      alt=""
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-y-0 left-0 h-full w-full object-contain object-left p-4 opacity-20 sm:p-8 lg:w-3/5 lg:p-12 lg:opacity-100 xl:p-16"
+    />
+
+    <div class="absolute right-4 top-4 z-3 flex items-center gap-2 sm:right-8 sm:top-8">
       <LangSwitch :lang="appStore.locale" :lang-options="appStore.localeOptions" @change-lang="appStore.changeLocale" />
       <ThemeSchemaSwitch
         data-login-theme-switch
@@ -166,127 +175,142 @@ function toDisplayError(reason: unknown): DisplayError {
       />
     </div>
 
-    <NCard class="w-full max-w-480px" size="large" :bordered="false">
-      <NSpace vertical :size="24">
-        <NThing>
-          <template #avatar>
-            <NAvatar round size="large">
-              <SystemLogo class="h-8 w-8" />
-            </NAvatar>
-          </template>
-          <template #header>{{ t('mine.login.brand') }}</template>
-          <template #description>{{ t('mine.login.slogan') }}</template>
-        </NThing>
-
-        <div>
-          <NH1 class="m-0 text-2xl">{{ title }}</NH1>
-          <NText depth="3">{{ description }}</NText>
-        </div>
-
-        <NAlert v-if="stage === 'password'" type="warning" :title="t('mine.login.security.title')">
-          {{ t('mine.login.security.description') }}
-        </NAlert>
-
-        <NAlert v-if="error" type="error" :title="error.message">
-          <template v-if="error.traceId">{{ t('mine.common.traceId', { traceId: error.traceId }) }}</template>
-        </NAlert>
-
-        <form v-if="stage !== 'complete'" novalidate @submit.prevent="submit">
-          <template v-if="stage === 'login'">
-            <NFormItem
-              :label="t('mine.login.field.username')"
-              :validation-status="fieldErrors.username ? 'error' : undefined"
-              :feedback="fieldErrors.username"
-            >
-              <NInput
-                v-model:value="loginForm.username"
-                :input-props="{ name: 'username', autocomplete: 'username' }"
-                maxlength="64"
-                :placeholder="t('mine.login.placeholder.username')"
-              >
-                <template #prefix><SvgIcon icon="material-symbols:person-outline" /></template>
-              </NInput>
-            </NFormItem>
-            <NFormItem
-              :label="t('mine.login.field.password')"
-              :validation-status="fieldErrors.password ? 'error' : undefined"
-              :feedback="fieldErrors.password"
-            >
-              <NInput
-                v-model:value="loginForm.password"
-                type="password"
-                show-password-on="click"
-                :input-props="{ name: 'password', autocomplete: 'current-password' }"
-                maxlength="256"
-                :placeholder="t('mine.login.placeholder.password')"
-              >
-                <template #prefix><SvgIcon icon="material-symbols:lock-outline" /></template>
-              </NInput>
-            </NFormItem>
-          </template>
-
-          <template v-else>
-            <NFormItem
-              :label="t('mine.login.field.currentPassword')"
-              :validation-status="fieldErrors.currentPassword ? 'error' : undefined"
-              :feedback="fieldErrors.currentPassword"
-            >
-              <NInput
-                v-model:value="passwordForm.currentPassword"
-                type="password"
-                show-password-on="click"
-                :input-props="{ name: 'currentPassword', autocomplete: 'current-password' }"
-              />
-            </NFormItem>
-            <NFormItem
-              :label="t('mine.login.field.newPassword')"
-              :validation-status="fieldErrors.newPassword ? 'error' : undefined"
-              :feedback="fieldErrors.newPassword"
-            >
-              <NInput
-                v-model:value="passwordForm.newPassword"
-                type="password"
-                show-password-on="click"
-                :input-props="{ name: 'newPassword', autocomplete: 'new-password' }"
-              />
-            </NFormItem>
-            <NFormItem
-              :label="t('mine.login.field.confirmPassword')"
-              :validation-status="fieldErrors.confirmPassword ? 'error' : undefined"
-              :feedback="fieldErrors.confirmPassword"
-            >
-              <NInput
-                v-model:value="passwordForm.confirmPassword"
-                type="password"
-                show-password-on="click"
-                :input-props="{ name: 'confirmPassword', autocomplete: 'new-password' }"
-              />
-            </NFormItem>
-          </template>
-
-          <NButton block type="primary" attr-type="submit" :loading="submitting">
-            <template #icon><SvgIcon icon="material-symbols:login" /></template>
-            {{ submitLabel }}
-          </NButton>
-        </form>
-
-        <NResult
-          v-else
-          status="success"
-          :title="t('mine.login.complete.title')"
-          :description="t('mine.login.complete.description')"
-        >
-          <template #footer>
-            <NButton type="primary" @click="restartLogin">{{ t('mine.login.action.restart') }}</NButton>
-          </template>
-        </NResult>
-
-        <NDivider />
-        <NSpace justify="space-between">
-          <NTag type="success" :bordered="false">{{ t('mine.login.service.local') }}</NTag>
-          <NText depth="3">{{ t('mine.login.service.help') }}</NText>
+    <div class="relative z-1 grid min-h-screen grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(420px,2fr)]">
+      <section
+        class="hidden flex-col justify-end px-12 pb-16 lg:flex xl:px-20 xl:pb-20"
+        :aria-label="t('mine.login.brand')"
+      >
+        <NSpace vertical :size="8">
+          <SystemLogo class="h-16 w-20" />
+          <NH1 class="m-0 text-3xl font-600">{{ t('mine.login.brand') }}</NH1>
+          <NText depth="3">{{ t('mine.login.slogan') }}</NText>
         </NSpace>
-      </NSpace>
-    </NCard>
+      </section>
+
+      <section class="flex items-center justify-center px-4 py-20 sm:px-8 lg:px-10 xl:px-16">
+        <NCard data-login-card class="w-full max-w-480px shadow-header" size="large">
+          <NSpace vertical :size="24">
+            <NThing class="lg:hidden">
+              <template #avatar>
+                <NAvatar round size="large">
+                  <SystemLogo class="h-8 w-8" />
+                </NAvatar>
+              </template>
+              <template #header>{{ t('mine.login.brand') }}</template>
+              <template #description>{{ t('mine.login.slogan') }}</template>
+            </NThing>
+
+            <div>
+              <NH1 class="m-0 text-2xl">{{ title }}</NH1>
+              <NText depth="3">{{ description }}</NText>
+            </div>
+
+            <NAlert v-if="stage === 'password'" type="warning" :title="t('mine.login.security.title')">
+              {{ t('mine.login.security.description') }}
+            </NAlert>
+
+            <NAlert v-if="error" type="error" :title="error.message">
+              <template v-if="error.traceId">{{ t('mine.common.traceId', { traceId: error.traceId }) }}</template>
+            </NAlert>
+
+            <form v-if="stage !== 'complete'" novalidate @submit.prevent="submit">
+              <template v-if="stage === 'login'">
+                <NFormItem
+                  :label="t('mine.login.field.username')"
+                  :validation-status="fieldErrors.username ? 'error' : undefined"
+                  :feedback="fieldErrors.username"
+                >
+                  <NInput
+                    v-model:value="loginForm.username"
+                    :input-props="{ name: 'username', autocomplete: 'username' }"
+                    maxlength="64"
+                    :placeholder="t('mine.login.placeholder.username')"
+                  >
+                    <template #prefix><SvgIcon icon="material-symbols:person-outline" /></template>
+                  </NInput>
+                </NFormItem>
+                <NFormItem
+                  :label="t('mine.login.field.password')"
+                  :validation-status="fieldErrors.password ? 'error' : undefined"
+                  :feedback="fieldErrors.password"
+                >
+                  <NInput
+                    v-model:value="loginForm.password"
+                    type="password"
+                    show-password-on="click"
+                    :input-props="{ name: 'password', autocomplete: 'current-password' }"
+                    maxlength="256"
+                    :placeholder="t('mine.login.placeholder.password')"
+                  >
+                    <template #prefix><SvgIcon icon="material-symbols:lock-outline" /></template>
+                  </NInput>
+                </NFormItem>
+              </template>
+
+              <template v-else>
+                <NFormItem
+                  :label="t('mine.login.field.currentPassword')"
+                  :validation-status="fieldErrors.currentPassword ? 'error' : undefined"
+                  :feedback="fieldErrors.currentPassword"
+                >
+                  <NInput
+                    v-model:value="passwordForm.currentPassword"
+                    type="password"
+                    show-password-on="click"
+                    :input-props="{ name: 'currentPassword', autocomplete: 'current-password' }"
+                  />
+                </NFormItem>
+                <NFormItem
+                  :label="t('mine.login.field.newPassword')"
+                  :validation-status="fieldErrors.newPassword ? 'error' : undefined"
+                  :feedback="fieldErrors.newPassword"
+                >
+                  <NInput
+                    v-model:value="passwordForm.newPassword"
+                    type="password"
+                    show-password-on="click"
+                    :input-props="{ name: 'newPassword', autocomplete: 'new-password' }"
+                  />
+                </NFormItem>
+                <NFormItem
+                  :label="t('mine.login.field.confirmPassword')"
+                  :validation-status="fieldErrors.confirmPassword ? 'error' : undefined"
+                  :feedback="fieldErrors.confirmPassword"
+                >
+                  <NInput
+                    v-model:value="passwordForm.confirmPassword"
+                    type="password"
+                    show-password-on="click"
+                    :input-props="{ name: 'confirmPassword', autocomplete: 'new-password' }"
+                  />
+                </NFormItem>
+              </template>
+
+              <NButton block type="primary" size="large" attr-type="submit" :loading="submitting">
+                <template #icon><SvgIcon icon="material-symbols:login" /></template>
+                {{ submitLabel }}
+              </NButton>
+            </form>
+
+            <NResult
+              v-else
+              status="success"
+              :title="t('mine.login.complete.title')"
+              :description="t('mine.login.complete.description')"
+            >
+              <template #footer>
+                <NButton type="primary" @click="restartLogin">{{ t('mine.login.action.restart') }}</NButton>
+              </template>
+            </NResult>
+
+            <NDivider />
+            <NSpace justify="space-between">
+              <NTag type="success" :bordered="false">{{ t('mine.login.service.local') }}</NTag>
+              <NText depth="3">{{ t('mine.login.service.help') }}</NText>
+            </NSpace>
+          </NSpace>
+        </NCard>
+      </section>
+    </div>
   </main>
 </template>
