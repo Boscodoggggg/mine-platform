@@ -2,6 +2,9 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { i18n, setLocale } from '@/locales';
+import { useAppStore } from '@/store/modules/app';
+import { useThemeStore } from '@/store/modules/theme';
 import { localStg } from '@/utils/storage';
 import LoginPage from './LoginPage.vue';
 
@@ -10,28 +13,13 @@ const { changePasswordMock, loginMock } = vi.hoisted(() => ({
   loginMock: vi.fn()
 }));
 
-function mockPreferredDarkMode(matches: boolean) {
-  vi.stubGlobal(
-    'matchMedia',
-    vi.fn().mockReturnValue({
-      matches,
-      media: '(prefers-color-scheme: dark)',
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn()
-    })
-  );
-}
-
 vi.mock('@/modules/system/api/auth', () => ({
   changePassword: changePasswordMock,
   login: loginMock
 }));
 
 async function mountPage() {
+  const pinia = createPinia();
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -44,10 +32,16 @@ async function mountPage() {
 
   const wrapper = mount(LoginPage, {
     global: {
-      plugins: [createPinia(), router]
+      plugins: [pinia, router, i18n],
+      stubs: { SvgIcon: true }
     }
   });
-  return { router, wrapper };
+  return {
+    appStore: useAppStore(pinia),
+    router,
+    themeStore: useThemeStore(pinia),
+    wrapper
+  };
 }
 
 describe('LoginPage', () => {
@@ -55,56 +49,38 @@ describe('LoginPage', () => {
     changePasswordMock.mockReset();
     loginMock.mockReset();
     window.localStorage.removeItem('mine-login-theme');
-    mockPreferredDarkMode(false);
+    setLocale('zh-CN');
   });
 
-  it('应展示智慧矿山品牌和深蓝登录舱', async () => {
+  it('应使用主题组件和 Naive UI 表单展示登录页', async () => {
     const { wrapper } = await mountPage();
 
-    expect(wrapper.find('.network-canvas').exists()).toBe(false);
-    expect(wrapper.get('.mine-scene-asset').attributes('src')).toContain('smart-mine-tunnel.svg');
-    expect(wrapper.get('.brand-stage').text()).toContain('智慧矿山数据平台');
-    expect(wrapper.get('.brand-stage').classes()).toContain('brand-stage--lower-left');
-    expect(wrapper.get('.login-card').classes()).toContain('login-card');
-    expect(wrapper.get('.login-card').classes()).toContain('liquid-glass');
-    expect(wrapper.find('#liquid-glass-distortion').exists()).toBe(true);
-    expect(wrapper.find('.mine-visual').exists()).toBe(false);
+    expect(wrapper.text()).toContain('智慧矿山数据平台');
+    expect(wrapper.find('.n-card').exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'ThemeSchemaSwitch' }).exists()).toBe(true);
+    expect(wrapper.findComponent({ name: 'LangSwitch' }).exists()).toBe(true);
   });
 
-  it('液态玻璃高光应保持静态并展示表单语义图标', async () => {
-    const { wrapper } = await mountPage();
-    const card = wrapper.get('.liquid-glass');
-
-    await card.trigger('pointermove', { clientX: 110, clientY: 60 });
-
-    expect(card.attributes('style')).toBeUndefined();
-    expect(wrapper.find('[data-login-icon="username"]').exists()).toBe(true);
-    expect(wrapper.find('[data-login-icon="password"]').exists()).toBe(true);
-    expect(wrapper.find('[data-login-icon="submit"]').exists()).toBe(true);
-    expect(wrapper.find('[data-login-icon="service"]').exists()).toBe(true);
-  });
-
-  it('应读取并记住登录页的亮暗主题偏好', async () => {
-    window.localStorage.setItem('mine-login-theme', 'dark');
-    const { wrapper } = await mountPage();
+  it('主题切换应只修改全局主题状态', async () => {
+    const { themeStore, wrapper } = await mountPage();
     const switchButton = wrapper.get('[data-login-theme-switch]');
 
-    expect(wrapper.get('.login-shell').classes()).toContain('login-shell--dark');
-    expect(switchButton.attributes('aria-label')).toBe('切换为亮色模式');
+    expect(themeStore.themeScheme).toBe('light');
 
     await switchButton.trigger('click');
 
-    expect(wrapper.get('.login-shell').classes()).toContain('login-shell--light');
-    expect(window.localStorage.getItem('mine-login-theme')).toBe('light');
-    expect(switchButton.attributes('aria-label')).toBe('切换为暗色模式');
+    expect(themeStore.themeScheme).toBe('dark');
+    expect(window.localStorage.getItem('mine-login-theme')).toBeNull();
   });
 
-  it('没有本地偏好时应跟随系统深色模式', async () => {
-    mockPreferredDarkMode(true);
+  it('切换全局语言后页面文案应立即更新', async () => {
+    const { appStore, wrapper } = await mountPage();
 
-    const { wrapper } = await mountPage();
+    appStore.changeLocale('en-US');
+    await flushPromises();
 
-    expect(wrapper.get('.login-shell').classes()).toContain('login-shell--dark');
+    expect(wrapper.text()).toContain('Smart Mine Data Platform');
+    expect(wrapper.text()).toContain('Sign In');
   });
 
   it('用户名和密码为空时不应提交登录请求', async () => {

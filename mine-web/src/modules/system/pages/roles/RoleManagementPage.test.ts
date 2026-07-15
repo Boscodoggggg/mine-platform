@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
+import { i18n, setLocale } from '@/locales';
 import RoleManagementPage from './RoleManagementPage.vue';
 
 const api = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ const role = {
 
 describe('RoleManagementPage', () => {
   beforeEach(() => {
+    setLocale('zh-CN');
     Object.values(api).forEach(mock => mock.mockReset());
     api.getRoles.mockResolvedValue({ items: [role], page: 1, size: 20, total: 1 });
     api.getMenuTree.mockResolvedValue([
@@ -110,11 +112,11 @@ describe('RoleManagementPage', () => {
 
     await page.removeRole(role);
 
-    expect(window.$message?.error).toHaveBeenCalledWith('角色仍被用户使用，请先解除关联（链路：trace-role-001）');
+    expect(window.$message?.error).toHaveBeenCalledWith('角色仍被用户使用，请先解除关联 (链路编号：trace-role-001)');
   });
 });
 
 function mountPage(permissions: string[]) {
   authState.userInfo.buttons = permissions;
-  return mount(RoleManagementPage);
+  return mount(RoleManagementPage, { global: { plugins: [i18n] } });
 }

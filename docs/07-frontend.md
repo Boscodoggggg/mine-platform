@@ -285,7 +285,91 @@ location    → LocationSummary
 动态授权至少覆盖：DIRECTORY 层级保留、BUTTON 不生成路由、未知组件降级、任一/全部权限语义、超级管理员
 `*` 通配权限。组件白名单测试不能通过 mock 任意 import 来弱化安全边界。
 
-## 16. UI 设计原则
+## 16. 主题、样式与国际化强制规范
+
+### 16.1 唯一主题来源
+
+`src/theme/settings.ts` 是颜色、圆角、阴影和默认主题模式的唯一静态配置入口，`useThemeStore` 是运行时主题状态的唯一来源。
+主题设置生成 CSS 变量并注入 Naive UI，业务页面不得复制一份品牌色、暗色调色板或主题状态。
+
+主题模式统一支持：
+
+- `light`：亮色模式。
+- `dark`：暗色模式。
+- `auto`：跟随操作系统。
+
+页面通过 `ThemeSchemaSwitch` 调用 `themeStore.toggleThemeScheme()`。禁止页面直接调用 `matchMedia` 判断模式、创建
+`isDark` 私有状态、调用 `setThemeScheme` 强行覆盖全局模式，或使用 `mine-login-theme` 等独立 localStorage 键。
+
+### 16.2 组件和样式使用边界
+
+业务页面按以下优先级实现视觉效果：
+
+1. 使用 Naive UI 的 `NCard`、`NForm`、`NDataTable`、`NAlert`、`NTag`、`NResult` 等组件。
+2. 使用 Naive UI 的 `type="primary|success|warning|error|info"` 表达语义状态。
+3. 仅使用 UnoCSS 处理布局、间距、宽高和响应式，例如 `flex`、`grid`、`gap-4`、`max-w-640px`。
+4. 只有主题基础设施可以维护颜色 token；业务页面不得定义新颜色。
+
+业务页面禁止：
+
+- `<style>` 或外接页面私有 CSS/SCSS。
+- `style="..."` 和运行时拼装的内联样式；组件 API 明确要求的尺寸参数除外。
+- `#ed6500`、`rgb(...)`、`hsl(...)` 等颜色常量。
+- `bg-[#...]`、`text-[#...]`、`border-[#...]` 等任意值颜色类。
+- 为某一页面复制亮色/暗色两套选择器。
+- 用颜色作为唯一状态信息；必须同时提供文字或图标。
+
+确有 Naive UI 和现有 token 无法覆盖的通用视觉需求时，先扩展 `src/theme/settings.ts`、`src/theme/vars.ts` 和相应类型，
+经过评审后再由多个页面复用，不能在单页临时增加 CSS。
+
+### 16.3 国际化
+
+所有用户可见内容必须进入 Vue I18n 资源：
+
+- 中文：`src/locales/langs/zh-cn.ts`。
+- 英文：`src/locales/langs/en-us.ts`。
+- 类型：`src/typings/app.d.ts` 中的 `App.I18n.Schema`。
+- 默认回退语言：`en-US`。
+
+国际化覆盖标题、按钮、表头、占位符、校验反馈、成功/失败消息、确认框、空状态、状态标签、帮助文案、
+`title`、`aria-label` 和图片替代文本。后端返回的实体名称、设备字段和值不翻译，但前端补充的前后缀必须翻译。
+日期和数字格式使用当前 `locale`，不得固定为 `zh-CN`。
+
+业务组件使用示例：
+
+~~~vue
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
+</script>
+
+<template>
+  <NCard :title="t('mine.users.title')">
+    <NTag type="success">{{ t('mine.common.status.enabled') }}</NTag>
+  </NCard>
+</template>
+~~~
+
+### 16.4 自动门禁
+
+`src/test/ui-governance.test.ts` 检查已纳入治理范围的业务页面：
+
+- 不存在 `<style>`。
+- 不存在十六进制、RGB、HSL 或任意值颜色。
+- 不存在硬编码中文用户文案。
+- 页面使用 `useI18n`。
+- 登录页不维护私有主题状态。
+
+本地执行：
+
+~~~bash
+pnpm --dir mine-web check:ui-governance
+~~~
+
+新增业务页面时必须加入治理测试的 `businessPages` 清单。该检查同时由 `lint:check` 和 CI 执行。
+
+## 17. UI 设计原则
 
 - 运行状态使用文字 + 图标 + 颜色，不能只靠颜色。
 - 告警颜色与普通品牌色分离。

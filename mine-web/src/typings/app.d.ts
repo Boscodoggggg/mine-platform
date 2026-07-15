@@ -362,6 +362,95 @@ declare namespace App {
           no: string;
         };
       };
+      mine: {
+        common: {
+          action: string;
+          edit: string;
+          delete: string;
+          empty: string;
+          allStatus: string;
+          search: string;
+          reset: string;
+          cancel: string;
+          save: string;
+          requestFailed: string;
+          traceId: string;
+          operationFailed: string;
+          status: {
+            enabled: string;
+            disabled: string;
+            locked: string;
+          };
+        };
+        login: {
+          brand: string;
+          slogan: string;
+          title: Record<'login' | 'password' | 'complete', string>;
+          description: Record<'login' | 'password' | 'complete', string>;
+          field: Record<'username' | 'password' | 'currentPassword' | 'newPassword' | 'confirmPassword', string>;
+          placeholder: Record<'username' | 'password', string>;
+          validation: Record<
+            | 'usernameRequired'
+            | 'passwordRequired'
+            | 'currentPasswordRequired'
+            | 'newPasswordRequired'
+            | 'passwordTooShort'
+            | 'passwordTooLong'
+            | 'confirmPasswordRequired'
+            | 'passwordMismatch',
+            string
+          >;
+          security: Record<'title' | 'description', string>;
+          action: Record<'processing' | 'login' | 'changePassword' | 'restart', string>;
+          complete: Record<'title' | 'description', string>;
+          service: Record<'local' | 'help', string>;
+        };
+        home: {
+          title: string;
+          welcome: string;
+          localEnvironment: string;
+          pendingMetrics: string;
+          ready: string;
+          pending: string;
+          metric: Record<
+            'onlineDevices' | 'todayTelemetry' | 'activeAlarms' | 'weakNetworkBacklog',
+            Record<'label' | 'description', string>
+          >;
+          pipeline: Record<'title' | 'devices' | 'gateway' | 'broker' | 'telemetry' | 'note', string>;
+          readiness: Record<'title' | 'authentication' | 'passwordChange' | 'rabbitMq' | 'deviceModel', string>;
+        };
+        users: {
+          title: string;
+          subtitle: string;
+          search: string;
+          neverLoggedIn: string;
+          column: Record<'username' | 'displayName' | 'status' | 'passwordChange' | 'lastLogin', string>;
+          passwordChange: Record<'pending' | 'completed', string>;
+          action: Record<'create' | 'assignRole' | 'resetPassword' | 'saveRole' | 'confirmReset', string>;
+          validation: Record<'displayName' | 'createRequired' | 'temporaryPassword', string>;
+          message: Record<'updated' | 'created' | 'rolesUpdated' | 'passwordReset', string>;
+          modal: Record<'edit' | 'create' | 'assignRole' | 'resetPassword', string>;
+          field: Record<'username' | 'displayName' | 'status' | 'temporaryPassword', string>;
+          tip: Record<'assignRole' | 'resetPassword', string>;
+          placeholder: Record<'role' | 'temporaryPassword', string>;
+        };
+        roles: {
+          title: string;
+          subtitle: string;
+          search: string;
+          permissionCount: string;
+          confirmDelete: string;
+          column: Record<'code' | 'name' | 'status' | 'description' | 'permissions', string>;
+          action: Record<'create' | 'permissions' | 'publishPermissions', string>;
+          validation: Record<'required', string>;
+          message: Record<'updated' | 'created' | 'deleted' | 'permissionsUpdated', string>;
+          modal: Record<'edit' | 'create' | 'permissions', string>;
+          field: Record<'code' | 'name' | 'status' | 'description', string>;
+          placeholder: Record<'code', string>;
+          tip: Record<'permissions', string>;
+        };
+        fallback: Record<'unconfigured' | 'title' | 'description' | 'help', string>;
+      };
       request: {
         logout: string;
         logoutMsg: string;

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { PopoverPlacement } from 'naive-ui';
+import { NButton, NTooltip } from 'naive-ui';
 import { twMerge } from 'tailwind-merge';
+import SvgIcon from '@/components/custom/svg-icon.vue';
 
 defineOptions({
   name: 'ButtonIcon',
@@ -44,5 +46,3 @@ const DEFAULT_CLASS = 'h-[36px] text-icon';
     {{ tooltipContent }}
   </NTooltip>
 </template>
-
-<style scoped></style>

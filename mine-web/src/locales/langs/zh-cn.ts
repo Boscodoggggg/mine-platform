@@ -50,6 +50,174 @@ const local: App.I18n.Schema = {
       no: '否'
     }
   },
+  mine: {
+    common: {
+      action: '操作',
+      edit: '编辑',
+      delete: '删除',
+      empty: '—',
+      allStatus: '全部状态',
+      search: '查询',
+      reset: '重置',
+      cancel: '取消',
+      save: '保存',
+      requestFailed: '请求处理失败，请稍后重试',
+      traceId: '链路编号：{traceId}',
+      operationFailed: '操作失败，请稍后重试',
+      status: {
+        enabled: '启用',
+        disabled: '停用',
+        locked: '锁定'
+      }
+    },
+    login: {
+      brand: '智慧矿山数据平台',
+      slogan: '设备智联 · 数据洞察 · 生产协同',
+      title: {
+        login: '欢迎登录',
+        password: '修改初始密码',
+        complete: '密码修改成功'
+      },
+      description: {
+        login: '使用矿区管理账号登录。连续失败将触发安全限制。',
+        password: '当前账号仍在使用初始密码，完成修改后需要重新登录。',
+        complete: '密码已更新，旧会话已安全退出。'
+      },
+      field: {
+        username: '用户名',
+        password: '密码',
+        currentPassword: '当前密码',
+        newPassword: '新密码',
+        confirmPassword: '确认新密码'
+      },
+      placeholder: {
+        username: '请输入管理账号',
+        password: '请输入登录密码'
+      },
+      validation: {
+        usernameRequired: '请输入用户名',
+        passwordRequired: '请输入密码',
+        currentPasswordRequired: '请输入当前密码',
+        newPasswordRequired: '请输入新密码',
+        passwordTooShort: '新密码至少需要 12 个字符',
+        passwordTooLong: '新密码的 UTF-8 编码不能超过 72 字节',
+        confirmPasswordRequired: '请再次输入新密码',
+        passwordMismatch: '两次输入的新密码不一致'
+      },
+      security: {
+        title: '密码安全要求',
+        description: '至少 12 个字符，UTF-8 编码不超过 72 字节，不得与当前密码相同。'
+      },
+      action: {
+        processing: '正在处理…',
+        login: '登录平台',
+        changePassword: '确认修改',
+        restart: '重新登录'
+      },
+      complete: {
+        title: '密码修改成功，请重新登录',
+        description: '为确保旧令牌全部失效，系统已安全退出当前会话。'
+      },
+      service: {
+        local: '矿区本地服务',
+        help: '连接异常时请联系矿区系统管理员'
+      }
+    },
+    home: {
+      title: '矿区运行总览',
+      welcome: '{name}，这里将汇总设备接入、数据链路与现场告警。',
+      localEnvironment: '矿区本地环境',
+      pendingMetrics: '待接入运行指标',
+      ready: '已就绪',
+      pending: '待建设',
+      metric: {
+        onlineDevices: { label: '在线设备', description: '等待设备台账接入' },
+        todayTelemetry: { label: '今日遥测', description: '等待遥测服务接入' },
+        activeAlarms: { label: '活动告警', description: '等待告警规则接入' },
+        weakNetworkBacklog: { label: '弱网积压', description: '等待边缘节点接入' }
+      },
+      pipeline: {
+        title: '采集链路状态',
+        devices: '设备与车辆',
+        gateway: '接入网关',
+        broker: '消息中枢',
+        telemetry: '遥测处理',
+        note: '接入真实设备后，本区域显示吞吐、延迟、离线缓存和失败重试情况。'
+      },
+      readiness: {
+        title: 'Phase 0 基础能力',
+        authentication: '管理端身份认证',
+        passwordChange: '首次登录强制改密',
+        rabbitMq: 'RabbitMQ 双虚拟主机',
+        deviceModel: '设备与物模型管理'
+      }
+    },
+    users: {
+      title: '用户管理',
+      subtitle: '维护矿区管理端账号、启停状态和角色分配。用户密码不会在页面回显。',
+      search: '搜索登录名或显示名称',
+      neverLoggedIn: '从未登录',
+      column: {
+        username: '登录名',
+        displayName: '显示名称',
+        status: '状态',
+        passwordChange: '首次改密',
+        lastLogin: '最近登录'
+      },
+      passwordChange: { pending: '待完成', completed: '已完成' },
+      action: {
+        create: '创建用户',
+        assignRole: '分配角色',
+        resetPassword: '重置密码',
+        saveRole: '保存角色',
+        confirmReset: '确认重置'
+      },
+      validation: {
+        displayName: '请输入显示名称',
+        createRequired: '请填写登录名和至少 12 位临时密码',
+        temporaryPassword: '临时密码至少 12 位'
+      },
+      message: {
+        updated: '用户已更新',
+        created: '用户已创建',
+        rolesUpdated: '用户角色已更新',
+        passwordReset: '临时密码已重置，用户旧会话已失效'
+      },
+      modal: { edit: '编辑用户', create: '创建用户', assignRole: '分配用户角色', resetPassword: '重置临时密码' },
+      field: { username: '登录名', displayName: '显示名称', status: '状态', temporaryPassword: '临时密码' },
+      tip: {
+        assignRole: '正在为 {name} 分配角色，保存后下一次权限校验立即生效。',
+        resetPassword: '重置后 {name} 的旧会话立即失效，下次登录必须修改密码。'
+      },
+      placeholder: { role: '请选择角色', temporaryPassword: '输入 12～72 位临时密码' }
+    },
+    roles: {
+      title: '角色与权限',
+      subtitle: '角色编码发布后保持不变；权限节点由平台版本维护，管理员只负责勾选授权。',
+      search: '搜索角色编码或名称',
+      permissionCount: '{count} 项',
+      confirmDelete: '确认删除角色“{name}”吗？',
+      column: { code: '角色编码', name: '角色名称', status: '状态', description: '说明', permissions: '授权节点' },
+      action: { create: '创建角色', permissions: '权限配置', publishPermissions: '发布权限' },
+      validation: { required: '请填写角色编码和名称' },
+      message: {
+        updated: '角色已更新',
+        created: '角色已创建',
+        deleted: '角色已删除',
+        permissionsUpdated: '角色权限已更新，现有会话下一次请求即生效'
+      },
+      modal: { edit: '编辑角色', create: '创建角色', permissions: '角色权限配置' },
+      field: { code: '角色编码', name: '角色名称', status: '状态', description: '角色说明' },
+      placeholder: { code: '例如 DISPATCHER' },
+      tip: { permissions: '正在配置 {name}。目录、页面和按钮节点均可授权；按钮节点会显示稳定权限码。' }
+    },
+    fallback: {
+      unconfigured: '未配置',
+      title: '功能模块尚未接入',
+      description: '当前菜单配置已生效，但组件标识“{componentKey}”没有对应的本地页面。',
+      help: '请联系平台开发人员完成组件注册后重新发布前端版本。'
+    }
+  },
   request: {
     logout: '请求失败后登出用户',
     logoutMsg: '用户状态失效，请重新登录',

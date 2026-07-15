@@ -50,6 +50,185 @@ const local: App.I18n.Schema = {
       no: 'No'
     }
   },
+  mine: {
+    common: {
+      action: 'Actions',
+      edit: 'Edit',
+      delete: 'Delete',
+      empty: '—',
+      allStatus: 'All statuses',
+      search: 'Search',
+      reset: 'Reset',
+      cancel: 'Cancel',
+      save: 'Save',
+      requestFailed: 'The request could not be processed. Please try again later.',
+      traceId: 'Trace ID: {traceId}',
+      operationFailed: 'The operation failed. Please try again later.',
+      status: { enabled: 'Enabled', disabled: 'Disabled', locked: 'Locked' }
+    },
+    login: {
+      brand: 'Smart Mine Data Platform',
+      slogan: 'Connected Devices · Data Insights · Production Collaboration',
+      title: { login: 'Welcome', password: 'Change Initial Password', complete: 'Password Changed' },
+      description: {
+        login: 'Sign in with your mine management account. Repeated failures trigger security controls.',
+        password: 'This account still uses its initial password. Sign in again after changing it.',
+        complete: 'The password was updated and the previous session was closed safely.'
+      },
+      field: {
+        username: 'Username',
+        password: 'Password',
+        currentPassword: 'Current password',
+        newPassword: 'New password',
+        confirmPassword: 'Confirm new password'
+      },
+      placeholder: { username: 'Enter management account', password: 'Enter password' },
+      validation: {
+        usernameRequired: 'Enter a username',
+        passwordRequired: 'Enter a password',
+        currentPasswordRequired: 'Enter the current password',
+        newPasswordRequired: 'Enter a new password',
+        passwordTooShort: 'The new password must contain at least 12 characters',
+        passwordTooLong: 'The UTF-8 encoded password must not exceed 72 bytes',
+        confirmPasswordRequired: 'Enter the new password again',
+        passwordMismatch: 'The new passwords do not match'
+      },
+      security: {
+        title: 'Password requirements',
+        description: 'Use at least 12 characters and no more than 72 UTF-8 bytes. Do not reuse the current password.'
+      },
+      action: {
+        processing: 'Processing…',
+        login: 'Sign In',
+        changePassword: 'Change Password',
+        restart: 'Sign In Again'
+      },
+      complete: {
+        title: 'Password changed. Sign in again.',
+        description: 'The current session was closed to invalidate all previous tokens.'
+      },
+      service: { local: 'On-premises service', help: 'Contact the mine system administrator if the connection fails' }
+    },
+    home: {
+      title: 'Mine Operations Overview',
+      welcome: '{name}, this page summarizes device access, data pipelines, and site alarms.',
+      localEnvironment: 'On-premises environment',
+      pendingMetrics: 'Metrics pending',
+      ready: 'Ready',
+      pending: 'Pending',
+      metric: {
+        onlineDevices: { label: 'Online Devices', description: 'Waiting for the device registry' },
+        todayTelemetry: { label: 'Telemetry Today', description: 'Waiting for the telemetry service' },
+        activeAlarms: { label: 'Active Alarms', description: 'Waiting for alarm rules' },
+        weakNetworkBacklog: { label: 'Weak-network Backlog', description: 'Waiting for edge nodes' }
+      },
+      pipeline: {
+        title: 'Collection Pipeline',
+        devices: 'Devices and Vehicles',
+        gateway: 'Access Gateway',
+        broker: 'Message Broker',
+        telemetry: 'Telemetry Processing',
+        note: 'After real devices connect, this area shows throughput, latency, offline buffering, and retry status.'
+      },
+      readiness: {
+        title: 'Phase 0 Foundation',
+        authentication: 'Management Authentication',
+        passwordChange: 'Forced Initial Password Change',
+        rabbitMq: 'RabbitMQ Virtual Hosts',
+        deviceModel: 'Device and Thing Model Management'
+      }
+    },
+    users: {
+      title: 'User Management',
+      subtitle: 'Manage mine administration accounts, status, and role assignments. Passwords are never displayed.',
+      search: 'Search username or display name',
+      neverLoggedIn: 'Never signed in',
+      column: {
+        username: 'Username',
+        displayName: 'Display Name',
+        status: 'Status',
+        passwordChange: 'Initial Password',
+        lastLogin: 'Last Sign-in'
+      },
+      passwordChange: { pending: 'Pending', completed: 'Completed' },
+      action: {
+        create: 'Create User',
+        assignRole: 'Assign Roles',
+        resetPassword: 'Reset Password',
+        saveRole: 'Save Roles',
+        confirmReset: 'Confirm Reset'
+      },
+      validation: {
+        displayName: 'Enter a display name',
+        createRequired: 'Enter a username and a temporary password of at least 12 characters',
+        temporaryPassword: 'The temporary password must contain at least 12 characters'
+      },
+      message: {
+        updated: 'User updated',
+        created: 'User created',
+        rolesUpdated: 'User roles updated',
+        passwordReset: 'Temporary password reset and previous sessions invalidated'
+      },
+      modal: {
+        edit: 'Edit User',
+        create: 'Create User',
+        assignRole: 'Assign User Roles',
+        resetPassword: 'Reset Temporary Password'
+      },
+      field: {
+        username: 'Username',
+        displayName: 'Display Name',
+        status: 'Status',
+        temporaryPassword: 'Temporary Password'
+      },
+      tip: {
+        assignRole: 'Assign roles to {name}. Changes take effect at the next permission check.',
+        resetPassword:
+          'Resetting the password invalidates sessions for {name}; a password change is required at the next sign-in.'
+      },
+      placeholder: { role: 'Select roles', temporaryPassword: 'Enter a temporary password of 12–72 characters' }
+    },
+    roles: {
+      title: 'Roles and Permissions',
+      subtitle:
+        'Role codes remain stable after publication. Platform releases define permission nodes; administrators assign them.',
+      search: 'Search role code or name',
+      permissionCount: '{count} items',
+      confirmDelete: 'Delete role “{name}”?',
+      column: {
+        code: 'Role Code',
+        name: 'Role Name',
+        status: 'Status',
+        description: 'Description',
+        permissions: 'Permission Nodes'
+      },
+      action: {
+        create: 'Create Role',
+        permissions: 'Configure Permissions',
+        publishPermissions: 'Publish Permissions'
+      },
+      validation: { required: 'Enter a role code and name' },
+      message: {
+        updated: 'Role updated',
+        created: 'Role created',
+        deleted: 'Role deleted',
+        permissionsUpdated: 'Role permissions updated; existing sessions use them on the next request'
+      },
+      modal: { edit: 'Edit Role', create: 'Create Role', permissions: 'Role Permission Configuration' },
+      field: { code: 'Role Code', name: 'Role Name', status: 'Status', description: 'Role Description' },
+      placeholder: { code: 'For example, DISPATCHER' },
+      tip: {
+        permissions:
+          'Configuring {name}. Directory, page, and button nodes can be assigned; button nodes display stable permission codes.'
+      }
+    },
+    fallback: {
+      unconfigured: 'Not configured',
+      title: 'Module Not Available',
+      description: 'The menu is active, but component key “{componentKey}” has no matching local page.',
+      help: 'Ask the platform developers to register the component and publish a new frontend release.'
+    }
+  },
   request: {
     logout: 'Logout user after request failed',
     logoutMsg: 'User status is invalid, please log in again',

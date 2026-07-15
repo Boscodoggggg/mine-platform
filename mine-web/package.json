@@ -1,14 +1,15 @@
 {
   "name": "@bosco/mine-web",
   "version": "0.1.0",
+  "private": true,
   "description": "智慧矿山数据采集与设备管理平台前端",
   "keywords": [
-    "smart-mine",
-    "Vue3",
     "TypeScript",
     "Vite",
+    "Vue3",
+    "mqtt",
     "naive-ui",
-    "mqtt"
+    "smart-mine"
   ],
   "license": "MIT",
   "author": "Bosco Mine contributors",
@@ -16,6 +17,7 @@
   "scripts": {
     "build": "vite build --mode prod",
     "build:test": "vite build --mode test",
+    "check:ui-governance": "vitest run src/test/ui-governance.test.ts",
     "cleanup": "sa cleanup",
     "commit": "sa git-commit",
     "commit:zh": "sa git-commit -l=zh-cn",
@@ -24,7 +26,7 @@
     "fmt": "oxfmt",
     "gen-route": "sa gen-route",
     "lint": "oxlint --fix && eslint --fix .",
-    "lint:check": "oxlint && eslint .",
+    "lint:check": "pnpm check:ui-governance && oxlint && eslint .",
     "preview": "vite preview",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default --reporter=junit --outputFile.junit=reports/vitest-junit.xml",
@@ -65,13 +67,14 @@
     "@types/nprogress": "0.2.3",
     "@vitejs/plugin-vue": "6.0.6",
     "@vitejs/plugin-vue-jsx": "5.1.5",
+    "@vue/test-utils": "2.4.11",
     "consola": "3.4.2",
     "eslint": "10.3.0",
+    "happy-dom": "20.10.6",
     "kolorist": "1.8.0",
     "oxfmt": "^0.49.0",
     "oxlint": "^1.64.0",
     "sass": "1.99.0",
-    "happy-dom": "20.10.6",
     "tsx": "4.21.0",
     "typescript": "6.0.3",
     "unocss": "^66.6.8",
@@ -83,12 +86,10 @@
     "vite-plugin-vue-devtools": "8.1.2",
     "vite-plugin-vue-transition-root-validator": "^0.1.0",
     "vitest": "4.1.10",
-    "@vue/test-utils": "2.4.11",
     "vue-tsc": "3.2.8"
   },
   "engines": {
     "node": ">=20.19.0",
     "pnpm": ">=10.5.0"
-  },
-  "private": true
+  }
 }

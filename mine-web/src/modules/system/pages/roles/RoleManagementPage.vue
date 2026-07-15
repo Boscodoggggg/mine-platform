@@ -1,7 +1,24 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { DataTableColumns, SelectOption, TreeOption } from 'naive-ui';
-import { NButton, NDataTable, NInput, NModal, NSelect, NSpace, NTag, NTree } from 'naive-ui';
+import {
+  NButton,
+  NCard,
+  NDataTable,
+  NForm,
+  NFormItem,
+  NGi,
+  NGrid,
+  NInput,
+  NModal,
+  NPageHeader,
+  NSelect,
+  NSpace,
+  NTag,
+  NText,
+  NTree
+} from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import {
@@ -15,6 +32,7 @@ import {
 import type { ManagedMenuNode, ManagedRole, RoleStatus } from '@/modules/system/api/access-management';
 import { useAuthStore } from '@/store/modules/auth';
 
+const { t } = useI18n();
 const authStore = useAuthStore();
 const loading = ref(false);
 const saving = ref(false);
@@ -26,7 +44,6 @@ const query = reactive<{ keyword: string; status: RoleStatus | ''; page: number;
   page: 1,
   size: 20
 });
-
 const roleModalVisible = ref(false);
 const editingRoleId = ref<string | null>(null);
 const roleForm = reactive({
@@ -36,58 +53,56 @@ const roleForm = reactive({
   description: '',
   version: 0
 });
-
 const permissionModalVisible = ref(false);
 const permissionRole = ref<ManagedRole | null>(null);
 const menuTree = ref<TreeOption[]>([]);
 const checkedMenuIds = ref<Array<string | number>>([]);
 
-const statusOptions: SelectOption[] = [
-  { label: '启用', value: 'ENABLED' },
-  { label: '停用', value: 'DISABLED' }
-];
-
+const statusOptions = computed<SelectOption[]>(() => [
+  { label: t('mine.common.status.enabled'), value: 'ENABLED' },
+  { label: t('mine.common.status.disabled'), value: 'DISABLED' }
+]);
 const columns = computed<DataTableColumns<ManagedRole>>(() => [
-  { title: '角色编码', key: 'code', minWidth: 150 },
-  { title: '角色名称', key: 'name', minWidth: 150 },
+  { title: t('mine.roles.column.code'), key: 'code', minWidth: 150 },
+  { title: t('mine.roles.column.name'), key: 'name', minWidth: 150 },
   {
-    title: '状态',
+    title: t('mine.roles.column.status'),
     key: 'status',
     width: 100,
     render: row =>
       h(
         NTag,
         { size: 'small', bordered: false, type: row.status === 'ENABLED' ? 'success' : 'warning' },
-        { default: () => (row.status === 'ENABLED' ? '启用' : '停用') }
+        { default: () => t(`mine.common.status.${row.status.toLowerCase()}`) }
       )
   },
   {
-    title: '说明',
+    title: t('mine.roles.column.description'),
     key: 'description',
     minWidth: 220,
     ellipsis: { tooltip: true },
-    render: row => row.description || '—'
+    render: row => row.description || t('mine.common.empty')
   },
   {
-    title: '授权节点',
+    title: t('mine.roles.column.permissions'),
     key: 'menuIds',
-    width: 100,
-    render: row => `${row.menuIds.length} 项`
+    width: 120,
+    render: row => t('mine.roles.permissionCount', { count: row.menuIds.length })
   },
   {
-    title: '操作',
+    title: t('mine.common.action'),
     key: 'actions',
     width: 230,
     render: row =>
       h(NSpace, { size: 8 }, () => [
         can('system:role:update')
-          ? h(NButton, { text: true, type: 'primary', onClick: () => openEdit(row) }, () => '编辑')
+          ? h(NButton, { text: true, type: 'primary', onClick: () => openEdit(row) }, () => t('mine.common.edit'))
           : null,
         can('system:role:assign-menu')
-          ? h(NButton, { text: true, onClick: () => openPermissions(row) }, () => '权限配置')
+          ? h(NButton, { text: true, onClick: () => openPermissions(row) }, () => t('mine.roles.action.permissions'))
           : null,
         can('system:role:delete')
-          ? h(NButton, { text: true, type: 'error', onClick: () => removeRole(row) }, () => '删除')
+          ? h(NButton, { text: true, type: 'error', onClick: () => removeRole(row) }, () => t('mine.common.delete'))
           : null
       ])
   }
@@ -122,13 +137,7 @@ function resetQuery() {
 
 function openCreate() {
   editingRoleId.value = null;
-  Object.assign(roleForm, {
-    code: '',
-    name: '',
-    status: 'ENABLED',
-    description: '',
-    version: 0
-  });
+  Object.assign(roleForm, { code: '', name: '', status: 'ENABLED', description: '', version: 0 });
   roleModalVisible.value = true;
 }
 
@@ -146,7 +155,7 @@ function openEdit(role: ManagedRole) {
 
 async function saveRole() {
   if (!roleForm.name.trim() || (!editingRoleId.value && !roleForm.code.trim())) {
-    return window.$message?.warning('请填写角色编码和名称');
+    return window.$message?.warning(t('mine.roles.validation.required'));
   }
   saving.value = true;
   try {
@@ -165,7 +174,7 @@ async function saveRole() {
         description: roleForm.description.trim() || undefined
       });
     }
-    window.$message?.success(editingRoleId.value ? '角色已更新' : '角色已创建');
+    window.$message?.success(t(editingRoleId.value ? 'mine.roles.message.updated' : 'mine.roles.message.created'));
     roleModalVisible.value = false;
     await loadRoles();
   } catch (error) {
@@ -176,10 +185,10 @@ async function saveRole() {
 }
 
 async function removeRole(role: ManagedRole) {
-  if (!window.confirm(`确认删除角色“${role.name}”吗？`)) return;
+  if (!window.confirm(t('mine.roles.confirmDelete', { name: role.name }))) return;
   try {
     await deleteRole(role.id);
-    window.$message?.success('角色已删除');
+    window.$message?.success(t('mine.roles.message.deleted'));
     await loadRoles();
   } catch (error) {
     showError(error);
@@ -203,7 +212,7 @@ async function savePermissions() {
   saving.value = true;
   try {
     await replaceRoleMenus(permissionRole.value.id, checkedMenuIds.value.map(String));
-    window.$message?.success('角色权限已更新，现有会话下一次请求即生效');
+    window.$message?.success(t('mine.roles.message.permissionsUpdated'));
     permissionModalVisible.value = false;
     await loadRoles();
   } catch (error) {
@@ -229,11 +238,12 @@ function can(permission: string) {
 
 function showError(error: unknown) {
   if (error instanceof ApiError) {
-    const trace = error.traceId ? `（链路：${error.traceId}）` : '';
-    window.$message?.error(`${error.message}${trace}`);
+    window.$message?.error(
+      error.traceId ? `${error.message} (${t('mine.common.traceId', { traceId: error.traceId })})` : error.message
+    );
     return;
   }
-  window.$message?.error('操作失败，请稍后重试');
+  window.$message?.error(t('mine.common.operationFailed'));
 }
 
 defineExpose({
@@ -249,26 +259,38 @@ defineExpose({
 </script>
 
 <template>
-  <main class="access-page">
-    <header class="page-heading">
-      <div>
-        <span>SYSTEM ACCESS / ROLES</span>
-        <h1>角色与权限</h1>
-        <p>角色编码发布后保持不变；权限节点由平台版本维护，管理员只负责勾选授权。</p>
-      </div>
-      <NButton v-if="can('system:role:create')" type="primary" data-action="create-role" @click="openCreate">
-        创建角色
-      </NButton>
-    </header>
+  <NSpace vertical :size="16">
+    <NPageHeader :title="t('mine.roles.title')" :subtitle="t('mine.roles.subtitle')">
+      <template #extra>
+        <NButton v-if="can('system:role:create')" type="primary" data-action="create-role" @click="openCreate">
+          {{ t('mine.roles.action.create') }}
+        </NButton>
+      </template>
+    </NPageHeader>
 
-    <section class="filter-panel">
-      <NInput v-model:value="query.keyword" clearable placeholder="搜索角色编码或名称" @keyup.enter="search" />
-      <NSelect v-model:value="query.status" clearable :options="statusOptions" placeholder="全部状态" />
-      <NButton type="primary" @click="search">查询</NButton>
-      <NButton @click="resetQuery">重置</NButton>
-    </section>
+    <NCard size="small">
+      <NGrid responsive="screen" cols="1 s:2 m:4" :x-gap="12" :y-gap="12">
+        <NGi>
+          <NInput v-model:value="query.keyword" clearable :placeholder="t('mine.roles.search')" @keyup.enter="search" />
+        </NGi>
+        <NGi>
+          <NSelect
+            v-model:value="query.status"
+            clearable
+            :options="statusOptions"
+            :placeholder="t('mine.common.allStatus')"
+          />
+        </NGi>
+        <NGi>
+          <NButton block type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
+        </NGi>
+        <NGi>
+          <NButton block @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+        </NGi>
+      </NGrid>
+    </NCard>
 
-    <section class="table-panel">
+    <NCard size="small">
       <NDataTable
         remote
         :columns="columns"
@@ -296,36 +318,48 @@ defineExpose({
           }
         "
       />
-    </section>
+    </NCard>
 
     <NModal
       v-model:show="roleModalVisible"
       preset="card"
-      :title="editingRoleId ? '编辑角色' : '创建角色'"
-      class="access-modal"
+      :title="t(editingRoleId ? 'mine.roles.modal.edit' : 'mine.roles.modal.create')"
+      class="w-full max-w-640px"
     >
-      <div class="form-grid">
-        <label>
-          角色编码
-          <NInput v-model:value="roleForm.code" :disabled="Boolean(editingRoleId)" placeholder="例如 DISPATCHER" />
-        </label>
-        <label>
-          角色名称
-          <NInput v-model:value="roleForm.name" maxlength="128" />
-        </label>
-        <label>
-          状态
-          <NSelect v-model:value="roleForm.status" :options="statusOptions" />
-        </label>
-        <label class="form-grid__wide">
-          角色说明
-          <NInput v-model:value="roleForm.description" type="textarea" maxlength="500" show-count />
-        </label>
-      </div>
+      <NForm label-placement="top">
+        <NGrid responsive="screen" cols="1 s:2" :x-gap="16">
+          <NGi>
+            <NFormItem :label="t('mine.roles.field.code')">
+              <NInput
+                v-model:value="roleForm.code"
+                :disabled="Boolean(editingRoleId)"
+                :placeholder="t('mine.roles.placeholder.code')"
+              />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem :label="t('mine.roles.field.name')">
+              <NInput v-model:value="roleForm.name" maxlength="128" />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem :label="t('mine.roles.field.status')">
+              <NSelect v-model:value="roleForm.status" :options="statusOptions" />
+            </NFormItem>
+          </NGi>
+          <NGi :span="2">
+            <NFormItem :label="t('mine.roles.field.description')">
+              <NInput v-model:value="roleForm.description" type="textarea" maxlength="500" show-count />
+            </NFormItem>
+          </NGi>
+        </NGrid>
+      </NForm>
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="roleModalVisible = false">取消</NButton>
-          <NButton type="primary" :loading="saving" data-action="save-role" @click="saveRole">保存</NButton>
+          <NButton @click="roleModalVisible = false">{{ t('mine.common.cancel') }}</NButton>
+          <NButton type="primary" :loading="saving" data-action="save-role" @click="saveRole">
+            {{ t('mine.common.save') }}
+          </NButton>
         </NSpace>
       </template>
     </NModal>
@@ -333,121 +367,21 @@ defineExpose({
     <NModal
       v-model:show="permissionModalVisible"
       preset="card"
-      title="角色权限配置"
-      class="access-modal access-modal--tree"
+      :title="t('mine.roles.modal.permissions')"
+      class="w-full max-w-760px"
     >
-      <p class="modal-tip">
-        正在配置 {{ permissionRole?.name }}。目录、页面和按钮节点均可授权；按钮节点会显示稳定权限码。
-      </p>
-      <NTree v-model:checked-keys="checkedMenuIds" block-line cascade checkable default-expand-all :data="menuTree" />
+      <NSpace vertical :size="16">
+        <NText depth="3">{{ t('mine.roles.tip.permissions', { name: permissionRole?.name || '' }) }}</NText>
+        <NTree v-model:checked-keys="checkedMenuIds" block-line cascade checkable default-expand-all :data="menuTree" />
+      </NSpace>
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="permissionModalVisible = false">取消</NButton>
+          <NButton @click="permissionModalVisible = false">{{ t('mine.common.cancel') }}</NButton>
           <NButton type="primary" :loading="saving" data-action="save-permissions" @click="savePermissions">
-            发布权限
+            {{ t('mine.roles.action.publishPermissions') }}
           </NButton>
         </NSpace>
       </template>
     </NModal>
-  </main>
+  </NSpace>
 </template>
-
-<style scoped>
-.access-page {
-  min-height: 100%;
-  color: #282620;
-}
-
-.page-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 20px;
-}
-
-.page-heading span {
-  color: #ed6500;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-
-.page-heading h1 {
-  margin: 7px 0 5px;
-  font-size: 32px;
-  letter-spacing: -0.035em;
-}
-
-.page-heading p,
-.modal-tip {
-  margin: 0;
-  color: #736d63;
-}
-
-.filter-panel,
-.table-panel {
-  border: 1px solid #e2ddd4;
-  background: #fff;
-  box-shadow: 0 8px 24px rgb(50 45 37 / 4%);
-}
-
-.filter-panel {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) 180px auto auto;
-  gap: 12px;
-  padding: 18px;
-}
-
-.table-panel {
-  margin-top: 14px;
-  padding: 16px;
-}
-
-.access-modal {
-  width: min(640px, calc(100vw - 32px));
-}
-
-.access-modal--tree {
-  width: min(760px, calc(100vw - 32px));
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.form-grid label {
-  display: grid;
-  gap: 7px;
-  color: #4d4942;
-  font-size: 13px;
-}
-
-.form-grid__wide {
-  grid-column: 1 / -1;
-}
-
-.modal-tip {
-  margin-bottom: 16px;
-  line-height: 1.7;
-}
-
-@media (max-width: 720px) {
-  .page-heading {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .filter-panel,
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .form-grid__wide {
-    grid-column: auto;
-  }
-}
-</style>

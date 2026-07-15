@@ -1,7 +1,24 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
-import { NButton, NDataTable, NInput, NModal, NSelect, NSpace, NTag } from 'naive-ui';
+import {
+  NAlert,
+  NButton,
+  NCard,
+  NDataTable,
+  NForm,
+  NFormItem,
+  NGi,
+  NGrid,
+  NInput,
+  NModal,
+  NPageHeader,
+  NSelect,
+  NSpace,
+  NTag,
+  NText
+} from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import {
@@ -15,6 +32,7 @@ import {
 import type { ManagedUser, UserStatus } from '@/modules/system/api/access-management';
 import { useAuthStore } from '@/store/modules/auth';
 
+const { t, locale } = useI18n();
 const authStore = useAuthStore();
 const loading = ref(false);
 const saving = ref(false);
@@ -36,29 +54,25 @@ const userForm = reactive({
   temporaryPassword: '',
   version: 0
 });
-
 const roleModalVisible = ref(false);
 const roleUser = ref<ManagedUser | null>(null);
 const selectedRoleIds = ref<string[]>([]);
 const roleOptions = ref<SelectOption[]>([]);
-
 const passwordModalVisible = ref(false);
 const passwordUser = ref<ManagedUser | null>(null);
 const temporaryPassword = ref('');
 
-const statusOptions: SelectOption[] = [
-  { label: '启用', value: 'ENABLED' },
-  { label: '停用', value: 'DISABLED' },
-  { label: '安全锁定', value: 'LOCKED' }
-];
-
-const editableStatusOptions = statusOptions.slice(0, 2);
-
+const statusOptions = computed<SelectOption[]>(() => [
+  { label: t('mine.common.status.enabled'), value: 'ENABLED' },
+  { label: t('mine.common.status.disabled'), value: 'DISABLED' },
+  { label: t('mine.common.status.locked'), value: 'LOCKED' }
+]);
+const editableStatusOptions = computed(() => statusOptions.value.slice(0, 2));
 const columns = computed<DataTableColumns<ManagedUser>>(() => [
-  { title: '登录名', key: 'username', minWidth: 150 },
-  { title: '显示名称', key: 'displayName', minWidth: 150 },
+  { title: t('mine.users.column.username'), key: 'username', minWidth: 150 },
+  { title: t('mine.users.column.displayName'), key: 'displayName', minWidth: 150 },
   {
-    title: '状态',
+    title: t('mine.users.column.status'),
     key: 'status',
     width: 110,
     render: row =>
@@ -69,31 +83,34 @@ const columns = computed<DataTableColumns<ManagedUser>>(() => [
       )
   },
   {
-    title: '首次改密',
+    title: t('mine.users.column.passwordChange'),
     key: 'passwordChangeRequired',
-    width: 110,
-    render: row => (row.passwordChangeRequired ? '待完成' : '已完成')
+    width: 120,
+    render: row =>
+      row.passwordChangeRequired ? t('mine.users.passwordChange.pending') : t('mine.users.passwordChange.completed')
   },
   {
-    title: '最近登录',
+    title: t('mine.users.column.lastLogin'),
     key: 'lastLoginAt',
-    minWidth: 170,
+    minWidth: 180,
     render: row => formatTime(row.lastLoginAt)
   },
   {
-    title: '操作',
+    title: t('mine.common.action'),
     key: 'actions',
     width: 260,
     render: row =>
       h(NSpace, { size: 8 }, () => [
         can('system:user:update')
-          ? h(NButton, { text: true, type: 'primary', onClick: () => openEdit(row) }, () => '编辑')
+          ? h(NButton, { text: true, type: 'primary', onClick: () => openEdit(row) }, () => t('mine.common.edit'))
           : null,
         can('system:user:assign-role')
-          ? h(NButton, { text: true, onClick: () => openRoles(row) }, () => '分配角色')
+          ? h(NButton, { text: true, onClick: () => openRoles(row) }, () => t('mine.users.action.assignRole'))
           : null,
         can('system:user:reset-password')
-          ? h(NButton, { text: true, type: 'warning', onClick: () => openPasswordReset(row) }, () => '重置密码')
+          ? h(NButton, { text: true, type: 'warning', onClick: () => openPasswordReset(row) }, () =>
+              t('mine.users.action.resetPassword')
+            )
           : null
       ])
   }
@@ -122,9 +139,7 @@ function search() {
 }
 
 function resetQuery() {
-  query.keyword = '';
-  query.status = '';
-  query.page = 1;
+  Object.assign(query, { keyword: '', status: '', page: 1 });
   return loadUsers();
 }
 
@@ -153,9 +168,9 @@ function openEdit(user: ManagedUser) {
 }
 
 async function saveUser() {
-  if (!userForm.displayName.trim()) return window.$message?.warning('请输入显示名称');
+  if (!userForm.displayName.trim()) return window.$message?.warning(t('mine.users.validation.displayName'));
   if (!editingUserId.value && (!userForm.username.trim() || userForm.temporaryPassword.length < 12)) {
-    return window.$message?.warning('请填写登录名和至少 12 位临时密码');
+    return window.$message?.warning(t('mine.users.validation.createRequired'));
   }
 
   saving.value = true;
@@ -174,7 +189,7 @@ async function saveUser() {
         status: userForm.status
       });
     }
-    window.$message?.success(editingUserId.value ? '用户已更新' : '用户已创建');
+    window.$message?.success(t(editingUserId.value ? 'mine.users.message.updated' : 'mine.users.message.created'));
     closeUserModal();
     await loadUsers();
   } catch (error) {
@@ -195,10 +210,7 @@ async function openRoles(user: ManagedUser) {
   roleModalVisible.value = true;
   try {
     const response = await getRoles({ page: 1, size: 100, status: 'ENABLED' });
-    roleOptions.value = response.items.map(role => ({
-      label: `${role.name}（${role.code}）`,
-      value: role.id
-    }));
+    roleOptions.value = response.items.map(role => ({ label: `${role.name} (${role.code})`, value: role.id }));
   } catch (error) {
     showError(error);
   }
@@ -209,7 +221,7 @@ async function saveRoles() {
   saving.value = true;
   try {
     await replaceUserRoles(roleUser.value.id, selectedRoleIds.value);
-    window.$message?.success('用户角色已更新');
+    window.$message?.success(t('mine.users.message.rolesUpdated'));
     roleModalVisible.value = false;
     await loadUsers();
   } catch (error) {
@@ -227,12 +239,12 @@ function openPasswordReset(user: ManagedUser) {
 
 async function savePasswordReset() {
   if (!passwordUser.value || temporaryPassword.value.length < 12) {
-    return window.$message?.warning('临时密码至少 12 位');
+    return window.$message?.warning(t('mine.users.validation.temporaryPassword'));
   }
   saving.value = true;
   try {
     await resetUserPassword(passwordUser.value.id, temporaryPassword.value);
-    window.$message?.success('临时密码已重置，用户旧会话已失效');
+    window.$message?.success(t('mine.users.message.passwordReset'));
     closePasswordModal();
     await loadUsers();
   } catch (error) {
@@ -252,20 +264,21 @@ function can(permission: string) {
 }
 
 function statusLabel(status: UserStatus) {
-  return { ENABLED: '启用', DISABLED: '停用', LOCKED: '锁定' }[status];
+  return t(`mine.common.status.${status.toLowerCase()}`);
 }
 
 function formatTime(value: string | null) {
-  return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '从未登录';
+  return value ? new Date(value).toLocaleString(locale.value, { hour12: false }) : t('mine.users.neverLoggedIn');
 }
 
 function showError(error: unknown) {
   if (error instanceof ApiError) {
-    const trace = error.traceId ? `（链路：${error.traceId}）` : '';
-    window.$message?.error(`${error.message}${trace}`);
+    window.$message?.error(
+      error.traceId ? `${error.message} (${t('mine.common.traceId', { traceId: error.traceId })})` : error.message
+    );
     return;
   }
-  window.$message?.error('操作失败，请稍后重试');
+  window.$message?.error(t('mine.common.operationFailed'));
 }
 
 defineExpose({
@@ -283,26 +296,38 @@ defineExpose({
 </script>
 
 <template>
-  <main class="access-page">
-    <header class="page-heading">
-      <div>
-        <span>SYSTEM ACCESS / USERS</span>
-        <h1>用户管理</h1>
-        <p>维护矿区管理端账号、启停状态和角色分配。用户密码不会在页面回显。</p>
-      </div>
-      <NButton v-if="can('system:user:create')" type="primary" data-action="create-user" @click="openCreate">
-        创建用户
-      </NButton>
-    </header>
+  <NSpace vertical :size="16">
+    <NPageHeader :title="t('mine.users.title')" :subtitle="t('mine.users.subtitle')">
+      <template #extra>
+        <NButton v-if="can('system:user:create')" type="primary" data-action="create-user" @click="openCreate">
+          {{ t('mine.users.action.create') }}
+        </NButton>
+      </template>
+    </NPageHeader>
 
-    <section class="filter-panel">
-      <NInput v-model:value="query.keyword" clearable placeholder="搜索登录名或显示名称" @keyup.enter="search" />
-      <NSelect v-model:value="query.status" clearable :options="statusOptions" placeholder="全部状态" />
-      <NButton type="primary" @click="search">查询</NButton>
-      <NButton @click="resetQuery">重置</NButton>
-    </section>
+    <NCard size="small">
+      <NGrid responsive="screen" cols="1 s:2 m:4" :x-gap="12" :y-gap="12">
+        <NGi>
+          <NInput v-model:value="query.keyword" clearable :placeholder="t('mine.users.search')" @keyup.enter="search" />
+        </NGi>
+        <NGi>
+          <NSelect
+            v-model:value="query.status"
+            clearable
+            :options="statusOptions"
+            :placeholder="t('mine.common.allStatus')"
+          />
+        </NGi>
+        <NGi>
+          <NButton block type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
+        </NGi>
+        <NGi>
+          <NButton block @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+        </NGi>
+      </NGrid>
+    </NCard>
 
-    <section class="table-panel">
+    <NCard size="small">
       <NDataTable
         remote
         :columns="columns"
@@ -330,155 +355,97 @@ defineExpose({
           }
         "
       />
-    </section>
+    </NCard>
 
     <NModal
       v-model:show="userModalVisible"
       preset="card"
-      :title="editingUserId ? '编辑用户' : '创建用户'"
-      class="access-modal"
+      :title="t(editingUserId ? 'mine.users.modal.edit' : 'mine.users.modal.create')"
+      class="w-full max-w-640px"
     >
-      <div class="form-grid">
-        <label>
-          登录名
-          <NInput v-model:value="userForm.username" :disabled="Boolean(editingUserId)" />
-        </label>
-        <label>
-          显示名称
-          <NInput v-model:value="userForm.displayName" maxlength="128" />
-        </label>
-        <label>
-          状态
-          <NSelect v-model:value="userForm.status" :options="editableStatusOptions" />
-        </label>
-        <label v-if="!editingUserId">
-          临时密码
-          <NInput v-model:value="userForm.temporaryPassword" type="password" show-password-on="click" />
-        </label>
-      </div>
+      <NForm label-placement="top">
+        <NGrid responsive="screen" cols="1 s:2" :x-gap="16">
+          <NGi>
+            <NFormItem :label="t('mine.users.field.username')">
+              <NInput v-model:value="userForm.username" :disabled="Boolean(editingUserId)" />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem :label="t('mine.users.field.displayName')">
+              <NInput v-model:value="userForm.displayName" maxlength="128" />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem :label="t('mine.users.field.status')">
+              <NSelect v-model:value="userForm.status" :options="editableStatusOptions" />
+            </NFormItem>
+          </NGi>
+          <NGi v-if="!editingUserId">
+            <NFormItem :label="t('mine.users.field.temporaryPassword')">
+              <NInput v-model:value="userForm.temporaryPassword" type="password" show-password-on="click" />
+            </NFormItem>
+          </NGi>
+        </NGrid>
+      </NForm>
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="closeUserModal">取消</NButton>
-          <NButton type="primary" :loading="saving" data-action="save-user" @click="saveUser">保存</NButton>
-        </NSpace>
-      </template>
-    </NModal>
-
-    <NModal v-model:show="roleModalVisible" preset="card" title="分配用户角色" class="access-modal">
-      <p class="modal-tip">正在为 {{ roleUser?.displayName }} 分配角色，保存后下一次权限校验立即生效。</p>
-      <NSelect v-model:value="selectedRoleIds" multiple filterable :options="roleOptions" placeholder="请选择角色" />
-      <template #footer>
-        <NSpace justify="end">
-          <NButton @click="roleModalVisible = false">取消</NButton>
-          <NButton type="primary" :loading="saving" @click="saveRoles">保存角色</NButton>
-        </NSpace>
-      </template>
-    </NModal>
-
-    <NModal v-model:show="passwordModalVisible" preset="card" title="重置临时密码" class="access-modal">
-      <p class="modal-tip">重置后 {{ passwordUser?.displayName }} 的旧会话立即失效，下次登录必须修改密码。</p>
-      <NInput
-        v-model:value="temporaryPassword"
-        type="password"
-        show-password-on="click"
-        placeholder="输入 12～72 位临时密码"
-      />
-      <template #footer>
-        <NSpace justify="end">
-          <NButton @click="closePasswordModal">取消</NButton>
-          <NButton type="warning" :loading="saving" data-action="reset-password" @click="savePasswordReset">
-            确认重置
+          <NButton @click="closeUserModal">{{ t('mine.common.cancel') }}</NButton>
+          <NButton type="primary" :loading="saving" data-action="save-user" @click="saveUser">
+            {{ t('mine.common.save') }}
           </NButton>
         </NSpace>
       </template>
     </NModal>
-  </main>
+
+    <NModal
+      v-model:show="roleModalVisible"
+      preset="card"
+      :title="t('mine.users.modal.assignRole')"
+      class="w-full max-w-640px"
+    >
+      <NSpace vertical :size="16">
+        <NText depth="3">{{ t('mine.users.tip.assignRole', { name: roleUser?.displayName || '' }) }}</NText>
+        <NSelect
+          v-model:value="selectedRoleIds"
+          multiple
+          filterable
+          :options="roleOptions"
+          :placeholder="t('mine.users.placeholder.role')"
+        />
+      </NSpace>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="roleModalVisible = false">{{ t('mine.common.cancel') }}</NButton>
+          <NButton type="primary" :loading="saving" @click="saveRoles">{{ t('mine.users.action.saveRole') }}</NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal
+      v-model:show="passwordModalVisible"
+      preset="card"
+      :title="t('mine.users.modal.resetPassword')"
+      class="w-full max-w-640px"
+    >
+      <NSpace vertical :size="16">
+        <NAlert type="warning">
+          {{ t('mine.users.tip.resetPassword', { name: passwordUser?.displayName || '' }) }}
+        </NAlert>
+        <NInput
+          v-model:value="temporaryPassword"
+          type="password"
+          show-password-on="click"
+          :placeholder="t('mine.users.placeholder.temporaryPassword')"
+        />
+      </NSpace>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="closePasswordModal">{{ t('mine.common.cancel') }}</NButton>
+          <NButton type="warning" :loading="saving" data-action="reset-password" @click="savePasswordReset">
+            {{ t('mine.users.action.confirmReset') }}
+          </NButton>
+        </NSpace>
+      </template>
+    </NModal>
+  </NSpace>
 </template>
-
-<style scoped>
-.access-page {
-  min-height: 100%;
-  color: #282620;
-}
-
-.page-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 20px;
-}
-
-.page-heading span {
-  color: #ed6500;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-
-.page-heading h1 {
-  margin: 7px 0 5px;
-  font-size: 32px;
-  letter-spacing: -0.035em;
-}
-
-.page-heading p,
-.modal-tip {
-  margin: 0;
-  color: #736d63;
-}
-
-.filter-panel,
-.table-panel {
-  border: 1px solid #e2ddd4;
-  background: #fff;
-  box-shadow: 0 8px 24px rgb(50 45 37 / 4%);
-}
-
-.filter-panel {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) 180px auto auto;
-  gap: 12px;
-  padding: 18px;
-}
-
-.table-panel {
-  margin-top: 14px;
-  padding: 16px;
-}
-
-.access-modal {
-  width: min(620px, calc(100vw - 32px));
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-}
-
-.form-grid label {
-  display: grid;
-  gap: 7px;
-  color: #4d4942;
-  font-size: 13px;
-}
-
-.modal-tip {
-  margin-bottom: 16px;
-  line-height: 1.7;
-}
-
-@media (max-width: 720px) {
-  .page-heading {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .filter-panel,
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

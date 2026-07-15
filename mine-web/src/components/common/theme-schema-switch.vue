@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import type { PopoverPlacement } from 'naive-ui';
 import { $t } from '@/locales';
+import ButtonIcon from '@/components/custom/button-icon.vue';
 
 defineOptions({ name: 'ThemeSchemaSwitch' });
 
@@ -52,5 +53,3 @@ const tooltipContent = computed(() => {
     @click="handleSwitch"
   />
 </template>
-
-<style scoped></style>

@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { i18n, setLocale } from '@/locales';
 import UserManagementPage from './UserManagementPage.vue';
 
 const api = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ const user = {
 
 describe('UserManagementPage', () => {
   beforeEach(() => {
+    setLocale('zh-CN');
     Object.values(api).forEach(mock => mock.mockReset());
     api.getUsers.mockResolvedValue({ items: [user], page: 1, size: 20, total: 1 });
     api.getRoles.mockResolvedValue({
@@ -118,5 +120,5 @@ describe('UserManagementPage', () => {
 
 function mountPage(permissions: string[]) {
   authState.userInfo.buttons = permissions;
-  return mount(UserManagementPage);
+  return mount(UserManagementPage, { global: { plugins: [i18n] } });
 }
