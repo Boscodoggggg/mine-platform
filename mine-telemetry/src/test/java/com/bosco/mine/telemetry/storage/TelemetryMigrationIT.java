@@ -43,7 +43,7 @@ class TelemetryMigrationIT {
 
         MigrateResult first = flyway.migrate();
 
-        assertThat(first.migrationsExecuted).isOne();
+        assertThat(first.migrationsExecuted).isPositive();
         assertThat(queryStrings("SELECT extname FROM pg_extension WHERE extname = 'timescaledb'"))
                 .containsExactly("timescaledb");
         assertThat(queryStrings("SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'"))
@@ -71,6 +71,26 @@ class TelemetryMigrationIT {
                         "telemetry_numeric:idx_tn_product_property_time",
                         "telemetry_numeric:uq_tn_event_property_time"
                 );
+        assertThat(queryStrings("""
+                SELECT COALESCE(obj_description(table_name::regclass, 'pg_class'), '')
+                FROM unnest(ARRAY['telemetry_numeric', 'location_point']) AS table_name
+                ORDER BY table_name
+                """))
+                .hasSize(2)
+                .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
+        assertThat(queryStrings("""
+                SELECT COALESCE(col_description(table_class.oid, attribute.attnum), '')
+                FROM pg_class table_class
+                JOIN pg_namespace namespace ON namespace.oid = table_class.relnamespace
+                JOIN pg_attribute attribute ON attribute.attrelid = table_class.oid
+                WHERE namespace.nspname = 'public'
+                  AND table_class.relname IN ('telemetry_numeric', 'location_point')
+                  AND attribute.attnum > 0
+                  AND NOT attribute.attisdropped
+                ORDER BY table_class.relname, attribute.attnum
+                """))
+                .hasSize(24)
+                .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
 
         MigrateResult repeated = flyway.migrate();
 

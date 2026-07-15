@@ -3,6 +3,11 @@
 ## 代码规范
 - 后端java代码必须写中文注释，注释风格采用Javadoc
 
+## 数据库规范
+
+- 所有新增数据库表必须提供中文表注释，并为表中的每一个字段提供中文字段注释，禁止遗漏表注释或任意字段注释。
+- PostgreSQL/TimescaleDB 迁移统一使用 `COMMENT ON TABLE` 和 `COMMENT ON COLUMN` 编写注释；对应数据库集成测试必须校验表和字段注释完整。
+
 ## 前端主题、样式与国际化规范
 
 - `mine-web/src/theme/settings.ts` 是前端颜色、圆角、阴影和主题模式默认值的唯一配置入口。
