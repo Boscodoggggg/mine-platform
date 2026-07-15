@@ -138,6 +138,8 @@ docker compose --env-file deploy/env/standalone.env \
 
 以下配置修改后通常需要重建容器：端口、数据库连接、JVM、镜像、证书和基础设施资源限制。
 
+gateway 以只读方式挂载整个 `deploy/config/gateway/` 目录，身份快照应先在同目录生成并校验候选文件，再原子重命名为 `device-identities.json`。从旧版“单文件 bind mount”升级时必须重建一次 `mine-gateway` 容器，使目录挂载生效；否则宿主机替换文件 inode 后，容器可能继续读取旧快照。
+
 物模型、协议解析、字段映射、告警规则和历史数据保留策略属于平台动态策略，应在管理端完成版本化发布，不通过修改 Compose 文件实现，也不要求重启接入服务。
 
 ## 8. 生产注意事项

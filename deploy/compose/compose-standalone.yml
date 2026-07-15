@@ -153,7 +153,7 @@ services:
     volumes:
       - ../../mine-gateway/target:/opt/mine/source:ro
       - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
-      - ../config/gateway/device-identities.json:/etc/mine/gateway/device-identities.json:ro
+      - ../config/gateway:/etc/mine/gateway:ro
     secrets:
       - rabbitmq_gateway_device_password
       - rabbitmq_gateway_platform_password
