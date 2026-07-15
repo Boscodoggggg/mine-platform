@@ -79,4 +79,38 @@ describe('buildDynamicNavigation', () => {
     expect(result.menus[0]?.children).toHaveLength(2);
     expect(result.menus[0]?.children?.some(menu => menu.label === '查看详情')).toBe(false);
   });
+
+  it('系统用户和角色组件键应命中本地白名单', () => {
+    const systemNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'system-directory',
+        name: '系统管理',
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'system-users',
+            name: '用户管理',
+            path: '/system/users',
+            componentKey: 'system-user-list',
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'system-roles',
+            name: '角色管理',
+            path: '/system/roles',
+            componentKey: 'system-role-list',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    const result = buildDynamicNavigation(systemNodes);
+
+    expect(result.routes).toHaveLength(2);
+    expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
+    expect(result.unknownComponentKeys).toEqual([]);
+  });
 });

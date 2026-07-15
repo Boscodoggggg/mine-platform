@@ -13,7 +13,9 @@ type ViewLoader = () => Promise<Component>;
  * 后端配置只能选择这里声明的键，绝不能把后端字符串拼进 import 路径。
  */
 const componentRegistry: Readonly<Record<string, ViewLoader>> = {
-  'home-overview': () => import('@/views/home/index.vue')
+  'home-overview': () => import('@/views/home/index.vue'),
+  'system-user-list': () => import('@/modules/system/pages/users/UserManagementPage.vue'),
+  'system-role-list': () => import('@/modules/system/pages/roles/RoleManagementPage.vue')
 };
 
 const fallbackView: ViewLoader = () => import('./DynamicFallbackPage.vue');
