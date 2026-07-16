@@ -121,7 +121,7 @@ class TelemetryMigrationIT {
                   AND NOT attribute.attisdropped
                 ORDER BY table_class.relname, attribute.attnum
                 """))
-                .hasSize(57)
+                .hasSize(59)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
 
         assertThat(queryStrings("""
@@ -129,6 +129,13 @@ class TelemetryMigrationIT {
                 FROM telemetry_latest_state
                 WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
                 """)).containsExactly("boot-b:0");
+        assertThat(queryStrings("""
+                SELECT to_char(first_seen_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+                       || ':' ||
+                       to_char(last_received_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+                FROM telemetry_latest_state
+                WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                """)).containsExactly("2026-07-15 03:00:01:2026-07-15 03:01:01");
         assertThat(queryStrings("""
                 SELECT boot_id
                 FROM telemetry_retired_boot

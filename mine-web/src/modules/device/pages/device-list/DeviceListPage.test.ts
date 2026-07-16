@@ -6,10 +6,12 @@ import DeviceListPage from './DeviceListPage.vue';
 const api = vi.hoisted(() => ({
   archiveDevice: vi.fn(),
   createDevice: vi.fn(),
+  getDeviceAccessStatuses: vi.fn(),
   getDeviceConnectionProfile: vi.fn(),
   getDevices: vi.fn(),
   getProducts: vi.fn(),
   saveDeviceConnectionProfile: vi.fn(),
+  testDeviceAccessStatus: vi.fn(),
   testDeviceConnectionProfile: vi.fn(),
   updateDevice: vi.fn()
 }));
@@ -67,6 +69,16 @@ describe('DeviceListPage', () => {
     Object.values(api).forEach(mock => mock.mockReset());
     api.getProducts.mockResolvedValue({ items: [product], page: 1, size: 100, total: 1 });
     api.getDevices.mockResolvedValue({ items: [device], page: 1, size: 20, total: 1 });
+    api.getDeviceAccessStatuses.mockResolvedValue([
+      {
+        deviceId: 'device-1',
+        status: 'ONLINE',
+        firstSeenAt: '2026-07-16T00:50:00Z',
+        lastReceivedAt: '2026-07-16T01:00:00Z',
+        offlineThresholdSeconds: 180,
+        message: 'ACCESS_ONLINE'
+      }
+    ]);
     api.createDevice.mockResolvedValue(device);
     api.getDeviceConnectionProfile.mockResolvedValue(connectionProfile);
     api.saveDeviceConnectionProfile.mockResolvedValue({ ...connectionProfile, version: 1 });
@@ -81,6 +93,37 @@ describe('DeviceListPage', () => {
         { stage: 'DEVICE_CONFIRMATION', status: 'SKIPPED', message: 'FIRST_MESSAGE_REQUIRED', durationMillis: 0 }
       ]
     });
+    api.testDeviceAccessStatus.mockResolvedValue({
+      deviceId: 'device-1',
+      status: 'ONLINE',
+      checkedAt: '2026-07-16T01:00:01Z',
+      durationMillis: 18,
+      message: 'ACCESS_ONLINE',
+      stages: [
+        { layer: 'ENDPOINT', status: 'PASSED', message: 'TEST_PARTIAL', observedAt: null, durationMillis: 12 },
+        {
+          layer: 'TRANSPORT',
+          status: 'PASSED',
+          message: 'TRANSPORT_CONNECTED',
+          observedAt: '2026-07-16T00:59:58Z',
+          durationMillis: 0
+        },
+        {
+          layer: 'ACTIVITY',
+          status: 'PASSED',
+          message: 'FIRST_FRAME_CONFIRMED',
+          observedAt: '2026-07-16T00:50:00Z',
+          durationMillis: 0
+        },
+        {
+          layer: 'DATA',
+          status: 'PASSED',
+          message: 'DATA_FRESH',
+          observedAt: '2026-07-16T01:00:00Z',
+          durationMillis: 0
+        }
+      ]
+    });
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
   });
 
@@ -91,6 +134,8 @@ describe('DeviceListPage', () => {
     expect(wrapper.text()).toContain('设备台账');
     expect(wrapper.text()).toContain('一号运输车');
     expect(wrapper.text()).toContain('矿用运输车');
+    expect(wrapper.text()).toContain('在线');
+    expect(wrapper.text()).toContain('最后上报');
     expect(wrapper.find('[data-action="create-device"]').exists()).toBe(true);
     expect(wrapper.find('[data-action="connection-profile"]').exists()).toBe(false);
   });
@@ -138,11 +183,7 @@ describe('DeviceListPage', () => {
   });
 
   it('应按权限加载保存接入配置并执行分层诊断', async () => {
-    const wrapper = mountPage([
-      'device:connection:view',
-      'device:connection:update',
-      'device:connection:test'
-    ]);
+    const wrapper = mountPage(['device:connection:view', 'device:connection:update', 'device:connection:test']);
     await flushPromises();
 
     expect(wrapper.find('[data-action="connection-profile"]').exists()).toBe(true);
@@ -169,6 +210,25 @@ describe('DeviceListPage', () => {
     await page.runConnectionTest();
     expect(api.testDeviceConnectionProfile).toHaveBeenCalledWith('device-1');
     expect(window.$message?.warning).toHaveBeenCalledWith('网络端点检查通过，仍需设备首帧确认');
+  });
+
+  it('应支持手动检查端点传输活动和数据四层状态', async () => {
+    const wrapper = mountPage(['device:connection:view', 'device:connection:test']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      accessTest: { stages: Array<{ layer: string }> } | null;
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      runAccessStatusTest: () => Promise<void>;
+    };
+
+    await page.openConnectionConfig(device);
+    await flushPromises();
+
+    await page.runAccessStatusTest();
+    await flushPromises();
+
+    expect(api.testDeviceAccessStatus).toHaveBeenCalledWith('device-1');
+    expect(page.accessTest?.stages.map(stage => stage.layer)).toEqual(['ENDPOINT', 'TRANSPORT', 'ACTIVITY', 'DATA']);
   });
 });
 

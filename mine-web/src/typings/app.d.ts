@@ -651,7 +651,10 @@ declare namespace App {
           subtitle: string;
           search: string;
           empty: string;
-          column: Record<'code' | 'name' | 'product' | 'status' | 'updatedAt', string>;
+          column: Record<
+            'code' | 'name' | 'product' | 'status' | 'accessStatus' | 'lastReceivedAt' | 'updatedAt',
+            string
+          >;
           action: Record<'create' | 'archive' | 'connection', string>;
           modal: Record<'create' | 'edit', string>;
           field: Record<'code' | 'name' | 'product' | 'status', string>;
@@ -665,6 +668,9 @@ declare namespace App {
             boundary: string;
             configuration: string;
             diagnostics: string;
+            accessDiagnostics: string;
+            accessNotTested: string;
+            observedAt: string;
             notTested: string;
             validation: string;
             saved: string;
@@ -692,11 +698,32 @@ declare namespace App {
               | 'dependencyskipped'
               | 'firstmessagerequired'
               | 'activeendpointconfirmed'
+              | 'accessonline'
+              | 'datastale'
+              | 'transportonly'
+              | 'firstframewaiting'
+              | 'firstframeconfirmed'
+              | 'datafresh'
+              | 'accesscheckfailed'
+              | 'accessnotconfigured'
+              | 'accessunknown'
+              | 'activitysourceunavailable'
+              | 'transportconnected'
+              | 'transportwaiting'
+              | 'transportsourceunavailable'
+              | 'transportprobefailed'
+              | 'credentialnotactive'
               | 'probebusy'
               | 'unknown',
               string
             >;
-            action: Record<'save' | 'test', string>;
+            action: Record<'save' | 'test' | 'checkAccess', string>;
+            accessStatus: Record<
+              'notconfigured' | 'waitingfordevice' | 'transportonly' | 'online' | 'stale' | 'failed' | 'unknown',
+              string
+            >;
+            accessLayer: Record<'endpoint' | 'transport' | 'activity' | 'data', string>;
+            accessStageStatus: Record<'passed' | 'failed' | 'waiting' | 'unknown' | 'skipped', string>;
             field: Record<
               'mode' | 'host' | 'port' | 'tls' | 'tlsServerName' | 'timeout' | 'keepAlive' | 'offlineThreshold',
               string

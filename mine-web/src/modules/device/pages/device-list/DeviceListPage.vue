@@ -29,15 +29,19 @@ import { hasPermission } from '@/app/permission/permission';
 import {
   archiveDevice,
   createDevice,
+  getDeviceAccessStatuses,
   getDeviceConnectionProfile,
   getDevices,
   getProducts,
   saveDeviceConnectionProfile,
+  testDeviceAccessStatus,
   testDeviceConnectionProfile,
   updateDevice
 } from '@/modules/device/api/device';
 import type {
   Device,
+  DeviceAccessStatus,
+  DeviceAccessTestResult,
   DeviceConnectionProfile,
   DeviceConnectionProfileRequest,
   DeviceConnectionTestResult,
@@ -73,9 +77,12 @@ const connectionDrawerVisible = ref(false);
 const connectionLoading = ref(false);
 const connectionSaving = ref(false);
 const connectionTesting = ref(false);
+const accessTesting = ref(false);
 const connectionDevice = ref<Device | null>(null);
 const connectionProfile = ref<DeviceConnectionProfile | null>(null);
 const connectionTest = ref<DeviceConnectionTestResult | null>(null);
+const accessTest = ref<DeviceAccessTestResult | null>(null);
+const accessStatuses = ref<DeviceAccessStatus[]>([]);
 const connectionForm = reactive<DeviceConnectionProfileRequest>({
   connectionMode: 'DEVICE_TO_PLATFORM_MQTT',
   host: '',
@@ -89,6 +96,7 @@ const connectionForm = reactive<DeviceConnectionProfileRequest>({
 });
 
 const productMap = computed(() => new Map(products.value.map(product => [product.id, product])));
+const accessStatusMap = computed(() => new Map(accessStatuses.value.map(status => [status.deviceId, status])));
 const productOptions = computed<SelectOption[]>(() =>
   products.value.map(product => ({
     label: `${product.name} (${product.productKey})`,
@@ -112,9 +120,7 @@ const connectionModeOptions = computed<SelectOption[]>(() =>
     value
   }))
 );
-const connectionStages = computed(
-  () => connectionTest.value?.stages || connectionProfile.value?.lastTestStages || []
-);
+const connectionStages = computed(() => connectionTest.value?.stages || connectionProfile.value?.lastTestStages || []);
 const connectionDirty = computed(() => {
   const profile = connectionProfile.value;
   if (!profile) return true;
@@ -133,6 +139,23 @@ const connectionDirty = computed(() => {
 const columns = computed<DataTableColumns<Device>>(() => [
   { title: t('mine.devices.column.code'), key: 'deviceCode', minWidth: 150 },
   { title: t('mine.devices.column.name'), key: 'name', minWidth: 160 },
+  {
+    title: t('mine.devices.column.accessStatus'),
+    key: 'accessStatus',
+    width: 140,
+    render: row => {
+      const status = accessStatusMap.value.get(row.id)?.status || 'UNKNOWN';
+      return h(NTag, { size: 'small', bordered: false, type: accessStatusType(status) }, () =>
+        accessStatusLabel(status)
+      );
+    }
+  },
+  {
+    title: t('mine.devices.column.lastReceivedAt'),
+    key: 'lastReceivedAt',
+    minWidth: 180,
+    render: row => formatOptionalTime(accessStatusMap.value.get(row.id)?.lastReceivedAt)
+  },
   {
     title: t('mine.devices.column.product'),
     key: 'productId',
@@ -212,10 +235,24 @@ async function loadDevices() {
     total.value = response.total;
     query.page = response.page;
     query.size = response.size;
+    await loadAccessStatuses(response.items.map(device => device.id));
   } catch (error) {
     showError(error);
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadAccessStatuses(deviceIds: readonly string[]) {
+  if (!deviceIds.length) {
+    accessStatuses.value = [];
+    return;
+  }
+  try {
+    accessStatuses.value = await getDeviceAccessStatuses(deviceIds);
+  } catch (error) {
+    accessStatuses.value = [];
+    showError(error);
   }
 }
 
@@ -304,9 +341,28 @@ async function openConnectionConfig(device: Device) {
   connectionDevice.value = device;
   connectionProfile.value = null;
   connectionTest.value = null;
+  accessTest.value = null;
   Object.assign(connectionForm, defaultConnectionForm());
   connectionDrawerVisible.value = true;
   await loadConnectionProfile();
+}
+
+async function runAccessStatusTest() {
+  if (!connectionDevice.value || !connectionProfile.value || connectionDirty.value) {
+    return window.$message?.warning(t('mine.devices.connection.saveBeforeTest'));
+  }
+  accessTesting.value = true;
+  try {
+    accessTest.value = await testDeviceAccessStatus(connectionDevice.value.id);
+    const message = connectionMessage(accessTest.value.message);
+    if (accessTest.value.status === 'ONLINE') window.$message?.success(message);
+    else window.$message?.warning(message);
+    await loadAccessStatuses(devices.value.map(device => device.id));
+  } catch (error) {
+    showError(error);
+  } finally {
+    accessTesting.value = false;
+  }
 }
 
 async function loadConnectionProfile() {
@@ -408,6 +464,19 @@ function testStatusType(status: string) {
   return 'default' as const;
 }
 
+function accessStatusType(status: string) {
+  if (status === 'ONLINE') return 'success' as const;
+  if (status === 'FAILED' || status === 'STALE') return 'error' as const;
+  if (status === 'WAITING_FOR_DEVICE' || status === 'TRANSPORT_ONLY') return 'warning' as const;
+  if (status === 'UNKNOWN') return 'info' as const;
+  return 'default' as const;
+}
+
+function accessStatusLabel(status: string) {
+  const key = `mine.devices.connection.accessStatus.${connectionKey(status)}`;
+  return te(key) ? t(key) : t('mine.devices.connection.accessStatus.unknown');
+}
+
 function can(permission: string) {
   return hasPermission(authStore.userInfo.buttons, permission);
 }
@@ -416,6 +485,9 @@ function statusLabel(status: DeviceStatus) {
 }
 function formatTime(value: string) {
   return new Date(value).toLocaleString(locale.value, { hour12: false });
+}
+function formatOptionalTime(value: string | null | undefined) {
+  return value ? formatTime(value) : t('mine.common.empty');
 }
 function showError(error: unknown) {
   if (error instanceof ApiError) {
@@ -431,12 +503,14 @@ defineExpose({
   deviceForm,
   creatableProductOptions,
   connectionForm,
+  accessTest,
   openCreate,
   openEdit,
   saveDevice,
   openConnectionConfig,
   saveConnectionProfile,
-  runConnectionTest
+  runConnectionTest,
+  runAccessStatusTest
 });
 </script>
 
@@ -612,10 +686,7 @@ defineExpose({
                   </NGi>
                   <NGi>
                     <NFormItem :label="t('mine.devices.connection.field.tls')">
-                      <NSwitch
-                        v-model:value="connectionForm.tlsEnabled"
-                        :disabled="!can('device:connection:update')"
-                      />
+                      <NSwitch v-model:value="connectionForm.tlsEnabled" :disabled="!can('device:connection:update')" />
                     </NFormItem>
                   </NGi>
                   <NGi>
@@ -665,10 +736,7 @@ defineExpose({
             </NCard>
 
             <NCard size="small" :title="t('mine.devices.connection.diagnostics')">
-              <NEmpty
-                v-if="!connectionStages.length"
-                :description="t('mine.devices.connection.notTested')"
-              />
+              <NEmpty v-if="!connectionStages.length" :description="t('mine.devices.connection.notTested')" />
               <NSpace v-else vertical :size="12">
                 <NAlert
                   v-if="connectionTest?.message || connectionProfile?.lastTestMessage"
@@ -688,26 +756,52 @@ defineExpose({
                 </NCard>
               </NSpace>
             </NCard>
+
+            <NCard size="small" :title="t('mine.devices.connection.accessDiagnostics')">
+              <NEmpty v-if="!accessTest" :description="t('mine.devices.connection.accessNotTested')" />
+              <NSpace v-else vertical :size="12">
+                <NAlert :type="accessStatusType(accessTest.status)" :bordered="false">
+                  {{ connectionMessage(accessTest.message) }}
+                </NAlert>
+                <NCard v-for="stage in accessTest.stages" :key="stage.layer" size="small">
+                  <NSpace justify="space-between" align="center">
+                    <span>{{ t(`mine.devices.connection.accessLayer.${connectionKey(stage.layer)}`) }}</span>
+                    <NTag :type="testStatusType(stage.status)" :bordered="false" size="small">
+                      {{ t(`mine.devices.connection.accessStageStatus.${stage.status.toLowerCase()}`) }}
+                    </NTag>
+                  </NSpace>
+                  <div class="mt-2 text-sm text-color-3">{{ connectionMessage(stage.message) }}</div>
+                  <div v-if="stage.observedAt" class="mt-1 text-xs text-color-3">
+                    {{ t('mine.devices.connection.observedAt', { time: formatTime(stage.observedAt) }) }}
+                  </div>
+                </NCard>
+              </NSpace>
+            </NCard>
           </NSpace>
         </NSpin>
 
         <template #footer>
           <NSpace justify="end">
-            <NButton
-              v-if="can('device:connection:update')"
-              :loading="connectionSaving"
-              @click="saveConnectionProfile"
-            >
+            <NButton v-if="can('device:connection:update')" :loading="connectionSaving" @click="saveConnectionProfile">
               {{ t('mine.devices.connection.action.save') }}
             </NButton>
             <NButton
               v-if="can('device:connection:test')"
-              type="primary"
               :loading="connectionTesting"
               :disabled="!connectionProfile || connectionDirty"
               @click="runConnectionTest"
             >
               {{ t('mine.devices.connection.action.test') }}
+            </NButton>
+            <NButton
+              v-if="can('device:connection:test')"
+              type="primary"
+              data-action="test-access-status"
+              :loading="accessTesting"
+              :disabled="!connectionProfile || connectionDirty"
+              @click="runAccessStatusTest"
+            >
+              {{ t('mine.devices.connection.action.checkAccess') }}
             </NButton>
           </NSpace>
         </template>

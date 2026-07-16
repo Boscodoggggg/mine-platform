@@ -383,6 +383,39 @@ class TelemetryStorageIT {
     }
 
     @Test
+    void 有效首帧应固定首次接收时间且后续报文只推进最后接收时间() throws Exception {
+        Instant firstReceivedAt = Instant.parse("2026-07-15T03:00:02Z");
+        Instant lateReceivedAt = Instant.parse("2026-07-15T02:59:02Z");
+        Instant latestReceivedAt = Instant.parse("2026-07-15T03:01:02Z");
+        TelemetrySample first = sample(
+                EVENT_ID, "boot-a", 7L, "engine.rpm", 1280D, OCCURRED_AT, firstReceivedAt
+        );
+        TelemetrySample second = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e762"),
+                "boot-a", 8L, "engine.rpm", 1290D,
+                OCCURRED_AT.minusSeconds(60), lateReceivedAt
+        );
+        TelemetrySample third = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e763"),
+                "boot-a", 9L, "engine.rpm", 1300D,
+                OCCURRED_AT.plusSeconds(60), latestReceivedAt
+        );
+
+        telemetryBatchWriter.write(List.of(first));
+        telemetryBatchWriter.write(List.of(second));
+        assertThat(queryInstant("SELECT first_seen_at FROM telemetry_latest_state WHERE device_id = '"
+                + DEVICE_ID + "'")).isEqualTo(firstReceivedAt);
+        assertThat(queryInstant("SELECT last_received_at FROM telemetry_latest_state WHERE device_id = '"
+                + DEVICE_ID + "'")).isEqualTo(firstReceivedAt);
+        telemetryBatchWriter.write(List.of(third));
+
+        assertThat(queryInstant("SELECT first_seen_at FROM telemetry_latest_state WHERE device_id = '"
+                + DEVICE_ID + "'")).isEqualTo(firstReceivedAt);
+        assertThat(queryInstant("SELECT last_received_at FROM telemetry_latest_state WHERE device_id = '"
+                + DEVICE_ID + "'")).isEqualTo(latestReceivedAt);
+    }
+
+    @Test
     void 设备时间不可信时应使用接收时间排序但保留原始发生时间() throws Exception {
         Instant rawOccurredAt = Instant.parse("2025-07-15T03:00:00Z");
         TelemetrySample untrusted = new TelemetrySample(
@@ -468,6 +501,17 @@ class TelemetryStorageIT {
             String propertyId,
             double value,
             Instant effectiveAt) {
+        return sample(eventId, bootId, sequence, propertyId, value, effectiveAt, RECEIVED_AT);
+    }
+
+    private static TelemetrySample sample(
+            UUID eventId,
+            String bootId,
+            Long sequence,
+            String propertyId,
+            double value,
+            Instant effectiveAt,
+            Instant receivedAt) {
         return new TelemetrySample(
                 eventId,
                 DEVICE_ID,
@@ -479,7 +523,7 @@ class TelemetryStorageIT {
                 sequence,
                 MessageKind.TELEMETRY,
                 effectiveAt,
-                RECEIVED_AT,
+                receivedAt,
                 effectiveAt
         );
     }

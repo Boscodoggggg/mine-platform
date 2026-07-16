@@ -112,6 +112,8 @@ Redis 读取、顺序状态恢复或回填临时失败时，latest 接口直接�
 记录的早期历史以 `received_at + event_id` 作为兼容回放顺序。迁移完成且 `mine-server` 的
 `telemetryQuery` readiness 验证必需表、摄取字段和 SELECT 权限后，查询入口才可进入就绪状态。
 
+`telemetry_latest_state` 同时保存 `first_seen_at` 和 `last_received_at`：前者在首个通过验证的设备报文入库时固定，后者每次有效报文推进。管理端使用这两个平台接收时间判定有效首帧和数据新鲜度，不使用可能漂移或补传的设备发生时间判定在线状态。
+
 ## 3. 内部交换机与队列
 
 建议交换机：

@@ -910,6 +910,47 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/DeviceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /devices/access-status:
+    get:
+      tags: [DeviceRegistry]
+      operationId: listDeviceAccessStatuses
+      summary: 批量查询设备持续接入状态
+      parameters:
+        - name: deviceIds
+          in: query
+          required: true
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 100
+            items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 与请求设备对应的持续接入状态。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DeviceAccessStatus' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /devices/{deviceId}/access-status/test:
+    post:
+      tags: [DeviceRegistry]
+      operationId: testDeviceAccessStatus
+      summary: 手动执行设备四层接入检查
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: 端点、传输、活动和数据四层检查结果。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceAccessTestResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DeviceNotFound' }
   /devices/{deviceId}/connection-profile:
     get:
       tags: [DeviceRegistry]
@@ -1788,6 +1829,43 @@ components:
         deviceCode: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$' }
         name: { type: string, minLength: 1, maxLength: 128 }
         status: { type: string, enum: [ENABLED, DISABLED] }
+    DeviceAccessOverallStatus:
+      type: string
+      enum: [NOT_CONFIGURED, WAITING_FOR_DEVICE, TRANSPORT_ONLY, ONLINE, STALE, FAILED, UNKNOWN]
+    DeviceAccessStageStatus:
+      type: string
+      enum: [PASSED, FAILED, WAITING, UNKNOWN, SKIPPED]
+    DeviceAccessStatus:
+      type: object
+      required: [deviceId, status, message]
+      properties:
+        deviceId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/DeviceAccessOverallStatus' }
+        firstSeenAt: { type: [string, 'null'], format: date-time }
+        lastReceivedAt: { type: [string, 'null'], format: date-time }
+        offlineThresholdSeconds: { type: [integer, 'null'], minimum: 1 }
+        message: { type: string, description: 稳定原因码，由客户端国际化展示 }
+    DeviceAccessTestStage:
+      type: object
+      required: [layer, status, message, durationMillis]
+      properties:
+        layer: { type: string, enum: [ENDPOINT, TRANSPORT, ACTIVITY, DATA] }
+        status: { $ref: '#/components/schemas/DeviceAccessStageStatus' }
+        message: { type: string, description: 稳定原因码，由客户端国际化展示 }
+        observedAt: { type: [string, 'null'], format: date-time }
+        durationMillis: { type: integer, format: int64, minimum: 0 }
+    DeviceAccessTestResult:
+      type: object
+      required: [deviceId, status, checkedAt, durationMillis, message, stages]
+      properties:
+        deviceId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/DeviceAccessOverallStatus' }
+        checkedAt: { type: string, format: date-time }
+        durationMillis: { type: integer, format: int64, minimum: 0 }
+        message: { type: string, description: 稳定结论码，由客户端国际化展示 }
+        stages:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceAccessTestStage' }
     DeviceConnectionMode:
       type: string
       enum: [DEVICE_TO_PLATFORM_MQTT, DEVICE_TO_PLATFORM_TCP, PLATFORM_TO_DEVICE_TCP]

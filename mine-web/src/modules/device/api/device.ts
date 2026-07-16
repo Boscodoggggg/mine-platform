@@ -16,6 +16,8 @@ export type TelemetryLatestItem = components['schemas']['TelemetryLatestItem'];
 export type DeviceConnectionProfile = components['schemas']['DeviceConnectionProfile'];
 export type DeviceConnectionProfileRequest = components['schemas']['DeviceConnectionProfileRequest'];
 export type DeviceConnectionTestResult = components['schemas']['DeviceConnectionTestResult'];
+export type DeviceAccessStatus = components['schemas']['DeviceAccessStatus'];
+export type DeviceAccessTestResult = components['schemas']['DeviceAccessTestResult'];
 
 export interface ProductQuery {
   keyword?: string;
@@ -100,6 +102,20 @@ export function saveDeviceConnectionProfile(deviceId: string, body: DeviceConnec
 /** 执行配置、DNS、TCP、TLS 和设备确认分层诊断。 */
 export function testDeviceConnectionProfile(deviceId: string) {
   return request<DeviceConnectionTestResult>(`/devices/${encodeURIComponent(deviceId)}/connection-profile/test`, {
+    method: 'POST'
+  });
+}
+
+/** 批量查询设备持续接入状态。 */
+export function getDeviceAccessStatuses(deviceIds: readonly string[]) {
+  const parameters = new URLSearchParams();
+  deviceIds.forEach(deviceId => parameters.append('deviceIds', deviceId));
+  return request<DeviceAccessStatus[]>(`/devices/access-status?${parameters}`);
+}
+
+/** 手动执行端点、传输、活动和数据四层接入检查。 */
+export function testDeviceAccessStatus(deviceId: string) {
+  return request<DeviceAccessTestResult>(`/devices/${encodeURIComponent(deviceId)}/access-status/test`, {
     method: 'POST'
   });
 }

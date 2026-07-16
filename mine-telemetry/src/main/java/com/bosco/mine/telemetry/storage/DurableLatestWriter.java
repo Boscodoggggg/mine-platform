@@ -29,6 +29,15 @@ final class DurableLatestWriter {
             WHERE device_id = ?
             FOR UPDATE
             """;
+    private static final String UPDATE_ACTIVITY_SQL = """
+            UPDATE telemetry_latest_state
+            SET first_seen_at = COALESCE(first_seen_at, ?),
+                last_received_at = CASE
+                    WHEN last_received_at IS NULL THEN ?
+                    ELSE GREATEST(last_received_at, ?)
+                END
+            WHERE device_id = ?
+            """;
     private static final String FIND_RETIRED_BOOT_SQL = """
             SELECT EXISTS (
                 SELECT 1 FROM telemetry_retired_boot WHERE device_id = ? AND boot_id = ?
@@ -83,6 +92,7 @@ final class DurableLatestWriter {
         }
         TelemetrySample first = samples.getFirst();
         ensureState(connection, first.deviceId());
+        updateActivity(connection, first.deviceId(), first.receivedAt());
         State state = readState(connection, first.deviceId());
         Decision decision = decide(connection, first, state);
         if (decision.orderingStateAdvanced() && !decision.updateLatest()) {
@@ -144,6 +154,18 @@ final class DurableLatestWriter {
                         resultSet.getObject("latest_event_id", UUID.class)
                 );
             }
+        }
+    }
+
+    private void updateActivity(Connection connection, UUID deviceId, Instant receivedAt)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(UPDATE_ACTIVITY_SQL)) {
+            Timestamp value = Timestamp.from(receivedAt);
+            statement.setTimestamp(1, value);
+            statement.setTimestamp(2, value);
+            statement.setTimestamp(3, value);
+            statement.setObject(4, deviceId);
+            statement.executeUpdate();
         }
     }
 

@@ -622,6 +622,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices/access-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 批量查询设备持续接入状态 */
+        get: operations["listDeviceAccessStatuses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{deviceId}/access-status/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 手动执行设备四层接入检查 */
+        post: operations["testDeviceAccessStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{deviceId}/connection-profile": {
         parameters: {
             query?: never;
@@ -1246,6 +1280,45 @@ export interface components {
             name: string;
             /** @enum {string} */
             status: "ENABLED" | "DISABLED";
+        };
+        /** @enum {string} */
+        DeviceAccessOverallStatus: "NOT_CONFIGURED" | "WAITING_FOR_DEVICE" | "TRANSPORT_ONLY" | "ONLINE" | "STALE" | "FAILED" | "UNKNOWN";
+        /** @enum {string} */
+        DeviceAccessStageStatus: "PASSED" | "FAILED" | "WAITING" | "UNKNOWN" | "SKIPPED";
+        DeviceAccessStatus: {
+            /** Format: uuid */
+            deviceId: string;
+            status: components["schemas"]["DeviceAccessOverallStatus"];
+            /** Format: date-time */
+            firstSeenAt?: string | null;
+            /** Format: date-time */
+            lastReceivedAt?: string | null;
+            offlineThresholdSeconds?: number | null;
+            /** @description 稳定原因码，由客户端国际化展示 */
+            message: string;
+        };
+        DeviceAccessTestStage: {
+            /** @enum {string} */
+            layer: "ENDPOINT" | "TRANSPORT" | "ACTIVITY" | "DATA";
+            status: components["schemas"]["DeviceAccessStageStatus"];
+            /** @description 稳定原因码，由客户端国际化展示 */
+            message: string;
+            /** Format: date-time */
+            observedAt?: string | null;
+            /** Format: int64 */
+            durationMillis: number;
+        };
+        DeviceAccessTestResult: {
+            /** Format: uuid */
+            deviceId: string;
+            status: components["schemas"]["DeviceAccessOverallStatus"];
+            /** Format: date-time */
+            checkedAt: string;
+            /** Format: int64 */
+            durationMillis: number;
+            /** @description 稳定结论码，由客户端国际化展示 */
+            message: string;
+            stages: components["schemas"]["DeviceAccessTestStage"][];
         };
         /** @enum {string} */
         DeviceConnectionMode: "DEVICE_TO_PLATFORM_MQTT" | "DEVICE_TO_PLATFORM_TCP" | "PLATFORM_TO_DEVICE_TCP";
@@ -2668,6 +2741,57 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["DeviceNotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listDeviceAccessStatuses: {
+        parameters: {
+            query: {
+                deviceIds: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 与请求设备对应的持续接入状态。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAccessStatus"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    testDeviceAccessStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 端点、传输、活动和数据四层检查结果。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAccessTestResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
         };
     };
     getDeviceConnectionProfile: {

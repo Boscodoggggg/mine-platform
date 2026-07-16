@@ -436,6 +436,23 @@ public interface DeviceMapper {
     Optional<DeviceCredential> findCredentialById(@Param("credentialId") UUID credentialId);
 
     /**
+     * 查询设备当前活动凭据安全快照。
+     *
+     * @param deviceId 设备标识
+     * @return 不含明文密钥的活动凭据
+     */
+    @Select("""
+            SELECT id, device_id AS deviceId, username, secret_hash AS secretHash,
+                   secret_hint AS secretHint, topic_root AS topicRoot, status,
+                   updated_at AS updatedAt, version
+            FROM dev_device_credential
+            WHERE device_id = #{deviceId} AND status = 'ACTIVE'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """)
+    Optional<DeviceCredential> findActiveCredentialByDeviceId(@Param("deviceId") UUID deviceId);
+
+    /**
      * 判断设备是否已有活动凭据。
      *
      * @param deviceId 设备标识

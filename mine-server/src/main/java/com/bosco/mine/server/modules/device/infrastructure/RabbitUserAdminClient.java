@@ -4,6 +4,7 @@ import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.messaging.topology.MqttDevicePermissions;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -15,7 +16,10 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -73,6 +77,40 @@ public class RabbitUserAdminClient {
     }
 
     /**
+     * 查询指定设备用户名的当前活动连接，只返回脱敏连接时间。
+     *
+     * @param username 设备 Broker 用户名
+     * @return 活动连接摘要
+     */
+    public List<ConnectionSummary> findConnections(String username) {
+        try {
+            HttpRequest request = requestBuilder("/api/connections/username/" + encode(username))
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient().send(
+                    request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException("RabbitMQ 连接查询失败：status=" + response.statusCode());
+            }
+            JsonNode root = objectMapper.readTree(response.body());
+            List<ConnectionSummary> result = new ArrayList<>();
+            for (JsonNode item : root) {
+                JsonNode connectedAt = item.get("connected_at");
+                if (connectedAt != null && connectedAt.canConvertToLong()) {
+                    result.add(new ConnectionSummary(Instant.ofEpochMilli(connectedAt.longValue())));
+                }
+            }
+            return List.copyOf(result);
+        } catch (IOException exception) {
+            throw new IllegalStateException("RabbitMQ 管理接口不可达", exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("RabbitMQ 管理请求被中断", exception);
+        }
+    }
+
+    /**
      * 立即替换设备用户密码，既有连接断开后只能使用新密钥重连。
      *
      * @param username 设备用户名
@@ -121,10 +159,7 @@ public class RabbitUserAdminClient {
 
     private void request(String method, String path, String body, int... expectedStatuses) {
         try {
-            HttpRequest.Builder builder = HttpRequest.newBuilder(resolve(path))
-                    .timeout(orDefault(properties.requestTimeout(), Duration.ofSeconds(10)))
-                    .header("Accept", "application/json")
-                    .header("Authorization", basicAuthorization());
+            HttpRequest.Builder builder = requestBuilder(path);
             if (body == null) {
                 builder.method(method, HttpRequest.BodyPublishers.noBody());
             } else {
@@ -148,6 +183,13 @@ public class RabbitUserAdminClient {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("RabbitMQ 管理请求被中断", exception);
         }
+    }
+
+    private HttpRequest.Builder requestBuilder(String path) {
+        return HttpRequest.newBuilder(resolve(path))
+                .timeout(orDefault(properties.requestTimeout(), Duration.ofSeconds(10)))
+                .header("Accept", "application/json")
+                .header("Authorization", basicAuthorization());
     }
 
     private URI resolve(String path) {
@@ -195,5 +237,13 @@ public class RabbitUserAdminClient {
 
     private Duration orDefault(Duration value, Duration fallback) {
         return value == null ? fallback : value;
+    }
+
+    /**
+     * RabbitMQ 活动连接脱敏摘要。
+     *
+     * @param connectedAt 连接建立时间
+     */
+    public record ConnectionSummary(Instant connectedAt) {
     }
 }
