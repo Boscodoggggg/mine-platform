@@ -289,7 +289,15 @@ const local: App.I18n.Schema = {
       subtitle: '在线维护目录、页面和按钮权限；页面组件只能从平台白名单选择，保存后无需重启。',
       column: { name: '节点名称', type: '节点类型', path: '路由地址', permission: '权限码', status: '状态' },
       type: { directory: '目录', menu: '页面', button: '按钮' },
-      action: { create: '新增节点' },
+      action: { create: '新增节点', expandAll: '展开全部', collapseAll: '折叠全部' },
+      filter: {
+        name: '节点名称',
+        namePlaceholder: '搜索节点名称',
+        type: '节点类型',
+        allTypes: '全部类型',
+        status: '状态',
+        allStatuses: '全部状态'
+      },
       modal: { create: '新增菜单节点', edit: '编辑菜单节点' },
       field: {
         name: '节点名称',
@@ -303,6 +311,20 @@ const local: App.I18n.Schema = {
         visible: '导航可见',
         status: '状态',
         i18nKey: '国际化资源键'
+      },
+      help: {
+        label: '查看字段说明',
+        name: '显示在侧边栏、菜单树和角色授权中的名称，应简短并能区分同级节点。',
+        type: '目录用于组织页面；页面对应一个可访问路由；按钮只表示接口或页面操作权限，不生成路由。',
+        parent: '目录可作为根节点；页面只能放在目录下；按钮权限只能放在页面下。',
+        sort: '同一上级节点下按数字从小到大排列，建议以 10 为间隔，便于后续插入。',
+        path: '页面的前端访问地址，必须以 / 开头，例如 /system/menus，并在全平台保持唯一。',
+        component: '从前端编译期注册的组件白名单中选择，不能填写任意文件路径。',
+        permission: '与后端 Sa-Token 权限注解及前端按钮权限一致，例如 system:menu:view；目录不填写。',
+        icon: '侧边导航使用的图标键；按钮节点通常无需图标，留空时使用平台默认展示。',
+        i18nKey: '对应中英文资源中的稳定键，例如 mine.menu.menus；留空时使用节点名称。',
+        status: '停用后该节点不会进入用户的导航和授权结果，子节点也将无法正常访问。',
+        visible: '只控制是否出现在侧边导航，不等于权限停用；隐藏页面仍可通过路由和权限访问。'
       },
       validation: { required: '请完整填写当前节点类型要求的配置' },
       confirmDelete: '确认删除节点“{name}”吗？',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue';
+import { computed, defineComponent, h, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import {
@@ -18,7 +18,8 @@ import {
   NSpace,
   NSwitch,
   NTag,
-  NText
+  NText,
+  NTooltip
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
@@ -37,16 +38,20 @@ import type {
 } from '@/modules/system/api/access-management';
 import { useAuthStore } from '@/store/modules/auth';
 
-type MenuRow = ManagedMenuNode & { depth: number };
-
 const { t } = useI18n();
 const authStore = useAuthStore();
 const loading = ref(false);
 const saving = ref(false);
 const tree = ref<ManagedMenuNode[]>([]);
 const componentOptions = ref<MenuComponentOption[]>([]);
+const expandedRowKeys = ref<Array<string | number>>([]);
 const modalVisible = ref(false);
 const editingId = ref<string | null>(null);
+const filters = reactive<{ name: string; type: MenuNodeType | null; status: 'ENABLED' | 'DISABLED' | null }>({
+  name: '',
+  type: null,
+  status: null
+});
 const form = reactive<MenuSavePayload>({
   parentId: null,
   name: '',
@@ -62,7 +67,12 @@ const form = reactive<MenuSavePayload>({
   version: 0
 });
 
-const rows = computed(() => flatten(tree.value));
+const flatRows = computed(() => flatten(tree.value));
+const filteredTree = computed(() => filterTree(tree.value));
+const expandableRowKeys = computed(() => collectExpandableKeys(filteredTree.value));
+const allExpanded = computed(
+  () => expandableRowKeys.value.length > 0 && expandableRowKeys.value.every(key => expandedRowKeys.value.includes(key))
+);
 const typeOptions = computed<SelectOption[]>(() => [
   { label: t('mine.menus.type.directory'), value: 'DIRECTORY' },
   { label: t('mine.menus.type.menu'), value: 'MENU' },
@@ -73,20 +83,19 @@ const statusOptions = computed<SelectOption[]>(() => [
   { label: t('mine.common.status.disabled'), value: 'DISABLED' }
 ]);
 const parentOptions = computed<SelectOption[]>(() =>
-  rows.value
+  flatRows.value
     .filter(row => row.id !== editingId.value && validParentType(row.type, form.type))
     .map(row => ({ label: `${'· '.repeat(row.depth)}${row.name}`, value: row.id }))
 );
 const pageOptions = computed<SelectOption[]>(() =>
   componentOptions.value.map(option => ({ label: option.name, value: option.key }))
 );
-const columns = computed<DataTableColumns<MenuRow>>(() => [
+const columns = computed<DataTableColumns<ManagedMenuNode>>(() => [
   {
     title: t('mine.menus.column.name'),
     key: 'name',
     minWidth: 220,
-    render: row =>
-      h(NText, { depth: row.status === 'ENABLED' ? undefined : 3 }, () => `${'　'.repeat(row.depth)}${row.name}`)
+    render: row => h(NText, { depth: row.status === 'ENABLED' ? undefined : 3 }, () => row.name)
   },
   {
     title: t('mine.menus.column.type'),
@@ -126,6 +135,47 @@ const columns = computed<DataTableColumns<MenuRow>>(() => [
   }
 ]);
 
+const MenuFieldLabel = defineComponent({
+  name: 'MenuFieldLabel',
+  props: {
+    labelKey: { type: String, required: true },
+    helpKey: { type: String, required: true }
+  },
+  setup(props) {
+    return () =>
+      h(NSpace, { align: 'center', size: 4 }, () => [
+        h('span', t(props.labelKey as App.I18n.I18nKey)),
+        h(
+          NTooltip,
+          { placement: 'top', trigger: 'hover' },
+          {
+            trigger: () =>
+              h(
+                NButton,
+                {
+                  text: true,
+                  circle: true,
+                  size: 'tiny',
+                  'aria-label': t('mine.menus.help.label'),
+                  'data-field-help': props.helpKey
+                },
+                () => h('span', { 'aria-hidden': 'true' }, '?')
+              ),
+            default: () => t(props.helpKey as App.I18n.I18nKey)
+          }
+        )
+      ]);
+  }
+});
+
+watch(
+  () => [filters.name, filters.type, filters.status],
+  async () => {
+    await nextTick();
+    expandedRowKeys.value = hasActiveFilters() ? [...expandableRowKeys.value] : [];
+  }
+);
+
 onMounted(load);
 
 async function load() {
@@ -158,7 +208,7 @@ function openCreate(type: MenuNodeType = 'MENU') {
   modalVisible.value = true;
 }
 
-function openEdit(row: MenuRow) {
+function openEdit(row: ManagedMenuNode) {
   editingId.value = row.id;
   Object.assign(form, {
     parentId: row.parentId,
@@ -194,7 +244,7 @@ async function save() {
   }
 }
 
-async function remove(row: MenuRow) {
+async function remove(row: ManagedMenuNode) {
   if (!window.confirm(t('mine.menus.confirmDelete', { name: row.name }))) return;
   try {
     await deleteMenu(row.id);
@@ -223,6 +273,31 @@ function flatten(nodes: ManagedMenuNode[], depth = 0): MenuRow[] {
   return nodes.flatMap(node => [{ ...node, depth }, ...flatten(node.children, depth + 1)]);
 }
 
+type MenuRow = ManagedMenuNode & { depth: number };
+
+function filterTree(nodes: ManagedMenuNode[]): ManagedMenuNode[] {
+  const keyword = filters.name.trim().toLocaleLowerCase();
+  return nodes.flatMap(node => {
+    const children = filterTree(node.children);
+    const matchesName = !keyword || node.name.toLocaleLowerCase().includes(keyword);
+    const matchesType = !filters.type || node.type === filters.type;
+    const matchesStatus = !filters.status || node.status === filters.status;
+    return (matchesName && matchesType && matchesStatus) || children.length > 0 ? [{ ...node, children }] : [];
+  });
+}
+
+function collectExpandableKeys(nodes: ManagedMenuNode[]): Array<string | number> {
+  return nodes.flatMap(node => (node.children.length > 0 ? [node.id, ...collectExpandableKeys(node.children)] : []));
+}
+
+function toggleExpandAll() {
+  expandedRowKeys.value = allExpanded.value ? [] : [...expandableRowKeys.value];
+}
+
+function hasActiveFilters() {
+  return Boolean(filters.name.trim() || filters.type || filters.status);
+}
+
 function validParentType(parent: MenuNodeType, child: MenuNodeType) {
   return child === 'BUTTON' ? parent === 'MENU' : parent === 'DIRECTORY';
 }
@@ -248,7 +323,58 @@ function showError(error: unknown) {
     </NPageHeader>
 
     <NCard :bordered="false">
-      <NDataTable :columns="columns" :data="rows" :loading="loading" :row-key="row => row.id" />
+      <NSpace vertical :size="16">
+        <NGrid responsive="screen" cols="1 s:2 m:4" :x-gap="12">
+          <NGi>
+            <NFormItem :label="t('mine.menus.filter.name')" :show-feedback="false">
+              <NInput
+                v-model:value="filters.name"
+                data-filter="menu-name"
+                clearable
+                :placeholder="t('mine.menus.filter.namePlaceholder')"
+              />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem :label="t('mine.menus.filter.type')" :show-feedback="false">
+              <NSelect
+                v-model:value="filters.type"
+                data-filter="menu-type"
+                clearable
+                :options="typeOptions"
+                :placeholder="t('mine.menus.filter.allTypes')"
+              />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem :label="t('mine.menus.filter.status')" :show-feedback="false">
+              <NSelect
+                v-model:value="filters.status"
+                data-filter="menu-status"
+                clearable
+                :options="statusOptions"
+                :placeholder="t('mine.menus.filter.allStatuses')"
+              />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NSpace justify="end" align="end">
+              <NButton data-action="toggle-tree" @click="toggleExpandAll">
+                {{ t(allExpanded ? 'mine.menus.action.collapseAll' : 'mine.menus.action.expandAll') }}
+              </NButton>
+            </NSpace>
+          </NGi>
+        </NGrid>
+
+        <NDataTable
+          :columns="columns"
+          :data="filteredTree"
+          :loading="loading"
+          :row-key="row => row.id"
+          :expanded-row-keys="expandedRowKeys"
+          @update:expanded-row-keys="expandedRowKeys = $event"
+        />
+      </NSpace>
     </NCard>
 
     <NModal
@@ -260,47 +386,92 @@ function showError(error: unknown) {
       <NForm label-placement="top">
         <NGrid :cols="2" :x-gap="16">
           <NGi>
-            <NFormItem :label="t('mine.menus.field.name')"><NInput v-model:value="form.name" /></NFormItem>
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.name" help-key="mine.menus.help.name" />
+              </template>
+              <NInput v-model:value="form.name" />
+            </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.menus.field.type')">
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.type" help-key="mine.menus.help.type" />
+              </template>
               <NSelect v-model:value="form.type" :options="typeOptions" />
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.menus.field.parent')">
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.parent" help-key="mine.menus.help.parent" />
+              </template>
               <NSelect v-model:value="form.parentId" clearable :options="parentOptions" />
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.menus.field.sort')">
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.sort" help-key="mine.menus.help.sort" />
+              </template>
               <NInputNumber v-model:value="form.sortOrder" :min="0" />
             </NFormItem>
           </NGi>
           <NGi v-if="form.type === 'MENU'">
-            <NFormItem :label="t('mine.menus.field.path')"><NInput v-model:value="form.path" /></NFormItem>
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.path" help-key="mine.menus.help.path" />
+              </template>
+              <NInput v-model:value="form.path" />
+            </NFormItem>
           </NGi>
           <NGi v-if="form.type === 'MENU'">
-            <NFormItem :label="t('mine.menus.field.component')">
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.component" help-key="mine.menus.help.component" />
+              </template>
               <NSelect v-model:value="form.componentKey" filterable :options="pageOptions" />
             </NFormItem>
           </NGi>
           <NGi v-if="form.type !== 'DIRECTORY'">
-            <NFormItem :label="t('mine.menus.field.permission')"><NInput v-model:value="form.permission" /></NFormItem>
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.permission" help-key="mine.menus.help.permission" />
+              </template>
+              <NInput v-model:value="form.permission" />
+            </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.menus.field.icon')"><NInput v-model:value="form.icon" /></NFormItem>
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.icon" help-key="mine.menus.help.icon" />
+              </template>
+              <NInput v-model:value="form.icon" />
+            </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.menus.field.i18nKey')"><NInput v-model:value="form.i18nKey" /></NFormItem>
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.i18nKey" help-key="mine.menus.help.i18nKey" />
+              </template>
+              <NInput v-model:value="form.i18nKey" />
+            </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.menus.field.status')">
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.status" help-key="mine.menus.help.status" />
+              </template>
               <NSelect v-model:value="form.status" :options="statusOptions" />
             </NFormItem>
           </NGi>
           <NGi v-if="form.type !== 'BUTTON'">
-            <NFormItem :label="t('mine.menus.field.visible')"><NSwitch v-model:value="form.visible" /></NFormItem>
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.visible" help-key="mine.menus.help.visible" />
+              </template>
+              <NSwitch v-model:value="form.visible" />
+            </NFormItem>
           </NGi>
         </NGrid>
       </NForm>

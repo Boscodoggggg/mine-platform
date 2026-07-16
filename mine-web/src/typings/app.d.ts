@@ -511,7 +511,8 @@ declare namespace App {
           subtitle: string;
           column: Record<'name' | 'type' | 'path' | 'permission' | 'status', string>;
           type: Record<'directory' | 'menu' | 'button', string>;
-          action: Record<'create', string>;
+          action: Record<'create' | 'expandAll' | 'collapseAll', string>;
+          filter: Record<'name' | 'namePlaceholder' | 'type' | 'allTypes' | 'status' | 'allStatuses', string>;
           modal: Record<'create' | 'edit', string>;
           field: Record<
             | 'name'
@@ -525,6 +526,21 @@ declare namespace App {
             | 'visible'
             | 'status'
             | 'i18nKey',
+            string
+          >;
+          help: Record<
+            | 'label'
+            | 'name'
+            | 'type'
+            | 'parent'
+            | 'sort'
+            | 'path'
+            | 'component'
+            | 'permission'
+            | 'icon'
+            | 'i18nKey'
+            | 'status'
+            | 'visible',
             string
           >;
           validation: Record<'required', string>;

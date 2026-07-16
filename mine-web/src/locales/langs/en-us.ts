@@ -301,7 +301,15 @@ const local: App.I18n.Schema = {
         'Maintain directories, pages, and button permissions online. Page components come from a safe registry and require no restart.',
       column: { name: 'Node Name', type: 'Node Type', path: 'Route Path', permission: 'Permission', status: 'Status' },
       type: { directory: 'Directory', menu: 'Page', button: 'Button' },
-      action: { create: 'Add Node' },
+      action: { create: 'Add Node', expandAll: 'Expand All', collapseAll: 'Collapse All' },
+      filter: {
+        name: 'Node Name',
+        namePlaceholder: 'Search node name',
+        type: 'Node Type',
+        allTypes: 'All Types',
+        status: 'Status',
+        allStatuses: 'All Statuses'
+      },
       modal: { create: 'Add Menu Node', edit: 'Edit Menu Node' },
       field: {
         name: 'Node Name',
@@ -315,6 +323,22 @@ const local: App.I18n.Schema = {
         visible: 'Visible in Navigation',
         status: 'Status',
         i18nKey: 'I18n Resource Key'
+      },
+      help: {
+        label: 'View field help',
+        name: 'Name shown in navigation, the menu tree, and role assignment. Keep sibling names short and distinct.',
+        type: 'Directories group pages; pages map to routes; buttons represent API or UI permissions and create no route.',
+        parent: 'Directories may be roots; pages belong to directories; button permissions belong to pages.',
+        sort: 'Siblings are ordered from the smallest number upward. Leave gaps of 10 for later insertions.',
+        path: 'Frontend route starting with /, for example /system/menus. It must be unique across the platform.',
+        component: 'Choose from the frontend compile-time component registry. Arbitrary file paths are not allowed.',
+        permission: 'Must match backend Sa-Token annotations and frontend action checks, such as system:menu:view.',
+        icon: 'Icon key used by navigation. Button nodes usually need no icon; blank values use the platform fallback.',
+        i18nKey: 'Stable key present in both locale files, such as mine.menu.menus. The node name is used when blank.',
+        status:
+          'Disabled nodes are excluded from navigation and authorization results, making descendants unavailable.',
+        visible:
+          'Controls sidebar visibility only. A hidden page can still be opened when its route and permission allow it.'
       },
       validation: { required: 'Complete all fields required by this node type' },
       confirmDelete: 'Delete node “{name}”?',
