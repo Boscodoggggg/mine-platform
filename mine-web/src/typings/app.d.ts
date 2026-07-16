@@ -730,6 +730,20 @@ declare namespace App {
             >;
             placeholder: Record<'host' | 'tlsServerName', string>;
             mode: Record<'devicetoplatformmqtt' | 'devicetoplatformtcp' | 'platformtodevicetcp', string>;
+            presentation: Record<
+              'devicetoplatformmqtt' | 'devicetoplatformtcp' | 'platformtodevicetcp',
+              Record<
+                | 'description'
+                | 'hostLabel'
+                | 'hostPlaceholder'
+                | 'portLabel'
+                | 'tlsLabel'
+                | 'tlsServerNameLabel'
+                | 'timeoutLabel'
+                | 'keepAliveLabel',
+                string
+              >
+            >;
             stage: Record<'config' | 'dns' | 'tcp' | 'tls' | 'deviceconfirmation', string>;
             testStatus: Record<'notTested' | 'passed' | 'partial' | 'failed' | 'skipped', string>;
           };

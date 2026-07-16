@@ -230,6 +230,124 @@ describe('DeviceListPage', () => {
     expect(api.testDeviceAccessStatus).toHaveBeenCalledWith('device-1');
     expect(page.accessTest?.stages.map(stage => stage.layer)).toEqual(['ENDPOINT', 'TRANSPORT', 'ACTIVITY', 'DATA']);
   });
+
+  it('切换接入方式时应更换字段语义和默认值并保留独立草稿', async () => {
+    const wrapper = mountPage(['device:connection:view', 'device:connection:update']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      connectionForm: {
+        connectionMode: string;
+        host: string;
+        port: number;
+        tlsEnabled: boolean;
+        keepAliveSeconds: number;
+      };
+      connectionPresentation: {
+        description: string;
+        hostLabel: string;
+        hostPlaceholder: string;
+        keepAliveLabel: string;
+      };
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      switchConnectionMode: (mode: string) => void;
+    };
+    await page.openConnectionConfig(device);
+    page.connectionForm.host = 'custom-mqtt.mine.local';
+
+    page.switchConnectionMode('DEVICE_TO_PLATFORM_TCP');
+
+    expect(page.connectionForm).toMatchObject({
+      connectionMode: 'DEVICE_TO_PLATFORM_TCP',
+      host: '',
+      port: 9000,
+      tlsEnabled: false,
+      keepAliveSeconds: 60
+    });
+    expect(page.connectionPresentation.hostLabel).toBe('平台 TCP 监听地址');
+    expect(page.connectionPresentation.hostPlaceholder).toBe('例如 tcp.mine.local');
+    expect(page.connectionPresentation.keepAliveLabel).toBe('应用心跳间隔（秒）');
+    expect(page.connectionPresentation.description).toContain('设备将主动连接');
+
+    page.connectionForm.host = 'tcp.mine.local';
+    page.switchConnectionMode('PLATFORM_TO_DEVICE_TCP');
+
+    expect(page.connectionForm).toMatchObject({
+      connectionMode: 'PLATFORM_TO_DEVICE_TCP',
+      host: '',
+      port: 9000,
+      tlsEnabled: false,
+      keepAliveSeconds: 60
+    });
+    expect(page.connectionPresentation.hostLabel).toBe('设备 IP 或域名');
+    expect(page.connectionPresentation.description).toContain('平台将主动连接');
+
+    page.switchConnectionMode('DEVICE_TO_PLATFORM_MQTT');
+
+    expect(page.connectionForm.connectionMode).toBe('DEVICE_TO_PLATFORM_MQTT');
+    expect(page.connectionForm.host).toBe('custom-mqtt.mine.local');
+    expect(page.connectionForm.port).toBe(8883);
+    expect(page.connectionForm.tlsEnabled).toBe(true);
+    expect(page.connectionPresentation.hostLabel).toBe('Broker 地址');
+    expect(page.connectionPresentation.keepAliveLabel).toBe('MQTT KeepAlive（秒）');
+  });
+
+  it('切换接入方式时应清除上一模式的诊断结果', async () => {
+    const wrapper = mountPage(['device:connection:view', 'device:connection:test']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      connectionTest: unknown;
+      accessTest: unknown;
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      runConnectionTest: () => Promise<void>;
+      runAccessStatusTest: () => Promise<void>;
+      switchConnectionMode: (mode: string) => void;
+    };
+    await page.openConnectionConfig(device);
+    await page.runConnectionTest();
+    expect(page.connectionTest).not.toBeNull();
+
+    page.switchConnectionMode('DEVICE_TO_PLATFORM_TCP');
+
+    expect(page.connectionTest).toBeNull();
+    expect(page.accessTest).toBeNull();
+
+    page.switchConnectionMode('DEVICE_TO_PLATFORM_MQTT');
+    await page.runAccessStatusTest();
+    expect(page.accessTest).not.toBeNull();
+
+    page.switchConnectionMode('PLATFORM_TO_DEVICE_TCP');
+
+    expect(page.connectionTest).toBeNull();
+    expect(page.accessTest).toBeNull();
+  });
+
+  it('四层检查后应刷新配置版本再允许切换保存', async () => {
+    api.getDeviceConnectionProfile
+      .mockResolvedValueOnce(connectionProfile)
+      .mockResolvedValueOnce({ ...connectionProfile, version: 1 });
+    const wrapper = mountPage(['device:connection:view', 'device:connection:update', 'device:connection:test']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      connectionForm: { host: string; version: number };
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      runAccessStatusTest: () => Promise<void>;
+      saveConnectionProfile: () => Promise<void>;
+      switchConnectionMode: (mode: string) => void;
+    };
+    await page.openConnectionConfig(device);
+
+    await page.runAccessStatusTest();
+
+    expect(api.getDeviceConnectionProfile).toHaveBeenCalledTimes(2);
+    expect(page.connectionForm.version).toBe(1);
+    page.switchConnectionMode('PLATFORM_TO_DEVICE_TCP');
+    page.connectionForm.host = 'edge.mine.local';
+    await page.saveConnectionProfile();
+    expect(api.saveDeviceConnectionProfile).toHaveBeenCalledWith(
+      'device-1',
+      expect.objectContaining({ connectionMode: 'PLATFORM_TO_DEVICE_TCP', version: 1 })
+    );
+  });
 });
 
 function mountPage(permissions: string[]) {

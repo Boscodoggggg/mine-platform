@@ -50,6 +50,14 @@ import type {
 } from '@/modules/device/api/device';
 import { useAuthStore } from '@/store/modules/auth';
 
+type ConnectionMode = DeviceConnectionProfileRequest['connectionMode'];
+
+const CONNECTION_MODES: ConnectionMode[] = [
+  'DEVICE_TO_PLATFORM_MQTT',
+  'DEVICE_TO_PLATFORM_TCP',
+  'PLATFORM_TO_DEVICE_TCP'
+];
+
 const { t, te, locale } = useI18n();
 const authStore = useAuthStore();
 const loading = ref(false);
@@ -83,6 +91,7 @@ const connectionProfile = ref<DeviceConnectionProfile | null>(null);
 const connectionTest = ref<DeviceConnectionTestResult | null>(null);
 const accessTest = ref<DeviceAccessTestResult | null>(null);
 const accessStatuses = ref<DeviceAccessStatus[]>([]);
+const connectionDrafts = new Map<ConnectionMode, DeviceConnectionProfileRequest>();
 const connectionForm = reactive<DeviceConnectionProfileRequest>({
   connectionMode: 'DEVICE_TO_PLATFORM_MQTT',
   host: '',
@@ -115,11 +124,24 @@ const statusOptions = computed<SelectOption[]>(() => [
 ]);
 const editableStatusOptions = computed(() => statusOptions.value.slice(0, 2));
 const connectionModeOptions = computed<SelectOption[]>(() =>
-  ['DEVICE_TO_PLATFORM_MQTT', 'DEVICE_TO_PLATFORM_TCP', 'PLATFORM_TO_DEVICE_TCP'].map(value => ({
+  CONNECTION_MODES.map(value => ({
     label: t(`mine.devices.connection.mode.${connectionKey(value)}`),
     value
   }))
 );
+const connectionPresentation = computed(() => {
+  const prefix = `mine.devices.connection.presentation.${connectionKey(connectionForm.connectionMode)}`;
+  return {
+    description: t(`${prefix}.description`),
+    hostLabel: t(`${prefix}.hostLabel`),
+    hostPlaceholder: t(`${prefix}.hostPlaceholder`),
+    portLabel: t(`${prefix}.portLabel`),
+    tlsLabel: t(`${prefix}.tlsLabel`),
+    tlsServerNameLabel: t(`${prefix}.tlsServerNameLabel`),
+    timeoutLabel: t(`${prefix}.timeoutLabel`),
+    keepAliveLabel: t(`${prefix}.keepAliveLabel`)
+  };
+});
 const connectionStages = computed(() => connectionTest.value?.stages || connectionProfile.value?.lastTestStages || []);
 const connectionDirty = computed(() => {
   const profile = connectionProfile.value;
@@ -342,9 +364,19 @@ async function openConnectionConfig(device: Device) {
   connectionProfile.value = null;
   connectionTest.value = null;
   accessTest.value = null;
-  Object.assign(connectionForm, defaultConnectionForm());
+  connectionDrafts.clear();
+  Object.assign(connectionForm, defaultConnectionForm('DEVICE_TO_PLATFORM_MQTT'));
   connectionDrawerVisible.value = true;
   await loadConnectionProfile();
+}
+
+function switchConnectionMode(value: string | number) {
+  const mode = String(value) as ConnectionMode;
+  if (!CONNECTION_MODES.includes(mode) || mode === connectionForm.connectionMode) return;
+  connectionDrafts.set(connectionForm.connectionMode, snapshotConnectionForm());
+  const target = connectionDrafts.get(mode) || defaultConnectionForm(mode, connectionProfile.value?.version || 0);
+  Object.assign(connectionForm, target);
+  clearConnectionDiagnostics();
 }
 
 async function runAccessStatusTest() {
@@ -353,10 +385,12 @@ async function runAccessStatusTest() {
   }
   accessTesting.value = true;
   try {
+    connectionTest.value = null;
     accessTest.value = await testDeviceAccessStatus(connectionDevice.value.id);
     const message = connectionMessage(accessTest.value.message);
     if (accessTest.value.status === 'ONLINE') window.$message?.success(message);
     else window.$message?.warning(message);
+    await loadConnectionProfile();
     await loadAccessStatuses(devices.value.map(device => device.id));
   } catch (error) {
     showError(error);
@@ -389,6 +423,7 @@ async function saveConnectionProfile() {
       host: connectionForm.host.trim(),
       tlsServerName: connectionForm.tlsServerName?.trim() || null
     });
+    clearConnectionDiagnostics();
     applyConnectionProfile(saved);
     window.$message?.success(t('mine.devices.connection.saved'));
   } catch (error) {
@@ -404,6 +439,7 @@ async function runConnectionTest() {
   }
   connectionTesting.value = true;
   try {
+    accessTest.value = null;
     connectionTest.value = await testDeviceConnectionProfile(connectionDevice.value.id);
     if (connectionTest.value.status === 'PASSED') {
       window.$message?.success(t('mine.devices.connection.testCompleted'));
@@ -431,20 +467,34 @@ function applyConnectionProfile(profile: DeviceConnectionProfile) {
     offlineThresholdSeconds: profile.offlineThresholdSeconds,
     version: profile.version
   });
+  connectionDrafts.forEach(draft => {
+    draft.version = profile.version;
+  });
+  connectionDrafts.set(profile.connectionMode, snapshotConnectionForm());
 }
 
-function defaultConnectionForm(): DeviceConnectionProfileRequest {
+function defaultConnectionForm(mode: ConnectionMode, version = 0): DeviceConnectionProfileRequest {
+  const mqtt = mode === 'DEVICE_TO_PLATFORM_MQTT';
   return {
-    connectionMode: 'DEVICE_TO_PLATFORM_MQTT',
+    connectionMode: mode,
     host: '',
-    port: 8883,
-    tlsEnabled: true,
+    port: mqtt ? 8883 : 9000,
+    tlsEnabled: mqtt,
     tlsServerName: null,
     connectTimeoutMillis: 5000,
     keepAliveSeconds: 60,
     offlineThresholdSeconds: 180,
-    version: 0
+    version
   };
+}
+
+function snapshotConnectionForm(): DeviceConnectionProfileRequest {
+  return { ...connectionForm, tlsServerName: connectionForm.tlsServerName?.trim() || null };
+}
+
+function clearConnectionDiagnostics() {
+  connectionTest.value = null;
+  accessTest.value = null;
 }
 
 function connectionKey(value: string) {
@@ -503,12 +553,14 @@ defineExpose({
   deviceForm,
   creatableProductOptions,
   connectionForm,
+  connectionPresentation,
   accessTest,
   openCreate,
   openEdit,
   saveDevice,
   openConnectionConfig,
   saveConnectionProfile,
+  switchConnectionMode,
   runConnectionTest,
   runAccessStatusTest
 });
@@ -658,23 +710,29 @@ defineExpose({
                   <NGi :span="2">
                     <NFormItem :label="t('mine.devices.connection.field.mode')">
                       <NSelect
-                        v-model:value="connectionForm.connectionMode"
+                        :value="connectionForm.connectionMode"
                         :disabled="!can('device:connection:update')"
                         :options="connectionModeOptions"
+                        @update:value="switchConnectionMode"
                       />
                     </NFormItem>
                   </NGi>
+                  <NGi :span="2">
+                    <NAlert type="info" :bordered="false">
+                      {{ connectionPresentation.description }}
+                    </NAlert>
+                  </NGi>
                   <NGi>
-                    <NFormItem :label="t('mine.devices.connection.field.host')">
+                    <NFormItem :label="connectionPresentation.hostLabel">
                       <NInput
                         v-model:value="connectionForm.host"
                         :disabled="!can('device:connection:update')"
-                        :placeholder="t('mine.devices.connection.placeholder.host')"
+                        :placeholder="connectionPresentation.hostPlaceholder"
                       />
                     </NFormItem>
                   </NGi>
                   <NGi>
-                    <NFormItem :label="t('mine.devices.connection.field.port')">
+                    <NFormItem :label="connectionPresentation.portLabel">
                       <NInputNumber
                         v-model:value="connectionForm.port"
                         :disabled="!can('device:connection:update')"
@@ -685,12 +743,12 @@ defineExpose({
                     </NFormItem>
                   </NGi>
                   <NGi>
-                    <NFormItem :label="t('mine.devices.connection.field.tls')">
+                    <NFormItem :label="connectionPresentation.tlsLabel">
                       <NSwitch v-model:value="connectionForm.tlsEnabled" :disabled="!can('device:connection:update')" />
                     </NFormItem>
                   </NGi>
                   <NGi>
-                    <NFormItem :label="t('mine.devices.connection.field.tlsServerName')">
+                    <NFormItem :label="connectionPresentation.tlsServerNameLabel">
                       <NInput
                         v-model:value="connectionForm.tlsServerName"
                         :disabled="!connectionForm.tlsEnabled || !can('device:connection:update')"
@@ -699,7 +757,7 @@ defineExpose({
                     </NFormItem>
                   </NGi>
                   <NGi>
-                    <NFormItem :label="t('mine.devices.connection.field.timeout')">
+                    <NFormItem :label="connectionPresentation.timeoutLabel">
                       <NInputNumber
                         v-model:value="connectionForm.connectTimeoutMillis"
                         :disabled="!can('device:connection:update')"
@@ -710,7 +768,7 @@ defineExpose({
                     </NFormItem>
                   </NGi>
                   <NGi>
-                    <NFormItem :label="t('mine.devices.connection.field.keepAlive')">
+                    <NFormItem :label="connectionPresentation.keepAliveLabel">
                       <NInputNumber
                         v-model:value="connectionForm.keepAliveSeconds"
                         :disabled="!can('device:connection:update')"

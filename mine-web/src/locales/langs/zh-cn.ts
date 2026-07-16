@@ -558,6 +558,38 @@ const local: App.I18n.Schema = {
           devicetoplatformtcp: '设备主动连接平台 TCP',
           platformtodevicetcp: '平台主动连接设备 TCP'
         },
+        presentation: {
+          devicetoplatformmqtt: {
+            description: '设备将主动连接平台 MQTT Broker；端点通过后仍需 Broker 会话和有效首帧确认上线。',
+            hostLabel: 'Broker 地址',
+            hostPlaceholder: '例如 mqtt.mine.local',
+            portLabel: 'MQTT 端口',
+            tlsLabel: '启用 Broker TLS 校验',
+            tlsServerNameLabel: 'Broker TLS 服务名称',
+            timeoutLabel: '端点测试超时（毫秒）',
+            keepAliveLabel: 'MQTT KeepAlive（秒）'
+          },
+          devicetoplatformtcp: {
+            description: '设备将主动连接平台 TCP 监听地址；端点通过后仍需真实 TCP 会话和有效首帧确认上线。',
+            hostLabel: '平台 TCP 监听地址',
+            hostPlaceholder: '例如 tcp.mine.local',
+            portLabel: '平台监听端口',
+            tlsLabel: '启用 TCP TLS 校验',
+            tlsServerNameLabel: '平台 TLS 服务名称',
+            timeoutLabel: '端点测试超时（毫秒）',
+            keepAliveLabel: '应用心跳间隔（秒）'
+          },
+          platformtodevicetcp: {
+            description: '平台将主动连接设备或边缘网关 TCP 端点；请确认设备网段、防火墙和证书允许平台访问。',
+            hostLabel: '设备 IP 或域名',
+            hostPlaceholder: '例如 10.20.30.40 或 edge.mine.local',
+            portLabel: '设备 TCP 端口',
+            tlsLabel: '启用设备端 TLS 校验',
+            tlsServerNameLabel: '设备 TLS 服务名称',
+            timeoutLabel: '连接设备超时（毫秒）',
+            keepAliveLabel: '应用心跳间隔（秒）'
+          }
+        },
         stage: {
           config: '配置校验',
           dns: 'DNS 解析',

@@ -599,6 +599,41 @@ const local: App.I18n.Schema = {
           devicetoplatformtcp: 'Device Connects to Platform TCP',
           platformtodevicetcp: 'Platform Connects to Device TCP'
         },
+        presentation: {
+          devicetoplatformmqtt: {
+            description:
+              'The device connects to the platform MQTT Broker. A Broker session and valid first message are still required after the endpoint passes.',
+            hostLabel: 'Broker Address',
+            hostPlaceholder: 'For example, mqtt.mine.local',
+            portLabel: 'MQTT Port',
+            tlsLabel: 'Validate Broker TLS',
+            tlsServerNameLabel: 'Broker TLS Server Name',
+            timeoutLabel: 'Endpoint Test Timeout (ms)',
+            keepAliveLabel: 'MQTT KeepAlive (seconds)'
+          },
+          devicetoplatformtcp: {
+            description:
+              'The device connects to the platform TCP listener. A real TCP session and valid first message are still required after the endpoint passes.',
+            hostLabel: 'Platform TCP Listener Address',
+            hostPlaceholder: 'For example, tcp.mine.local',
+            portLabel: 'Platform Listener Port',
+            tlsLabel: 'Validate TCP TLS',
+            tlsServerNameLabel: 'Platform TLS Server Name',
+            timeoutLabel: 'Endpoint Test Timeout (ms)',
+            keepAliveLabel: 'Application Heartbeat (seconds)'
+          },
+          platformtodevicetcp: {
+            description:
+              'The platform connects to the device or edge gateway TCP endpoint. Confirm that its network, firewall, and certificate allow platform access.',
+            hostLabel: 'Device IP or Domain',
+            hostPlaceholder: 'For example, 10.20.30.40 or edge.mine.local',
+            portLabel: 'Device TCP Port',
+            tlsLabel: 'Validate Device TLS',
+            tlsServerNameLabel: 'Device TLS Server Name',
+            timeoutLabel: 'Device Connection Timeout (ms)',
+            keepAliveLabel: 'Application Heartbeat (seconds)'
+          }
+        },
         stage: {
           config: 'Configuration',
           dns: 'DNS Resolution',
