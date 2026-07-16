@@ -4,2301 +4,2433 @@
  */
 
 export interface paths {
-  '/dashboard/operations': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/dashboard/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询矿区调度运行总览
+         * @description 返回启用设备、数据新鲜度、今日接收消息、二十四小时趋势和需要关注的设备。
+         *     遥测库不可用时，dataStatus 为 UNAVAILABLE，相关数字返回 null，不会用零值伪装查询失败。
+         */
+        get: operations["getOperationsDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * 查询矿区调度运行总览
-     * @description 返回启用设备、数据新鲜度、今日接收消息、二十四小时趋势和需要关注的设备。
-     *     遥测库不可用时，dataStatus 为 UNAVAILABLE，相关数字返回 null，不会用零值伪装查询失败。
-     */
-    get: operations['getOperationsDashboard'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/operations': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/system/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 按需检查平台运行状态
+         * @description 仅在用户进入运行监控页面或主动刷新时执行，不启动后台轮询。
+         *     需要 system:operations:view 权限，响应不包含连接串、凭据或异常堆栈。
+         */
+        get: operations["getSystemOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * 按需检查平台运行状态
-     * @description 仅在用户进入运行监控页面或主动刷新时执行，不启动后台轮询。
-     *     需要 system:operations:view 权限，响应不包含连接串、凭据或异常堆栈。
-     */
-    get: operations['getSystemOperations'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/menus/tree': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/system/operations/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询平台运行历史总览
+         * @description 通过服务端固定 PromQL 模板查询 Prometheus，不接受调用方传入任意查询表达式。
+         *     Prometheus 未启用或不可用时 dataStatus 为 UNAVAILABLE，各检查项状态为 UNKNOWN。
+         */
+        get: operations["getSystemOperationsOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 查询菜单与按钮权限树 */
-    get: operations['getManagedMenuTree'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/menus/component-options': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/system/operations/items/{key}/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询单个运行检查项趋势 */
+        get: operations["getSystemOperationSeries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 查询允许配置的前端页面组件 */
-    get: operations['listMenuComponentOptions'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/menus': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/system/menus/tree": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询菜单与按钮权限树 */
+        get: operations["getManagedMenuTree"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 创建目录、页面或按钮权限节点 */
-    post: operations['createManagedMenu'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/menus/{menuId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        menuId: string;
-      };
-      cookie?: never;
+    "/system/menus/component-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询允许配置的前端页面组件 */
+        get: operations["listMenuComponentOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 修改菜单节点 */
-    put: operations['updateManagedMenu'];
-    post?: never;
-    /** 删除未被引用的非保护菜单节点 */
-    delete: operations['deleteManagedMenu'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/dictionaries': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/system/menus": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 创建目录、页面或按钮权限节点 */
+        post: operations["createManagedMenu"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 查询全部通用字典类型 */
-    get: operations['listDictionaryTypes'];
-    put?: never;
-    /** 创建通用字典类型 */
-    post: operations['createDictionaryType'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/dictionaries/{dictionaryTypeId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryTypeId: string;
-      };
-      cookie?: never;
+    "/system/menus/{menuId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                menuId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改菜单节点 */
+        put: operations["updateManagedMenu"];
+        post?: never;
+        /** 删除未被引用的非保护菜单节点 */
+        delete: operations["deleteManagedMenu"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 修改字典类型的可变信息 */
-    put: operations['updateDictionaryType'];
-    post?: never;
-    /** 删除空的非内置字典类型 */
-    delete: operations['deleteDictionaryType'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/dictionaries/{dictionaryTypeId}/items': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryTypeId: string;
-      };
-      cookie?: never;
+    "/system/dictionaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询全部通用字典类型 */
+        get: operations["listDictionaryTypes"];
+        put?: never;
+        /** 创建通用字典类型 */
+        post: operations["createDictionaryType"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 查询字典类型下的全部数据项 */
-    get: operations['listDictionaryItems'];
-    put?: never;
-    /** 创建字典数据项 */
-    post: operations['createDictionaryItem'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/system/dictionaries/items/{dictionaryItemId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryItemId: string;
-      };
-      cookie?: never;
+    "/system/dictionaries/{dictionaryTypeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryTypeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改字典类型的可变信息 */
+        put: operations["updateDictionaryType"];
+        post?: never;
+        /** 删除空的非内置字典类型 */
+        delete: operations["deleteDictionaryType"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 修改字典数据项的可变信息 */
-    put: operations['updateDictionaryItem'];
-    post?: never;
-    /** 删除字典数据项 */
-    delete: operations['deleteDictionaryItem'];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/dictionaries/{dictionaryCode}/items': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/system/dictionaries/{dictionaryTypeId}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryTypeId: string;
+            };
+            cookie?: never;
+        };
+        /** 查询字典类型下的全部数据项 */
+        get: operations["listDictionaryItems"];
+        put?: never;
+        /** 创建字典数据项 */
+        post: operations["createDictionaryItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 按稳定编码查询启用字典项 */
-    get: operations['listEnabledDictionaryItems'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/device-models/products/{productId}/configuration': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/system/dictionaries/items/{dictionaryItemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryItemId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改字典数据项的可变信息 */
+        put: operations["updateDictionaryItem"];
+        post?: never;
+        /** 删除字典数据项 */
+        delete: operations["deleteDictionaryItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 查询产品的物模型与协议映射版本 */
-    get: operations['getProductDeviceConfiguration'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/device-models/products/{productId}/model-drafts': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/dictionaries/{dictionaryCode}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 按稳定编码查询启用字典项 */
+        get: operations["listEnabledDictionaryItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 创建空物模型草稿版本 */
-    post: operations['createDeviceModelDraft'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/device-models/model-versions/{modelVersionId}/fields': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/device-models/products/{productId}/configuration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询产品的物模型与协议映射版本 */
+        get: operations["getProductDeviceConfiguration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 原子替换物模型草稿的全部字段 */
-    put: operations['replaceDeviceModelFields'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/device-models/model-versions/{modelVersionId}/publish': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/device-models/products/{productId}/model-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 创建空物模型草稿版本 */
+        post: operations["createDeviceModelDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 发布物模型草稿并退役旧发布版本 */
-    post: operations['publishDeviceModelVersion'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/device-models/products/{productId}/protocol-drafts': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/device-models/model-versions/{modelVersionId}/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 原子替换物模型草稿的全部字段 */
+        put: operations["replaceDeviceModelFields"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 创建厂商协议字段映射草稿 */
-    post: operations['createProtocolMappingDraft'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/device-models/protocol-versions/{protocolVersionId}/fields': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/device-models/model-versions/{modelVersionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发布物模型草稿并退役旧发布版本 */
+        post: operations["publishDeviceModelVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 原子替换协议草稿的全部字段映射 */
-    put: operations['replaceProtocolMappingFields'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/device-models/protocol-versions/{protocolVersionId}/publish': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/device-models/products/{productId}/protocol-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 创建厂商协议字段映射草稿 */
+        post: operations["createProtocolMappingDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 发布协议映射草稿并退役旧发布版本 */
-    post: operations['publishProtocolMappingVersion'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/command-templates': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/device-models/protocol-versions/{protocolVersionId}/fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 原子替换协议草稿的全部字段映射 */
+        put: operations["replaceProtocolMappingFields"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 查询可下发命令模板 */
-    get: operations['listCommandTemplates'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/command-targets': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/device-models/protocol-versions/{protocolVersionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发布协议映射草稿并退役旧发布版本 */
+        post: operations["publishProtocolMappingVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 分页查询可接收命令的启用设备 */
-    get: operations['listCommandTargets'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/commands': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/command-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询可下发命令模板 */
+        get: operations["listCommandTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 分页查询命令 */
-    get: operations['listCommands'];
-    put?: never;
-    /** 幂等创建并下发命令 */
-    post: operations['createCommand'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/commands/{commandId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/command-targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询可接收命令的启用设备 */
+        get: operations["listCommandTargets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 查询命令详情与状态时间线 */
-    get: operations['getCommand'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/commands/{commandId}/cancel': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/commands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询命令 */
+        get: operations["listCommands"];
+        put?: never;
+        /** 幂等创建并下发命令 */
+        post: operations["createCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 取消尚未开始发送的排队命令 */
-    post: operations['cancelCommand'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/products': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/commands/{commandId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询命令详情与状态时间线 */
+        get: operations["getCommand"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 分页查询产品 */
-    get: operations['listProducts'];
-    put?: never;
-    /** 创建产品 */
-    post: operations['createProduct'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/products/{productId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/commands/{commandId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 取消尚未开始发送的排队命令 */
+        post: operations["cancelCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 修改产品 */
-    put: operations['updateProduct'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/products/{productId}/archive': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询产品 */
+        get: operations["listProducts"];
+        put?: never;
+        /** 创建产品 */
+        post: operations["createProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 归档产品 */
-    post: operations['archiveProduct'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/products/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改产品 */
+        put: operations["updateProduct"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** 分页查询设备 */
-    get: operations['listDevices'];
-    put?: never;
-    /** 创建设备 */
-    post: operations['createDevice'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices/{deviceId}': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/products/{productId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档产品 */
+        post: operations["archiveProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    /** 修改设备 */
-    put: operations['updateDevice'];
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices/{deviceId}/archive': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询设备 */
+        get: operations["listDevices"];
+        put?: never;
+        /** 创建设备 */
+        post: operations["createDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    get?: never;
-    put?: never;
-    /** 归档设备 */
-    post: operations['archiveDevice'];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices/{deviceId}/latest': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/devices/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改设备 */
+        put: operations["updateDevice"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * 查询设备指定属性的最新值
-     * @description 需要 `device:telemetry:view` 权限。优先读取 Redis；缓存缺失时按设备和属性键合并并发请求，
-     *     从 TimescaleDB 回源最近历史并使用 HSETNX 回填，避免旧历史覆盖并发到达的新数据。
-     */
-    get: operations['getDeviceLatestTelemetry'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  '/devices/{deviceId}/telemetry': {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/devices/{deviceId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档设备 */
+        post: operations["archiveDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * 分页查询设备单个数值属性历史
-     * @description 需要 `device:telemetry:view` 权限。时间范围采用 `[from, to)`；RAW 最多查询 7 天且不能传 bucket；
-     *     AVG、MIN、MAX 最多查询 366 天，bucket 必须在 1 分钟至 24 小时之间且最多产生 10000 个桶。
-     *     bucket 只接受整秒精度。聚合结果的 quality 取桶内最差质量，sampleCount 表示桶内样本数；
-     *     分页 offset 不得超过 1000000。首页可省略 watermark，响应会返回数据库已提交事件的摄取水位；
-     *     后续页必须原样传回，以排除 RabbitMQ 积压、数据库重试和弱网迟到点在翻页期间造成的重复或遗漏。
-     */
-    get: operations['getDeviceTelemetryHistory'];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
+    "/devices/{deviceId}/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询设备指定属性的最新值
+         * @description 需要 `device:telemetry:view` 权限。优先读取 Redis；缓存缺失时按设备和属性键合并并发请求，
+         *     从 TimescaleDB 回源最近历史并使用 HSETNX 回填，避免旧历史覆盖并发到达的新数据。
+         */
+        get: operations["getDeviceLatestTelemetry"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{deviceId}/telemetry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分页查询设备单个数值属性历史
+         * @description 需要 `device:telemetry:view` 权限。时间范围采用 `[from, to)`；RAW 最多查询 7 天且不能传 bucket；
+         *     AVG、MIN、MAX 最多查询 366 天，bucket 必须在 1 分钟至 24 小时之间且最多产生 10000 个桶。
+         *     bucket 只接受整秒精度。聚合结果的 quality 取桶内最差质量，sampleCount 表示桶内样本数；
+         *     分页 offset 不得超过 1000000。首页可省略 watermark，响应会返回数据库已提交事件的摄取水位；
+         *     后续页必须原样传回，以排除 RabbitMQ 积压、数据库重试和弱网迟到点在翻页期间造成的重复或遗漏。
+         */
+        get: operations["getDeviceTelemetryHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    /** @enum {string} */
-    SystemOperationStatus: 'UP' | 'DEGRADED' | 'DOWN' | 'UNKNOWN';
-    /** @enum {string} */
-    SystemOperationCategory: 'SERVICE' | 'MESSAGE' | 'STORAGE' | 'OTHER';
-    SystemOperationsOverview: {
-      status: components['schemas']['SystemOperationStatus'];
-      /** Format: date-time */
-      checkedAt: string;
-      items: components['schemas']['SystemOperationItem'][];
+    schemas: {
+        /** @enum {string} */
+        SystemOperationStatus: "UP" | "DEGRADED" | "DOWN" | "UNKNOWN";
+        /** @enum {string} */
+        SystemOperationCategory: "SERVICE" | "MESSAGE" | "STORAGE" | "OTHER";
+        SystemOperationsOverview: {
+            status: components["schemas"]["SystemOperationStatus"];
+            /** Format: date-time */
+            checkedAt: string;
+            items: components["schemas"]["SystemOperationItem"][];
+        };
+        SystemOperationItem: {
+            key: string;
+            category: components["schemas"]["SystemOperationCategory"];
+            status: components["schemas"]["SystemOperationStatus"];
+            /** Format: int64 */
+            latencyMillis: number;
+            summary: string;
+        };
+        /** @enum {string} */
+        OperationsObservabilityDataStatus: "AVAILABLE" | "UNAVAILABLE";
+        /**
+         * @default 24h
+         * @enum {string}
+         */
+        OperationsObservabilityRange: "1h" | "6h" | "24h" | "7d" | "15d";
+        OperationsObservabilityOverview: {
+            dataStatus: components["schemas"]["OperationsObservabilityDataStatus"];
+            range: components["schemas"]["OperationsObservabilityRange"];
+            /** Format: date-time */
+            generatedAt: string;
+            status: components["schemas"]["SystemOperationStatus"];
+            /** Format: int64 */
+            healthy: number;
+            /** Format: int64 */
+            degraded: number;
+            /** Format: int64 */
+            down: number;
+            /** Format: int64 */
+            unknown: number;
+            items: components["schemas"]["OperationsObservabilityItem"][];
+        };
+        OperationsObservabilityItem: {
+            key: string;
+            category: components["schemas"]["SystemOperationCategory"];
+            status: components["schemas"]["SystemOperationStatus"];
+            /** Format: double */
+            availabilityPercent: number | null;
+            /** Format: int64 */
+            averageLatencyMillis: number | null;
+            /** Format: int64 */
+            p95LatencyMillis: number | null;
+            /** Format: date-time */
+            lastChangedAt: string | null;
+            /** Format: int64 */
+            sampleCount: number;
+        };
+        OperationsObservabilitySeries: {
+            key: string;
+            category: components["schemas"]["SystemOperationCategory"];
+            dataStatus: components["schemas"]["OperationsObservabilityDataStatus"];
+            range: components["schemas"]["OperationsObservabilityRange"];
+            /** Format: date-time */
+            generatedAt: string;
+            points: components["schemas"]["OperationsObservabilityPoint"][];
+        };
+        OperationsObservabilityPoint: {
+            /** Format: date-time */
+            time: string;
+            status: components["schemas"]["SystemOperationStatus"];
+            /** Format: int64 */
+            latencyMillis: number | null;
+        };
+        /** @enum {string} */
+        DashboardDataStatus: "AVAILABLE" | "UNAVAILABLE";
+        /** @enum {string} */
+        DashboardDeviceState: "STALE" | "NEVER_REPORTED";
+        OperationsOverview: {
+            /** Format: date-time */
+            generatedAt: string;
+            dataStatus: components["schemas"]["DashboardDataStatus"];
+            freshnessSeconds: number;
+            devices: components["schemas"]["DashboardDeviceSummary"];
+            telemetry: components["schemas"]["DashboardTelemetrySummary"];
+            attentionDevices: components["schemas"]["DashboardAttentionDevice"][];
+        };
+        DashboardDeviceSummary: {
+            /** Format: int64 */
+            enabled: number;
+            /** Format: int64 */
+            reporting?: number | null;
+            /** Format: int64 */
+            stale?: number | null;
+            /** Format: int64 */
+            neverReported?: number | null;
+        };
+        DashboardTelemetrySummary: {
+            /** Format: int64 */
+            todayMessages?: number | null;
+            /** Format: date-time */
+            latestReceivedAt?: string | null;
+            hourly: components["schemas"]["DashboardHourBucket"][];
+        };
+        DashboardHourBucket: {
+            /** Format: date-time */
+            hour: string;
+            /** Format: int64 */
+            count: number;
+        };
+        DashboardAttentionDevice: {
+            /** Format: uuid */
+            deviceId: string;
+            deviceCode: string;
+            name: string;
+            state: components["schemas"]["DashboardDeviceState"];
+            /** Format: date-time */
+            lastSeenAt?: string | null;
+        };
+        /** @enum {string} */
+        CommandStatus: "CREATED" | "QUEUED" | "SENT" | "DEVICE_RECEIVED" | "SUCCEEDED" | "REFUSED" | "FAILED" | "EXPIRED" | "TIMEOUT" | "CANCELLED";
+        /** @enum {string} */
+        CommandRiskLevel: "LOW" | "MEDIUM" | "HIGH";
+        ManagedMenuNode: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            parentId?: string | null;
+            name: string;
+            /** @enum {string} */
+            type: "DIRECTORY" | "MENU" | "BUTTON";
+            path?: string | null;
+            componentKey?: string | null;
+            permission?: string | null;
+            icon?: string | null;
+            sortOrder: number;
+            visible: boolean;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            i18nKey?: string | null;
+            protectedNode: boolean;
+            /** Format: int64 */
+            version: number;
+            children: components["schemas"]["ManagedMenuNode"][];
+        };
+        MenuComponentOption: {
+            key: string;
+            name: string;
+        };
+        MenuSaveRequest: {
+            /** Format: uuid */
+            parentId?: string | null;
+            name: string;
+            /** @enum {string} */
+            type: "DIRECTORY" | "MENU" | "BUTTON";
+            path?: string | null;
+            componentKey?: string | null;
+            permission?: string | null;
+            icon?: string | null;
+            sortOrder: number;
+            visible: boolean;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            i18nKey?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        DictionaryType: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            name: string;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            description?: string | null;
+            builtIn: boolean;
+            /** Format: int64 */
+            version: number;
+        };
+        DictionaryTypeCreateRequest: {
+            code: string;
+            name: string;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            description?: string | null;
+        };
+        DictionaryTypeUpdateRequest: {
+            name: string;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            description?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        DictionaryItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            typeId: string;
+            value: string;
+            labelZh: string;
+            labelEn?: string | null;
+            semanticType: components["schemas"]["SemanticType"];
+            sortOrder: number;
+            defaultItem: boolean;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            /** Format: int64 */
+            version: number;
+        };
+        DictionaryItemCreateRequest: {
+            value: string;
+            labelZh: string;
+            labelEn?: string | null;
+            semanticType: components["schemas"]["SemanticType"];
+            sortOrder: number;
+            defaultItem: boolean;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+        };
+        DictionaryItemUpdateRequest: {
+            labelZh: string;
+            labelEn?: string | null;
+            semanticType: components["schemas"]["SemanticType"];
+            sortOrder: number;
+            defaultItem: boolean;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            /** Format: int64 */
+            version: number;
+        };
+        /** @enum {string} */
+        SemanticType: "default" | "primary" | "info" | "success" | "warning" | "error";
+        ProductDeviceConfiguration: {
+            models: components["schemas"]["DeviceModelVersionView"][];
+            protocols: components["schemas"]["ProtocolMappingVersionView"][];
+        };
+        DeviceModelVersionView: {
+            version: components["schemas"]["DeviceModelVersion"];
+            fields: components["schemas"]["DeviceModelField"][];
+        };
+        ProtocolMappingVersionView: {
+            version: components["schemas"]["ProtocolMappingVersion"];
+            fields: components["schemas"]["ProtocolMappingField"][];
+        };
+        DeviceModelVersion: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            versionNumber: number;
+            status: components["schemas"]["ConfigurationVersionStatus"];
+            description?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        DeviceModelField: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            modelVersionId: string;
+            identifier: string;
+            nameZh: string;
+            nameEn?: string | null;
+            /** @enum {string} */
+            dataType: "INTEGER" | "DECIMAL" | "BOOLEAN" | "STRING" | "ENUM" | "DATETIME" | "GEO_POINT";
+            unit?: string | null;
+            /** @enum {string} */
+            accessMode: "READ" | "WRITE" | "READ_WRITE";
+            requiredField: boolean;
+            minimumValue?: number | null;
+            maximumValue?: number | null;
+            decimalPlaces?: number | null;
+            sortOrder: number;
+            description?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        DeviceModelFieldsRequest: {
+            fields: components["schemas"]["DeviceModelFieldInput"][];
+        };
+        DeviceModelFieldInput: {
+            identifier: string;
+            nameZh: string;
+            nameEn?: string | null;
+            /** @enum {string} */
+            dataType: "INTEGER" | "DECIMAL" | "BOOLEAN" | "STRING" | "ENUM" | "DATETIME" | "GEO_POINT";
+            unit?: string | null;
+            /** @enum {string} */
+            accessMode: "READ" | "WRITE" | "READ_WRITE";
+            requiredField: boolean;
+            minimumValue?: number | null;
+            maximumValue?: number | null;
+            decimalPlaces?: number | null;
+            sortOrder: number;
+            description?: string | null;
+        };
+        ProtocolMappingVersion: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            profileKey: string;
+            name: string;
+            /** @enum {string} */
+            protocolType: "MQTT_JSON" | "MQTT_BINARY" | "TCP_BINARY";
+            /** @enum {string} */
+            messageType: "TELEMETRY" | "STATE" | "EVENT" | "COMMAND_REPLY";
+            versionNumber: number;
+            status: components["schemas"]["ConfigurationVersionStatus"];
+            topicOrFrame?: string | null;
+            description?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        ProtocolMappingField: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            mappingVersionId: string;
+            sourcePath: string;
+            /** @enum {string} */
+            sourceDataType: "INTEGER" | "DECIMAL" | "BOOLEAN" | "STRING" | "BINARY" | "DATETIME";
+            targetIdentifier: string;
+            /** @enum {string} */
+            transformType: "NONE" | "SCALE" | "OFFSET" | "SCALE_OFFSET" | "ENUM" | "EXPRESSION";
+            scaleFactor?: number | null;
+            offsetValue?: number | null;
+            expression?: string | null;
+            requiredField: boolean;
+            sortOrder: number;
+            /** Format: int64 */
+            version: number;
+        };
+        ProtocolMappingDraftRequest: {
+            profileKey: string;
+            name: string;
+            /** @enum {string} */
+            protocolType: "MQTT_JSON" | "MQTT_BINARY" | "TCP_BINARY";
+            /** @enum {string} */
+            messageType: "TELEMETRY" | "STATE" | "EVENT" | "COMMAND_REPLY";
+            topicOrFrame?: string | null;
+            description?: string | null;
+        };
+        ProtocolMappingFieldsRequest: {
+            fields: components["schemas"]["ProtocolMappingFieldInput"][];
+        };
+        ProtocolMappingFieldInput: {
+            sourcePath: string;
+            /** @enum {string} */
+            sourceDataType: "INTEGER" | "DECIMAL" | "BOOLEAN" | "STRING" | "BINARY" | "DATETIME";
+            targetIdentifier: string;
+            /** @enum {string} */
+            transformType: "NONE" | "SCALE" | "OFFSET" | "SCALE_OFFSET" | "ENUM" | "EXPRESSION";
+            scaleFactor?: number | null;
+            offsetValue?: number | null;
+            expression?: string | null;
+            requiredField: boolean;
+            sortOrder: number;
+        };
+        /** @enum {string} */
+        ConfigurationVersionStatus: "DRAFT" | "PUBLISHED" | "RETIRED";
+        DescriptionRequest: {
+            description?: string | null;
+        };
+        VersionRequest: {
+            /** Format: int64 */
+            version: number;
+        };
+        CommandTemplate: {
+            key: string;
+            version: number;
+            riskLevel: components["schemas"]["CommandRiskLevel"];
+            defaultTtlSeconds: number;
+            defaultTimeoutSeconds: number;
+            parameterSchema: {
+                [key: string]: unknown;
+            };
+            requiresReason: boolean;
+        };
+        Command: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deviceId: string;
+            templateKey: string;
+            templateVersion: number;
+            parameters: {
+                [key: string]: unknown;
+            };
+            reason?: string | null;
+            workOrderNo?: string | null;
+            /** Format: uuid */
+            cancelledBy?: string | null;
+            cancelReason?: string | null;
+            riskLevel: components["schemas"]["CommandRiskLevel"];
+            status: components["schemas"]["CommandStatus"];
+            ttlSeconds: number;
+            timeoutSeconds: number;
+            idempotencyKey: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            queuedAt: string;
+            /** Format: date-time */
+            sentAt?: string | null;
+            /** Format: date-time */
+            deviceReceivedAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: date-time */
+            expiresAt: string;
+            lastErrorCode?: string | null;
+            reply?: {
+                [key: string]: unknown;
+            } | null;
+            /** Format: int64 */
+            version: number;
+        };
+        CommandPage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["Command"][];
+        };
+        CommandTarget: {
+            /** Format: uuid */
+            id: string;
+            deviceCode: string;
+            name: string;
+        };
+        CommandTargetPage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["CommandTarget"][];
+        };
+        CommandCreateRequest: {
+            /** Format: uuid */
+            deviceId: string;
+            templateKey: string;
+            parameters: {
+                [key: string]: unknown;
+            };
+            reason?: string;
+            workOrderNo?: string;
+            ttlSeconds: number;
+            timeoutSeconds: number;
+        };
+        /** @enum {string} */
+        ProductStatus: "DRAFT" | "ACTIVE" | "ARCHIVED";
+        /** @enum {string} */
+        DeviceStatus: "ENABLED" | "DISABLED" | "ARCHIVED";
+        Product: {
+            /** Format: uuid */
+            id: string;
+            productKey: string;
+            name: string;
+            deviceType: string;
+            status: components["schemas"]["ProductStatus"];
+            /** Format: date-time */
+            archivedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        ProductPage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["Product"][];
+        };
+        ProductCreateRequest: {
+            productKey: string;
+            name: string;
+            deviceType: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ACTIVE";
+        };
+        ProductUpdateRequest: {
+            name: string;
+            deviceType: string;
+            /** @enum {string} */
+            status: "DRAFT" | "ACTIVE";
+            /** Format: int64 */
+            version: number;
+        };
+        Device: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            deviceCode: string;
+            name: string;
+            status: components["schemas"]["DeviceStatus"];
+            /** Format: date-time */
+            archivedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        DevicePage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["Device"][];
+        };
+        DeviceCreateRequest: {
+            /** Format: uuid */
+            productId: string;
+            deviceCode: string;
+            name: string;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+        };
+        DeviceUpdateRequest: {
+            name: string;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            /** Format: int64 */
+            version: number;
+        };
+        ArchiveRequest: {
+            /** Format: int64 */
+            version: number;
+        };
+        PageMetadata: {
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        PropertyId: string;
+        /** @enum {string} */
+        TelemetryQuality: "GOOD" | "UNCERTAIN" | "BAD" | "TIME_UNTRUSTED";
+        DeviceLatest: {
+            /** Format: uuid */
+            deviceId: string;
+            items: components["schemas"]["TelemetryLatestItem"][];
+            missingPropertyIds: components["schemas"]["PropertyId"][];
+        };
+        TelemetryLatestItem: {
+            propertyId: components["schemas"]["PropertyId"];
+            /** Format: double */
+            value: number;
+            /** Format: date-time */
+            occurredAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            quality: components["schemas"]["TelemetryQuality"];
+            /** Format: uuid */
+            eventId: string;
+            bootId?: string | null;
+            /** Format: int64 */
+            sequence?: number | null;
+            /** @enum {string} */
+            source: "REDIS" | "TIMESCALEDB";
+        };
+        TelemetryHistory: {
+            /** Format: uuid */
+            deviceId: string;
+            propertyId: components["schemas"]["PropertyId"];
+            /** @enum {string} */
+            aggregation: "RAW" | "AVG" | "MIN" | "MAX";
+            /** Format: duration */
+            bucket?: string | null;
+            /**
+             * Format: int64
+             * @description 本次分页数据集固定使用的数据库摄取水位上限。
+             */
+            watermark: number;
+            items: components["schemas"]["TelemetryHistoryPoint"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        TelemetryHistoryPoint: {
+            /** Format: date-time */
+            occurredAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: double */
+            value: number;
+            quality: components["schemas"]["TelemetryQuality"];
+            /** Format: uuid */
+            eventId?: string | null;
+            /** Format: int64 */
+            sampleCount: number;
+        };
+        ApiError: {
+            code: string;
+            message: string;
+            traceId: string;
+            /** Format: date-time */
+            timestamp: string;
+            details: {
+                [key: string]: unknown;
+            };
+        };
     };
-    SystemOperationItem: {
-      key: string;
-      category: components['schemas']['SystemOperationCategory'];
-      status: components['schemas']['SystemOperationStatus'];
-      /** Format: int64 */
-      latencyMillis: number;
-      summary: string;
+    responses: {
+        /** @description 参数、属性标识、时间范围或聚合参数不合法。 */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 登录状态无效。 */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 缺少当前操作要求的权限。 */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 设备不存在，错误码 DEVICE-404-002。 */
+        DeviceNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 命令不存在，错误码 COMMAND-404-001。 */
+        CommandNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 产品不存在，错误码 DEVICE-404-001。 */
+        ProductNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 编码重复、状态冲突或乐观锁版本冲突。 */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 命令模板、目标设备、参数或时间约束不允许下发。 */
+        UnprocessableEntity: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 等待同一属性的共享回源超过 2 秒或时序库查询超时，错误码 TELEMETRY-503-001。 */
+        TelemetryBusy: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
     };
-    /** @enum {string} */
-    DashboardDataStatus: 'AVAILABLE' | 'UNAVAILABLE';
-    /** @enum {string} */
-    DashboardDeviceState: 'STALE' | 'NEVER_REPORTED';
-    OperationsOverview: {
-      /** Format: date-time */
-      generatedAt: string;
-      dataStatus: components['schemas']['DashboardDataStatus'];
-      freshnessSeconds: number;
-      devices: components['schemas']['DashboardDeviceSummary'];
-      telemetry: components['schemas']['DashboardTelemetrySummary'];
-      attentionDevices: components['schemas']['DashboardAttentionDevice'][];
+    parameters: {
+        ProductId: string;
+        /** @description 设备 UUID。 */
+        DeviceId: string;
+        /** @description 命令 UUID。 */
+        CommandId: string;
+        Keyword: string;
+        Page: number;
+        PageSize: number;
     };
-    DashboardDeviceSummary: {
-      /** Format: int64 */
-      enabled: number;
-      /** Format: int64 */
-      reporting?: number | null;
-      /** Format: int64 */
-      stale?: number | null;
-      /** Format: int64 */
-      neverReported?: number | null;
-    };
-    DashboardTelemetrySummary: {
-      /** Format: int64 */
-      todayMessages?: number | null;
-      /** Format: date-time */
-      latestReceivedAt?: string | null;
-      hourly: components['schemas']['DashboardHourBucket'][];
-    };
-    DashboardHourBucket: {
-      /** Format: date-time */
-      hour: string;
-      /** Format: int64 */
-      count: number;
-    };
-    DashboardAttentionDevice: {
-      /** Format: uuid */
-      deviceId: string;
-      deviceCode: string;
-      name: string;
-      state: components['schemas']['DashboardDeviceState'];
-      /** Format: date-time */
-      lastSeenAt?: string | null;
-    };
-    /** @enum {string} */
-    CommandStatus:
-      | 'CREATED'
-      | 'QUEUED'
-      | 'SENT'
-      | 'DEVICE_RECEIVED'
-      | 'SUCCEEDED'
-      | 'REFUSED'
-      | 'FAILED'
-      | 'EXPIRED'
-      | 'TIMEOUT'
-      | 'CANCELLED';
-    /** @enum {string} */
-    CommandRiskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
-    ManagedMenuNode: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      parentId?: string | null;
-      name: string;
-      /** @enum {string} */
-      type: 'DIRECTORY' | 'MENU' | 'BUTTON';
-      path?: string | null;
-      componentKey?: string | null;
-      permission?: string | null;
-      icon?: string | null;
-      sortOrder: number;
-      visible: boolean;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      i18nKey?: string | null;
-      protectedNode: boolean;
-      /** Format: int64 */
-      version: number;
-      children: components['schemas']['ManagedMenuNode'][];
-    };
-    MenuComponentOption: {
-      key: string;
-      name: string;
-    };
-    MenuSaveRequest: {
-      /** Format: uuid */
-      parentId?: string | null;
-      name: string;
-      /** @enum {string} */
-      type: 'DIRECTORY' | 'MENU' | 'BUTTON';
-      path?: string | null;
-      componentKey?: string | null;
-      permission?: string | null;
-      icon?: string | null;
-      sortOrder: number;
-      visible: boolean;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      i18nKey?: string | null;
-      /** Format: int64 */
-      version: number;
-    };
-    DictionaryType: {
-      /** Format: uuid */
-      id: string;
-      code: string;
-      name: string;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      description?: string | null;
-      builtIn: boolean;
-      /** Format: int64 */
-      version: number;
-    };
-    DictionaryTypeCreateRequest: {
-      code: string;
-      name: string;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      description?: string | null;
-    };
-    DictionaryTypeUpdateRequest: {
-      name: string;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      description?: string | null;
-      /** Format: int64 */
-      version: number;
-    };
-    DictionaryItem: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      typeId: string;
-      value: string;
-      labelZh: string;
-      labelEn?: string | null;
-      semanticType: components['schemas']['SemanticType'];
-      sortOrder: number;
-      defaultItem: boolean;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      /** Format: int64 */
-      version: number;
-    };
-    DictionaryItemCreateRequest: {
-      value: string;
-      labelZh: string;
-      labelEn?: string | null;
-      semanticType: components['schemas']['SemanticType'];
-      sortOrder: number;
-      defaultItem: boolean;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-    };
-    DictionaryItemUpdateRequest: {
-      labelZh: string;
-      labelEn?: string | null;
-      semanticType: components['schemas']['SemanticType'];
-      sortOrder: number;
-      defaultItem: boolean;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      /** Format: int64 */
-      version: number;
-    };
-    /** @enum {string} */
-    SemanticType: 'default' | 'primary' | 'info' | 'success' | 'warning' | 'error';
-    ProductDeviceConfiguration: {
-      models: components['schemas']['DeviceModelVersionView'][];
-      protocols: components['schemas']['ProtocolMappingVersionView'][];
-    };
-    DeviceModelVersionView: {
-      version: components['schemas']['DeviceModelVersion'];
-      fields: components['schemas']['DeviceModelField'][];
-    };
-    ProtocolMappingVersionView: {
-      version: components['schemas']['ProtocolMappingVersion'];
-      fields: components['schemas']['ProtocolMappingField'][];
-    };
-    DeviceModelVersion: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      productId: string;
-      versionNumber: number;
-      status: components['schemas']['ConfigurationVersionStatus'];
-      description?: string | null;
-      /** Format: int64 */
-      version: number;
-    };
-    DeviceModelField: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      modelVersionId: string;
-      identifier: string;
-      nameZh: string;
-      nameEn?: string | null;
-      /** @enum {string} */
-      dataType: 'INTEGER' | 'DECIMAL' | 'BOOLEAN' | 'STRING' | 'ENUM' | 'DATETIME' | 'GEO_POINT';
-      unit?: string | null;
-      /** @enum {string} */
-      accessMode: 'READ' | 'WRITE' | 'READ_WRITE';
-      requiredField: boolean;
-      minimumValue?: number | null;
-      maximumValue?: number | null;
-      decimalPlaces?: number | null;
-      sortOrder: number;
-      description?: string | null;
-      /** Format: int64 */
-      version: number;
-    };
-    DeviceModelFieldsRequest: {
-      fields: components['schemas']['DeviceModelFieldInput'][];
-    };
-    DeviceModelFieldInput: {
-      identifier: string;
-      nameZh: string;
-      nameEn?: string | null;
-      /** @enum {string} */
-      dataType: 'INTEGER' | 'DECIMAL' | 'BOOLEAN' | 'STRING' | 'ENUM' | 'DATETIME' | 'GEO_POINT';
-      unit?: string | null;
-      /** @enum {string} */
-      accessMode: 'READ' | 'WRITE' | 'READ_WRITE';
-      requiredField: boolean;
-      minimumValue?: number | null;
-      maximumValue?: number | null;
-      decimalPlaces?: number | null;
-      sortOrder: number;
-      description?: string | null;
-    };
-    ProtocolMappingVersion: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      productId: string;
-      profileKey: string;
-      name: string;
-      /** @enum {string} */
-      protocolType: 'MQTT_JSON' | 'MQTT_BINARY' | 'TCP_BINARY';
-      /** @enum {string} */
-      messageType: 'TELEMETRY' | 'STATE' | 'EVENT' | 'COMMAND_REPLY';
-      versionNumber: number;
-      status: components['schemas']['ConfigurationVersionStatus'];
-      topicOrFrame?: string | null;
-      description?: string | null;
-      /** Format: int64 */
-      version: number;
-    };
-    ProtocolMappingField: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      mappingVersionId: string;
-      sourcePath: string;
-      /** @enum {string} */
-      sourceDataType: 'INTEGER' | 'DECIMAL' | 'BOOLEAN' | 'STRING' | 'BINARY' | 'DATETIME';
-      targetIdentifier: string;
-      /** @enum {string} */
-      transformType: 'NONE' | 'SCALE' | 'OFFSET' | 'SCALE_OFFSET' | 'ENUM' | 'EXPRESSION';
-      scaleFactor?: number | null;
-      offsetValue?: number | null;
-      expression?: string | null;
-      requiredField: boolean;
-      sortOrder: number;
-      /** Format: int64 */
-      version: number;
-    };
-    ProtocolMappingDraftRequest: {
-      profileKey: string;
-      name: string;
-      /** @enum {string} */
-      protocolType: 'MQTT_JSON' | 'MQTT_BINARY' | 'TCP_BINARY';
-      /** @enum {string} */
-      messageType: 'TELEMETRY' | 'STATE' | 'EVENT' | 'COMMAND_REPLY';
-      topicOrFrame?: string | null;
-      description?: string | null;
-    };
-    ProtocolMappingFieldsRequest: {
-      fields: components['schemas']['ProtocolMappingFieldInput'][];
-    };
-    ProtocolMappingFieldInput: {
-      sourcePath: string;
-      /** @enum {string} */
-      sourceDataType: 'INTEGER' | 'DECIMAL' | 'BOOLEAN' | 'STRING' | 'BINARY' | 'DATETIME';
-      targetIdentifier: string;
-      /** @enum {string} */
-      transformType: 'NONE' | 'SCALE' | 'OFFSET' | 'SCALE_OFFSET' | 'ENUM' | 'EXPRESSION';
-      scaleFactor?: number | null;
-      offsetValue?: number | null;
-      expression?: string | null;
-      requiredField: boolean;
-      sortOrder: number;
-    };
-    /** @enum {string} */
-    ConfigurationVersionStatus: 'DRAFT' | 'PUBLISHED' | 'RETIRED';
-    DescriptionRequest: {
-      description?: string | null;
-    };
-    VersionRequest: {
-      /** Format: int64 */
-      version: number;
-    };
-    CommandTemplate: {
-      key: string;
-      version: number;
-      riskLevel: components['schemas']['CommandRiskLevel'];
-      defaultTtlSeconds: number;
-      defaultTimeoutSeconds: number;
-      parameterSchema: {
-        [key: string]: unknown;
-      };
-      requiresReason: boolean;
-    };
-    Command: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      deviceId: string;
-      templateKey: string;
-      templateVersion: number;
-      parameters: {
-        [key: string]: unknown;
-      };
-      reason?: string | null;
-      workOrderNo?: string | null;
-      /** Format: uuid */
-      cancelledBy?: string | null;
-      cancelReason?: string | null;
-      riskLevel: components['schemas']['CommandRiskLevel'];
-      status: components['schemas']['CommandStatus'];
-      ttlSeconds: number;
-      timeoutSeconds: number;
-      idempotencyKey: string;
-      /** Format: date-time */
-      createdAt: string;
-      /** Format: date-time */
-      updatedAt: string;
-      /** Format: date-time */
-      queuedAt: string;
-      /** Format: date-time */
-      sentAt?: string | null;
-      /** Format: date-time */
-      deviceReceivedAt?: string | null;
-      /** Format: date-time */
-      completedAt?: string | null;
-      /** Format: date-time */
-      expiresAt: string;
-      lastErrorCode?: string | null;
-      reply?: {
-        [key: string]: unknown;
-      } | null;
-      /** Format: int64 */
-      version: number;
-    };
-    CommandPage: components['schemas']['PageMetadata'] & {
-      items: components['schemas']['Command'][];
-    };
-    CommandTarget: {
-      /** Format: uuid */
-      id: string;
-      deviceCode: string;
-      name: string;
-    };
-    CommandTargetPage: components['schemas']['PageMetadata'] & {
-      items: components['schemas']['CommandTarget'][];
-    };
-    CommandCreateRequest: {
-      /** Format: uuid */
-      deviceId: string;
-      templateKey: string;
-      parameters: {
-        [key: string]: unknown;
-      };
-      reason?: string;
-      workOrderNo?: string;
-      ttlSeconds: number;
-      timeoutSeconds: number;
-    };
-    /** @enum {string} */
-    ProductStatus: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
-    /** @enum {string} */
-    DeviceStatus: 'ENABLED' | 'DISABLED' | 'ARCHIVED';
-    Product: {
-      /** Format: uuid */
-      id: string;
-      productKey: string;
-      name: string;
-      deviceType: string;
-      status: components['schemas']['ProductStatus'];
-      /** Format: date-time */
-      archivedAt?: string | null;
-      /** Format: date-time */
-      createdAt: string;
-      /** Format: date-time */
-      updatedAt: string;
-      /** Format: int64 */
-      version: number;
-    };
-    ProductPage: components['schemas']['PageMetadata'] & {
-      items: components['schemas']['Product'][];
-    };
-    ProductCreateRequest: {
-      productKey: string;
-      name: string;
-      deviceType: string;
-      /** @enum {string} */
-      status: 'DRAFT' | 'ACTIVE';
-    };
-    ProductUpdateRequest: {
-      name: string;
-      deviceType: string;
-      /** @enum {string} */
-      status: 'DRAFT' | 'ACTIVE';
-      /** Format: int64 */
-      version: number;
-    };
-    Device: {
-      /** Format: uuid */
-      id: string;
-      /** Format: uuid */
-      productId: string;
-      deviceCode: string;
-      name: string;
-      status: components['schemas']['DeviceStatus'];
-      /** Format: date-time */
-      archivedAt?: string | null;
-      /** Format: date-time */
-      createdAt: string;
-      /** Format: date-time */
-      updatedAt: string;
-      /** Format: int64 */
-      version: number;
-    };
-    DevicePage: components['schemas']['PageMetadata'] & {
-      items: components['schemas']['Device'][];
-    };
-    DeviceCreateRequest: {
-      /** Format: uuid */
-      productId: string;
-      deviceCode: string;
-      name: string;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-    };
-    DeviceUpdateRequest: {
-      name: string;
-      /** @enum {string} */
-      status: 'ENABLED' | 'DISABLED';
-      /** Format: int64 */
-      version: number;
-    };
-    ArchiveRequest: {
-      /** Format: int64 */
-      version: number;
-    };
-    PageMetadata: {
-      page: number;
-      size: number;
-      /** Format: int64 */
-      total: number;
-    };
-    PropertyId: string;
-    /** @enum {string} */
-    TelemetryQuality: 'GOOD' | 'UNCERTAIN' | 'BAD' | 'TIME_UNTRUSTED';
-    DeviceLatest: {
-      /** Format: uuid */
-      deviceId: string;
-      items: components['schemas']['TelemetryLatestItem'][];
-      missingPropertyIds: components['schemas']['PropertyId'][];
-    };
-    TelemetryLatestItem: {
-      propertyId: components['schemas']['PropertyId'];
-      /** Format: double */
-      value: number;
-      /** Format: date-time */
-      occurredAt: string;
-      /** Format: date-time */
-      receivedAt: string;
-      quality: components['schemas']['TelemetryQuality'];
-      /** Format: uuid */
-      eventId: string;
-      bootId?: string | null;
-      /** Format: int64 */
-      sequence?: number | null;
-      /** @enum {string} */
-      source: 'REDIS' | 'TIMESCALEDB';
-    };
-    TelemetryHistory: {
-      /** Format: uuid */
-      deviceId: string;
-      propertyId: components['schemas']['PropertyId'];
-      /** @enum {string} */
-      aggregation: 'RAW' | 'AVG' | 'MIN' | 'MAX';
-      /** Format: duration */
-      bucket?: string | null;
-      /**
-       * Format: int64
-       * @description 本次分页数据集固定使用的数据库摄取水位上限。
-       */
-      watermark: number;
-      items: components['schemas']['TelemetryHistoryPoint'][];
-      page: number;
-      size: number;
-      /** Format: int64 */
-      total: number;
-    };
-    TelemetryHistoryPoint: {
-      /** Format: date-time */
-      occurredAt: string;
-      /** Format: date-time */
-      receivedAt: string;
-      /** Format: double */
-      value: number;
-      quality: components['schemas']['TelemetryQuality'];
-      /** Format: uuid */
-      eventId?: string | null;
-      /** Format: int64 */
-      sampleCount: number;
-    };
-    ApiError: {
-      code: string;
-      message: string;
-      traceId: string;
-      /** Format: date-time */
-      timestamp: string;
-      details: {
-        [key: string]: unknown;
-      };
-    };
-  };
-  responses: {
-    /** @description 参数、属性标识、时间范围或聚合参数不合法。 */
-    BadRequest: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 登录状态无效。 */
-    Unauthorized: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 缺少当前操作要求的权限。 */
-    Forbidden: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 设备不存在，错误码 DEVICE-404-002。 */
-    DeviceNotFound: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 命令不存在，错误码 COMMAND-404-001。 */
-    CommandNotFound: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 产品不存在，错误码 DEVICE-404-001。 */
-    ProductNotFound: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 编码重复、状态冲突或乐观锁版本冲突。 */
-    Conflict: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 命令模板、目标设备、参数或时间约束不允许下发。 */
-    UnprocessableEntity: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-    /** @description 等待同一属性的共享回源超过 2 秒或时序库查询超时，错误码 TELEMETRY-503-001。 */
-    TelemetryBusy: {
-      headers: {
-        [name: string]: unknown;
-      };
-      content: {
-        'application/json': components['schemas']['ApiError'];
-      };
-    };
-  };
-  parameters: {
-    ProductId: string;
-    /** @description 设备 UUID。 */
-    DeviceId: string;
-    /** @description 命令 UUID。 */
-    CommandId: string;
-    Keyword: string;
-    Page: number;
-    PageSize: number;
-  };
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  getOperationsDashboard: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 调度运行总览。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['OperationsOverview'];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-    };
-  };
-  getSystemOperations: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 平台服务、消息和存储依赖的脱敏状态。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['SystemOperationsOverview'];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  getManagedMenuTree: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 完整菜单树，供菜单维护和角色授权复用。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ManagedMenuNode'][];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  listMenuComponentOptions: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 编译期注册的页面组件白名单。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['MenuComponentOption'][];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  createManagedMenu: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['MenuSaveRequest'];
-      };
-    };
-    responses: {
-      /** @description 菜单节点已创建。 */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ManagedMenuNode'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  updateManagedMenu: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        menuId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['MenuSaveRequest'];
-      };
-    };
-    responses: {
-      /** @description 修改后的菜单节点。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ManagedMenuNode'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  deleteManagedMenu: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        menuId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 菜单节点已删除。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  listDictionaryTypes: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 字典类型列表。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DictionaryType'][];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  createDictionaryType: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DictionaryTypeCreateRequest'];
-      };
-    };
-    responses: {
-      /** @description 字典类型已创建。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DictionaryType'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  updateDictionaryType: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryTypeId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DictionaryTypeUpdateRequest'];
-      };
-    };
-    responses: {
-      /** @description 修改后的字典类型。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DictionaryType'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  deleteDictionaryType: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryTypeId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 字典类型已删除。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  listDictionaryItems: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryTypeId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 字典数据项列表。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DictionaryItem'][];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  createDictionaryItem: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryTypeId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DictionaryItemCreateRequest'];
-      };
-    };
-    responses: {
-      /** @description 字典数据项已创建。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DictionaryItem'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  updateDictionaryItem: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryItemId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DictionaryItemUpdateRequest'];
-      };
-    };
-    responses: {
-      /** @description 修改后的字典数据项。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DictionaryItem'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  deleteDictionaryItem: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryItemId: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 字典数据项已删除。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  listEnabledDictionaryItems: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        dictionaryCode: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 可供业务页面使用的启用字典项。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DictionaryItem'][];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-    };
-  };
-  getProductDeviceConfiguration: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        productId: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 产品全部物模型和协议映射版本。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ProductDeviceConfiguration'];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-    };
-  };
-  createDeviceModelDraft: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        productId: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DescriptionRequest'];
-      };
-    };
-    responses: {
-      /** @description 新建的物模型草稿版本。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DeviceModelVersion'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-    };
-  };
-  replaceDeviceModelFields: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        modelVersionId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DeviceModelFieldsRequest'];
-      };
-    };
-    responses: {
-      /** @description 保存后的物模型字段。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DeviceModelField'][];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['UnprocessableEntity'];
-    };
-  };
-  publishDeviceModelVersion: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        modelVersionId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['VersionRequest'];
-      };
-    };
-    responses: {
-      /** @description 物模型版本已发布。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['UnprocessableEntity'];
-    };
-  };
-  createProtocolMappingDraft: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        productId: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ProtocolMappingDraftRequest'];
-      };
-    };
-    responses: {
-      /** @description 新建的协议映射草稿版本。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ProtocolMappingVersion'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  replaceProtocolMappingFields: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        protocolVersionId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ProtocolMappingFieldsRequest'];
-      };
-    };
-    responses: {
-      /** @description 保存后的协议字段映射。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ProtocolMappingField'][];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['UnprocessableEntity'];
-    };
-  };
-  publishProtocolMappingVersion: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        protocolVersionId: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['VersionRequest'];
-      };
-    };
-    responses: {
-      /** @description 协议映射版本已发布。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['UnprocessableEntity'];
-    };
-  };
-  listCommandTemplates: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 已发布的低风险命令模板。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['CommandTemplate'][];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  listCommandTargets: {
-    parameters: {
-      query?: {
-        keyword?: string;
-        page?: number;
-        size?: number;
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 命令目标设备分页。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['CommandTargetPage'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  listCommands: {
-    parameters: {
-      query?: {
-        deviceId?: string;
-        status?: components['schemas']['CommandStatus'];
-        templateKey?: string;
-        page?: components['parameters']['Page'];
-        size?: components['parameters']['PageSize'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 命令分页。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['CommandPage'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  createCommand: {
-    parameters: {
-      query?: never;
-      header: {
-        'Idempotency-Key': string;
-      };
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['CommandCreateRequest'];
-      };
-    };
-    responses: {
-      /** @description 命令已创建并进入可靠出站队列。 */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Command'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-      422: components['responses']['UnprocessableEntity'];
-    };
-  };
-  getCommand: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description 命令 UUID。 */
-        commandId: components['parameters']['CommandId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 命令详情。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Command'];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['CommandNotFound'];
-    };
-  };
-  cancelCommand: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description 命令 UUID。 */
-        commandId: components['parameters']['CommandId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': {
-          /** Format: int64 */
-          version: number;
-          reason: string;
-        };
-      };
-    };
-    responses: {
-      /** @description 命令已取消。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Command'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['CommandNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  listProducts: {
-    parameters: {
-      query?: {
-        keyword?: components['parameters']['Keyword'];
-        status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
-        page?: components['parameters']['Page'];
-        size?: components['parameters']['PageSize'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 产品分页。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['ProductPage'];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  createProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ProductCreateRequest'];
-      };
-    };
-    responses: {
-      /** @description 产品已创建。 */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Product'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  updateProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        productId: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ProductUpdateRequest'];
-      };
-    };
-    responses: {
-      /** @description 修改后的产品。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Product'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  archiveProduct: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        productId: components['parameters']['ProductId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ArchiveRequest'];
-      };
-    };
-    responses: {
-      /** @description 产品已归档。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  listDevices: {
-    parameters: {
-      query?: {
-        productId?: string;
-        keyword?: components['parameters']['Keyword'];
-        status?: 'ENABLED' | 'DISABLED' | 'ARCHIVED';
-        page?: components['parameters']['Page'];
-        size?: components['parameters']['PageSize'];
-      };
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 设备分页。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DevicePage'];
-        };
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-    };
-  };
-  createDevice: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DeviceCreateRequest'];
-      };
-    };
-    responses: {
-      /** @description 设备已创建。 */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Device'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['ProductNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  updateDevice: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description 设备 UUID。 */
-        deviceId: components['parameters']['DeviceId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['DeviceUpdateRequest'];
-      };
-    };
-    responses: {
-      /** @description 修改后的设备。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['Device'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['DeviceNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  archiveDevice: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description 设备 UUID。 */
-        deviceId: components['parameters']['DeviceId'];
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        'application/json': components['schemas']['ArchiveRequest'];
-      };
-    };
-    responses: {
-      /** @description 设备已归档。 */
-      204: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['DeviceNotFound'];
-      409: components['responses']['Conflict'];
-    };
-  };
-  getDeviceLatestTelemetry: {
-    parameters: {
-      query: {
-        /** @description 传入数量为 1 至 100；服务去重后按首次出现顺序返回。 */
-        propertyIds: components['schemas']['PropertyId'][];
-      };
-      header?: never;
-      path: {
-        /** @description 设备 UUID。 */
-        deviceId: components['parameters']['DeviceId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 最新值快照；没有历史的属性出现在 missingPropertyIds。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['DeviceLatest'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['DeviceNotFound'];
-      503: components['responses']['TelemetryBusy'];
-    };
-  };
-  getDeviceTelemetryHistory: {
-    parameters: {
-      query: {
-        propertyId: components['schemas']['PropertyId'];
-        /** @description 开始时间，包含。 */
-        from: string;
-        /** @description 结束时间，不包含。 */
-        to: string;
-        aggregation?: 'RAW' | 'AVG' | 'MIN' | 'MAX';
-        /** @description 聚合时间桶，使用 ISO-8601 Duration，例如 PT5M；RAW 查询不能传入。 */
-        bucket?: string;
-        /** @description 分页数据集的全局摄取水位上限；首页省略，后续页传回首页响应中的 watermark，不得大于服务端当前已提交水位。 */
-        watermark?: number;
-        page?: number;
-        size?: number;
-      };
-      header?: never;
-      path: {
-        /** @description 设备 UUID。 */
-        deviceId: components['parameters']['DeviceId'];
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description 原始遥测点或聚合时间桶分页。 */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          'application/json': components['schemas']['TelemetryHistory'];
-        };
-      };
-      400: components['responses']['BadRequest'];
-      401: components['responses']['Unauthorized'];
-      403: components['responses']['Forbidden'];
-      404: components['responses']['DeviceNotFound'];
-      503: components['responses']['TelemetryBusy'];
-    };
-  };
+    getOperationsDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 调度运行总览。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getSystemOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 平台服务、消息和存储依赖的脱敏状态。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOperationsOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getSystemOperationsOverview: {
+        parameters: {
+            query?: {
+                range?: components["schemas"]["OperationsObservabilityRange"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 平台运行历史聚合结论。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsObservabilityOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getSystemOperationSeries: {
+        parameters: {
+            query?: {
+                range?: components["schemas"]["OperationsObservabilityRange"];
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 单个检查项的真实状态与延迟采样点。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsObservabilitySeries"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getManagedMenuTree: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 完整菜单树，供菜单维护和角色授权复用。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedMenuNode"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listMenuComponentOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 编译期注册的页面组件白名单。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MenuComponentOption"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createManagedMenu: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MenuSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description 菜单节点已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedMenuNode"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateManagedMenu: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                menuId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MenuSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的菜单节点。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedMenuNode"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteManagedMenu: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                menuId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 菜单节点已删除。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listDictionaryTypes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 字典类型列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictionaryType"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createDictionaryType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DictionaryTypeCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 字典类型已创建。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictionaryType"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateDictionaryType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryTypeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DictionaryTypeUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的字典类型。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictionaryType"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteDictionaryType: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryTypeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 字典类型已删除。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listDictionaryItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryTypeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 字典数据项列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictionaryItem"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createDictionaryItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryTypeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DictionaryItemCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 字典数据项已创建。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictionaryItem"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateDictionaryItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DictionaryItemUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的字典数据项。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictionaryItem"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteDictionaryItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 字典数据项已删除。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listEnabledDictionaryItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dictionaryCode: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 可供业务页面使用的启用字典项。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictionaryItem"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getProductDeviceConfiguration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 产品全部物模型和协议映射版本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDeviceConfiguration"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+        };
+    };
+    createDeviceModelDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DescriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description 新建的物模型草稿版本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceModelVersion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+        };
+    };
+    replaceDeviceModelFields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modelVersionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceModelFieldsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存后的物模型字段。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceModelField"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    publishDeviceModelVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                modelVersionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 物模型版本已发布。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    createProtocolMappingDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtocolMappingDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description 新建的协议映射草稿版本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolMappingVersion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    replaceProtocolMappingFields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                protocolVersionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtocolMappingFieldsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存后的协议字段映射。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolMappingField"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    publishProtocolMappingVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                protocolVersionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 协议映射版本已发布。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listCommandTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已发布的低风险命令模板。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTemplate"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listCommandTargets: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 命令目标设备分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTargetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listCommands: {
+        parameters: {
+            query?: {
+                deviceId?: string;
+                status?: components["schemas"]["CommandStatus"];
+                templateKey?: string;
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 命令分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createCommand: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 命令已创建并进入可靠出站队列。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Command"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 命令 UUID。 */
+                commandId: components["parameters"]["CommandId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 命令详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Command"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["CommandNotFound"];
+        };
+    };
+    cancelCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 命令 UUID。 */
+                commandId: components["parameters"]["CommandId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: int64 */
+                    version: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 命令已取消。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Command"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["CommandNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listProducts: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: "DRAFT" | "ACTIVE" | "ARCHIVED";
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 产品分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 产品已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProductUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的产品。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Product"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 产品已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listDevices: {
+        parameters: {
+            query?: {
+                productId?: string;
+                keyword?: components["parameters"]["Keyword"];
+                status?: "ENABLED" | "DISABLED" | "ARCHIVED";
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设备分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 设备已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ProductNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的设备。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Device"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 设备已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getDeviceLatestTelemetry: {
+        parameters: {
+            query: {
+                /** @description 传入数量为 1 至 100；服务去重后按首次出现顺序返回。 */
+                propertyIds: components["schemas"]["PropertyId"][];
+            };
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最新值快照；没有历史的属性出现在 missingPropertyIds。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceLatest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            503: components["responses"]["TelemetryBusy"];
+        };
+    };
+    getDeviceTelemetryHistory: {
+        parameters: {
+            query: {
+                propertyId: components["schemas"]["PropertyId"];
+                /** @description 开始时间，包含。 */
+                from: string;
+                /** @description 结束时间，不包含。 */
+                to: string;
+                aggregation?: "RAW" | "AVG" | "MIN" | "MAX";
+                /** @description 聚合时间桶，使用 ISO-8601 Duration，例如 PT5M；RAW 查询不能传入。 */
+                bucket?: string;
+                /** @description 分页数据集的全局摄取水位上限；首页省略，后续页传回首页响应中的 watermark，不得大于服务端当前已提交水位。 */
+                watermark?: number;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 原始遥测点或聚合时间桶分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryHistory"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            503: components["responses"]["TelemetryBusy"];
+        };
+    };
 }

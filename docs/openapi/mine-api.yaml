@@ -56,6 +56,49 @@ paths:
               schema: { $ref: '#/components/schemas/SystemOperationsOverview' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /system/operations/overview:
+    get:
+      tags: [SystemOperations]
+      operationId: getSystemOperationsOverview
+      summary: 查询平台运行历史总览
+      description: |
+        通过服务端固定 PromQL 模板查询 Prometheus，不接受调用方传入任意查询表达式。
+        Prometheus 未启用或不可用时 dataStatus 为 UNAVAILABLE，各检查项状态为 UNKNOWN。
+      parameters:
+        - name: range
+          in: query
+          schema:
+            $ref: '#/components/schemas/OperationsObservabilityRange'
+      responses:
+        '200':
+          description: 平台运行历史聚合结论。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationsObservabilityOverview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /system/operations/items/{key}/series:
+    get:
+      tags: [SystemOperations]
+      operationId: getSystemOperationSeries
+      summary: 查询单个运行检查项趋势
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+        - name: range
+          in: query
+          schema:
+            $ref: '#/components/schemas/OperationsObservabilityRange'
+      responses:
+        '200':
+          description: 单个检查项的真实状态与延迟采样点。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationsObservabilitySeries' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /system/menus/tree:
     get:
       tags: [SystemConfiguration]
@@ -973,6 +1016,59 @@ components:
         status: { $ref: '#/components/schemas/SystemOperationStatus' }
         latencyMillis: { type: integer, format: int64, minimum: 0 }
         summary: { type: string }
+    OperationsObservabilityDataStatus:
+      type: string
+      enum: [AVAILABLE, UNAVAILABLE]
+    OperationsObservabilityRange:
+      type: string
+      enum: [1h, 6h, 24h, 7d, 15d]
+      default: 24h
+    OperationsObservabilityOverview:
+      type: object
+      required: [dataStatus, range, generatedAt, status, healthy, degraded, down, unknown, items]
+      properties:
+        dataStatus: { $ref: '#/components/schemas/OperationsObservabilityDataStatus' }
+        range: { $ref: '#/components/schemas/OperationsObservabilityRange' }
+        generatedAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/SystemOperationStatus' }
+        healthy: { type: integer, format: int64, minimum: 0 }
+        degraded: { type: integer, format: int64, minimum: 0 }
+        down: { type: integer, format: int64, minimum: 0 }
+        unknown: { type: integer, format: int64, minimum: 0 }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OperationsObservabilityItem' }
+    OperationsObservabilityItem:
+      type: object
+      required: [key, category, status, availabilityPercent, averageLatencyMillis, p95LatencyMillis, lastChangedAt, sampleCount]
+      properties:
+        key: { type: string }
+        category: { $ref: '#/components/schemas/SystemOperationCategory' }
+        status: { $ref: '#/components/schemas/SystemOperationStatus' }
+        availabilityPercent: { type: [number, 'null'], format: double, minimum: 0, maximum: 100 }
+        averageLatencyMillis: { type: [integer, 'null'], format: int64, minimum: 0 }
+        p95LatencyMillis: { type: [integer, 'null'], format: int64, minimum: 0 }
+        lastChangedAt: { type: [string, 'null'], format: date-time }
+        sampleCount: { type: integer, format: int64, minimum: 0 }
+    OperationsObservabilitySeries:
+      type: object
+      required: [key, category, dataStatus, range, generatedAt, points]
+      properties:
+        key: { type: string }
+        category: { $ref: '#/components/schemas/SystemOperationCategory' }
+        dataStatus: { $ref: '#/components/schemas/OperationsObservabilityDataStatus' }
+        range: { $ref: '#/components/schemas/OperationsObservabilityRange' }
+        generatedAt: { type: string, format: date-time }
+        points:
+          type: array
+          items: { $ref: '#/components/schemas/OperationsObservabilityPoint' }
+    OperationsObservabilityPoint:
+      type: object
+      required: [time, status, latencyMillis]
+      properties:
+        time: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/SystemOperationStatus' }
+        latencyMillis: { type: [integer, 'null'], format: int64, minimum: 0 }
     DashboardDataStatus:
       type: string
       enum: [AVAILABLE, UNAVAILABLE]
