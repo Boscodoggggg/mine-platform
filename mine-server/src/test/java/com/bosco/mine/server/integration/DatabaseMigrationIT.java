@@ -283,6 +283,19 @@ class DatabaseMigrationIT {
 
     @Test
     void 协议发布控制面必须具备不可变结构和完整中文注释() {
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT table_name || '.' || column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND (
+                    (table_name = 'dev_protocol_mapping_version' AND column_name = 'metadata_paths')
+                    OR (table_name = 'dev_protocol_field_mapping' AND column_name = 'enum_mapping')
+                  )
+                ORDER BY table_name, column_name
+                """, String.class)).containsExactly(
+                "dev_protocol_field_mapping.enum_mapping",
+                "dev_protocol_mapping_version.metadata_paths"
+        );
         assertThat(constraintColumns("uk_dev_protocol_sample_version_name"))
                 .containsExactly("mapping_version_id", "name");
         assertThat(constraintColumns("uk_dev_config_package_product_sequence"))

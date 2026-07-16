@@ -7,6 +7,7 @@ import com.bosco.mine.protocol.engine.json.MqttJsonProtocolDefinition;
 import com.bosco.mine.protocol.engine.snapshot.ProtocolSnapshotHasher;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,32 @@ class ProtocolSampleRunnerTest {
 
         assertThat(report.passed()).isFalse();
         assertThat(report.results().getFirst().message()).contains("属性不符合预期");
+    }
+
+    @Test
+    void 十进制值应按数值而不是小数位格式比较() {
+        MqttJsonProtocolDefinition definition = new MqttJsonProtocolDefinition(
+                "decimal-json",
+                1,
+                new MqttJsonProtocolDefinition.MetadataPaths(
+                        "product", "device", null, null, "time", "replayed"),
+                List.of(new MqttJsonProtocolDefinition.PropertyDefinition(
+                        "temperature", MqttJsonProtocolDefinition.ValueType.DECIMAL)),
+                List.of(new MqttJsonProtocolDefinition.FieldMapping(
+                        "temp", MqttJsonProtocolDefinition.ValueType.DECIMAL, "temperature",
+                        FieldTransform.NONE, null, null, Map.of(), true))
+        );
+
+        ProtocolSampleRunner.TestReport report = new ProtocolSampleRunner().run(
+                new MqttJsonProtocolCompiler().compile(definition),
+                new MqttJsonExecutionPlan.TrustedIdentity("truck", "001"),
+                List.of(new ProtocolSample("decimal-scale", json("""
+                        {"product":"truck","device":"001","time":"2026-07-16T00:00:00Z",
+                         "replayed":false,"temp":12.0}
+                        """), true, Map.of("temperature", new BigDecimal("12.00")), null))
+        );
+
+        assertThat(report.passed()).isTrue();
     }
 
     @Test

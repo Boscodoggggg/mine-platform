@@ -41,6 +41,9 @@ sa-token:
   is-read-body: false
 
 mine:
+  configuration-distribution:
+    enabled: ${MINE_CONFIGURATION_DISTRIBUTION_ENABLED:false}
+    service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
   device-connection:
     allowed-cidrs: ${MINE_DEVICE_CONNECTION_ALLOWED_CIDRS:}
     max-concurrent-probes: ${MINE_DEVICE_CONNECTION_MAX_CONCURRENT_PROBES:8}
