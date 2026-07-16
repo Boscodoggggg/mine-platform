@@ -23,10 +23,18 @@ for (const terminalCase of terminalCases) {
   });
 }
 
-async function mockCommandCenter(
-  page: import('@playwright/test').Page,
-  terminalCase: (typeof terminalCases)[number]
-) {
+test('离开命令中心后应正常显示其他页面', async ({ page }) => {
+  await mockCommandCenter(page, terminalCases[0]);
+
+  await page.goto('/command/center');
+  await expect(page.getByText('下发已发布的低风险设备命令，跟踪消息从排队到设备执行的可靠状态。')).toBeVisible();
+  await page.getByRole('menuitem', { name: '首页' }).click();
+
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(page.getByText('矿区运行总览', { exact: true })).toBeVisible();
+});
+
+async function mockCommandCenter(page: import('@playwright/test').Page, terminalCase: (typeof terminalCases)[number]) {
   await page.addInitScript(() => {
     localStorage.setItem('MINE_token', JSON.stringify('e2e-token'));
     localStorage.setItem('MINE_tokenName', JSON.stringify('satoken'));

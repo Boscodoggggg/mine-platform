@@ -261,11 +261,13 @@ function templateLabel(key: string) {
 function supportsEmptyParameters(template: CommandTemplate) {
   const schema = template.parameterSchema;
   const properties = schema.properties;
-  return schema.type === 'object'
-    && schema.additionalProperties === false
-    && typeof properties === 'object'
-    && properties !== null
-    && Object.keys(properties).length === 0;
+  return (
+    schema.type === 'object' &&
+    schema.additionalProperties === false &&
+    typeof properties === 'object' &&
+    properties !== null &&
+    Object.keys(properties).length === 0
+  );
 }
 
 function statusLabel(status: CommandStatus) {
@@ -303,151 +305,157 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
 </script>
 
 <template>
-  <NSpace vertical :size="16">
-    <NPageHeader :title="t('mine.commands.title')" :subtitle="t('mine.commands.subtitle')">
-      <template #extra>
-        <NSpace>
-          <NButton :loading="loading" @click="loadCommands">{{ t('common.refresh') }}</NButton>
-          <NButton
-            v-if="can('command:instance:create') && can('command:template:view')"
-            type="primary"
-            @click="openCreate"
-          >
-            {{ t('mine.commands.action.create') }}
-          </NButton>
-        </NSpace>
-      </template>
-    </NPageHeader>
+  <div>
+    <NSpace vertical :size="16">
+      <NPageHeader :title="t('mine.commands.title')" :subtitle="t('mine.commands.subtitle')">
+        <template #extra>
+          <NSpace>
+            <NButton :loading="loading" @click="loadCommands">{{ t('common.refresh') }}</NButton>
+            <NButton
+              v-if="can('command:instance:create') && can('command:template:view')"
+              type="primary"
+              @click="openCreate"
+            >
+              {{ t('mine.commands.action.create') }}
+            </NButton>
+          </NSpace>
+        </template>
+      </NPageHeader>
 
-    <NCard>
-      <NGrid responsive="screen" cols="1 s:2 m:4" :x-gap="12" :y-gap="12">
-        <NGi>
+      <NCard>
+        <NGrid responsive="screen" cols="1 s:2 m:4" :x-gap="12" :y-gap="12">
+          <NGi>
+            <NSelect
+              v-model:value="query.deviceId"
+              clearable
+              filterable
+              remote
+              :options="deviceOptions"
+              :placeholder="t('mine.commands.placeholder.device')"
+              @search="loadTargets"
+            />
+          </NGi>
+          <NGi>
+            <NSelect
+              v-model:value="query.status"
+              clearable
+              :options="statusOptions"
+              :placeholder="t('mine.commands.placeholder.status')"
+            />
+          </NGi>
+          <NGi span="1 s:2">
+            <NSpace>
+              <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
+              <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+            </NSpace>
+          </NGi>
+        </NGrid>
+      </NCard>
+
+      <NCard>
+        <NDataTable
+          v-if="commands.length || loading"
+          remote
+          :loading="loading"
+          :columns="columns"
+          :data="commands"
+          :pagination="{
+            page: query.page,
+            pageSize: query.size,
+            itemCount: total,
+            onChange: (page: number) => {
+              query.page = page;
+              loadCommands();
+            }
+          }"
+          :row-key="(row: Command) => row.id"
+        />
+        <NEmpty v-else :description="t('mine.commands.empty')" />
+      </NCard>
+    </NSpace>
+
+    <NModal v-model:show="modalVisible" preset="card" :title="t('mine.commands.modal.create')" class="max-w-92vw w-150">
+      <NForm label-placement="top">
+        <NFormItem :label="t('mine.commands.field.device')" required>
           <NSelect
-            v-model:value="query.deviceId"
-            clearable
+            v-model:value="commandForm.deviceId"
             filterable
             remote
             :options="deviceOptions"
             :placeholder="t('mine.commands.placeholder.device')"
             @search="loadTargets"
           />
-        </NGi>
-        <NGi>
+        </NFormItem>
+        <NFormItem :label="t('mine.commands.field.template')" required>
           <NSelect
-            v-model:value="query.status"
-            clearable
-            :options="statusOptions"
-            :placeholder="t('mine.commands.placeholder.status')"
+            v-model:value="commandForm.templateKey"
+            :options="templateOptions"
+            @update:value="syncTemplateDefaults"
           />
-        </NGi>
-        <NGi span="1 s:2">
-          <NSpace>
-            <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
-            <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
-          </NSpace>
-        </NGi>
-      </NGrid>
-    </NCard>
-
-    <NCard>
-      <NDataTable
-        v-if="commands.length || loading"
-        remote
-        :loading="loading"
-        :columns="columns"
-        :data="commands"
-        :pagination="{
-          page: query.page,
-          pageSize: query.size,
-          itemCount: total,
-          onChange: (page: number) => {
-            query.page = page;
-            loadCommands();
-          }
-        }"
-        :row-key="(row: Command) => row.id"
-      />
-      <NEmpty v-else :description="t('mine.commands.empty')" />
-    </NCard>
-  </NSpace>
-
-  <NModal v-model:show="modalVisible" preset="card" :title="t('mine.commands.modal.create')" class="max-w-92vw w-150">
-    <NForm label-placement="top">
-      <NFormItem :label="t('mine.commands.field.device')" required>
-        <NSelect
-          v-model:value="commandForm.deviceId"
-          filterable
-          remote
-          :options="deviceOptions"
-          :placeholder="t('mine.commands.placeholder.device')"
-          @search="loadTargets"
-        />
-      </NFormItem>
-      <NFormItem :label="t('mine.commands.field.template')" required>
-        <NSelect
-          v-model:value="commandForm.templateKey"
-          :options="templateOptions"
-          @update:value="syncTemplateDefaults"
-        />
-      </NFormItem>
-      <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
-        <NGi>
-          <NFormItem :label="t('mine.commands.field.ttl')">
-            <NInputNumber v-model:value="commandForm.ttlSeconds" :min="1" :max="86400" />
-          </NFormItem>
-        </NGi>
-        <NGi>
-          <NFormItem :label="t('mine.commands.field.timeout')">
-            <NInputNumber v-model:value="commandForm.timeoutSeconds" :min="1" :max="86400" />
-          </NFormItem>
-        </NGi>
-      </NGrid>
-    </NForm>
-    <template #footer>
-      <NSpace justify="end">
-        <NButton @click="modalVisible = false">{{ t('mine.common.cancel') }}</NButton>
-        <NButton type="primary" :loading="saving" @click="requestSubmit">{{ t('mine.commands.action.send') }}</NButton>
-      </NSpace>
-    </template>
-  </NModal>
-
-  <NDrawer v-model:show="drawerVisible" width="min(520px, 92vw)">
-    <NDrawerContent :title="t('mine.commands.detail.title')" closable>
-      <template v-if="selectedCommand">
-        <NSpace vertical :size="16">
-          <NSpace justify="end">
-            <NButton text :loading="loading" @click="refreshDetails">{{ t('common.refresh') }}</NButton>
-          </NSpace>
-          <NDescriptions label-placement="left" :column="1" bordered>
-            <NDescriptionsItem :label="t('mine.commands.field.device')">
-              {{ deviceMap.get(selectedCommand.deviceId)?.name || selectedCommand.deviceId }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('mine.commands.field.template')">
-              {{ templateLabel(selectedCommand.templateKey) }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('mine.commands.field.status')">
-              <NTag :type="statusType(selectedCommand.status)">{{ statusLabel(selectedCommand.status) }}</NTag>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('mine.commands.field.id')">{{ selectedCommand.id }}</NDescriptionsItem>
-            <NDescriptionsItem :label="t('mine.commands.field.ttl')">{{ selectedCommand.ttlSeconds }}</NDescriptionsItem>
-            <NDescriptionsItem :label="t('mine.commands.field.timeout')">
-              {{ selectedCommand.timeoutSeconds }}
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('mine.commands.field.parameters')">
-              <NText code>{{ formatJson(selectedCommand.parameters) }}</NText>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('mine.commands.field.reply')">
-              <NText code>{{ formatJson(selectedCommand.reply) }}</NText>
-            </NDescriptionsItem>
-            <NDescriptionsItem :label="t('mine.commands.field.errorCode')">
-              {{ selectedCommand.lastErrorCode || t('mine.common.empty') }}
-            </NDescriptionsItem>
-          </NDescriptions>
-          <NCard :title="t('mine.commands.detail.timeline')" embedded>
-            <CommandTimeline :command="selectedCommand" />
-          </NCard>
+        </NFormItem>
+        <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
+          <NGi>
+            <NFormItem :label="t('mine.commands.field.ttl')">
+              <NInputNumber v-model:value="commandForm.ttlSeconds" :min="1" :max="86400" />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem :label="t('mine.commands.field.timeout')">
+              <NInputNumber v-model:value="commandForm.timeoutSeconds" :min="1" :max="86400" />
+            </NFormItem>
+          </NGi>
+        </NGrid>
+      </NForm>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="modalVisible = false">{{ t('mine.common.cancel') }}</NButton>
+          <NButton type="primary" :loading="saving" @click="requestSubmit">
+            {{ t('mine.commands.action.send') }}
+          </NButton>
         </NSpace>
       </template>
-    </NDrawerContent>
-  </NDrawer>
+    </NModal>
+
+    <NDrawer v-model:show="drawerVisible" width="min(520px, 92vw)">
+      <NDrawerContent :title="t('mine.commands.detail.title')" closable>
+        <template v-if="selectedCommand">
+          <NSpace vertical :size="16">
+            <NSpace justify="end">
+              <NButton text :loading="loading" @click="refreshDetails">{{ t('common.refresh') }}</NButton>
+            </NSpace>
+            <NDescriptions label-placement="left" :column="1" bordered>
+              <NDescriptionsItem :label="t('mine.commands.field.device')">
+                {{ deviceMap.get(selectedCommand.deviceId)?.name || selectedCommand.deviceId }}
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.template')">
+                {{ templateLabel(selectedCommand.templateKey) }}
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.status')">
+                <NTag :type="statusType(selectedCommand.status)">{{ statusLabel(selectedCommand.status) }}</NTag>
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.id')">{{ selectedCommand.id }}</NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.ttl')">
+                {{ selectedCommand.ttlSeconds }}
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.timeout')">
+                {{ selectedCommand.timeoutSeconds }}
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.parameters')">
+                <NText code>{{ formatJson(selectedCommand.parameters) }}</NText>
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.reply')">
+                <NText code>{{ formatJson(selectedCommand.reply) }}</NText>
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.errorCode')">
+                {{ selectedCommand.lastErrorCode || t('mine.common.empty') }}
+              </NDescriptionsItem>
+            </NDescriptions>
+            <NCard :title="t('mine.commands.detail.timeline')" embedded>
+              <CommandTimeline :command="selectedCommand" />
+            </NCard>
+          </NSpace>
+        </template>
+      </NDrawerContent>
+    </NDrawer>
+  </div>
 </template>
