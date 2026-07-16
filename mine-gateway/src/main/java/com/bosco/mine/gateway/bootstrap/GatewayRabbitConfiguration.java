@@ -9,20 +9,22 @@ import com.bosco.mine.gateway.command.MqttCommandPublisher;
 import com.bosco.mine.gateway.command.RabbitCommandTimeoutScheduler;
 import com.bosco.mine.gateway.configuration.ConfigurationReleaseCodec;
 import com.bosco.mine.gateway.configuration.ConfigurationReleaseConsumer;
+import com.bosco.mine.gateway.configuration.ConfigurationSnapshotCache;
 import com.bosco.mine.gateway.configuration.GatewayConfigurationDistributionProperties;
 import com.bosco.mine.gateway.configuration.HttpConfigurationSnapshotClient;
 import com.bosco.mine.gateway.configuration.ProtocolSnapshotRegistry;
 import com.bosco.mine.gateway.mqtt.ConfirmedTelemetryPublisher;
 import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.normalize.DeviceMessageNormalizer;
-import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.gateway.session.DeviceIdentitySnapshotLoader;
+import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.topology.MineTopology;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.rabbit.listener.api.ChannelAwareMessageListener;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.actuate.info.InfoContributor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -82,16 +84,42 @@ public class GatewayRabbitConfiguration {
     }
 
     /**
+     * 打开 Gateway 最后可用配置的有界本地缓存。
+     *
+     * @param properties 配置分发参数
+     * @return 配置快照缓存
+     */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.gateway.configuration-distribution",
+            name = "enabled",
+            havingValue = "true")
+    public ConfigurationSnapshotCache configurationSnapshotCache(
+            GatewayConfigurationDistributionProperties properties
+    ) {
+        return new ConfigurationSnapshotCache(
+                properties.resolvedCacheFile(),
+                properties.resolvedMaxCacheBytes()
+        );
+    }
+
+    /**
      * 创建动态协议快照注册表；分发启用时缺失产品配置将阻止设备报文解析。
      *
      * @param properties 配置分发参数
+     * @param snapshotCacheProvider 最后可用配置本地缓存提供器
      * @return 协议快照注册表
      */
     @Bean
     public ProtocolSnapshotRegistry protocolSnapshotRegistry(
-            GatewayConfigurationDistributionProperties properties
+            GatewayConfigurationDistributionProperties properties,
+            ObjectProvider<ConfigurationSnapshotCache> snapshotCacheProvider
     ) {
-        return new ProtocolSnapshotRegistry(properties.resolvedEnabled());
+        ProtocolSnapshotRegistry registry = new ProtocolSnapshotRegistry(properties.resolvedEnabled());
+        if (properties.resolvedEnabled()) {
+            snapshotCacheProvider.getObject().restoreInto(registry);
+        }
+        return registry;
     }
 
     /**
@@ -190,6 +218,7 @@ public class GatewayRabbitConfiguration {
      * @param codec 配置消息解码器
      * @param client 内部快照客户端
      * @param registry 协议快照注册表
+     * @param snapshotCache 最后可用配置本地缓存
      * @return 配置发布消费者
      */
     @Bean
@@ -200,9 +229,10 @@ public class GatewayRabbitConfiguration {
     public ConfigurationReleaseConsumer configurationReleaseConsumer(
             ConfigurationReleaseCodec codec,
             HttpConfigurationSnapshotClient client,
-            ProtocolSnapshotRegistry registry
+            ProtocolSnapshotRegistry registry,
+            ConfigurationSnapshotCache snapshotCache
     ) {
-        return new ConfigurationReleaseConsumer(codec, client, registry);
+        return new ConfigurationReleaseConsumer(codec, client, registry, snapshotCache);
     }
 
     /**

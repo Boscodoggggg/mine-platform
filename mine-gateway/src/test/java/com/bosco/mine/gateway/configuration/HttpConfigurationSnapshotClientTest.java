@@ -123,6 +123,8 @@ class HttpConfigurationSnapshotClientTest {
                 tokenFile,
                 Duration.ofSeconds(2),
                 maxBytes,
+                tokenFile.resolveSibling("protocol-snapshots.json"),
+                1024 * 1024,
                 "gateway-test"
         );
     }

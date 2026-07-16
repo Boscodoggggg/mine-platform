@@ -142,6 +142,24 @@ services:
           cpus: "2.0"
           memory: 1g
 
+  mine-gateway-cache-init:
+    image: ${MINE_JAVA_IMAGE:-eclipse-temurin:21.0.7_6-jre-jammy}
+    restart: "no"
+    user: "0:0"
+    read_only: true
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        mkdir -p /var/lib/mine/gateway
+        chown 10001:10001 /var/lib/mine/gateway
+        chmod 0700 /var/lib/mine/gateway
+    volumes:
+      - gateway_configuration_cache:/var/lib/mine/gateway
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
   mine-gateway:
     <<: *java-service
     command: ["/opt/mine/run-java-service.sh"]
@@ -158,11 +176,13 @@ services:
       MINE_GATEWAY_CONFIGURATION_DISTRIBUTION_ENABLED: "true"
       MINE_GATEWAY_CONFIGURATION_SERVER_URL: http://mine-server:8080
       MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
+      MINE_GATEWAY_CONFIGURATION_CACHE_FILE: /var/lib/mine/gateway/protocol-snapshots.json
       MINE_GATEWAY_NODE_ID: standalone-gateway
     volumes:
       - ../../mine-gateway/target:/opt/mine/source:ro
       - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
       - ../config/gateway:/etc/mine/gateway:ro
+      - gateway_configuration_cache:/var/lib/mine/gateway
     secrets:
       - rabbitmq_gateway_device_password
       - rabbitmq_gateway_platform_password
@@ -172,6 +192,8 @@ services:
         condition: service_healthy
       mine-server:
         condition: service_healthy
+      mine-gateway-cache-init:
+        condition: service_completed_successfully
     networks:
       - app
     healthcheck:
@@ -682,6 +704,7 @@ volumes:
   grafana_data: {}
   loki_data: {}
   alloy_data: {}
+  gateway_configuration_cache: {}
 
 secrets:
   postgres_password:

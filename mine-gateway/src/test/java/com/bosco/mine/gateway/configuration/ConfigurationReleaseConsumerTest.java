@@ -27,15 +27,17 @@ class ConfigurationReleaseConsumerTest {
         ConfigurationSnapshot snapshot = snapshot(payload);
         ConfigurationSnapshotClient client = mock(ConfigurationSnapshotClient.class);
         ProtocolSnapshotRegistry registry = mock(ProtocolSnapshotRegistry.class);
+        ConfigurationSnapshotStore store = mock(ConfigurationSnapshotStore.class);
         when(client.fetch(payload.releaseId())).thenReturn(snapshot);
         when(registry.activate(snapshot)).thenReturn(ProtocolSnapshotRegistry.ActivationResult.ACTIVATED);
         ConfigurationReleaseConsumer consumer = new ConfigurationReleaseConsumer(
-                body -> envelope(payload), client, registry);
+                body -> envelope(payload), client, registry, store);
         Channel channel = mock(Channel.class);
 
         consumer.onMessage(message(41), channel);
 
         verify(registry).activate(snapshot);
+        verify(store).persist(snapshot);
         verify(client).reportLoaded(payload.releaseId(), payload.contentHash());
         verify(channel).basicAck(41, false);
         verify(channel, never()).basicNack(41, false, true);
@@ -47,12 +49,13 @@ class ConfigurationReleaseConsumerTest {
         ConfigurationSnapshot snapshot = snapshot(payload);
         ConfigurationSnapshotClient client = mock(ConfigurationSnapshotClient.class);
         ProtocolSnapshotRegistry registry = mock(ProtocolSnapshotRegistry.class);
+        ConfigurationSnapshotStore store = mock(ConfigurationSnapshotStore.class);
         when(client.fetch(payload.releaseId())).thenReturn(snapshot);
         when(registry.activate(snapshot)).thenReturn(ProtocolSnapshotRegistry.ActivationResult.ACTIVATED);
         org.mockito.Mockito.doThrow(new ConfigurationFetchException("状态服务暂时不可用"))
                 .when(client).reportLoaded(payload.releaseId(), payload.contentHash());
         ConfigurationReleaseConsumer consumer = new ConfigurationReleaseConsumer(
-                body -> envelope(payload), client, registry);
+                body -> envelope(payload), client, registry, store);
         Channel channel = mock(Channel.class);
 
         consumer.onMessage(message(45), channel);
@@ -63,13 +66,36 @@ class ConfigurationReleaseConsumerTest {
     }
 
     @Test
+    void 本地最后可用配置持久化失败时应重新投递且不能回报加载成功() throws Exception {
+        ConfigReleasePayload payload = payload();
+        ConfigurationSnapshot snapshot = snapshot(payload);
+        ConfigurationSnapshotClient client = mock(ConfigurationSnapshotClient.class);
+        ProtocolSnapshotRegistry registry = mock(ProtocolSnapshotRegistry.class);
+        ConfigurationSnapshotStore store = mock(ConfigurationSnapshotStore.class);
+        when(client.fetch(payload.releaseId())).thenReturn(snapshot);
+        when(registry.activate(snapshot)).thenReturn(ProtocolSnapshotRegistry.ActivationResult.ACTIVATED);
+        org.mockito.Mockito.doThrow(new ConfigurationSnapshotCacheException("缓存磁盘不可写"))
+                .when(store).persist(snapshot);
+        ConfigurationReleaseConsumer consumer = new ConfigurationReleaseConsumer(
+                body -> envelope(payload), client, registry, store);
+        Channel channel = mock(Channel.class);
+
+        consumer.onMessage(message(46), channel);
+
+        verify(client, never()).reportLoaded(payload.releaseId(), payload.contentHash());
+        verify(channel).basicNack(46, false, true);
+        verify(channel, never()).basicAck(46, false);
+    }
+
+    @Test
     void 拉取瞬时失败应重新投递而不是丢弃() throws Exception {
         ConfigReleasePayload payload = payload();
         ConfigurationSnapshotClient client = mock(ConfigurationSnapshotClient.class);
         when(client.fetch(payload.releaseId())).thenThrow(
                 new ConfigurationFetchException("管理服务暂时不可用"));
         ConfigurationReleaseConsumer consumer = new ConfigurationReleaseConsumer(
-                body -> envelope(payload), client, mock(ProtocolSnapshotRegistry.class));
+                body -> envelope(payload), client, mock(ProtocolSnapshotRegistry.class),
+                mock(ConfigurationSnapshotStore.class));
         Channel channel = mock(Channel.class);
 
         consumer.onMessage(message(42), channel);
@@ -88,7 +114,7 @@ class ConfigurationReleaseConsumerTest {
         when(client.fetch(payload.releaseId())).thenReturn(mismatched);
         ProtocolSnapshotRegistry registry = mock(ProtocolSnapshotRegistry.class);
         ConfigurationReleaseConsumer consumer = new ConfigurationReleaseConsumer(
-                body -> envelope(payload), client, registry);
+                body -> envelope(payload), client, registry, mock(ConfigurationSnapshotStore.class));
         Channel channel = mock(Channel.class);
 
         consumer.onMessage(message(43), channel);
@@ -104,7 +130,8 @@ class ConfigurationReleaseConsumerTest {
                     throw new InvalidConfigurationMessageException("事件类型错误");
                 },
                 mock(ConfigurationSnapshotClient.class),
-                mock(ProtocolSnapshotRegistry.class));
+                mock(ProtocolSnapshotRegistry.class),
+                mock(ConfigurationSnapshotStore.class));
         Channel channel = mock(Channel.class);
 
         consumer.onMessage(message(44), channel);

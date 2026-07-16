@@ -20,6 +20,7 @@ public final class ConfigurationReleaseConsumer implements ChannelAwareMessageLi
     private final Decoder decoder;
     private final ConfigurationSnapshotClient client;
     private final ProtocolSnapshotRegistry registry;
+    private final ConfigurationSnapshotStore snapshotStore;
 
     /**
      * 创建配置发布消费者。
@@ -27,15 +28,18 @@ public final class ConfigurationReleaseConsumer implements ChannelAwareMessageLi
      * @param decoder 配置事件解码器
      * @param client 完整快照客户端
      * @param registry 协议快照注册表
+     * @param snapshotStore 最后可用配置持久化边界
      */
     public ConfigurationReleaseConsumer(
             Decoder decoder,
             ConfigurationSnapshotClient client,
-            ProtocolSnapshotRegistry registry
+            ProtocolSnapshotRegistry registry,
+            ConfigurationSnapshotStore snapshotStore
     ) {
         this.decoder = Objects.requireNonNull(decoder, "配置事件解码器不能为空");
         this.client = Objects.requireNonNull(client, "配置快照客户端不能为空");
         this.registry = Objects.requireNonNull(registry, "协议快照注册表不能为空");
+        this.snapshotStore = Objects.requireNonNull(snapshotStore, "配置快照持久化边界不能为空");
     }
 
     /**
@@ -54,6 +58,7 @@ public final class ConfigurationReleaseConsumer implements ChannelAwareMessageLi
             ConfigurationSnapshot snapshot = client.fetch(payload.releaseId());
             validateMatch(payload, snapshot);
             registry.activate(snapshot);
+            snapshotStore.persist(snapshot);
             client.reportLoaded(payload.releaseId(), payload.contentHash());
             channel.basicAck(deliveryTag, false);
         } catch (InvalidConfigurationMessageException | InvalidConfigurationSnapshotException exception) {

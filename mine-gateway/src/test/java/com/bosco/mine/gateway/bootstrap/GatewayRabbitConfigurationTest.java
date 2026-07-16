@@ -1,8 +1,9 @@
 package com.bosco.mine.gateway.bootstrap;
 
-import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.command.CommandAckConsumer;
 import com.bosco.mine.gateway.command.CommandDispatchConsumer;
+import com.bosco.mine.gateway.configuration.ConfigurationSnapshotCache;
+import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.session.DeviceIdentitySnapshotLoader;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.topology.MineTopology;
@@ -55,10 +56,13 @@ class GatewayRabbitConfigurationTest {
                         "mine.gateway.rabbit.identity-snapshot-file=" + identities,
                         "mine.gateway.configuration-distribution.enabled=true",
                         "mine.gateway.configuration-distribution.service-token-file=" + configurationToken,
+                        "mine.gateway.configuration-distribution.cache-file="
+                                + tempDirectory.resolve("protocol-snapshots.json"),
                         "mine.gateway.configuration-distribution.server-base-url=http://127.0.0.1:8080"
                 )
                 .run(context -> {
                     assertThat(context).hasSingleBean(DeviceSessionRegistry.class);
+                    assertThat(context).hasSingleBean(ConfigurationSnapshotCache.class);
                     assertThat(context).hasSingleBean(DeviceIdentitySnapshotLoader.class);
                     assertThat(context).hasSingleBean(InfoContributor.class);
                     Info.Builder infoBuilder = new Info.Builder();

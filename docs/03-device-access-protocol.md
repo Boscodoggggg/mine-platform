@@ -147,6 +147,43 @@ ProtocolDefinition
 - 快照替换使用原子引用；已有 TCP 会话是否切换由兼容策略决定。
 - 解析失败输出结构化错误，不抛出未捕获异常关闭整个消费线程。
 
+### 7.1 Phase 2 已实现的 MQTT JSON 执行边界
+
+Phase 2 首批实现限定为 MQTT JSON。管理服务和 Gateway 共同依赖 `mine-protocol-engine`，发布门禁与现场解析不会各自维护一套规则。当前支持：
+
+- 点路径读取扁平或嵌套字段；元数据路径与属性路径分开定义。
+- `INTEGER`、`DECIMAL`、`BOOLEAN`、`STRING`、`ENUM`、`DATETIME` 等白名单类型。
+- `NONE`、`SCALE`、`OFFSET`、`SCALE_OFFSET`、`ENUM` 白名单转换；发布链路拒绝任意 `EXPRESSION`。
+- 可信 MQTT 凭据身份与报文中的 productKey、deviceCode 双向校验。
+- 字段数量、路径深度、样本数量、单样本和单快照大小上限。
+- 结构化错误码；任何候选配置的哈希、结构或编译失败都不能覆盖 last-known-good。
+
+同一产品在一个节点上同一时刻只激活一个协议执行计划。因此产品是当前协议兼容边界：若同型号设备的厂商报文结构互不兼容，应拆分为不同产品，或等待后续设备组/设备级作用域，不得在一个产品快照里加入不可审计的设备特判。
+
+配置发布和运行时切换顺序如下：
+
+~~~mermaid
+sequenceDiagram
+    participant UI as 协议工作台
+    participant Server as mine-server
+    participant DB as PostgreSQL / Outbox
+    participant MQ as RabbitMQ config
+    participant Gateway as mine-gateway
+    participant Cache as 本地 last-known-good
+
+    UI->>Server: 保存并回放黄金样本
+    Server->>Server: 使用同源协议引擎编译和执行
+    UI->>Server: POST config-releases + Idempotency-Key
+    Server->>DB: 原子写入配置包、发布事实和 Outbox
+    DB-->>MQ: config.release.created
+    MQ-->>Gateway: releaseId/packageId/hash/sequence
+    Gateway->>Server: 服务令牌拉取完整非敏感快照
+    Gateway->>Gateway: 校验哈希、编译、按序号 CAS 激活
+    Gateway->>Cache: 同目录临时文件原子替换
+    Gateway->>Server: 回报 LOADED 和实际 hash
+    Gateway-->>MQ: 缓存与状态回报成功后 ACK
+~~~
+
 ## 8. 协议工作台
 
 前端至少包含：
@@ -168,6 +205,16 @@ ProtocolDefinition
 - 半包和粘包样本。
 - 边界值和未知消息样本。
 - 至少一个命令编码及回复样本（如果协议支持下行）。
+
+Phase 2 工作台已经交付 MQTT JSON 样本的列表、编辑、全量保存、逐条回放结果和发布门禁。仓库在 `examples/protocols/mqtt-json` 提供三类可执行基线：
+
+| 示例 | 覆盖能力 | 统一结果 |
+|---|---|---|
+| `flat` | 扁平字段和直接映射 | 发动机转速、车速 |
+| `nested` | 嵌套元数据和嵌套属性 | 发动机转速、冷却液温度 |
+| `enum-scale` | 数值缩放、枚举码表、未知码拒绝 | 电机电流、运行状态 |
+
+二进制协议的 CRC、半包、粘包和命令编码样本仍属于后续 TCP/MQTT Binary 适配器；不能把 MQTT JSON 的阶段性交付描述为已经覆盖这些能力。
 
 ## 9. 统一设备消息
 

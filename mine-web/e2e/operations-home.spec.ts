@@ -100,15 +100,48 @@ async function mockOperations(page: import('@playwright/test').Page, includeOper
       }
     })
   );
-  await page.route('**/api/v1/system/operations', route =>
+  await page.route('**/api/v1/system/operations/overview?range=24h', route =>
     route.fulfill({
       json: {
+        dataStatus: 'AVAILABLE',
+        range: '24h',
+        generatedAt: '2026-07-16T03:00:00Z',
         status: 'DEGRADED',
-        checkedAt: '2026-07-16T03:00:00Z',
+        healthy: 2,
+        degraded: 0,
+        down: 1,
+        unknown: 0,
         items: [
-          { key: 'mine-server', category: 'SERVICE', status: 'UP', latencyMillis: 3, summary: 'serviceUp' },
-          { key: 'rabbitmq', category: 'MESSAGE', status: 'DOWN', latencyMillis: 50, summary: 'healthFailed' },
-          { key: 'timescale', category: 'STORAGE', status: 'UP', latencyMillis: 8, summary: 'connectionUp' }
+          {
+            key: 'mine-server',
+            category: 'SERVICE',
+            status: 'UP',
+            availabilityPercent: 100,
+            averageLatencyMillis: 3,
+            p95LatencyMillis: 5,
+            lastChangedAt: '2026-07-15T03:00:00Z',
+            sampleCount: 288
+          },
+          {
+            key: 'rabbitmq',
+            category: 'MESSAGE',
+            status: 'DOWN',
+            availabilityPercent: 98.5,
+            averageLatencyMillis: 50,
+            p95LatencyMillis: 80,
+            lastChangedAt: '2026-07-16T02:58:00Z',
+            sampleCount: 288
+          },
+          {
+            key: 'timescale',
+            category: 'STORAGE',
+            status: 'UP',
+            availabilityPercent: 99.9,
+            averageLatencyMillis: 8,
+            p95LatencyMillis: 12,
+            lastChangedAt: '2026-07-15T03:00:00Z',
+            sampleCount: 288
+          }
         ]
       }
     })
