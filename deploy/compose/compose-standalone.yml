@@ -99,6 +99,8 @@ services:
       MINE_COMMAND_OUTBOX_INSTANCE_ID: standalone
       MINE_COMMAND_OUTBOX_RABBIT_HOST: rabbitmq
       MINE_COMMAND_OUTBOX_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_command_password
+      MINE_OPERATIONS_PROMETHEUS_ENABLED: "true"
+      MINE_OPERATIONS_PROMETHEUS_URL: http://prometheus:9090
     volumes:
       - ../../mine-server/target:/opt/mine/source:ro
       - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro

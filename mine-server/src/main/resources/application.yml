@@ -49,6 +49,12 @@ mine:
     probe-timeout: ${MINE_OPERATIONS_PROBE_TIMEOUT:PT2S}
     gateway-health-url: ${MINE_GATEWAY_HEALTH_URL:http://mine-gateway:18081/actuator/health}
     telemetry-health-url: ${MINE_TELEMETRY_HEALTH_URL:http://mine-telemetry:18082/actuator/health}
+    prometheus:
+      enabled: ${MINE_OPERATIONS_PROMETHEUS_ENABLED:false}
+      base-url: ${MINE_OPERATIONS_PROMETHEUS_URL:http://prometheus:9090}
+      connect-timeout: ${MINE_OPERATIONS_PROMETHEUS_CONNECT_TIMEOUT:PT1S}
+      request-timeout: ${MINE_OPERATIONS_PROMETHEUS_REQUEST_TIMEOUT:PT2S}
+      max-response-bytes: ${MINE_OPERATIONS_PROMETHEUS_MAX_RESPONSE_BYTES:2000000}
   platform:
     version: "@project.version@"
   security:
