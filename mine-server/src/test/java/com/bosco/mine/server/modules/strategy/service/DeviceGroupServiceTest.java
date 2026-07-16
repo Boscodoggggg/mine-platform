@@ -34,6 +34,7 @@ class DeviceGroupServiceTest {
     private StrategyScopeMapper mapper;
     private OperationAuditService auditService;
     private StrategyConflictGuard conflictGuard;
+    private EffectiveStrategyCacheInvalidator cacheInvalidator;
     private DeviceGroupService service;
 
     @BeforeEach
@@ -41,7 +42,8 @@ class DeviceGroupServiceTest {
         mapper = mock(StrategyScopeMapper.class);
         auditService = mock(OperationAuditService.class);
         conflictGuard = mock(StrategyConflictGuard.class);
-        service = new DeviceGroupService(mapper, auditService, conflictGuard);
+        cacheInvalidator = mock(EffectiveStrategyCacheInvalidator.class);
+        service = new DeviceGroupService(mapper, auditService, conflictGuard, cacheInvalidator);
     }
 
     @Test
@@ -163,6 +165,11 @@ class DeviceGroupServiceTest {
                 .containsExactly(addedDeviceId);
         verify(conflictGuard).verifyMembershipChange(group, List.of(addedDeviceId));
         verify(mapper).touchGroup(groupId, 2, null);
+        verify(cacheInvalidator).invalidateAfterCommit(
+                "ONLINE_STATUS",
+                List.of(addedDeviceId, removedDeviceId),
+                EffectiveStrategyCacheInvalidator.InvalidationReason.MEMBERSHIP
+        );
     }
 
     @Test
@@ -199,6 +206,8 @@ class DeviceGroupServiceTest {
         );
         when(mapper.findGroupById(groupId)).thenReturn(Optional.of(group));
         when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(group));
+        UUID memberId = UUID.randomUUID();
+        when(mapper.findActiveMemberIds(groupId)).thenReturn(List.of(memberId));
         when(mapper.archiveGroup(groupId, 4, null)).thenReturn(1);
 
         service.archiveGroup(groupId, 4);
@@ -206,6 +215,11 @@ class DeviceGroupServiceTest {
         InOrder order = inOrder(mapper);
         order.verify(mapper).closeAllActiveMemberships(groupId, null);
         order.verify(mapper).archiveGroup(groupId, 4, null);
+        verify(cacheInvalidator).invalidateAfterCommit(
+                "ONLINE_STATUS",
+                List.of(memberId),
+                EffectiveStrategyCacheInvalidator.InvalidationReason.ARCHIVE
+        );
     }
 
     @Test

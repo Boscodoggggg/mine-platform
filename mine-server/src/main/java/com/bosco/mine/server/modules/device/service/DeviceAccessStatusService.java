@@ -6,10 +6,12 @@ import com.bosco.mine.server.modules.device.dto.DeviceAccessStatusResponse;
 import com.bosco.mine.server.modules.device.dto.DeviceAccessTestResponse;
 import com.bosco.mine.server.modules.device.dto.DeviceConnectionTestResponse;
 import com.bosco.mine.server.modules.device.infrastructure.DeviceTransportSessionProbe;
+import com.bosco.mine.server.modules.device.model.Device;
 import com.bosco.mine.server.modules.device.model.DeviceConnectionProfile;
 import com.bosco.mine.server.modules.device.repository.DeviceActivityRepository;
 import com.bosco.mine.server.modules.device.repository.DeviceConnectionProfileMapper;
 import com.bosco.mine.server.modules.device.repository.DeviceMapper;
+import com.bosco.mine.server.modules.strategy.service.EffectiveOnlineStatusPolicyProvider;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,6 +41,7 @@ public class DeviceAccessStatusService {
     private final DeviceTransportSessionProbe transportProbe;
     private final DeviceConnectionService connectionService;
     private final OperationAuditService auditService;
+    private final EffectiveOnlineStatusPolicyProvider policyProvider;
     private final Clock clock;
 
     /**
@@ -49,6 +53,7 @@ public class DeviceAccessStatusService {
      * @param transportProbe 传输会话探针
      * @param connectionService 端点诊断服务
      * @param auditService 操作审计服务
+     * @param policyProvider 在线状态有效策略提供器
      */
     @Autowired
     public DeviceAccessStatusService(
@@ -57,11 +62,12 @@ public class DeviceAccessStatusService {
             Optional<DeviceActivityRepository> activityRepository,
             DeviceTransportSessionProbe transportProbe,
             DeviceConnectionService connectionService,
-            OperationAuditService auditService
+            OperationAuditService auditService,
+            EffectiveOnlineStatusPolicyProvider policyProvider
     ) {
         this(
                 deviceMapper, profileMapper, activityRepository, transportProbe,
-                connectionService, auditService, Clock.systemUTC()
+                connectionService, auditService, policyProvider, Clock.systemUTC()
         );
     }
 
@@ -74,6 +80,7 @@ public class DeviceAccessStatusService {
      * @param transportProbe 传输会话探针
      * @param connectionService 端点诊断服务
      * @param auditService 操作审计服务
+     * @param policyProvider 在线状态有效策略提供器
      * @param clock 平台时钟
      */
     DeviceAccessStatusService(
@@ -83,6 +90,7 @@ public class DeviceAccessStatusService {
             DeviceTransportSessionProbe transportProbe,
             DeviceConnectionService connectionService,
             OperationAuditService auditService,
+            EffectiveOnlineStatusPolicyProvider policyProvider,
             Clock clock
     ) {
         this.deviceMapper = deviceMapper;
@@ -91,6 +99,7 @@ public class DeviceAccessStatusService {
         this.transportProbe = transportProbe;
         this.connectionService = connectionService;
         this.auditService = auditService;
+        this.policyProvider = policyProvider;
         this.clock = clock;
     }
 
@@ -102,13 +111,23 @@ public class DeviceAccessStatusService {
      */
     public List<DeviceAccessStatusResponse> find(Collection<UUID> deviceIds) {
         List<UUID> ids = List.copyOf(deviceIds);
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, Device> devices = new LinkedHashMap<>();
+        deviceMapper.findDevicesByIds(ids).forEach(device -> devices.put(device.id(), device));
+        ids.forEach(deviceId -> requireDevice(deviceId, devices));
+        Map<UUID, DeviceConnectionProfile> profiles = new LinkedHashMap<>();
+        profileMapper.findByDeviceIds(ids).forEach(profile -> profiles.put(profile.deviceId(), profile));
+        Map<UUID, Integer> effectiveThresholds = policyProvider.resolveThresholds(ids);
         ActivityQueryResult activity = queryActivity(ids);
         List<DeviceAccessStatusResponse> result = new ArrayList<>(ids.size());
         for (UUID deviceId : ids) {
-            requireDevice(deviceId);
-            Optional<DeviceConnectionProfile> profile = profileMapper.findByDeviceId(deviceId);
+            DeviceConnectionProfile profile = profiles.get(deviceId);
+            int thresholdSeconds = threshold(profile, effectiveThresholds.get(deviceId));
             result.add(status(
-                    deviceId, profile.orElse(null), activity.evidence().get(deviceId), activity.sourceAvailable()
+                    deviceId, profile, thresholdSeconds,
+                    activity.evidence().get(deviceId), activity.sourceAvailable()
             ));
         }
         return List.copyOf(result);
@@ -150,11 +169,16 @@ public class DeviceAccessStatusService {
         DeviceConnectionTestResponse endpoint = connectionService.test(deviceId);
         DeviceTransportSessionProbe.Result transport = transportProbe.probe(deviceId, profile.connectionMode());
         ActivityQueryResult activity = queryActivity(List.of(deviceId));
+        int thresholdSeconds = threshold(
+                profile,
+                policyProvider.resolveThresholds(List.of(deviceId)).get(deviceId)
+        );
         DeviceActivityRepository.ActivityEvidence evidence = activity.evidence().get(deviceId);
         List<DeviceAccessTestResponse.Stage> stages = stages(
-                endpoint, transport, evidence, profile, activity.sourceAvailable()
+                endpoint, transport, evidence, thresholdSeconds, activity.sourceAvailable()
         );
-        String overall = overall(endpoint, transport, evidence, profile, activity.sourceAvailable());
+        String overall = overall(
+                endpoint, transport, evidence, profile, thresholdSeconds, activity.sourceAvailable());
         long duration = Math.max(0, Duration.between(startedAt, clock.instant()).toMillis());
         auditService.recordSuccess(
                 "DEVICE_MANAGEMENT", "TEST_DEVICE_ACCESS_STATUS", "device:connection:test",
@@ -169,7 +193,7 @@ public class DeviceAccessStatusService {
             DeviceConnectionTestResponse endpoint,
             DeviceTransportSessionProbe.Result transport,
             DeviceActivityRepository.ActivityEvidence evidence,
-            DeviceConnectionProfile profile,
+            int thresholdSeconds,
             boolean activitySourceAvailable
     ) {
         String endpointStatus = "FAILED".equals(endpoint.status()) ? "FAILED" : "PASSED";
@@ -198,7 +222,7 @@ public class DeviceAccessStatusService {
             stages.add(new DeviceAccessTestResponse.Stage(
                     "ACTIVITY", "PASSED", "FIRST_FRAME_CONFIRMED", evidence.firstSeenAt(), 0
             ));
-            boolean fresh = isFresh(evidence.lastReceivedAt(), profile.offlineThresholdSeconds());
+            boolean fresh = isFresh(evidence.lastReceivedAt(), thresholdSeconds);
             stages.add(new DeviceAccessTestResponse.Stage(
                     "DATA", fresh ? "PASSED" : "FAILED", fresh ? "DATA_FRESH" : "DATA_STALE",
                     evidence.lastReceivedAt(), 0
@@ -212,6 +236,7 @@ public class DeviceAccessStatusService {
             DeviceTransportSessionProbe.Result transport,
             DeviceActivityRepository.ActivityEvidence evidence,
             DeviceConnectionProfile profile,
+            int thresholdSeconds,
             boolean activitySourceAvailable
     ) {
         if ("FAILED".equals(endpoint.status())) return "FAILED";
@@ -222,12 +247,13 @@ public class DeviceAccessStatusService {
         if (evidence == null) {
             return "PASSED".equals(transport.status()) ? "TRANSPORT_ONLY" : "WAITING_FOR_DEVICE";
         }
-        return isFresh(evidence.lastReceivedAt(), profile.offlineThresholdSeconds()) ? "ONLINE" : "STALE";
+        return isFresh(evidence.lastReceivedAt(), thresholdSeconds) ? "ONLINE" : "STALE";
     }
 
     private DeviceAccessStatusResponse status(
             UUID deviceId,
             DeviceConnectionProfile profile,
+            int thresholdSeconds,
             DeviceActivityRepository.ActivityEvidence evidence,
             boolean sourceAvailable
     ) {
@@ -237,17 +263,24 @@ public class DeviceAccessStatusService {
         }
         if (!sourceAvailable) {
             return new DeviceAccessStatusResponse(deviceId, "UNKNOWN", null, null,
-                    profile.offlineThresholdSeconds(), "ACTIVITY_SOURCE_UNAVAILABLE");
+                    thresholdSeconds, "ACTIVITY_SOURCE_UNAVAILABLE");
         }
         if (evidence == null) {
             return new DeviceAccessStatusResponse(deviceId, "WAITING_FOR_DEVICE", null, null,
-                    profile.offlineThresholdSeconds(), "FIRST_FRAME_WAITING");
+                    thresholdSeconds, "FIRST_FRAME_WAITING");
         }
-        boolean fresh = isFresh(evidence.lastReceivedAt(), profile.offlineThresholdSeconds());
+        boolean fresh = isFresh(evidence.lastReceivedAt(), thresholdSeconds);
         return new DeviceAccessStatusResponse(
                 deviceId, fresh ? "ONLINE" : "STALE", evidence.firstSeenAt(), evidence.lastReceivedAt(),
-                profile.offlineThresholdSeconds(), fresh ? "ACCESS_ONLINE" : "DATA_STALE"
+                thresholdSeconds, fresh ? "ACCESS_ONLINE" : "DATA_STALE"
         );
+    }
+
+    private int threshold(DeviceConnectionProfile profile, Integer effectiveThresholdSeconds) {
+        if (effectiveThresholdSeconds != null) {
+            return effectiveThresholdSeconds;
+        }
+        return profile == null ? 0 : profile.offlineThresholdSeconds();
     }
 
     private boolean isFresh(Instant lastReceivedAt, int thresholdSeconds) {
@@ -295,6 +328,12 @@ public class DeviceAccessStatusService {
 
     private void requireDevice(UUID deviceId) {
         if (deviceMapper.findDeviceById(deviceId).isEmpty()) {
+            throw new MineException(DEVICE_NOT_FOUND, Map.of("deviceId", deviceId));
+        }
+    }
+
+    private void requireDevice(UUID deviceId, Map<UUID, Device> devices) {
+        if (!devices.containsKey(deviceId)) {
             throw new MineException(DEVICE_NOT_FOUND, Map.of("deviceId", deviceId));
         }
     }

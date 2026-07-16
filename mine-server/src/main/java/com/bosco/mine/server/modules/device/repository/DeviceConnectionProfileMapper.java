@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,6 +39,34 @@ public interface DeviceConnectionProfileMapper {
             WHERE device_id = #{deviceId}
             """)
     Optional<DeviceConnectionProfile> findByDeviceId(@Param("deviceId") UUID deviceId);
+
+    /**
+     * 批量查询设备接入配置。
+     *
+     * @param deviceIds 设备标识集合
+     * @return 已配置设备的接入配置
+     */
+    @Select("""
+            <script>
+            SELECT id, device_id AS deviceId, connection_mode AS connectionMode,
+                   host, port, tls_enabled AS tlsEnabled, tls_server_name AS tlsServerName,
+                   connect_timeout_millis AS connectTimeoutMillis,
+                   keep_alive_seconds AS keepAliveSeconds,
+                   offline_threshold_seconds AS offlineThresholdSeconds,
+                   last_test_status AS lastTestStatus, last_test_at AS lastTestAt,
+                   last_test_duration_millis AS lastTestDurationMillis,
+                   last_test_message AS lastTestMessage,
+                   last_test_stages::text AS lastTestStages,
+                   created_at AS createdAt, updated_at AS updatedAt, version
+              FROM dev_device_connection_profile
+             WHERE device_id IN
+             <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+               #{deviceId}
+             </foreach>
+             ORDER BY device_id
+            </script>
+            """)
+    List<DeviceConnectionProfile> findByDeviceIds(@Param("deviceIds") List<UUID> deviceIds);
 
     /**
      * 新增接入配置。

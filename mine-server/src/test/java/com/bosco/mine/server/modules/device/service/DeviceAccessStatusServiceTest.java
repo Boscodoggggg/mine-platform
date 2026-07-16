@@ -9,6 +9,7 @@ import com.bosco.mine.server.modules.device.model.DeviceConnectionProfile;
 import com.bosco.mine.server.modules.device.repository.DeviceActivityRepository;
 import com.bosco.mine.server.modules.device.repository.DeviceConnectionProfileMapper;
 import com.bosco.mine.server.modules.device.repository.DeviceMapper;
+import com.bosco.mine.server.modules.strategy.service.EffectiveOnlineStatusPolicyProvider;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,6 +41,7 @@ class DeviceAccessStatusServiceTest {
     private DeviceTransportSessionProbe transportProbe;
     private DeviceConnectionService connectionService;
     private OperationAuditService auditService;
+    private EffectiveOnlineStatusPolicyProvider policyProvider;
     private UUID deviceId;
 
     @BeforeEach
@@ -49,9 +52,13 @@ class DeviceAccessStatusServiceTest {
         transportProbe = mock(DeviceTransportSessionProbe.class);
         connectionService = mock(DeviceConnectionService.class);
         auditService = mock(OperationAuditService.class);
+        policyProvider = mock(EffectiveOnlineStatusPolicyProvider.class);
         deviceId = UUID.randomUUID();
         when(deviceMapper.findDeviceById(deviceId)).thenReturn(Optional.of(device()));
         when(profileMapper.findByDeviceId(deviceId)).thenReturn(Optional.of(profile()));
+        when(deviceMapper.findDevicesByIds(List.of(deviceId))).thenReturn(List.of(device()));
+        when(profileMapper.findByDeviceIds(List.of(deviceId))).thenReturn(List.of(profile()));
+        when(policyProvider.resolveThresholds(List.of(deviceId))).thenReturn(Map.of());
     }
 
     @Test
@@ -69,6 +76,43 @@ class DeviceAccessStatusServiceTest {
         assertThat(response.firstSeenAt()).isEqualTo(NOW.minusSeconds(600));
         assertThat(response.lastReceivedAt()).isEqualTo(NOW.minusSeconds(30));
         assertThat(response.message()).isEqualTo("ACCESS_ONLINE");
+    }
+
+    @Test
+    void 已发布在线状态策略应覆盖接入配置中的离线阈值() {
+        when(activityRepository.findByDeviceIds(List.of(deviceId))).thenReturn(Map.of(
+                deviceId, new DeviceActivityRepository.ActivityEvidence(
+                        NOW.minusSeconds(600), NOW.minusSeconds(30)
+                )
+        ));
+        when(policyProvider.resolveThresholds(List.of(deviceId))).thenReturn(Map.of(deviceId, 20));
+        DeviceAccessStatusService service = service(Optional.of(activityRepository));
+
+        DeviceAccessStatusResponse response = service.find(List.of(deviceId)).getFirst();
+
+        assertThat(response.status()).isEqualTo("STALE");
+        assertThat(response.offlineThresholdSeconds()).isEqualTo(20);
+    }
+
+    @Test
+    void 批量状态查询应一次读取台账接入配置和有效策略() {
+        UUID anotherDeviceId = UUID.randomUUID();
+        Device anotherDevice = device(anotherDeviceId);
+        DeviceConnectionProfile anotherProfile = profile(anotherDeviceId);
+        List<UUID> ids = List.of(deviceId, anotherDeviceId);
+        when(deviceMapper.findDevicesByIds(ids)).thenReturn(List.of(device(), anotherDevice));
+        when(profileMapper.findByDeviceIds(ids)).thenReturn(List.of(profile(), anotherProfile));
+        when(policyProvider.resolveThresholds(ids)).thenReturn(Map.of());
+        when(activityRepository.findByDeviceIds(ids)).thenReturn(Map.of());
+        DeviceAccessStatusService service = service(Optional.of(activityRepository));
+
+        assertThat(service.find(ids)).hasSize(2);
+
+        verify(deviceMapper).findDevicesByIds(ids);
+        verify(profileMapper).findByDeviceIds(ids);
+        verify(policyProvider).resolveThresholds(ids);
+        verify(deviceMapper, never()).findDeviceById(anotherDeviceId);
+        verify(profileMapper, never()).findByDeviceId(anotherDeviceId);
     }
 
     @Test
@@ -190,20 +234,28 @@ class DeviceAccessStatusServiceTest {
     private DeviceAccessStatusService service(Optional<DeviceActivityRepository> repository) {
         return new DeviceAccessStatusService(
                 deviceMapper, profileMapper, repository, transportProbe, connectionService,
-                auditService, Clock.fixed(NOW, ZoneOffset.UTC)
+                auditService, policyProvider, Clock.fixed(NOW, ZoneOffset.UTC)
         );
     }
 
     private Device device() {
+        return device(deviceId);
+    }
+
+    private Device device(UUID id) {
         return new Device(
-                deviceId, UUID.randomUUID(), "truck-001", "一号矿卡", "ENABLED",
+                id, UUID.randomUUID(), "truck-001", "一号矿卡", "ENABLED",
                 null, NOW.minusSeconds(3600), NOW.minusSeconds(3600), 0
         );
     }
 
     private DeviceConnectionProfile profile() {
+        return profile(deviceId);
+    }
+
+    private DeviceConnectionProfile profile(UUID id) {
         return new DeviceConnectionProfile(
-                UUID.randomUUID(), deviceId, "DEVICE_TO_PLATFORM_MQTT", "mqtt.mine.local", 8883,
+                UUID.randomUUID(), id, "DEVICE_TO_PLATFORM_MQTT", "mqtt.mine.local", 8883,
                 true, "mqtt.mine.local", 5000, 60, 180,
                 "PARTIAL", NOW.minusSeconds(120), 10L, "TEST_PARTIAL", "[]",
                 NOW.minusSeconds(3600), NOW.minusSeconds(120), 1

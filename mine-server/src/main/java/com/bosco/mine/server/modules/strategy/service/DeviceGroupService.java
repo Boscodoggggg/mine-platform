@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -43,6 +44,7 @@ public class DeviceGroupService {
     private final StrategyScopeMapper mapper;
     private final OperationAuditService auditService;
     private final StrategyConflictGuard conflictGuard;
+    private final EffectiveStrategyCacheInvalidator cacheInvalidator;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -51,15 +53,18 @@ public class DeviceGroupService {
      * @param mapper       策略作用域数据接口
      * @param auditService  操作审计服务
      * @param conflictGuard 策略冲突门禁
+     * @param cacheInvalidator 有效策略缓存失效器
      */
     public DeviceGroupService(
             StrategyScopeMapper mapper,
             OperationAuditService auditService,
-            StrategyConflictGuard conflictGuard
+            StrategyConflictGuard conflictGuard,
+            EffectiveStrategyCacheInvalidator cacheInvalidator
     ) {
         this.mapper = mapper;
         this.auditService = auditService;
         this.conflictGuard = conflictGuard;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     /**
@@ -166,9 +171,10 @@ public class DeviceGroupService {
         mapper.lockProduct(initial.productId());
         StrategyScopeMapper.DeviceGroupRecord locked = requireActiveGroupForUpdate(groupId);
         DeviceGroupView before = toView(locked);
+        List<UUID> affectedDeviceIds = List.of();
         if (locked.priority() != command.priority()) {
-            conflictGuard.verifyPriorityChange(
-                    locked, command.priority(), mapper.findActiveMemberIds(groupId));
+            affectedDeviceIds = mapper.findActiveMemberIds(groupId);
+            conflictGuard.verifyPriorityChange(locked, command.priority(), affectedDeviceIds);
         }
         int affected = mapper.updateGroup(
                 groupId,
@@ -186,6 +192,12 @@ public class DeviceGroupService {
                 "DEVICE_STRATEGY", "UPDATE_DEVICE_GROUP", "device:group:edit",
                 "DEVICE_GROUP", groupId, summary(before), summary(updated)
         );
+        if (locked.priority() != command.priority()) {
+            cacheInvalidator.invalidateAfterCommit(
+                    "ONLINE_STATUS", affectedDeviceIds,
+                    EffectiveStrategyCacheInvalidator.InvalidationReason.PRIORITY
+            );
+        }
         return updated;
     }
 
@@ -255,6 +267,13 @@ public class DeviceGroupService {
                         "removedCount", removed.size()
                 )
         );
+        List<UUID> affectedDeviceIds = new ArrayList<>(added.size() + removed.size());
+        affectedDeviceIds.addAll(added);
+        affectedDeviceIds.addAll(removed);
+        cacheInvalidator.invalidateAfterCommit(
+                "ONLINE_STATUS", affectedDeviceIds,
+                EffectiveStrategyCacheInvalidator.InvalidationReason.MEMBERSHIP
+        );
         return change;
     }
 
@@ -272,6 +291,7 @@ public class DeviceGroupService {
         if (before.version() != version) {
             throw versionConflict(groupId);
         }
+        List<UUID> affectedDeviceIds = mapper.findActiveMemberIds(groupId);
         UUID operatorId = currentOperatorId();
         mapper.closeAllActiveMemberships(groupId, operatorId);
         if (mapper.archiveGroup(groupId, version, operatorId) == 0) {
@@ -280,6 +300,10 @@ public class DeviceGroupService {
         auditService.recordSuccess(
                 "DEVICE_STRATEGY", "ARCHIVE_DEVICE_GROUP", "device:group:edit",
                 "DEVICE_GROUP", groupId, summary(before), Map.of("status", "ARCHIVED")
+        );
+        cacheInvalidator.invalidateAfterCommit(
+                "ONLINE_STATUS", affectedDeviceIds,
+                EffectiveStrategyCacheInvalidator.InvalidationReason.ARCHIVE
         );
     }
 

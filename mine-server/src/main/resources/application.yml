@@ -47,6 +47,10 @@ mine:
   device-connection:
     allowed-cidrs: ${MINE_DEVICE_CONNECTION_ALLOWED_CIDRS:}
     max-concurrent-probes: ${MINE_DEVICE_CONNECTION_MAX_CONCURRENT_PROBES:8}
+  strategy:
+    cache:
+      maximum-size: ${MINE_STRATEGY_CACHE_MAXIMUM_SIZE:10000}
+      ttl: ${MINE_STRATEGY_CACHE_TTL:PT30S}
   site:
     zone-id: ${MINE_SITE_ZONE_ID:Asia/Shanghai}
   dashboard:

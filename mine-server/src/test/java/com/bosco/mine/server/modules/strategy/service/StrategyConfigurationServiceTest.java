@@ -35,6 +35,7 @@ class StrategyConfigurationServiceTest {
     private StrategyConfigurationMapper mapper;
     private StrategyScopeMapper scopeMapper;
     private OperationAuditService auditService;
+    private EffectiveStrategyCacheInvalidator cacheInvalidator;
     private StrategyConfigurationService service;
 
     @BeforeEach
@@ -42,11 +43,13 @@ class StrategyConfigurationServiceTest {
         mapper = mock(StrategyConfigurationMapper.class);
         scopeMapper = mock(StrategyScopeMapper.class);
         auditService = mock(OperationAuditService.class);
+        cacheInvalidator = mock(EffectiveStrategyCacheInvalidator.class);
         service = new StrategyConfigurationService(
                 mapper,
                 scopeMapper,
                 auditService,
-                JsonMapper.builder().findAndAddModules().build()
+                JsonMapper.builder().findAndAddModules().build(),
+                cacheInvalidator
         );
     }
 
@@ -203,6 +206,11 @@ class StrategyConfigurationServiceTest {
                 eq("GROUP"), eq(groupId), eq(800), eq("PUBLISH"), eq(null),
                 eq("提高弱网容忍度"), eq("strategy-publish-001"), eq(null)
         );
+        verify(cacheInvalidator).invalidateAfterCommit(
+                "ONLINE_STATUS",
+                List.of(deviceId),
+                EffectiveStrategyCacheInvalidator.InvalidationReason.PUBLISH
+        );
     }
 
     @Test
@@ -319,6 +327,11 @@ class StrategyConfigurationServiceTest {
                 eq(rollback.id()), eq(productId), eq(versionId), eq("ONLINE_STATUS"), eq(9L),
                 eq("GROUP"), eq(groupId), eq(900), eq("ROLLBACK"), eq(historicalReleaseId),
                 eq("恢复稳定阈值"), eq("strategy-rollback-001"), eq(null)
+        );
+        verify(cacheInvalidator).invalidateAfterCommit(
+                "ONLINE_STATUS",
+                List.of(deviceId),
+                EffectiveStrategyCacheInvalidator.InvalidationReason.ROLLBACK
         );
     }
 

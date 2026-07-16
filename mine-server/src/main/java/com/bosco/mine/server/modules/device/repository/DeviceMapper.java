@@ -306,6 +306,27 @@ public interface DeviceMapper {
     Optional<Device> findDeviceById(@Param("deviceId") UUID deviceId);
 
     /**
+     * 批量查询设备台账，包括已归档设备。
+     *
+     * @param deviceIds 设备标识集合
+     * @return 已存在设备台账
+     */
+    @Select("""
+            <script>
+            SELECT id, product_id AS productId, device_code AS deviceCode, name, status,
+                   archived_at AS archivedAt, created_at AS createdAt,
+                   updated_at AS updatedAt, version
+              FROM dev_device
+             WHERE id IN
+             <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+               #{deviceId}
+             </foreach>
+             ORDER BY id
+            </script>
+            """)
+    List<Device> findDevicesByIds(@Param("deviceIds") List<UUID> deviceIds);
+
+    /**
      * 按编码查询未归档设备。
      *
      * @param deviceCode 设备编码

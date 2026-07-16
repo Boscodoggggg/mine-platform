@@ -405,6 +405,25 @@ public interface StrategyConfigurationMapper {
     Optional<DeviceContextRecord> findDeviceContext(@Param("deviceId") UUID deviceId);
 
     /**
+     * 批量查询设备所属产品和生命周期状态。
+     *
+     * @param deviceIds 设备标识集合
+     * @return 已存在设备上下文
+     */
+    @Select("""
+            <script>
+            SELECT id, product_id AS productId, status
+              FROM dev_device
+             WHERE id IN
+             <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+               #{deviceId}
+             </foreach>
+             ORDER BY id
+            </script>
+            """)
+    List<DeviceContextRecord> findDeviceContexts(@Param("deviceIds") List<UUID> deviceIds);
+
+    /**
      * 锁定并查询单设备策略作用目标，防止发布期间设备被并发归档。
      *
      * @param deviceId 设备标识

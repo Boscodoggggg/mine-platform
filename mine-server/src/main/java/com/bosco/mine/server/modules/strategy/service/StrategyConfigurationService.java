@@ -60,6 +60,7 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
     private final StrategyScopeMapper scopeMapper;
     private final OperationAuditService auditService;
     private final ObjectMapper objectMapper;
+    private final EffectiveStrategyCacheInvalidator cacheInvalidator;
     private final EffectiveStrategyResolver resolver = new EffectiveStrategyResolver();
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
@@ -70,17 +71,20 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
      * @param scopeMapper    设备组与作用域数据接口
      * @param auditService   操作审计服务
      * @param objectMapper   JSON 序列化器
+     * @param cacheInvalidator 有效策略缓存失效器
      */
     public StrategyConfigurationService(
             StrategyConfigurationMapper mapper,
             StrategyScopeMapper scopeMapper,
             OperationAuditService auditService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            EffectiveStrategyCacheInvalidator cacheInvalidator
     ) {
         this.mapper = mapper;
         this.scopeMapper = scopeMapper;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.cacheInvalidator = cacheInvalidator;
     }
 
     /**
@@ -224,9 +228,10 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
         Map<String, Object> values = validateValues(version.strategyType(), readMap(version.valuesJson()));
         Target target = lockTarget(version.productId(), command.scopeType(), command.scopeId());
         UUID releaseId = idGenerator.next();
+        List<UUID> affectedDeviceIds = affectedDeviceIds(version.productId(), target);
         assertNoConflicts(
                 version.productId(), version.strategyType(), target, values, releaseId,
-                affectedDeviceIds(version.productId(), target)
+                affectedDeviceIds
         );
         String contentHash = contentHash(version.productId(), values, releaseId);
         if (mapper.publishVersion(
@@ -234,11 +239,16 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
         ) == 0) {
             throw new MineException(DRAFT_VERSION_CONFLICT, Map.of("strategyVersionId", version.id()));
         }
-        return createRelease(
+        StrategyReleaseView release = createRelease(
                 version.productId(), version.id(), version.strategyType(), target,
                 "PUBLISH", null, reason, idempotencyKey,
                 contentHash, operatorId, releaseId
         );
+        cacheInvalidator.invalidateAfterCommit(
+                version.strategyType(), affectedDeviceIds,
+                EffectiveStrategyCacheInvalidator.InvalidationReason.PUBLISH
+        );
+        return release;
     }
 
     /**
@@ -276,15 +286,21 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
         Target target = lockTarget(
                 historical.productId(), StrategyScopeType.valueOf(historical.scopeType()), historical.scopeId());
         UUID releaseId = idGenerator.next();
+        List<UUID> affectedDeviceIds = affectedDeviceIds(historical.productId(), target);
         assertNoConflicts(
                 historical.productId(), historical.strategyType(), target, values, releaseId,
-                affectedDeviceIds(historical.productId(), target)
+                affectedDeviceIds
         );
-        return createRelease(
+        StrategyReleaseView release = createRelease(
                 historical.productId(), historical.strategyVersionId(), historical.strategyType(), target,
                 "ROLLBACK", historicalReleaseId, normalizedReason, normalizedIdempotencyKey,
                 historical.contentHash(), operatorId, releaseId
         );
+        cacheInvalidator.invalidateAfterCommit(
+                historical.strategyType(), affectedDeviceIds,
+                EffectiveStrategyCacheInvalidator.InvalidationReason.ROLLBACK
+        );
+        return release;
     }
 
     /**

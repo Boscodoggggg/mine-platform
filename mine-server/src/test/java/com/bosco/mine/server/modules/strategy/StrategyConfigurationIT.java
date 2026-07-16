@@ -7,6 +7,7 @@ import com.bosco.mine.server.modules.device.repository.DeviceMapper;
 import com.bosco.mine.server.modules.strategy.repository.StrategyConfigurationMapper;
 import com.bosco.mine.server.modules.strategy.repository.StrategyScopeMapper;
 import com.bosco.mine.server.modules.strategy.service.DeviceGroupService;
+import com.bosco.mine.server.modules.strategy.service.EffectiveOnlineStatusPolicyProvider;
 import com.bosco.mine.server.modules.strategy.service.StrategyConfigurationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,6 +58,9 @@ class StrategyConfigurationIT {
 
     @Autowired
     private DeviceGroupService groupService;
+
+    @Autowired
+    private EffectiveOnlineStatusPolicyProvider policyProvider;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -132,6 +136,8 @@ class StrategyConfigurationIT {
         strategyService.publish(
                 publish(secondDraft.id(), fixture.secondGroupId(), "发布运输二组阈值", "publish-priority-b")
         );
+        assertThat(policyProvider.resolveThresholds(List.of(fixture.deviceId())))
+                .containsEntry(fixture.deviceId(), 300);
 
         assertThatThrownBy(() -> groupService.updateGroup(
                 fixture.firstGroupId(),
@@ -149,6 +155,8 @@ class StrategyConfigurationIT {
                 new DeviceGroupService.UpdateGroupCommand("运输一组", 1000, "最高优先级", 0)
         );
         assertThat(updated.priority()).isEqualTo(1000);
+        assertThat(policyProvider.resolveThresholds(List.of(fixture.deviceId())))
+                .containsEntry(fixture.deviceId(), 120);
         StrategyConfigurationService.EffectiveStrategyView effective = strategyService.findEffective(
                 fixture.deviceId(), "ONLINE_STATUS"
         );
