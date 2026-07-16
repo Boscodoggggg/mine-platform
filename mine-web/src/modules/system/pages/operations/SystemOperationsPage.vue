@@ -307,189 +307,191 @@ function showError(error: unknown, fallbackKey: App.I18n.I18nKey) {
 </script>
 
 <template>
-  <NFlex vertical :size="16">
-    <NPageHeader :title="t('mine.operations.title')" :subtitle="t('mine.operations.subtitle')">
-      <template #extra>
-        <NButton :loading="historyLoading" @click="loadHistory">{{ t('common.refresh') }}</NButton>
-      </template>
-    </NPageHeader>
+  <div class="min-h-full">
+    <NFlex vertical :size="16">
+      <NPageHeader :title="t('mine.operations.title')" :subtitle="t('mine.operations.subtitle')">
+        <template #extra>
+          <NButton :loading="historyLoading" @click="loadHistory">{{ t('common.refresh') }}</NButton>
+        </template>
+      </NPageHeader>
 
-    <NCard size="small">
-      <NFlex justify="space-between" align="center" :wrap="true">
-        <NFlex align="center" :size="12">
-          <NTag :type="overallType()" :bordered="false" size="large">
-            {{ statusLabel(overview?.status || 'UNKNOWN') }}
-          </NTag>
-          <NText v-if="overview" strong>
-            {{
-              t('mine.operations.summary', {
-                healthy: overview.healthy,
-                down: overview.down + overview.degraded,
-                unknown: overview.unknown
-              })
-            }}
-          </NText>
-        </NFlex>
-        <NFlex align="center">
-          <NText v-if="overview" depth="3">
-            {{ t('mine.operations.generatedAt', { time: formatTime(overview.generatedAt) }) }}
-          </NText>
-          <NButton type="primary" :loading="checkLoading" @click="runImmediateCheck">
-            {{ t('mine.operations.action.checkNow') }}
-          </NButton>
-        </NFlex>
-      </NFlex>
-    </NCard>
-
-    <NAlert
-      v-if="historyError || overview?.dataStatus === 'UNAVAILABLE'"
-      type="warning"
-      :title="t('mine.operations.historyUnavailableTitle')"
-    >
-      {{ t('mine.operations.historyUnavailableDescription') }}
-    </NAlert>
-
-    <NFlex justify="space-between" align="center" :wrap="true">
-      <NButtonGroup>
-        <NButton
-          v-for="value in ranges"
-          :key="value"
-          :type="range === value ? 'primary' : 'default'"
-          :secondary="range === value"
-          @click="selectRange(value)"
-        >
-          {{ rangeLabel(value) }}
-        </NButton>
-      </NButtonGroup>
-      <NFlex :wrap="true">
-        <NInput v-model:value="keyword" clearable :placeholder="t('mine.operations.filter.search')" class="w-220px" />
-        <NSelect
-          v-model:value="statusFilter"
-          clearable
-          :options="statusOptions"
-          :placeholder="t('mine.operations.filter.status')"
-          class="w-150px"
-        />
-        <NSelect
-          v-model:value="categoryFilter"
-          clearable
-          :options="categoryOptions"
-          :placeholder="t('mine.operations.filter.category')"
-          class="w-170px"
-        />
-      </NFlex>
-    </NFlex>
-
-    <NCard :title="t('mine.operations.historyTitle')" size="small">
-      <NDataTable
-        :columns="columns"
-        :data="filteredItems"
-        :loading="historyLoading"
-        :row-key="item => item.key"
-        :scroll-x="980"
-        :bordered="false"
-      />
-    </NCard>
-  </NFlex>
-
-  <NDrawer
-    :show="immediateDrawerVisible"
-    :width="560"
-    placement="right"
-    @update:show="handleImmediateDrawerVisibility"
-  >
-    <NDrawerContent closable :title="t('mine.operations.immediateTitle')">
-      <div role="region" :aria-label="t('mine.operations.immediateTitle')">
-        <NFlex vertical :size="16">
-          <NFlex vertical :size="6">
-            <NFlex justify="space-between" align="center">
-              <NText depth="3">
-                {{ t('mine.operations.checkProgress', { completed: completedChecks, total: immediateChecks.length }) }}
-              </NText>
-              <NText depth="3">{{ checkProgress }}%</NText>
-            </NFlex>
-            <NProgress type="line" :percentage="checkProgress" :show-indicator="false" />
-          </NFlex>
-
-          <NList hoverable>
-            <NListItem v-for="item in immediateChecks" :key="item.key">
-              <NFlex justify="space-between" align="center" :wrap="false">
-                <NFlex vertical :size="2">
-                  <NText strong>{{ itemName(item.key) }}</NText>
-                  <NText depth="3">
-                    {{ item.result ? detailLabel(item.result.summary) : categoryLabel(item.category) }}
-                  </NText>
-                </NFlex>
-                <NFlex align="center" :wrap="false">
-                  <template v-if="item.result">
-                    <NTag :type="statusType(item.result.status)" size="small" :bordered="false">
-                      {{ statusLabel(item.result.status) }}
-                    </NTag>
-                    <NText depth="3" class="whitespace-nowrap">
-                      {{ t('mine.operations.latency', { value: item.result.latencyMillis }) }}
-                    </NText>
-                  </template>
-                  <template v-else>
-                    <NSpin size="small" />
-                    <NText depth="3" class="whitespace-nowrap">{{ t('mine.operations.checking') }}</NText>
-                  </template>
-                </NFlex>
-              </NFlex>
-            </NListItem>
-          </NList>
-        </NFlex>
-      </div>
-    </NDrawerContent>
-  </NDrawer>
-
-  <NDrawer
-    :show="Boolean(selectedSeries)"
-    :width="760"
-    placement="right"
-    @update:show="handleTrendDrawerVisibility"
-  >
-    <NDrawerContent v-if="selectedSeries" closable>
-      <template #header>
-        <NFlex align="center" :size="10">
-          <NText strong>
-            {{
-              t('mine.operations.trendTitle', {
-                item: itemName(selectedSeries.key),
-                range: rangeLabel(selectedSeries.range)
-              })
-            }}
-          </NText>
-          <NTag v-if="selectedItem" :type="statusType(selectedItem.status)" size="small" :bordered="false">
-            {{ statusLabel(selectedItem.status) }}
-          </NTag>
-        </NFlex>
-      </template>
-
-      <NFlex vertical :size="20">
-        <NFlex v-if="selectedItem" justify="space-between" :wrap="true">
-          <NFlex vertical :size="2">
-            <NText depth="3">{{ t('mine.operations.column.category') }}</NText>
-            <NText strong>{{ categoryLabel(selectedItem.category) }}</NText>
-          </NFlex>
-          <NFlex vertical :size="2">
-            <NText depth="3">{{ t('mine.operations.column.availability') }}</NText>
-            <NText strong>{{ formatAvailability(selectedItem.availabilityPercent) }}</NText>
-          </NFlex>
-          <NFlex vertical :size="2">
-            <NText depth="3">{{ t('mine.operations.column.lastChanged') }}</NText>
-            <NText strong>
+      <NCard size="small">
+        <NFlex justify="space-between" align="center" :wrap="true">
+          <NFlex align="center" :size="12">
+            <NTag :type="overallType()" :bordered="false" size="large">
+              {{ statusLabel(overview?.status || 'UNKNOWN') }}
+            </NTag>
+            <NText v-if="overview" strong>
               {{
-                selectedItem.lastChangedAt
-                  ? formatTime(selectedItem.lastChangedAt)
-                  : t('mine.operations.notAvailable')
+                t('mine.operations.summary', {
+                  healthy: overview.healthy,
+                  down: overview.down + overview.degraded,
+                  unknown: overview.unknown
+                })
               }}
             </NText>
           </NFlex>
+          <NFlex align="center">
+            <NText v-if="overview" depth="3">
+              {{ t('mine.operations.generatedAt', { time: formatTime(overview.generatedAt) }) }}
+            </NText>
+            <NButton type="primary" :loading="checkLoading" @click="runImmediateCheck">
+              {{ t('mine.operations.action.checkNow') }}
+            </NButton>
+          </NFlex>
         </NFlex>
+      </NCard>
 
-        <NDivider />
-        <OperationsTrendChart :series="selectedSeries" :loading="seriesLoading" />
+      <NAlert
+        v-if="historyError || overview?.dataStatus === 'UNAVAILABLE'"
+        type="warning"
+        :title="t('mine.operations.historyUnavailableTitle')"
+      >
+        {{ t('mine.operations.historyUnavailableDescription') }}
+      </NAlert>
+
+      <NFlex justify="space-between" align="center" :wrap="true">
+        <NButtonGroup>
+          <NButton
+            v-for="value in ranges"
+            :key="value"
+            :type="range === value ? 'primary' : 'default'"
+            :secondary="range === value"
+            @click="selectRange(value)"
+          >
+            {{ rangeLabel(value) }}
+          </NButton>
+        </NButtonGroup>
+        <NFlex :wrap="true">
+          <NInput v-model:value="keyword" clearable :placeholder="t('mine.operations.filter.search')" class="w-220px" />
+          <NSelect
+            v-model:value="statusFilter"
+            clearable
+            :options="statusOptions"
+            :placeholder="t('mine.operations.filter.status')"
+            class="w-150px"
+          />
+          <NSelect
+            v-model:value="categoryFilter"
+            clearable
+            :options="categoryOptions"
+            :placeholder="t('mine.operations.filter.category')"
+            class="w-170px"
+          />
+        </NFlex>
       </NFlex>
-    </NDrawerContent>
-  </NDrawer>
+
+      <NCard :title="t('mine.operations.historyTitle')" size="small">
+        <NDataTable
+          :columns="columns"
+          :data="filteredItems"
+          :loading="historyLoading"
+          :row-key="item => item.key"
+          :scroll-x="980"
+          :bordered="false"
+        />
+      </NCard>
+    </NFlex>
+
+    <NDrawer
+      :show="immediateDrawerVisible"
+      :width="560"
+      placement="right"
+      @update:show="handleImmediateDrawerVisibility"
+    >
+      <NDrawerContent closable :title="t('mine.operations.immediateTitle')">
+        <div role="region" :aria-label="t('mine.operations.immediateTitle')">
+          <NFlex vertical :size="16">
+            <NFlex vertical :size="6">
+              <NFlex justify="space-between" align="center">
+                <NText depth="3">
+                  {{ t('mine.operations.checkProgress', { completed: completedChecks, total: immediateChecks.length }) }}
+                </NText>
+                <NText depth="3">{{ checkProgress }}%</NText>
+              </NFlex>
+              <NProgress type="line" :percentage="checkProgress" :show-indicator="false" />
+            </NFlex>
+
+            <NList hoverable>
+              <NListItem v-for="item in immediateChecks" :key="item.key">
+                <NFlex justify="space-between" align="center" :wrap="false">
+                  <NFlex vertical :size="2">
+                    <NText strong>{{ itemName(item.key) }}</NText>
+                    <NText depth="3">
+                      {{ item.result ? detailLabel(item.result.summary) : categoryLabel(item.category) }}
+                    </NText>
+                  </NFlex>
+                  <NFlex align="center" :wrap="false">
+                    <template v-if="item.result">
+                      <NTag :type="statusType(item.result.status)" size="small" :bordered="false">
+                        {{ statusLabel(item.result.status) }}
+                      </NTag>
+                      <NText depth="3" class="whitespace-nowrap">
+                        {{ t('mine.operations.latency', { value: item.result.latencyMillis }) }}
+                      </NText>
+                    </template>
+                    <template v-else>
+                      <NSpin size="small" />
+                      <NText depth="3" class="whitespace-nowrap">{{ t('mine.operations.checking') }}</NText>
+                    </template>
+                  </NFlex>
+                </NFlex>
+              </NListItem>
+            </NList>
+          </NFlex>
+        </div>
+      </NDrawerContent>
+    </NDrawer>
+
+    <NDrawer
+      :show="Boolean(selectedSeries)"
+      :width="760"
+      placement="right"
+      @update:show="handleTrendDrawerVisibility"
+    >
+      <NDrawerContent v-if="selectedSeries" closable>
+        <template #header>
+          <NFlex align="center" :size="10">
+            <NText strong>
+              {{
+                t('mine.operations.trendTitle', {
+                  item: itemName(selectedSeries.key),
+                  range: rangeLabel(selectedSeries.range)
+                })
+              }}
+            </NText>
+            <NTag v-if="selectedItem" :type="statusType(selectedItem.status)" size="small" :bordered="false">
+              {{ statusLabel(selectedItem.status) }}
+            </NTag>
+          </NFlex>
+        </template>
+
+        <NFlex vertical :size="20">
+          <NFlex v-if="selectedItem" justify="space-between" :wrap="true">
+            <NFlex vertical :size="2">
+              <NText depth="3">{{ t('mine.operations.column.category') }}</NText>
+              <NText strong>{{ categoryLabel(selectedItem.category) }}</NText>
+            </NFlex>
+            <NFlex vertical :size="2">
+              <NText depth="3">{{ t('mine.operations.column.availability') }}</NText>
+              <NText strong>{{ formatAvailability(selectedItem.availabilityPercent) }}</NText>
+            </NFlex>
+            <NFlex vertical :size="2">
+              <NText depth="3">{{ t('mine.operations.column.lastChanged') }}</NText>
+              <NText strong>
+                {{
+                  selectedItem.lastChangedAt
+                    ? formatTime(selectedItem.lastChangedAt)
+                    : t('mine.operations.notAvailable')
+                }}
+              </NText>
+            </NFlex>
+          </NFlex>
+
+          <NDivider />
+          <OperationsTrendChart :series="selectedSeries" :loading="seriesLoading" />
+        </NFlex>
+      </NDrawerContent>
+    </NDrawer>
+  </div>
 </template>

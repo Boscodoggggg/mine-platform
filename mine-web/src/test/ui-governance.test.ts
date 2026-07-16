@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parse } from '@vue/compiler-sfc';
 import { describe, expect, it } from 'vitest';
 
 const businessPages = [
@@ -48,5 +49,17 @@ describe('前端主题与国际化治理', () => {
     expect(source).not.toContain('matchMedia');
     expect(source).not.toContain('setThemeScheme');
     expect(source).toContain('themeStore.themeScheme');
+  });
+
+  it('运行监控页在全局路由过渡下应只有一个元素根节点', () => {
+    const source = readPage('src/modules/system/pages/operations/SystemOperationsPage.vue');
+    const { descriptor } = parse(source);
+    const meaningfulRoots = descriptor.template?.ast?.children.filter(node => {
+      if (node.type === 3) return false;
+      return node.type !== 2 || node.content.trim().length > 0;
+    }) || [];
+
+    expect(meaningfulRoots).toHaveLength(1);
+    expect(meaningfulRoots[0]).toMatchObject({ type: 1, tag: 'div' });
   });
 });
