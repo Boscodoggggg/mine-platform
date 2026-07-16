@@ -3,6 +3,7 @@ package com.bosco.mine.gateway.bootstrap;
 import com.bosco.mine.gateway.command.CommandAckConsumer;
 import com.bosco.mine.gateway.command.CommandDispatchConsumer;
 import com.bosco.mine.gateway.configuration.ConfigurationSnapshotCache;
+import com.bosco.mine.gateway.configuration.ConfigurationDistributionMetrics;
 import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.session.DeviceIdentitySnapshotLoader;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
@@ -63,6 +64,7 @@ class GatewayRabbitConfigurationTest {
                 .run(context -> {
                     assertThat(context).hasSingleBean(DeviceSessionRegistry.class);
                     assertThat(context).hasSingleBean(ConfigurationSnapshotCache.class);
+                    assertThat(context).hasSingleBean(ConfigurationDistributionMetrics.class);
                     assertThat(context).hasSingleBean(DeviceIdentitySnapshotLoader.class);
                     assertThat(context).hasSingleBean(InfoContributor.class);
                     Info.Builder infoBuilder = new Info.Builder();

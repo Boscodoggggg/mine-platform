@@ -56,3 +56,23 @@ groups:
         annotations:
           summary: "RabbitMQ 消息积压"
           description: "待消费消息已连续 5 分钟超过 100000 条。"
+
+  - name: mine-gateway-configuration
+    rules:
+      - alert: MineGatewayConfigurationLoadFailed
+        expr: increase(mine_gateway_configuration_distribution_total{outcome="permanent_failure"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway 配置发布永久加载失败"
+          description: "最近 10 分钟有配置快照被判定为永久无效，节点已上报 FAILED；请在策略工作台核对发布证据。"
+
+      - alert: MineGatewayConfigurationRetrying
+        expr: increase(mine_gateway_configuration_distribution_total{outcome="transient_failure"}[10m]) >= 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway 配置分发持续重试"
+          description: "Gateway 在 10 分钟内至少 3 次因网络、磁盘或状态回报失败而重投配置事件。"

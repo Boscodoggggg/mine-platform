@@ -9,6 +9,7 @@ import com.bosco.mine.gateway.command.MqttCommandPublisher;
 import com.bosco.mine.gateway.command.RabbitCommandTimeoutScheduler;
 import com.bosco.mine.gateway.configuration.ConfigurationReleaseCodec;
 import com.bosco.mine.gateway.configuration.ConfigurationReleaseConsumer;
+import com.bosco.mine.gateway.configuration.ConfigurationDistributionMetrics;
 import com.bosco.mine.gateway.configuration.ConfigurationSnapshotCache;
 import com.bosco.mine.gateway.configuration.GatewayConfigurationDistributionProperties;
 import com.bosco.mine.gateway.configuration.HttpConfigurationSnapshotClient;
@@ -19,6 +20,8 @@ import com.bosco.mine.gateway.normalize.DeviceMessageNormalizer;
 import com.bosco.mine.gateway.session.DeviceIdentitySnapshotLoader;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.topology.MineTopology;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -213,12 +216,31 @@ public class GatewayRabbitConfiguration {
     }
 
     /**
+     * 创建配置分发低基数指标；精简上下文没有自动配置注册表时使用本地注册表。
+     *
+     * @param registryProvider Micrometer 注册表提供器
+     * @return 配置分发指标记录器
+     */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.gateway.configuration-distribution",
+            name = "enabled",
+            havingValue = "true")
+    public ConfigurationDistributionMetrics configurationDistributionMetrics(
+            ObjectProvider<MeterRegistry> registryProvider
+    ) {
+        return new ConfigurationDistributionMetrics(
+                registryProvider.getIfAvailable(SimpleMeterRegistry::new));
+    }
+
+    /**
      * 创建配置发布事件消费者。
      *
      * @param codec 配置消息解码器
      * @param client 内部快照客户端
      * @param registry 协议快照注册表
      * @param snapshotCache 最后可用配置本地缓存
+     * @param metrics 配置分发低基数指标
      * @return 配置发布消费者
      */
     @Bean
@@ -230,9 +252,10 @@ public class GatewayRabbitConfiguration {
             ConfigurationReleaseCodec codec,
             HttpConfigurationSnapshotClient client,
             ProtocolSnapshotRegistry registry,
-            ConfigurationSnapshotCache snapshotCache
+            ConfigurationSnapshotCache snapshotCache,
+            ConfigurationDistributionMetrics metrics
     ) {
-        return new ConfigurationReleaseConsumer(codec, client, registry, snapshotCache);
+        return new ConfigurationReleaseConsumer(codec, client, registry, snapshotCache, metrics);
     }
 
     /**

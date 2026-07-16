@@ -13,6 +13,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -89,12 +90,32 @@ public final class HttpConfigurationSnapshotClient implements ConfigurationSnaps
     public void reportLoaded(UUID releaseId, String actualHash) {
         Objects.requireNonNull(releaseId, "releaseId 不能为空");
         Objects.requireNonNull(actualHash, "actualHash 不能为空");
+        reportStatus(releaseId, "LOADED", actualHash, "配置快照已校验并原子激活");
+    }
+
+    /**
+     * 向管理服务回报当前 Gateway 节点永久无法加载指定快照。
+     *
+     * @param releaseId 配置发布标识
+     * @param safeSummary 已脱敏且有界的错误摘要
+     */
+    @Override
+    public void reportFailed(UUID releaseId, String safeSummary) {
+        Objects.requireNonNull(releaseId, "releaseId 不能为空");
+        String summary = Objects.requireNonNull(safeSummary, "错误摘要不能为空").strip();
+        if (summary.isEmpty() || summary.length() > 500) {
+            throw new IllegalArgumentException("配置失败摘要必须为 1 到 500 个字符");
+        }
+        reportStatus(releaseId, "FAILED", null, summary);
+    }
+
+    private void reportStatus(UUID releaseId, String status, String actualHash, String message) {
         HttpRequest request = HttpRequest.newBuilder(nodeStatusUri(releaseId))
                 .timeout(properties.resolvedRequestTimeout())
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
                 .header(TOKEN_HEADER, readToken())
-                .POST(HttpRequest.BodyPublishers.ofByteArray(statusBody(actualHash)))
+                .POST(HttpRequest.BodyPublishers.ofByteArray(statusBody(status, actualHash, message)))
                 .build();
         try {
             HttpResponse<Void> response = httpClient.send(
@@ -170,14 +191,14 @@ public final class HttpConfigurationSnapshotClient implements ConfigurationSnaps
         return base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
     }
 
-    private byte[] statusBody(String actualHash) {
+    private byte[] statusBody(String status, String actualHash, String message) {
         try {
-            return jsonMapper.writeValueAsBytes(Map.of(
-                    "nodeType", "GATEWAY",
-                    "status", "LOADED",
-                    "actualHash", actualHash,
-                    "message", "配置快照已校验并原子激活"
-            ));
+            Map<String, String> body = new LinkedHashMap<>();
+            body.put("nodeType", "GATEWAY");
+            body.put("status", status);
+            if (actualHash != null) body.put("actualHash", actualHash);
+            body.put("message", message);
+            return jsonMapper.writeValueAsBytes(body);
         } catch (JacksonException exception) {
             throw new IllegalStateException("配置加载状态无法序列化", exception);
         }

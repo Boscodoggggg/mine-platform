@@ -116,6 +116,28 @@ class HttpConfigurationSnapshotClientTest {
                 "\"actualHash\":\"sha256:" + "b".repeat(64) + "\"");
     }
 
+    @Test
+    void 永久失败应回报FAILED和安全摘要且不得伪造实际哈希() throws Exception {
+        Path tokenFile = Files.writeString(
+                tempDir.resolve("token"), "gateway-configuration-token-at-least-32-bytes");
+        UUID releaseId = UUID.randomUUID();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+        start(exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.sendResponseHeaders(204, -1);
+            exchange.close();
+        });
+        HttpConfigurationSnapshotClient client = new HttpConfigurationSnapshotClient(properties(tokenFile, 4096));
+
+        client.reportFailed(releaseId, "SNAPSHOT_INVALID: [REDACTED]");
+
+        assertThat(requestBody.get()).contains(
+                "\"nodeType\":\"GATEWAY\"",
+                "\"status\":\"FAILED\"",
+                "\"message\":\"SNAPSHOT_INVALID: [REDACTED]\"")
+                .doesNotContain("actualHash");
+    }
+
     private GatewayConfigurationDistributionProperties properties(Path tokenFile, int maxBytes) {
         return new GatewayConfigurationDistributionProperties(
                 true,

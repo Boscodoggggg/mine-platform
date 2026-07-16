@@ -194,6 +194,25 @@ class ProtocolConfigurationServiceTest {
     }
 
     @Test
+    void 运行节点加载失败时应保存失败证据且无需实际哈希() {
+        UUID releaseId = UUID.randomUUID();
+        String hash = "sha256:" + "c".repeat(64);
+        when(mapper.findRelease(releaseId)).thenReturn(Optional.of(
+                new ProtocolConfigurationMapper.ReleaseRecord(
+                        releaseId, productId, UUID.randomUUID(), 6,
+                        "PUBLISH", null, hash, "{}")
+        ));
+
+        service.reportNodeStatus(releaseId, new ProtocolConfigurationService.NodeStatusCommand(
+                "gateway-1", "GATEWAY", "FAILED", null,
+                "SNAPSHOT_INVALID: 配置内容哈希不一致"));
+
+        verify(mapper).upsertNodeStatus(
+                releaseId, "gateway-1", "GATEWAY", "FAILED", null,
+                "SNAPSHOT_INVALID: 配置内容哈希不一致");
+    }
+
+    @Test
     void 应查询产品发布历史和指定发布的节点加载结果() {
         UUID releaseId = UUID.randomUUID();
         Instant createdAt = Instant.parse("2026-07-16T08:00:00Z");

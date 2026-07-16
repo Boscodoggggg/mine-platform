@@ -73,4 +73,33 @@ class InternalConfigurationSnapshotControllerTest {
                         "sha256:" + "a".repeat(64), "配置已原子切换")
         );
     }
+
+    @Test
+    void 应接收Gateway配置加载失败证据且无需实际哈希() throws Exception {
+        UUID releaseId = UUID.randomUUID();
+        ProtocolConfigurationService service = mock(ProtocolConfigurationService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
+                        new InternalConfigurationSnapshotController(
+                                service, JsonMapper.builder().findAndAddModules().build()))
+                .build();
+
+        mockMvc.perform(post("/internal/v1/config-releases/{id}/nodes/{nodeId}",
+                        releaseId, "gateway-1")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nodeType":"GATEWAY",
+                                  "status":"FAILED",
+                                  "message":"SNAPSHOT_INVALID: 配置内容哈希不一致"
+                                }
+                                """))
+                .andExpect(status().isNoContent());
+
+        verify(service).reportNodeStatus(
+                releaseId,
+                new ProtocolConfigurationService.NodeStatusCommand(
+                        "gateway-1", "GATEWAY", "FAILED", null,
+                        "SNAPSHOT_INVALID: 配置内容哈希不一致")
+        );
+    }
 }
