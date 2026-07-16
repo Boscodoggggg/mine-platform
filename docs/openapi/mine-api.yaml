@@ -20,6 +20,8 @@ tags:
     description: 产品和设备台账管理
   - name: DeviceModel
     description: 物模型字段和厂商协议映射版本管理
+  - name: ProtocolConfiguration
+    description: 协议黄金样本、配置发布、节点加载状态与回滚管理
   - name: DeviceTelemetry
     description: 设备最新值与数值遥测历史
   - name: CommandCenter
@@ -594,6 +596,148 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /protocol-mapping-versions/{protocolVersionId}/samples:
+    get:
+      tags: [ProtocolConfiguration]
+      operationId: listProtocolSamples
+      summary: 查询协议映射版本的黄金样本
+      parameters:
+        - $ref: '#/components/parameters/ProtocolVersionId'
+      responses:
+        '200':
+          description: 按展示顺序排列的黄金样本。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProtocolSample' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ConfigurationNotFound' }
+    put:
+      tags: [ProtocolConfiguration]
+      operationId: replaceProtocolSamples
+      summary: 原子替换协议草稿的全部黄金样本
+      parameters:
+        - $ref: '#/components/parameters/ProtocolVersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProtocolSamplesRequest' }
+      responses:
+        '200':
+          description: 保存后的黄金样本。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProtocolSample' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /protocol-mapping-versions/{protocolVersionId}/test:
+    post:
+      tags: [ProtocolConfiguration]
+      operationId: testProtocolSamples
+      summary: 使用 Gateway 同源引擎回放全部黄金样本
+      parameters:
+        - $ref: '#/components/parameters/ProtocolVersionId'
+      responses:
+        '200':
+          description: 本次不可变测试运行和逐样本结果。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProtocolTestRun' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ConfigurationNotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /config-releases:
+    get:
+      tags: [ProtocolConfiguration]
+      operationId: listConfigReleases
+      summary: 查询产品最近的配置发布历史
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: 按发布序号倒序排列的发布历史。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ConfigReleaseSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [ProtocolConfiguration]
+      operationId: publishConfigRelease
+      summary: 通过黄金样本门禁后发布不可变配置包
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfigPublishRequest' }
+      responses:
+        '201':
+          description: 已创建配置发布事实，Location 指向发布详情。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigRelease' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /config-releases/{releaseId}:
+    get:
+      tags: [ProtocolConfiguration]
+      operationId: getConfigRelease
+      summary: 查询配置发布和运行节点加载状态
+      parameters:
+        - $ref: '#/components/parameters/ReleaseId'
+      responses:
+        '200':
+          description: 不含完整运行快照的配置发布详情。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigReleaseDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ConfigurationNotFound' }
+  /config-releases/{releaseId}/rollback:
+    post:
+      tags: [ProtocolConfiguration]
+      operationId: rollbackConfigRelease
+      summary: 复用历史配置包创建更高序号的回滚发布
+      parameters:
+        - $ref: '#/components/parameters/ReleaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConfigRollbackRequest' }
+      responses:
+        '201':
+          description: 已创建新的回滚发布事实。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConfigRelease' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ConfigurationNotFound' }
   /command-templates:
     get:
       tags: [CommandCenter]
@@ -1158,6 +1302,24 @@ components:
       schema:
         type: string
         format: uuid
+    ProtocolVersionId:
+      name: protocolVersionId
+      in: path
+      required: true
+      description: 协议映射版本 UUID。
+      schema: { type: string, format: uuid }
+    ReleaseId:
+      name: releaseId
+      in: path
+      required: true
+      description: 配置发布 UUID。
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: 同一管理员重复请求时返回原发布的稳定幂等键。
+      schema: { type: string, minLength: 1, maxLength: 128 }
     Keyword:
       name: keyword
       in: query
@@ -1671,6 +1833,108 @@ components:
     ConfigurationVersionStatus:
       type: string
       enum: [DRAFT, PUBLISHED, RETIRED]
+    ProtocolSample:
+      type: object
+      required: [id, name, rawPayload, expectedSuccess, expectedProperties, sortOrder, version]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, maxLength: 128 }
+        rawPayload: { type: object, additionalProperties: true }
+        expectedSuccess: { type: boolean }
+        expectedProperties: { type: object, additionalProperties: true }
+        expectedErrorCode: { type: [string, 'null'], maxLength: 128 }
+        sortOrder: { type: integer, minimum: 0 }
+        version: { type: integer, format: int64, minimum: 0 }
+    ProtocolSamplesRequest:
+      type: object
+      required: [version, samples]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+        samples:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items: { $ref: '#/components/schemas/ProtocolSampleInput' }
+    ProtocolSampleInput:
+      type: object
+      required: [name, rawPayload, expectedSuccess, expectedProperties, sortOrder]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        rawPayload: { type: object, additionalProperties: true }
+        expectedSuccess: { type: boolean }
+        expectedProperties: { type: object, additionalProperties: true }
+        expectedErrorCode: { type: [string, 'null'], maxLength: 128 }
+        sortOrder: { type: integer, minimum: 0 }
+    ProtocolTestRun:
+      type: object
+      required: [id, passed, totalSamples, passedSamples, failedSamples, results]
+      properties:
+        id: { type: string, format: uuid }
+        passed: { type: boolean }
+        totalSamples: { type: integer, minimum: 0 }
+        passedSamples: { type: integer, minimum: 0 }
+        failedSamples: { type: integer, minimum: 0 }
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/ProtocolSampleResult' }
+    ProtocolSampleResult:
+      type: object
+      required: [name, passed, message]
+      properties:
+        name: { type: string }
+        passed: { type: boolean }
+        message: { type: string }
+        actualErrorCode: { type: [string, 'null'] }
+    ConfigPublishRequest:
+      type: object
+      required: [productId, mappingVersionId, reason]
+      properties:
+        productId: { type: string, format: uuid }
+        mappingVersionId: { type: string, format: uuid }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    ConfigRollbackRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    ConfigRelease:
+      type: object
+      required: [id, productId, packageId, releaseSequence, action, contentHash]
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        packageId: { type: string, format: uuid }
+        releaseSequence: { type: integer, format: int64, minimum: 1 }
+        action: { type: string, enum: [PUBLISH, ROLLBACK] }
+        rollbackOfReleaseId: { type: [string, 'null'], format: uuid }
+        contentHash: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+    ConfigReleaseSummary:
+      allOf:
+        - $ref: '#/components/schemas/ConfigRelease'
+        - type: object
+          required: [reason, createdAt]
+          properties:
+            reason: { type: string, maxLength: 500 }
+            createdAt: { type: string, format: date-time }
+    ConfigReleaseDetail:
+      type: object
+      required: [release, nodes]
+      properties:
+        release: { $ref: '#/components/schemas/ConfigReleaseSummary' }
+        nodes:
+          type: array
+          items: { $ref: '#/components/schemas/ConfigNodeStatus' }
+    ConfigNodeStatus:
+      type: object
+      required: [nodeId, nodeType, status, message, updatedAt]
+      properties:
+        nodeId: { type: string, pattern: '^[A-Za-z0-9._-]{1,128}$' }
+        nodeType: { type: string, enum: [GATEWAY, TELEMETRY, SERVER] }
+        status: { type: string, enum: [PENDING, LOADED, FAILED] }
+        actualHash: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        message: { type: string, maxLength: 500 }
+        loadedAt: { type: [string, 'null'], format: date-time }
+        updatedAt: { type: string, format: date-time }
     DescriptionRequest:
       type: object
       properties:
@@ -2137,6 +2401,12 @@ components:
             $ref: '#/components/schemas/ApiError'
     ProductNotFound:
       description: 产品不存在，错误码 DEVICE-404-001。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    ConfigurationNotFound:
+      description: 协议配置或发布不存在，错误码 PROTOCOL-CONFIG-404-001。
       content:
         application/json:
           schema:

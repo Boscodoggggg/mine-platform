@@ -432,6 +432,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/protocol-mapping-versions/{protocolVersionId}/samples": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询协议映射版本的黄金样本 */
+        get: operations["listProtocolSamples"];
+        /** 原子替换协议草稿的全部黄金样本 */
+        put: operations["replaceProtocolSamples"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/protocol-mapping-versions/{protocolVersionId}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 使用 Gateway 同源引擎回放全部黄金样本 */
+        post: operations["testProtocolSamples"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询产品最近的配置发布历史 */
+        get: operations["listConfigReleases"];
+        put?: never;
+        /** 通过黄金样本门禁后发布不可变配置包 */
+        post: operations["publishConfigRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config-releases/{releaseId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询配置发布和运行节点加载状态 */
+        get: operations["getConfigRelease"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/config-releases/{releaseId}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 复用历史配置包创建更高序号的回滚发布 */
+        post: operations["rollbackConfigRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/command-templates": {
         parameters: {
             query?: never;
@@ -1132,6 +1219,101 @@ export interface components {
         };
         /** @enum {string} */
         ConfigurationVersionStatus: "DRAFT" | "PUBLISHED" | "RETIRED";
+        ProtocolSample: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            rawPayload: {
+                [key: string]: unknown;
+            };
+            expectedSuccess: boolean;
+            expectedProperties: {
+                [key: string]: unknown;
+            };
+            expectedErrorCode?: string | null;
+            sortOrder: number;
+            /** Format: int64 */
+            version: number;
+        };
+        ProtocolSamplesRequest: {
+            /** Format: int64 */
+            version: number;
+            samples: components["schemas"]["ProtocolSampleInput"][];
+        };
+        ProtocolSampleInput: {
+            name: string;
+            rawPayload: {
+                [key: string]: unknown;
+            };
+            expectedSuccess: boolean;
+            expectedProperties: {
+                [key: string]: unknown;
+            };
+            expectedErrorCode?: string | null;
+            sortOrder: number;
+        };
+        ProtocolTestRun: {
+            /** Format: uuid */
+            id: string;
+            passed: boolean;
+            totalSamples: number;
+            passedSamples: number;
+            failedSamples: number;
+            results: components["schemas"]["ProtocolSampleResult"][];
+        };
+        ProtocolSampleResult: {
+            name: string;
+            passed: boolean;
+            message: string;
+            actualErrorCode?: string | null;
+        };
+        ConfigPublishRequest: {
+            /** Format: uuid */
+            productId: string;
+            /** Format: uuid */
+            mappingVersionId: string;
+            reason: string;
+        };
+        ConfigRollbackRequest: {
+            reason: string;
+        };
+        ConfigRelease: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            /** Format: uuid */
+            packageId: string;
+            /** Format: int64 */
+            releaseSequence: number;
+            /** @enum {string} */
+            action: "PUBLISH" | "ROLLBACK";
+            /** Format: uuid */
+            rollbackOfReleaseId?: string | null;
+            contentHash: string;
+        };
+        ConfigReleaseSummary: components["schemas"]["ConfigRelease"] & {
+            reason: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ConfigReleaseDetail: {
+            release: components["schemas"]["ConfigReleaseSummary"];
+            nodes: components["schemas"]["ConfigNodeStatus"][];
+        };
+        ConfigNodeStatus: {
+            nodeId: string;
+            /** @enum {string} */
+            nodeType: "GATEWAY" | "TELEMETRY" | "SERVER";
+            /** @enum {string} */
+            status: "PENDING" | "LOADED" | "FAILED";
+            actualHash?: string | null;
+            message: string;
+            /** Format: date-time */
+            loadedAt?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         DescriptionRequest: {
             description?: string | null;
         };
@@ -1535,6 +1717,15 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
+        /** @description 协议配置或发布不存在，错误码 PROTOCOL-CONFIG-404-001。 */
+        ConfigurationNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
         /** @description 编码重复、状态冲突或乐观锁版本冲突。 */
         Conflict: {
             headers: {
@@ -1569,6 +1760,12 @@ export interface components {
         DeviceId: string;
         /** @description 命令 UUID。 */
         CommandId: string;
+        /** @description 协议映射版本 UUID。 */
+        ProtocolVersionId: string;
+        /** @description 配置发布 UUID。 */
+        ReleaseId: string;
+        /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+        IdempotencyKey: string;
         Keyword: string;
         Page: number;
         PageSize: number;
@@ -2338,6 +2535,207 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listProtocolSamples: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 协议映射版本 UUID。 */
+                protocolVersionId: components["parameters"]["ProtocolVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按展示顺序排列的黄金样本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolSample"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ConfigurationNotFound"];
+        };
+    };
+    replaceProtocolSamples: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 协议映射版本 UUID。 */
+                protocolVersionId: components["parameters"]["ProtocolVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProtocolSamplesRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存后的黄金样本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolSample"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    testProtocolSamples: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 协议映射版本 UUID。 */
+                protocolVersionId: components["parameters"]["ProtocolVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 本次不可变测试运行和逐样本结果。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtocolTestRun"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ConfigurationNotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listConfigReleases: {
+        parameters: {
+            query: {
+                productId: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按发布序号倒序排列的发布历史。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigReleaseSummary"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    publishConfigRelease: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建配置发布事实，Location 指向发布详情。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigRelease"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getConfigRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 配置发布 UUID。 */
+                releaseId: components["parameters"]["ReleaseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 不含完整运行快照的配置发布详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigReleaseDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ConfigurationNotFound"];
+        };
+    };
+    rollbackConfigRelease: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 配置发布 UUID。 */
+                releaseId: components["parameters"]["ReleaseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigRollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建新的回滚发布事实。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigRelease"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["ConfigurationNotFound"];
         };
     };
     listCommandTemplates: {

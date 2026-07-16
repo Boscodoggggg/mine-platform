@@ -18,6 +18,13 @@ jq -e '.services["redis-exporter"].environment.REDIS_PASSWORD_FILE == "/run/secr
   and (.services["redis-exporter"].secrets | any(.source == "redis_exporter_passwords"))' "${rendered}" >/dev/null \
   || { echo "FAIL: redis-exporter 必须使用专用 JSON 密码映射 secret" >&2; exit 1; }
 
+jq -e '.services["mine-server"].environment.MINE_CONFIGURATION_DISTRIBUTION_ENABLED == "true"
+  and (.services["mine-server"].secrets | any(.source == "mine_configuration_distribution_token"))
+  and .services["mine-gateway"].environment.MINE_GATEWAY_CONFIGURATION_DISTRIBUTION_ENABLED == "true"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_CONFIGURATION_SERVER_URL == "http://mine-server:8080"
+  and (.services["mine-gateway"].secrets | any(.source == "mine_configuration_distribution_token"))' "${rendered}" >/dev/null \
+  || { echo "FAIL: server 与 gateway 必须启用基于 secret 的配置分发闭环" >&2; exit 1; }
+
 jq -e '.services.prometheus.depends_on // {} | keys | all(. != "mine-server" and . != "mine-gateway" and . != "mine-telemetry" and . != "rabbitmq" and . != "postgres-exporter" and . != "timescale-exporter" and . != "redis-exporter")' \
   "${rendered}" >/dev/null \
   || { echo "FAIL: Prometheus 不得等待被观测目标健康后才启动" >&2; exit 1; }

@@ -1,12 +1,16 @@
 package com.bosco.mine.gateway.normalize;
 
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.gateway.configuration.InvalidConfigurationSnapshotException;
+import com.bosco.mine.gateway.configuration.ProtocolSnapshotRegistry;
 import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.MessageEnvelope;
 import com.bosco.mine.messaging.MessageType;
 import com.bosco.mine.model.message.TelemetryPayload;
 import com.bosco.mine.model.message.UnifiedDeviceMessage;
+import com.bosco.mine.protocol.engine.json.MqttJsonExecutionPlan;
+import com.bosco.mine.protocol.engine.json.ProtocolExecutionResult;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -30,6 +34,7 @@ public final class DeviceMessageNormalizer implements DeviceMessageConsumer.Norm
     private static final Pattern TOPIC_SEGMENT = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
     private final DeviceSessionRegistry registry;
+    private final ProtocolSnapshotRegistry protocolRegistry;
     private final IdGenerator idGenerator;
     private final Clock clock;
     private final int maxPayloadBytes;
@@ -49,7 +54,27 @@ public final class DeviceMessageNormalizer implements DeviceMessageConsumer.Norm
             Clock clock,
             int maxPayloadBytes
     ) {
+        this(registry, new ProtocolSnapshotRegistry(false), idGenerator, clock, maxPayloadBytes);
+    }
+
+    /**
+     * 创建支持动态协议快照的 MQTT JSON 标准化器。
+     *
+     * @param registry 可信设备身份快照
+     * @param protocolRegistry 动态协议执行计划注册表
+     * @param idGenerator UUIDv7 生成器
+     * @param clock 平台接收时钟
+     * @param maxPayloadBytes 单条原始报文最大字节数
+     */
+    public DeviceMessageNormalizer(
+            DeviceSessionRegistry registry,
+            ProtocolSnapshotRegistry protocolRegistry,
+            IdGenerator idGenerator,
+            Clock clock,
+            int maxPayloadBytes
+    ) {
         this.registry = Objects.requireNonNull(registry, "registry 不能为空");
+        this.protocolRegistry = Objects.requireNonNull(protocolRegistry, "protocolRegistry 不能为空");
         this.idGenerator = Objects.requireNonNull(idGenerator, "idGenerator 不能为空");
         this.clock = Objects.requireNonNull(clock, "clock 不能为空");
         if (maxPayloadBytes < 1) throw new IllegalArgumentException("maxPayloadBytes 必须大于 0");
@@ -73,6 +98,17 @@ public final class DeviceMessageNormalizer implements DeviceMessageConsumer.Norm
         TopicIdentity topic = TopicIdentity.parse(routingKey);
         DeviceSessionRegistry.DeviceIdentity identity = registry.find(topic.productKey(), topic.clientId())
                 .orElseThrow(() -> new InvalidDeviceMessageException("MQTT 客户端身份未登记"));
+        var activeProtocol = protocolRegistry.find(identity.productKey());
+        if (activeProtocol.isPresent()) {
+            return normalizeDynamic(identity, activeProtocol.orElseThrow(), body);
+        }
+        if (protocolRegistry.required()) {
+            try {
+                protocolRegistry.require(identity.productKey());
+            } catch (InvalidConfigurationSnapshotException exception) {
+                throw new InvalidDeviceMessageException(exception.getMessage(), exception);
+            }
+        }
         JsonNode root = readRoot(body);
         requireEqual(text(root, "productKey"), identity.productKey(), "productKey 与凭据身份不一致");
         requireEqual(text(root, "deviceCode"), identity.deviceCode(), "deviceCode 与可信设备映射不一致");
@@ -104,6 +140,52 @@ public final class DeviceMessageNormalizer implements DeviceMessageConsumer.Norm
                 PRODUCER,
                 messageId.toString(),
                 null,
+                identity.deviceId(),
+                identity.tenantScope(),
+                message
+        );
+    }
+
+    private MessageEnvelope<UnifiedDeviceMessage> normalizeDynamic(
+            DeviceSessionRegistry.DeviceIdentity identity,
+            ProtocolSnapshotRegistry.ActiveProtocol active,
+            byte[] body
+    ) {
+        ProtocolExecutionResult result = active.plan().execute(
+                body,
+                new MqttJsonExecutionPlan.TrustedIdentity(
+                        identity.productKey(), identity.deviceCode())
+        );
+        if (!result.success()) {
+            throw new InvalidDeviceMessageException(
+                    "动态协议解析失败[%s]: %s".formatted(result.errorCode(), result.errorMessage()));
+        }
+        Instant now = Instant.now(clock);
+        UUID messageId = idGenerator.next();
+        UnifiedDeviceMessage message = new UnifiedDeviceMessage(
+                messageId,
+                UnifiedDeviceMessage.MessageKind.TELEMETRY,
+                identity.productKey(),
+                identity.deviceId(),
+                active.protocolVersion(),
+                result.bootId(),
+                result.sequence(),
+                result.occurredAt(),
+                now,
+                result.replayed(),
+                new TelemetryPayload(result.properties()),
+                UnifiedDeviceMessage.Quality.GOOD,
+                null
+        );
+        return new MessageEnvelope<>(
+                messageId,
+                EVENT_TYPE,
+                1,
+                result.occurredAt(),
+                now,
+                PRODUCER,
+                messageId.toString(),
+                active.releaseId().toString(),
                 identity.deviceId(),
                 identity.tenantScope(),
                 message

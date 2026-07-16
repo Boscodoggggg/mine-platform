@@ -233,6 +233,45 @@ public interface ProtocolConfigurationMapper {
             """)
     Optional<ReleaseRecord> findRelease(@Param("releaseId") UUID releaseId);
 
+    /** 按产品倒序查询最近的配置发布摘要。 */
+    @Select("""
+            SELECT release.id, release.product_id AS productId, release.package_id AS packageId,
+                   release.release_sequence AS releaseSequence, release.action,
+                   release.rollback_of_release_id AS rollbackOfReleaseId,
+                   package.content_hash AS contentHash, release.reason, release.created_at AS createdAt
+            FROM dev_config_release release
+            JOIN dev_config_package package ON package.id = release.package_id
+            WHERE release.product_id = #{productId}
+            ORDER BY release.release_sequence DESC
+            LIMIT #{limit}
+            """)
+    List<ReleaseSummaryRecord> findReleaseSummaries(
+            @Param("productId") UUID productId,
+            @Param("limit") int limit
+    );
+
+    /** 按发布标识查询不含完整快照的管理摘要。 */
+    @Select("""
+            SELECT release.id, release.product_id AS productId, release.package_id AS packageId,
+                   release.release_sequence AS releaseSequence, release.action,
+                   release.rollback_of_release_id AS rollbackOfReleaseId,
+                   package.content_hash AS contentHash, release.reason, release.created_at AS createdAt
+            FROM dev_config_release release
+            JOIN dev_config_package package ON package.id = release.package_id
+            WHERE release.id = #{releaseId}
+            """)
+    Optional<ReleaseSummaryRecord> findReleaseSummary(@Param("releaseId") UUID releaseId);
+
+    /** 查询指定发布的全部运行节点加载状态。 */
+    @Select("""
+            SELECT node_id AS nodeId, node_type AS nodeType, status, actual_hash AS actualHash,
+                   message, loaded_at AS loadedAt, updated_at AS updatedAt
+            FROM dev_config_node_status
+            WHERE release_id = #{releaseId}
+            ORDER BY node_type, node_id
+            """)
+    List<NodeStatusRecord> findNodeStatuses(@Param("releaseId") UUID releaseId);
+
     /** 插入不可变配置发布。 */
     @Insert("""
             INSERT INTO dev_config_release (
@@ -281,6 +320,32 @@ public interface ProtocolConfigurationMapper {
             @Param("releaseId") UUID releaseId,
             @Param("payloadJson") String payloadJson,
             @Param("headersJson") String headersJson
+    );
+
+    /** 新增或刷新运行节点对一次配置发布的加载状态。 */
+    @Insert("""
+            INSERT INTO dev_config_node_status (
+                release_id, node_id, node_type, status, actual_hash, message, loaded_at, updated_at
+            ) VALUES (
+                #{releaseId}, #{nodeId}, #{nodeType}, #{status}, #{actualHash}, #{message},
+                CASE WHEN #{status} = 'LOADED' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                CURRENT_TIMESTAMP
+            )
+            ON CONFLICT (release_id, node_id) DO UPDATE SET
+                node_type = EXCLUDED.node_type,
+                status = EXCLUDED.status,
+                actual_hash = EXCLUDED.actual_hash,
+                message = EXCLUDED.message,
+                loaded_at = EXCLUDED.loaded_at,
+                updated_at = CURRENT_TIMESTAMP
+            """)
+    int upsertNodeStatus(
+            @Param("releaseId") UUID releaseId,
+            @Param("nodeId") String nodeId,
+            @Param("nodeType") String nodeType,
+            @Param("status") String status,
+            @Param("actualHash") String actualHash,
+            @Param("message") String message
     );
 
     /** 协议映射发布信息。 */
@@ -354,6 +419,32 @@ public interface ProtocolConfigurationMapper {
             UUID rollbackOfReleaseId,
             String contentHash,
             String snapshotJson
+    ) {
+    }
+
+    /** 配置发布管理摘要，不包含运行节点使用的完整快照。 */
+    record ReleaseSummaryRecord(
+            UUID id,
+            UUID productId,
+            UUID packageId,
+            long releaseSequence,
+            String action,
+            UUID rollbackOfReleaseId,
+            String contentHash,
+            String reason,
+            Instant createdAt
+    ) {
+    }
+
+    /** 运行节点加载状态投影。 */
+    record NodeStatusRecord(
+            String nodeId,
+            String nodeType,
+            String status,
+            String actualHash,
+            String message,
+            Instant loadedAt,
+            Instant updatedAt
     ) {
     }
 }

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -166,6 +167,60 @@ class ProtocolConfigurationServiceTest {
         );
         verify(mapper).insertReleaseOutbox(any(), eq(release.id()), any(), any());
         verify(mapper).lockProduct(productId);
+    }
+
+    @Test
+    void 运行节点只能上报与发布一致的已加载哈希() {
+        UUID releaseId = UUID.randomUUID();
+        String hash = "sha256:" + "c".repeat(64);
+        when(mapper.findRelease(releaseId)).thenReturn(Optional.of(
+                new ProtocolConfigurationMapper.ReleaseRecord(
+                        releaseId, productId, UUID.randomUUID(), 6,
+                        "PUBLISH", null, hash, "{}")
+        ));
+
+        service.reportNodeStatus(releaseId, new ProtocolConfigurationService.NodeStatusCommand(
+                "gateway-1", "GATEWAY", "LOADED", hash, "配置已原子切换"));
+
+        verify(mapper).upsertNodeStatus(
+                releaseId, "gateway-1", "GATEWAY", "LOADED", hash, "配置已原子切换");
+        assertThatThrownBy(() -> service.reportNodeStatus(
+                releaseId,
+                new ProtocolConfigurationService.NodeStatusCommand(
+                        "gateway-1", "GATEWAY", "LOADED",
+                        "sha256:" + "d".repeat(64), "哈希错误")
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                assertThat(exception.errorCode().code()).isEqualTo("CONFIG-RELEASE-422-002"));
+    }
+
+    @Test
+    void 应查询产品发布历史和指定发布的节点加载结果() {
+        UUID releaseId = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-07-16T08:00:00Z");
+        ProtocolConfigurationMapper.ReleaseSummaryRecord release =
+                new ProtocolConfigurationMapper.ReleaseSummaryRecord(
+                        releaseId, productId, UUID.randomUUID(), 8, "PUBLISH", null,
+                        "sha256:" + "c".repeat(64), "接入运输车协议", createdAt
+                );
+        ProtocolConfigurationMapper.NodeStatusRecord node =
+                new ProtocolConfigurationMapper.NodeStatusRecord(
+                        "gateway-1", "GATEWAY", "LOADED", release.contentHash(),
+                        "配置已原子切换", createdAt, createdAt
+                );
+        when(mapper.findReleaseSummaries(productId, 20)).thenReturn(List.of(release));
+        when(mapper.findReleaseSummary(releaseId)).thenReturn(Optional.of(release));
+        when(mapper.findNodeStatuses(releaseId)).thenReturn(List.of(node));
+
+        List<ProtocolConfigurationService.ReleaseSummaryView> history =
+                service.findReleases(productId, 20);
+        ProtocolConfigurationService.ReleaseDetailView detail = service.findRelease(releaseId);
+
+        assertThat(history).singleElement().extracting(
+                ProtocolConfigurationService.ReleaseSummaryView::releaseSequence).isEqualTo(8L);
+        assertThat(detail.nodes()).singleElement().satisfies(status -> {
+            assertThat(status.nodeId()).isEqualTo("gateway-1");
+            assertThat(status.status()).isEqualTo("LOADED");
+        });
     }
 
     private void stubBundle(String status, String transform) {

@@ -7,6 +7,11 @@ import com.bosco.mine.gateway.command.CommandMessageCodec;
 import com.bosco.mine.gateway.command.ConfirmedCommandStatusPublisher;
 import com.bosco.mine.gateway.command.MqttCommandPublisher;
 import com.bosco.mine.gateway.command.RabbitCommandTimeoutScheduler;
+import com.bosco.mine.gateway.configuration.ConfigurationReleaseCodec;
+import com.bosco.mine.gateway.configuration.ConfigurationReleaseConsumer;
+import com.bosco.mine.gateway.configuration.GatewayConfigurationDistributionProperties;
+import com.bosco.mine.gateway.configuration.HttpConfigurationSnapshotClient;
+import com.bosco.mine.gateway.configuration.ProtocolSnapshotRegistry;
 import com.bosco.mine.gateway.mqtt.ConfirmedTelemetryPublisher;
 import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.normalize.DeviceMessageNormalizer;
@@ -36,7 +41,10 @@ import java.time.Clock;
  * 命令消费以及遥测、命令状态发布，两个安全域的权限不得混用。</p>
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(GatewayRabbitProperties.class)
+@EnableConfigurationProperties({
+        GatewayRabbitProperties.class,
+        GatewayConfigurationDistributionProperties.class
+})
 @EnableScheduling
 @ConditionalOnProperty(prefix = "mine.gateway.rabbit", name = "enabled", havingValue = "true")
 public class GatewayRabbitConfiguration {
@@ -74,6 +82,19 @@ public class GatewayRabbitConfiguration {
     }
 
     /**
+     * 创建动态协议快照注册表；分发启用时缺失产品配置将阻止设备报文解析。
+     *
+     * @param properties 配置分发参数
+     * @return 协议快照注册表
+     */
+    @Bean
+    public ProtocolSnapshotRegistry protocolSnapshotRegistry(
+            GatewayConfigurationDistributionProperties properties
+    ) {
+        return new ProtocolSnapshotRegistry(properties.resolvedEnabled());
+    }
+
+    /**
      * 创建身份快照加载器并在设备消费启动前完成首次加载。
      *
      * @param registry 运行时身份注册表
@@ -100,8 +121,13 @@ public class GatewayRabbitConfiguration {
      * @return 设备身份快照信息贡献器
      */
     @Bean
-    public InfoContributor deviceIdentitySnapshotInfoContributor(DeviceSessionRegistry registry) {
-        return builder -> builder.withDetail("deviceIdentitySnapshot", registry.status());
+    public InfoContributor deviceIdentitySnapshotInfoContributor(
+            DeviceSessionRegistry registry,
+            ProtocolSnapshotRegistry protocolRegistry
+    ) {
+        return builder -> builder
+                .withDetail("deviceIdentitySnapshot", registry.status())
+                .withDetail("protocolSnapshots", protocolRegistry.statuses());
     }
 
     /**
@@ -114,14 +140,69 @@ public class GatewayRabbitConfiguration {
     @Bean
     public DeviceMessageNormalizer deviceMessageNormalizer(
             DeviceSessionRegistry registry,
+            ProtocolSnapshotRegistry protocolRegistry,
             GatewayRabbitProperties properties
     ) {
         return new DeviceMessageNormalizer(
                 registry,
+                protocolRegistry,
                 IdGenerator.timeOrdered(),
                 Clock.systemUTC(),
                 properties.resolvedMaxPayloadBytes()
         );
+    }
+
+    /**
+     * 创建配置发布消息解码器。
+     *
+     * @param properties RabbitMQ 输入边界参数
+     * @return 配置发布解码器
+     */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.gateway.configuration-distribution",
+            name = "enabled",
+            havingValue = "true")
+    public ConfigurationReleaseCodec configurationReleaseCodec(GatewayRabbitProperties properties) {
+        return new ConfigurationReleaseCodec(properties.resolvedMaxPayloadBytes());
+    }
+
+    /**
+     * 创建带 secret 服务令牌的内部快照客户端。
+     *
+     * @param properties 配置分发参数
+     * @return HTTP 配置快照客户端
+     */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.gateway.configuration-distribution",
+            name = "enabled",
+            havingValue = "true")
+    public HttpConfigurationSnapshotClient configurationSnapshotClient(
+            GatewayConfigurationDistributionProperties properties
+    ) {
+        return new HttpConfigurationSnapshotClient(properties);
+    }
+
+    /**
+     * 创建配置发布事件消费者。
+     *
+     * @param codec 配置消息解码器
+     * @param client 内部快照客户端
+     * @param registry 协议快照注册表
+     * @return 配置发布消费者
+     */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.gateway.configuration-distribution",
+            name = "enabled",
+            havingValue = "true")
+    public ConfigurationReleaseConsumer configurationReleaseConsumer(
+            ConfigurationReleaseCodec codec,
+            HttpConfigurationSnapshotClient client,
+            ProtocolSnapshotRegistry registry
+    ) {
+        return new ConfigurationReleaseConsumer(codec, client, registry);
     }
 
     /**
@@ -328,6 +409,30 @@ public class GatewayRabbitConfiguration {
     ) {
         return listenerContainer(
                 platformConnectionFactory, MineTopology.COMMAND_QUEUE,
+                consumer, properties
+        );
+    }
+
+    /**
+     * 创建手工确认的动态配置监听容器。
+     *
+     * @param platformConnectionFactory 平台 vhost 连接
+     * @param consumer 配置发布消费者
+     * @param properties RabbitMQ 参数
+     * @return 配置发布监听容器
+     */
+    @Bean(destroyMethod = "destroy")
+    @ConditionalOnProperty(
+            prefix = "mine.gateway.configuration-distribution",
+            name = "enabled",
+            havingValue = "true")
+    public SimpleMessageListenerContainer configurationReleaseListenerContainer(
+            CachingConnectionFactory platformConnectionFactory,
+            ConfigurationReleaseConsumer consumer,
+            GatewayRabbitProperties properties
+    ) {
+        return listenerContainer(
+                platformConnectionFactory, MineTopology.CONFIG_QUEUE,
                 consumer, properties
         );
     }

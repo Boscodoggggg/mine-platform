@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.server.modules.configuration.service.ProtocolConfigurationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 import tools.jackson.core.JacksonException;
@@ -99,6 +101,36 @@ public class ProtocolConfigurationController {
             @PathVariable("id") UUID mappingVersionId
     ) {
         return service.test(mappingVersionId);
+    }
+
+    /**
+     * 查询产品最近的配置发布历史。
+     *
+     * @param productId 产品标识
+     * @param limit 最大返回数量
+     * @return 配置发布摘要
+     */
+    @GetMapping("/config-releases")
+    @SaCheckPermission("device:configuration:view")
+    public List<ProtocolConfigurationService.ReleaseSummaryView> findReleases(
+            @RequestParam UUID productId,
+            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int limit
+    ) {
+        return service.findReleases(productId, limit);
+    }
+
+    /**
+     * 查询指定配置发布及运行节点加载状态。
+     *
+     * @param releaseId 发布标识
+     * @return 配置发布详情
+     */
+    @GetMapping("/config-releases/{id}")
+    @SaCheckPermission("device:configuration:view")
+    public ProtocolConfigurationService.ReleaseDetailView findRelease(
+            @PathVariable("id") UUID releaseId
+    ) {
+        return service.findRelease(releaseId);
     }
 
     /**

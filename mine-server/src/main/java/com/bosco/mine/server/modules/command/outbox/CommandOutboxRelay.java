@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 以事件标识驱动命令 Outbox 发布，并在 RabbitMQ 确认后推进状态。
+ * 以事件标识驱动平台 Outbox 发布，并在 RabbitMQ 确认后推进状态。
  */
 public final class CommandOutboxRelay {
     private static final Logger LOGGER = LoggerFactory.getLogger(CommandOutboxRelay.class);
@@ -81,13 +81,13 @@ public final class CommandOutboxRelay {
             String error = rootMessage(exception);
             if (event.attempts() >= maxAttempts) {
                 repository.markDead(event.eventId(), instanceId, error);
-                LOGGER.error("命令 Outbox 事件超过尝试上限并进入死信: eventId={}", event.eventId(), exception);
+                LOGGER.error("平台 Outbox 事件超过尝试上限并进入死信: eventId={}", event.eventId(), exception);
                 return;
             }
             Instant retryAt = Instant.now().plus(retryDelay(event.attempts()));
             repository.markFailed(event.eventId(), instanceId, retryAt, error);
             retryScheduler.schedule(event.eventId(), retryAt);
-            LOGGER.warn("命令 Outbox 发布失败，已按事件标识安排重试: eventId={}", event.eventId(), exception);
+            LOGGER.warn("平台 Outbox 发布失败，已按事件标识安排重试: eventId={}", event.eventId(), exception);
         }
     }
 

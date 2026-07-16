@@ -99,6 +99,8 @@ services:
       MINE_COMMAND_OUTBOX_INSTANCE_ID: standalone
       MINE_COMMAND_OUTBOX_RABBIT_HOST: rabbitmq
       MINE_COMMAND_OUTBOX_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_command_password
+      MINE_CONFIGURATION_DISTRIBUTION_ENABLED: "true"
+      MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
       MINE_OPERATIONS_PROMETHEUS_ENABLED: "true"
       MINE_OPERATIONS_PROMETHEUS_URL: http://prometheus:9090
     volumes:
@@ -113,6 +115,7 @@ services:
       - timescale_reader_password
       - rabbitmq_server_realtime_password
       - rabbitmq_server_command_password
+      - mine_configuration_distribution_token
     depends_on:
       postgres:
         condition: service_healthy
@@ -152,6 +155,10 @@ services:
       MINE_GATEWAY_DEVICE_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_gateway_device_password
       MINE_GATEWAY_PLATFORM_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_gateway_platform_password
       MINE_GATEWAY_IDENTITY_SNAPSHOT_FILE: /etc/mine/gateway/device-identities.json
+      MINE_GATEWAY_CONFIGURATION_DISTRIBUTION_ENABLED: "true"
+      MINE_GATEWAY_CONFIGURATION_SERVER_URL: http://mine-server:8080
+      MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
+      MINE_GATEWAY_NODE_ID: standalone-gateway
     volumes:
       - ../../mine-gateway/target:/opt/mine/source:ro
       - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
@@ -159,8 +166,11 @@ services:
     secrets:
       - rabbitmq_gateway_device_password
       - rabbitmq_gateway_platform_password
+      - mine_configuration_distribution_token
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      mine-server:
         condition: service_healthy
     networks:
       - app
@@ -698,6 +708,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_realtime_password
   rabbitmq_server_command_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_command_password
+  mine_configuration_distribution_token:
+    file: ${MINE_SECRETS_DIR:-../secrets}/mine_configuration_distribution_token
   mine_super_admin_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/mine_super_admin_password
   grafana_admin_password:

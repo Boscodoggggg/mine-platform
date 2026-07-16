@@ -16,6 +16,7 @@ import com.bosco.mine.server.modules.configuration.repository.ProtocolConfigurat
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.MDC;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -31,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * 编排协议黄金样本、配置包发布、回滚和运行节点快照用例。
@@ -55,6 +57,8 @@ public class ProtocolConfigurationService {
 
     private static final int MAX_SAMPLES = 200;
     private static final int MAX_SAMPLE_BYTES = 64 * 1024;
+    private static final Pattern NODE_ID = Pattern.compile("^[A-Za-z0-9._-]{1,128}$");
+    private static final Pattern HASH = Pattern.compile("^sha256:[0-9a-f]{64}$");
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
 
     private final ProtocolConfigurationMapper mapper;
@@ -151,6 +155,39 @@ public class ProtocolConfigurationService {
     }
 
     /**
+     * 查询产品最近的配置发布历史。
+     *
+     * @param productId 产品标识
+     * @param limit 最大返回数量
+     * @return 按发布序号倒序排列的发布摘要
+     */
+    @Transactional(readOnly = true)
+    public List<ReleaseSummaryView> findReleases(UUID productId, int limit) {
+        if (productId == null || limit < 1 || limit > 100) {
+            throw new MineException(RELEASE_INVALID, Map.of("field", "limit"));
+        }
+        return mapper.findReleaseSummaries(productId, limit).stream()
+                .map(ReleaseSummaryView::from)
+                .toList();
+    }
+
+    /**
+     * 查询指定发布及运行节点加载状态。
+     *
+     * @param releaseId 发布标识
+     * @return 发布详情
+     */
+    @Transactional(readOnly = true)
+    public ReleaseDetailView findRelease(UUID releaseId) {
+        ProtocolConfigurationMapper.ReleaseSummaryRecord release = mapper.findReleaseSummary(releaseId)
+                .orElseThrow(() -> new MineException(NOT_FOUND, Map.of("releaseId", releaseId)));
+        return new ReleaseDetailView(
+                ReleaseSummaryView.from(release),
+                mapper.findNodeStatuses(releaseId).stream().map(NodeStatusView::from).toList()
+        );
+    }
+
+    /**
      * 创建配置包并发布到产品范围。
      *
      * @param command 发布参数
@@ -233,6 +270,33 @@ public class ProtocolConfigurationService {
         );
     }
 
+    /**
+     * 保存运行节点对指定配置发布的加载结果。
+     *
+     * @param releaseId 配置发布标识
+     * @param command 节点状态参数
+     */
+    @Transactional
+    public void reportNodeStatus(UUID releaseId, NodeStatusCommand command) {
+        ProtocolConfigurationMapper.ReleaseRecord release = mapper.findRelease(releaseId)
+                .orElseThrow(() -> new MineException(NOT_FOUND, Map.of("releaseId", releaseId)));
+        boolean valid = command != null
+                && command.nodeId() != null && NODE_ID.matcher(command.nodeId()).matches()
+                && Set.of("GATEWAY", "TELEMETRY", "SERVER").contains(command.nodeType())
+                && Set.of("LOADED", "FAILED").contains(command.status())
+                && command.message() != null && !command.message().isBlank()
+                && command.message().length() <= 500
+                && (command.actualHash() == null || HASH.matcher(command.actualHash()).matches());
+        if (!valid || "LOADED".equals(command.status())
+                && !release.contentHash().equals(command.actualHash())) {
+            throw new MineException(RELEASE_INVALID, Map.of("releaseId", releaseId));
+        }
+        mapper.upsertNodeStatus(
+                releaseId, command.nodeId(), command.nodeType(), command.status(),
+                command.actualHash(), command.message().strip()
+        );
+    }
+
     private ProtocolConfigurationMapper.PackageRecord createPackage(
             Bundle bundle,
             String snapshotJson,
@@ -281,7 +345,10 @@ public class ProtocolConfigurationService {
                         "releaseSequence", releaseSequence,
                         "contentHash", contentHash
                 )),
-                writeJson(Map.of("partitionKey", productId.toString()))
+                writeJson(Map.of(
+                        "partitionKey", productId.toString(),
+                        "traceId", currentTraceId(eventId)
+                ))
         );
         commitNotifier.notifyAfterCommit(eventId);
         auditService.recordSuccess(
@@ -505,6 +572,11 @@ public class ProtocolConfigurationService {
         return value == null || value.isBlank() ? null : value.strip();
     }
 
+    private String currentTraceId(UUID eventId) {
+        String traceId = MDC.get("traceId");
+        return traceId == null || traceId.isBlank() ? eventId.toString() : traceId;
+    }
+
     /** 黄金样本保存参数。 */
     public record SampleCommand(
             String name,
@@ -579,6 +651,56 @@ public class ProtocolConfigurationService {
         }
     }
 
+    /** 配置发布管理摘要。 */
+    public record ReleaseSummaryView(
+            UUID id,
+            UUID productId,
+            UUID packageId,
+            long releaseSequence,
+            String action,
+            UUID rollbackOfReleaseId,
+            String contentHash,
+            String reason,
+            Instant createdAt
+    ) {
+        private static ReleaseSummaryView from(ProtocolConfigurationMapper.ReleaseSummaryRecord record) {
+            return new ReleaseSummaryView(
+                    record.id(), record.productId(), record.packageId(), record.releaseSequence(),
+                    record.action(), record.rollbackOfReleaseId(), record.contentHash(),
+                    record.reason(), record.createdAt()
+            );
+        }
+    }
+
+    /** 配置发布和节点加载状态详情。 */
+    public record ReleaseDetailView(
+            ReleaseSummaryView release,
+            List<NodeStatusView> nodes
+    ) {
+        /** 冻结运行节点状态集合。 */
+        public ReleaseDetailView {
+            nodes = List.copyOf(nodes);
+        }
+    }
+
+    /** 运行节点加载状态只读视图。 */
+    public record NodeStatusView(
+            String nodeId,
+            String nodeType,
+            String status,
+            String actualHash,
+            String message,
+            Instant loadedAt,
+            Instant updatedAt
+    ) {
+        private static NodeStatusView from(ProtocolConfigurationMapper.NodeStatusRecord record) {
+            return new NodeStatusView(
+                    record.nodeId(), record.nodeType(), record.status(), record.actualHash(),
+                    record.message(), record.loadedAt(), record.updatedAt()
+            );
+        }
+    }
+
     /** 运行节点拉取的发布快照。 */
     public record ReleaseSnapshot(
             UUID releaseId,
@@ -587,6 +709,16 @@ public class ProtocolConfigurationService {
             long releaseSequence,
             String contentHash,
             String snapshotJson
+    ) {
+    }
+
+    /** 运行节点配置加载状态参数。 */
+    public record NodeStatusCommand(
+            String nodeId,
+            String nodeType,
+            String status,
+            String actualHash,
+            String message
     ) {
     }
 

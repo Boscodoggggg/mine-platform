@@ -157,6 +157,7 @@ class DatabaseMigrationIT {
                 """, String.class)).containsExactly(
                 "device:configuration:publish",
                 "device:configuration:rollback",
+                "device:configuration:view",
                 "device:connection:test",
                 "device:connection:update",
                 "device:connection:view",

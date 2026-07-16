@@ -402,6 +402,20 @@ class CommandOutboxIT {
     }
 
     @Test
+    void 平台中继应认领精确的配置发布事件() {
+        UUID configEvent = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO sys_outbox_event (
+                    id, aggregate_type, aggregate_id, event_type, schema_version, payload, headers
+                ) VALUES (?, 'CONFIG_RELEASE', ?, 'config.release.created', 1, '{}'::JSONB, '{}'::JSONB)
+                """, configEvent, UUID.randomUUID());
+
+        assertThat(outboxRelayRepository.claimById(
+                configEvent, "relay-it", Duration.ofSeconds(30)
+        )).isPresent();
+    }
+
+    @Test
     void 设备终态先于发送状态到达时应补全时间线并保持终态() {
         CommandInstance command = createCommand("request-out-of-order");
         Instant receivedAt = Instant.parse("2026-07-15T08:00:02Z");

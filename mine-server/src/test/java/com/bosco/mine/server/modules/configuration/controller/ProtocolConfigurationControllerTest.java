@@ -12,6 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -148,11 +149,42 @@ class ProtocolConfigurationControllerTest {
     }
 
     @Test
+    void 应查询产品发布历史和节点加载状态() throws Exception {
+        UUID releaseId = UUID.randomUUID();
+        Instant loadedAt = Instant.parse("2026-07-16T08:00:00Z");
+        ProtocolConfigurationService.ReleaseSummaryView summary =
+                new ProtocolConfigurationService.ReleaseSummaryView(
+                        releaseId, productId, UUID.randomUUID(), 7, "PUBLISH", null,
+                        "sha256:" + "a".repeat(64), "首次接入", loadedAt
+                );
+        when(service.findReleases(productId, 20)).thenReturn(List.of(summary));
+        when(service.findRelease(releaseId)).thenReturn(
+                new ProtocolConfigurationService.ReleaseDetailView(
+                        summary,
+                        List.of(new ProtocolConfigurationService.NodeStatusView(
+                                "gateway-1", "GATEWAY", "LOADED", summary.contentHash(),
+                                "配置已原子切换", loadedAt, loadedAt))
+                ));
+
+        mockMvc.perform(get("/api/v1/config-releases")
+                        .param("productId", productId.toString())
+                        .param("limit", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].releaseSequence").value(7));
+        mockMvc.perform(get("/api/v1/config-releases/{id}", releaseId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nodes[0].nodeId").value("gateway-1"))
+                .andExpect(jsonPath("$.nodes[0].status").value("LOADED"));
+    }
+
+    @Test
     void 所有管理入口都应声明独立权限() throws Exception {
         assertPermission("findSamples", "device:protocol:sample:view", UUID.class);
         assertPermission("replaceSamples", "device:protocol:sample:edit",
                 UUID.class, ProtocolConfigurationController.ReplaceSamplesRequest.class);
         assertPermission("test", "device:protocol:test", UUID.class);
+        assertPermission("findReleases", "device:configuration:view", UUID.class, int.class);
+        assertPermission("findRelease", "device:configuration:view", UUID.class);
         assertPermission("publish", "device:configuration:publish",
                 String.class, ProtocolConfigurationController.PublishRequest.class);
         assertPermission("rollback", "device:configuration:rollback",

@@ -33,6 +33,9 @@ class GatewayRabbitConfigurationTest {
     void 启用后应分别装配设备消费连接和平台发布连接() throws Exception {
         Path devicePassword = Files.writeString(tempDirectory.resolve("device-password"), "device-secret\n");
         Path platformPassword = Files.writeString(tempDirectory.resolve("platform-password"), "platform-secret\n");
+        Path configurationToken = Files.writeString(
+                tempDirectory.resolve("configuration-token"),
+                "gateway-configuration-token-at-least-32-bytes\n");
         Path identities = Files.writeString(
                 tempDirectory.resolve("device-identities.json"),
                 "{\"version\":1,\"devices\":[]}"
@@ -49,7 +52,10 @@ class GatewayRabbitConfigurationTest {
                         "mine.gateway.rabbit.device.password-file=" + devicePassword,
                         "mine.gateway.rabbit.platform.username=mine-gateway-platform",
                         "mine.gateway.rabbit.platform.password-file=" + platformPassword,
-                        "mine.gateway.rabbit.identity-snapshot-file=" + identities
+                        "mine.gateway.rabbit.identity-snapshot-file=" + identities,
+                        "mine.gateway.configuration-distribution.enabled=true",
+                        "mine.gateway.configuration-distribution.service-token-file=" + configurationToken,
+                        "mine.gateway.configuration-distribution.server-base-url=http://127.0.0.1:8080"
                 )
                 .run(context -> {
                     assertThat(context).hasSingleBean(DeviceSessionRegistry.class);
@@ -84,7 +90,8 @@ class GatewayRabbitConfigurationTest {
                     assertThat(listenerQueues).containsExactlyInAnyOrder(
                             MineTopology.DEVICE_UPLINK_QUEUE,
                             MineTopology.DEVICE_COMMAND_ACK_QUEUE,
-                            MineTopology.COMMAND_QUEUE
+                            MineTopology.COMMAND_QUEUE,
+                            MineTopology.CONFIG_QUEUE
                     );
                 });
     }

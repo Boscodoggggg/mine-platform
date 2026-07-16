@@ -64,7 +64,7 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-gateway-device \
   | grep -Eq '^/mine-device[[:space:]]+\^\$[[:space:]]+\^amq\\\.topic\$[[:space:]]+\^\(mine\\\.gateway\\\.uplink\\\.q\|mine\\\.gateway\\\.command-ack\\\.q\)\$$'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-gateway-platform \
-  | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\(mine\\\.telemetry\\\.x\|mine\\\.command\\\.x\)\$[[:space:]]+\^mine\\\.gateway\\\.command\\\.q\$$'
+  | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\(mine\\\.telemetry\\\.x\|mine\\\.command\\\.x\)\$[[:space:]]+\^\(mine\\\.gateway\\\.command\\\.q\|mine\\\.config\\\.q\)\$$'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-telemetry \
   | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^mine\\\.realtime\\\.x\$[[:space:]]+\^mine\\\.telemetry\\\.q\$$'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-realtime \
@@ -74,11 +74,13 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
 "${compose[@]}" exec -T rabbitmq sh -ec \
   'rabbitmqctl -q authenticate_user mine-server-command "$(cat /run/secrets/rabbitmq_server_command_password)"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-command \
-  | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^mine\\\.command\\\.x\$[[:space:]]+\^mine\\\.server\\\.command-status\\\.q\$$'
+  | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\(mine\\\.command\\\.x\|mine\\\.config\\\.x\)\$[[:space:]]+\^mine\\\.server\\\.command-status\\\.q\$$'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-device name consumers \
   | awk '$1 == "mine.gateway.command-ack.q" && $2 >= 1 { found = 1 } END { exit !found }'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \
   | awk '$1 == "mine.gateway.command.q" && $2 >= 1 { found = 1 } END { exit !found }'
+"${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \
+  | awk '$1 == "mine.config.q" && $2 >= 1 { found = 1 } END { exit !found }'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \
   | awk '$1 == "mine.server.command-status.q" && $2 >= 1 { found = 1 } END { exit !found }'
 if "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name \

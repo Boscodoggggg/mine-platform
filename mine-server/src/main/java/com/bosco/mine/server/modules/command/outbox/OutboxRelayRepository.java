@@ -49,8 +49,10 @@ public class OutboxRelayRepository {
                     lease_expires_at = CURRENT_TIMESTAMP + (? * INTERVAL '1 millisecond'),
                     last_error = NULL
                 WHERE id = ?
-                  AND aggregate_type = 'COMMAND'
-                  AND event_type = 'command.dispatch.requested'
+                  AND (
+                    (aggregate_type = 'COMMAND' AND event_type = 'command.dispatch.requested')
+                    OR (aggregate_type = 'CONFIG_RELEASE' AND event_type = 'config.release.created')
+                  )
                   AND (
                     (status IN ('PENDING', 'FAILED') AND next_attempt_at <= CURRENT_TIMESTAMP)
                     OR (status = 'PUBLISHING' AND lease_expires_at <= CURRENT_TIMESTAMP)
@@ -123,8 +125,10 @@ public class OutboxRelayRepository {
         return jdbcTemplate.queryForList("""
                 SELECT id
                 FROM sys_outbox_event
-                WHERE aggregate_type = 'COMMAND'
-                  AND event_type = 'command.dispatch.requested'
+                WHERE (
+                    (aggregate_type = 'COMMAND' AND event_type = 'command.dispatch.requested')
+                    OR (aggregate_type = 'CONFIG_RELEASE' AND event_type = 'config.release.created')
+                  )
                   AND (
                     (status IN ('PENDING', 'FAILED') AND next_attempt_at <= CURRENT_TIMESTAMP)
                     OR (status = 'PUBLISHING' AND lease_expires_at <= CURRENT_TIMESTAMP)

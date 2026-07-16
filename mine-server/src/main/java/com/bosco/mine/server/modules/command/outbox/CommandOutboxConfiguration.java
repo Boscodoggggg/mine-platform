@@ -67,8 +67,10 @@ public class CommandOutboxConfiguration {
             @Qualifier("commandOutboxRabbitTemplate") RabbitTemplate rabbitTemplate,
             CommandOutboxProperties properties
     ) {
-        return new RabbitCommandOutboxPublisher(
-                rabbitTemplate, properties.resolvedConfirmTimeout().toMillis()
+        long confirmTimeoutMillis = properties.resolvedConfirmTimeout().toMillis();
+        return new RoutingOutboxEventPublisher(
+                new RabbitCommandOutboxPublisher(rabbitTemplate, confirmTimeoutMillis),
+                new RabbitConfigurationOutboxPublisher(rabbitTemplate, confirmTimeoutMillis)
         );
     }
 

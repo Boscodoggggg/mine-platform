@@ -32,6 +32,13 @@ info:
 
 mine:
   gateway:
+    configuration-distribution:
+      enabled: ${MINE_GATEWAY_CONFIGURATION_DISTRIBUTION_ENABLED:false}
+      server-base-url: ${MINE_GATEWAY_CONFIGURATION_SERVER_URL:http://mine-server:8080}
+      service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
+      request-timeout: ${MINE_GATEWAY_CONFIGURATION_REQUEST_TIMEOUT:PT5S}
+      max-snapshot-bytes: ${MINE_GATEWAY_CONFIGURATION_MAX_SNAPSHOT_BYTES:2097152}
+      node-id: ${MINE_GATEWAY_NODE_ID:${HOSTNAME:standalone}}
     rabbit:
       enabled: ${MINE_GATEWAY_RABBIT_ENABLED:false}
       auto-startup: ${MINE_GATEWAY_RABBIT_AUTO_STARTUP:true}

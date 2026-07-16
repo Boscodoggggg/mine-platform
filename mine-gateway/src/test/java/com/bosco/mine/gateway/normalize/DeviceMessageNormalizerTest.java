@@ -1,9 +1,14 @@
 package com.bosco.mine.gateway.normalize;
 
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.gateway.configuration.ProtocolSnapshotRegistry;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.MessageEnvelope;
 import com.bosco.mine.model.message.UnifiedDeviceMessage;
+import com.bosco.mine.protocol.engine.json.FieldTransform;
+import com.bosco.mine.protocol.engine.json.MqttJsonExecutionPlan;
+import com.bosco.mine.protocol.engine.json.MqttJsonProtocolCompiler;
+import com.bosco.mine.protocol.engine.json.MqttJsonProtocolDefinition;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -12,9 +17,14 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * 校验 MQTT JSON 报文到统一设备消息的身份绑定和输入限制。
@@ -116,6 +126,59 @@ class DeviceMessageNormalizerTest {
                 .hasMessageContaining("routing key");
     }
 
+    @Test
+    void 已发布动态协议应解析厂商差异报文并输出统一属性() {
+        DeviceSessionRegistry identities = registry();
+        ProtocolSnapshotRegistry protocols = mock(ProtocolSnapshotRegistry.class);
+        MqttJsonExecutionPlan plan = new MqttJsonProtocolCompiler().compile(
+                new MqttJsonProtocolDefinition(
+                        "vendor-truck-json",
+                        3,
+                        new MqttJsonProtocolDefinition.MetadataPaths(
+                                "meta.product", "meta.device", "meta.boot", "meta.seq",
+                                "meta.timestamp", "meta.replay"),
+                        List.of(new MqttJsonProtocolDefinition.PropertyDefinition(
+                                "engineRpm", MqttJsonProtocolDefinition.ValueType.INTEGER)),
+                        List.of(new MqttJsonProtocolDefinition.FieldMapping(
+                                "data.rpm", MqttJsonProtocolDefinition.ValueType.INTEGER, "engineRpm",
+                                FieldTransform.NONE, null, null, Map.of(), true))
+                ));
+        when(protocols.find("haul-truck")).thenReturn(Optional.of(
+                new ProtocolSnapshotRegistry.ActiveProtocol(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 8,
+                        "sha256:" + "a".repeat(64), "haul-truck", plan)
+        ));
+        DeviceMessageNormalizer dynamic = new DeviceMessageNormalizer(
+                identities, protocols, IdGenerator.timeOrdered(), CLOCK, 2048);
+
+        MessageEnvelope<UnifiedDeviceMessage> envelope = dynamic.normalize(
+                ROUTING_KEY,
+                """
+                        {
+                          "meta":{"product":"haul-truck","device":"simulator-001",
+                                  "boot":"boot-vendor","seq":11,
+                                  "timestamp":"2026-07-15T01:59:58Z","replay":false},
+                          "data":{"rpm":1550}
+                        }
+                        """.getBytes(StandardCharsets.UTF_8)
+        );
+
+        assertThat(envelope.payload().protocolVersion()).isEqualTo("vendor-truck-json:v3");
+        assertThat(envelope.payload().bootId()).isEqualTo("boot-vendor");
+        assertThat(envelope.payload().properties().values()).containsEntry("engineRpm", 1550);
+    }
+
+    @Test
+    void 强制动态配置模式下未加载产品快照应拒绝报文() {
+        DeviceMessageNormalizer required = new DeviceMessageNormalizer(
+                registry(), new ProtocolSnapshotRegistry(true),
+                IdGenerator.timeOrdered(), CLOCK, 2048);
+
+        assertThatThrownBy(() -> required.normalize(ROUTING_KEY, validPayload("simulator-001")))
+                .isInstanceOf(InvalidDeviceMessageException.class)
+                .hasMessageContaining("尚未加载");
+    }
+
     private byte[] validPayload(String deviceCode) {
         return ("""
                 {
@@ -128,5 +191,18 @@ class DeviceMessageNormalizerTest {
                   "properties":{"engine.rpm":1280,"vehicle.speed":12.5}
                 }
                 """.formatted(deviceCode)).getBytes(StandardCharsets.UTF_8);
+    }
+
+    private DeviceSessionRegistry registry() {
+        DeviceSessionRegistry registry = new DeviceSessionRegistry();
+        registry.activate(1, "a".repeat(64), List.of(new DeviceSessionRegistry.DeviceIdentity(
+                "haul-truck",
+                "device-credential-001",
+                DEVICE_ID,
+                "simulator-001",
+                "mine-site-001",
+                "mqtt-json-v1"
+        )));
+        return registry;
     }
 }
