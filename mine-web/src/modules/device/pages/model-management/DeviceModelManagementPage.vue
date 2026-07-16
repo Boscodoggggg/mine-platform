@@ -7,6 +7,7 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NEmpty,
   NForm,
   NFormItem,
   NGi,
@@ -46,6 +47,8 @@ import type {
 import { getProducts } from '@/modules/device/api/device';
 import type { Product } from '@/modules/device/api/device';
 import { useAuthStore } from '@/store/modules/auth';
+import ProtocolSampleWorkbench from '@/modules/device/components/protocol/ProtocolSampleWorkbench.vue';
+import ConfigReleasePanel from '@/modules/device/components/protocol/ConfigReleasePanel.vue';
 
 const { t } = useI18n();
 const authStore = useAuthStore();
@@ -187,9 +190,15 @@ async function loadConfiguration() {
   if (!productId.value) return;
   loading.value = true;
   try {
+    const previousModelId = selectedModelId.value;
+    const previousProtocolId = selectedProtocolId.value;
     configuration.value = await getProductConfiguration(productId.value);
-    selectedModelId.value = configuration.value.models[0]?.version.id || null;
-    selectedProtocolId.value = configuration.value.protocols[0]?.version.id || null;
+    selectedModelId.value = configuration.value.models.some(item => item.version.id === previousModelId)
+      ? previousModelId
+      : configuration.value.models[0]?.version.id || null;
+    selectedProtocolId.value = configuration.value.protocols.some(item => item.version.id === previousProtocolId)
+      ? previousProtocolId
+      : configuration.value.protocols[0]?.version.id || null;
     syncModelFields();
     syncProtocolFields();
   } catch (error) {
@@ -197,6 +206,10 @@ async function loadConfiguration() {
   } finally {
     loading.value = false;
   }
+}
+
+async function reloadAfterSamples() {
+  await loadConfiguration();
 }
 
 function syncModelFields() {
@@ -459,7 +472,29 @@ function showError(error: unknown) {
             </template>
             <NDataTable :columns="protocolColumns" :data="protocolFields" :loading="loading" />
           </NCard>
+          <ProtocolSampleWorkbench
+            v-if="currentProtocol"
+            :mapping-version-id="currentProtocol.id"
+            :mapping-version="currentProtocol.version"
+            :editable="currentProtocol.status === 'DRAFT'"
+            :can-edit="can('device:protocol:sample:edit')"
+            :can-test="can('device:protocol:test')"
+            @saved="reloadAfterSamples"
+          />
         </NSpace>
+      </NTabPane>
+
+      <NTabPane name="release" :tab="t('mine.models.tab.release')">
+        <ConfigReleasePanel
+          v-if="productId && currentProtocol"
+          :product-id="productId"
+          :mapping-version-id="currentProtocol.id"
+          :protocol-published="currentProtocol.status === 'PUBLISHED'"
+          :can-view="can('device:configuration:view')"
+          :can-publish="can('device:configuration:publish')"
+          :can-rollback="can('device:configuration:rollback')"
+        />
+        <NEmpty v-else :description="t('mine.models.releases.selectProtocol')" />
       </NTabPane>
     </NTabs>
 

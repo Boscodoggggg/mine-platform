@@ -11,6 +11,12 @@ export type ProtocolVersion = components['schemas']['ProtocolMappingVersion'];
 export type ProtocolField = components['schemas']['ProtocolMappingFieldInput'] &
   Partial<Pick<components['schemas']['ProtocolMappingField'], 'id' | 'mappingVersionId' | 'version'>>;
 export type ProductConfiguration = components['schemas']['ProductDeviceConfiguration'];
+export type ProtocolSample = components['schemas']['ProtocolSample'];
+export type ProtocolSampleInput = components['schemas']['ProtocolSampleInput'];
+export type ProtocolTestRun = components['schemas']['ProtocolTestRun'];
+export type ConfigRelease = components['schemas']['ConfigRelease'];
+export type ConfigReleaseSummary = components['schemas']['ConfigReleaseSummary'];
+export type ConfigReleaseDetail = components['schemas']['ConfigReleaseDetail'];
 
 /** 查询产品的全部物模型与协议映射版本。 */
 export function getProductConfiguration(productId: string) {
@@ -59,8 +65,56 @@ export function publishProtocol(versionId: string, version: number) {
   return request<void>(`/device-models/protocol-versions/${versionId}/publish`, json('POST', { version }));
 }
 
-function json(method: string, body: unknown): RequestInit {
-  return { method, body: JSON.stringify(body) };
+/** 查询协议版本的全部黄金样本。 */
+export function getProtocolSamples(versionId: string) {
+  return request<ProtocolSample[]>(`/protocol-mapping-versions/${versionId}/samples`);
+}
+
+/** 原子保存协议草稿的全部黄金样本。 */
+export function saveProtocolSamples(versionId: string, version: number, samples: ProtocolSampleInput[]) {
+  return request<ProtocolSample[]>(
+    `/protocol-mapping-versions/${versionId}/samples`,
+    json('PUT', { version, samples })
+  );
+}
+
+/** 使用 Gateway 同源引擎回放全部黄金样本。 */
+export function testProtocolSamples(versionId: string) {
+  return request<ProtocolTestRun>(`/protocol-mapping-versions/${versionId}/test`, { method: 'POST' });
+}
+
+/** 查询产品最近的配置发布历史。 */
+export function getConfigReleases(productId: string, limit = 50) {
+  const query = new URLSearchParams({ productId, limit: String(limit) });
+  return request<ConfigReleaseSummary[]>(`/config-releases?${query}`);
+}
+
+/** 查询配置发布和运行节点加载状态。 */
+export function getConfigRelease(releaseId: string) {
+  return request<ConfigReleaseDetail>(`/config-releases/${releaseId}`);
+}
+
+/** 通过黄金样本门禁后创建配置发布。 */
+export function publishConfigRelease(
+  payload: components['schemas']['ConfigPublishRequest'],
+  idempotencyKey: string
+) {
+  return request<ConfigRelease>(
+    '/config-releases',
+    json('POST', payload, { 'Idempotency-Key': idempotencyKey })
+  );
+}
+
+/** 复用历史配置包创建更高序号的回滚发布。 */
+export function rollbackConfigRelease(releaseId: string, reason: string, idempotencyKey: string) {
+  return request<ConfigRelease>(
+    `/config-releases/${releaseId}/rollback`,
+    json('POST', { reason }, { 'Idempotency-Key': idempotencyKey })
+  );
+}
+
+function json(method: string, body: unknown, headers?: HeadersInit): RequestInit {
+  return { method, body: JSON.stringify(body), headers };
 }
 
 function toModelFieldInput(field: ModelField): components['schemas']['DeviceModelFieldInput'] {

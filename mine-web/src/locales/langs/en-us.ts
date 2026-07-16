@@ -657,7 +657,7 @@ const local: App.I18n.Schema = {
       product: 'Device Product',
       publishHelp:
         'Publish a thing model first, then map vendor MQTT/TCP fields. Publishing switches immutable versions and preserves history.',
-      tab: { model: 'Unified Thing Model', protocol: 'Protocol Field Mapping' },
+      tab: { model: 'Unified Thing Model', protocol: 'Protocol Field Mapping', release: 'Release Control' },
       version: 'Thing Model v{version}',
       selectVersion: 'Select a thing model version',
       selectProtocol: 'Select a protocol version',
@@ -728,7 +728,72 @@ const local: App.I18n.Schema = {
       },
       validation: { required: 'Complete the field identifier, name, and mapping target' },
       confirmPublishModel: 'Publish this thing model? The previous published version will be retired.',
-      confirmPublishProtocol: 'Publish this protocol mapping? All target fields will be validated.'
+      confirmPublishProtocol: 'Publish this protocol mapping? All target fields will be validated.',
+      samples: {
+        title: 'Protocol Golden Samples',
+        subtitle: 'Lock parsing behavior with real vendor payloads and replay them through the Gateway engine before release.',
+        unsaved: 'Sample changes are not saved. Save them before running the release gate.',
+        empty: 'Add the first real payload to establish a repeatable protocol baseline',
+        editorTitle: 'Sample Draft',
+        action: { add: 'Add Sample', save: 'Save Samples', run: 'Run Gate', apply: 'Apply to Draft' },
+        column: {
+          name: 'Sample',
+          expectation: 'Expected Behavior',
+          payload: 'Raw Payload',
+          expected: 'Expected Result',
+          result: 'Replay Result',
+          errorCode: 'Actual Error Code'
+        },
+        expectation: { success: 'Must Parse', failure: 'Must Reject Safely' },
+        result: { passed: 'Passed', failed: 'Failed' },
+        field: {
+          name: 'Sample Name',
+          sortOrder: 'Display Order',
+          rawPayload: 'Raw JSON Payload',
+          expectedProperties: 'Expected Unified Properties JSON',
+          expectedSuccess: 'Expect Successful Parse',
+          expectedErrorCode: 'Expected Error Code'
+        },
+        gate: { passed: 'Release Gate Passed', failed: 'Release Gate Failed', summary: '{passed} / {total}' },
+        validation: {
+          invalid: 'Enter a sample name, valid JSON, and an expected error code for rejected samples',
+          empty: 'Keep at least one golden sample',
+          saveBeforeTest: 'Save the sample draft before running the release gate'
+        },
+        message: { saved: 'Golden samples saved' }
+      },
+      releases: {
+        permissionMissing: 'Your account cannot view configuration release history.',
+        publishTitle: 'Create Configuration Release',
+        publishSubtitle: 'The server reruns every golden sample before producing an immutable configuration package.',
+        gateReady: 'The selected protocol is published. Golden samples will be rerun on submission.',
+        protocolNotPublished: 'Publish the selected protocol version before creating a runtime configuration.',
+        publishReason: 'Enter the release reason, device batch, or change request number',
+        publishAction: 'Validate and Release',
+        evidenceTitle: 'Release Evidence',
+        refresh: 'Refresh Status',
+        refreshedAt: 'Last refreshed: {time}',
+        notRefreshed: 'Release history has not been loaded',
+        empty: 'This product has no configuration releases',
+        selectProtocol: 'Select a protocol version to open release control',
+        sequence: 'Release Sequence #{sequence}',
+        detailTitle: 'Runtime Node Results',
+        nodesTitle: 'Node Load Status',
+        nodesCount: '{count} nodes reported',
+        nodesEmpty: 'The release event exists and is waiting for runtime node reports',
+        rollbackReason: 'Enter the rollback reason; rollback creates a higher release sequence',
+        rollbackAction: 'Roll Back to This Configuration',
+        rollbackConfirm: 'Confirm Rollback',
+        rollbackWarning: 'A new release fact will reuse this historical package. Existing history remains immutable.',
+        column: { sequence: 'Release Sequence', action: 'Action', reason: 'Reason', createdAt: 'Created' },
+        action: { publish: 'Release', rollback: 'Rollback' },
+        field: { releaseId: 'Release ID', contentHash: 'Content Hash', reason: 'Reason' },
+        node: { id: 'Node', type: 'Node Type', status: 'Load Status', hash: 'Actual Hash', updatedAt: 'Last Report' },
+        nodeType: { gateway: 'Gateway', telemetry: 'Telemetry', server: 'Management Server' },
+        nodeStatus: { pending: 'Pending', loaded: 'Loaded', failed: 'Failed' },
+        validation: { reason: 'Enter a release reason', rollbackReason: 'Enter a rollback reason', publishProtocol: 'Publish the protocol version first' },
+        message: { published: 'Configuration release created; waiting for runtime nodes', rolledBack: 'Rollback release created' }
+      }
     },
     monitor: {
       title: 'Live Device Monitoring',

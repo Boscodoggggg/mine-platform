@@ -753,7 +753,7 @@ declare namespace App {
           subtitle: string;
           product: string;
           publishHelp: string;
-          tab: Record<'model' | 'protocol', string>;
+          tab: Record<'model' | 'protocol' | 'release', string>;
           version: string;
           selectVersion: string;
           selectProtocol: string;
@@ -798,6 +798,61 @@ declare namespace App {
           validation: Record<'required', string>;
           confirmPublishModel: string;
           confirmPublishProtocol: string;
+          samples: {
+            title: string;
+            subtitle: string;
+            unsaved: string;
+            empty: string;
+            editorTitle: string;
+            action: Record<'add' | 'save' | 'run' | 'apply', string>;
+            column: Record<'name' | 'expectation' | 'payload' | 'expected' | 'result' | 'errorCode', string>;
+            expectation: Record<'success' | 'failure', string>;
+            result: Record<'passed' | 'failed', string>;
+            field: Record<
+              | 'name'
+              | 'sortOrder'
+              | 'rawPayload'
+              | 'expectedProperties'
+              | 'expectedSuccess'
+              | 'expectedErrorCode',
+              string
+            >;
+            gate: Record<'passed' | 'failed' | 'summary', string>;
+            validation: Record<'invalid' | 'empty' | 'saveBeforeTest', string>;
+            message: Record<'saved', string>;
+          };
+          releases: {
+            permissionMissing: string;
+            publishTitle: string;
+            publishSubtitle: string;
+            gateReady: string;
+            protocolNotPublished: string;
+            publishReason: string;
+            publishAction: string;
+            evidenceTitle: string;
+            refresh: string;
+            refreshedAt: string;
+            notRefreshed: string;
+            empty: string;
+            selectProtocol: string;
+            sequence: string;
+            detailTitle: string;
+            nodesTitle: string;
+            nodesCount: string;
+            nodesEmpty: string;
+            rollbackReason: string;
+            rollbackAction: string;
+            rollbackConfirm: string;
+            rollbackWarning: string;
+            column: Record<'sequence' | 'action' | 'reason' | 'createdAt', string>;
+            action: Record<'publish' | 'rollback', string>;
+            field: Record<'releaseId' | 'contentHash' | 'reason', string>;
+            node: Record<'id' | 'type' | 'status' | 'hash' | 'updatedAt', string>;
+            nodeType: Record<'gateway' | 'telemetry' | 'server', string>;
+            nodeStatus: Record<'pending' | 'loaded' | 'failed', string>;
+            validation: Record<'reason' | 'rollbackReason' | 'publishProtocol', string>;
+            message: Record<'published' | 'rolledBack', string>;
+          };
         };
         monitor: {
           title: string;
