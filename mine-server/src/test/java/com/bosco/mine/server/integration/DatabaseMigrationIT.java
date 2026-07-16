@@ -428,10 +428,11 @@ class DatabaseMigrationIT {
                 FROM pg_trigger
                 WHERE tgname IN (
                     'trg_dev_strategy_version_published_immutable',
-                    'trg_dev_strategy_release_immutable'
+                    'trg_dev_strategy_release_immutable',
+                    'trg_dev_device_group_membership_close_on_device_archive'
                 )
                   AND NOT tgisinternal
-                """, Long.class)).isEqualTo(2L);
+                """, Long.class)).isEqualTo(3L);
     }
 
     @Test
