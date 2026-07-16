@@ -14,6 +14,11 @@ export function getSystemOperations() {
   return request<SystemOperationsOverview>('/system/operations');
 }
 
+/** 独立执行一个已注册检查项，供界面并发渐进展示结果。 */
+export function checkSystemOperation(key: string) {
+  return request<SystemOperationItem>(`/system/operations/items/${encodeURIComponent(key)}/check`);
+}
+
 /** 查询固定时间范围内的历史运行结论。 */
 export function getSystemOperationsOverview(range: OperationsObservabilityRange) {
   return request<OperationsObservabilityOverview>(`/system/operations/overview?range=${encodeURIComponent(range)}`);

@@ -1,6 +1,9 @@
 package com.bosco.mine.server.modules.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.bosco.mine.common.error.ErrorCode;
+import com.bosco.mine.common.error.MineException;
+import com.bosco.mine.server.bootstrap.web.GlobalExceptionHandler;
 import com.bosco.mine.server.modules.system.service.OperationsObservabilityService;
 import com.bosco.mine.server.modules.system.service.SystemOperationsService;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +13,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -33,7 +37,7 @@ class SystemOperationsControllerTest {
         observabilityService = mock(OperationsObservabilityService.class);
         mockMvc = MockMvcBuilders.standaloneSetup(
                 new SystemOperationsController(service, observabilityService)
-        ).build();
+        ).setControllerAdvice(new GlobalExceptionHandler()).build();
     }
 
     @Test
@@ -87,6 +91,30 @@ class SystemOperationsControllerTest {
     }
 
     @Test
+    void 应按检查项标识返回单项即时结果() throws Exception {
+        when(service.check("redis")).thenReturn(new SystemOperationsService.OperationItem(
+                "redis", "STORAGE", "UP", 4, "connectionUp"
+        ));
+
+        mockMvc.perform(get("/api/v1/system/operations/items/redis/check"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.key").value("redis"))
+                .andExpect(jsonPath("$.status").value("UP"))
+                .andExpect(jsonPath("$.latencyMillis").value(4));
+    }
+
+    @Test
+    void 未注册的即时检查项应返回资源不存在() throws Exception {
+        when(service.check("missing")).thenThrow(new MineException(
+                new ErrorCode("SYSTEM-404-006", "运行检查项不存在"), Map.of("key", "missing")
+        ));
+
+        mockMvc.perform(get("/api/v1/system/operations/items/missing/check"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("SYSTEM-404-006"));
+    }
+
+    @Test
     void 接口应声明独立的运行监控权限() throws Exception {
         SaCheckPermission permission = SystemOperationsController.class
                 .getMethod("operations")
@@ -101,7 +129,11 @@ class SystemOperationsControllerTest {
         SaCheckPermission seriesPermission = SystemOperationsController.class
                 .getMethod("series", String.class, String.class)
                 .getAnnotation(SaCheckPermission.class);
+        SaCheckPermission checkPermission = SystemOperationsController.class
+                .getMethod("check", String.class)
+                .getAnnotation(SaCheckPermission.class);
         assertThat(overviewPermission.value()).containsExactly("system:operations:view");
         assertThat(seriesPermission.value()).containsExactly("system:operations:view");
+        assertThat(checkPermission.value()).containsExactly("system:operations:view");
     }
 }

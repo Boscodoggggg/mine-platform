@@ -1,5 +1,7 @@
 package com.bosco.mine.server.modules.system.service;
 
+import com.bosco.mine.common.error.ErrorCode;
+import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.server.modules.system.infrastructure.ServiceHealthProbe;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,6 +12,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -20,6 +23,9 @@ import java.util.concurrent.TimeoutException;
  */
 @Service
 public class SystemOperationsService {
+
+    private static final ErrorCode OPERATION_ITEM_NOT_FOUND =
+            new ErrorCode("SYSTEM-404-006", "运行检查项不存在");
 
     private final List<ServiceHealthProbe> probes;
     private final Duration probeTimeout;
@@ -81,6 +87,23 @@ public class SystemOperationsService {
             items.add(awaitProbe(probes.get(index), tasks.get(index), deadline));
         }
         return new SystemOperationsOverview(overallStatus(items), clock.instant(), List.copyOf(items));
+    }
+
+    /**
+     * 按稳定标识独立执行一个运行状态检查。
+     *
+     * @param key 检查项稳定标识
+     * @return 单项运行状态
+     * @throws MineException 检查项未注册时抛出
+     */
+    public OperationItem check(String key) {
+        ServiceHealthProbe probe = probes.stream()
+                .filter(candidate -> candidate.key().equals(key))
+                .findFirst()
+                .orElseThrow(() -> new MineException(OPERATION_ITEM_NOT_FOUND, Map.of("key", key)));
+        FutureTask<OperationItem> task = new FutureTask<>(() -> probeSafely(probe));
+        Thread.ofVirtual().name("system-operation-probe-" + key).start(task);
+        return awaitProbe(probe, task, System.nanoTime() + probeTimeout.toNanos());
     }
 
     private OperationItem awaitProbe(

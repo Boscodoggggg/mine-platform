@@ -6,6 +6,7 @@ import org.springframework.boot.health.registry.HealthContributorRegistry;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 
 import java.net.URI;
 import java.time.Duration;
@@ -57,13 +58,13 @@ public class SystemOperationsProbeConfiguration {
     /**
      * 注册 Redis 探测。
      *
-     * @param registry Actuator 健康贡献者注册表
+     * @param connectionFactory Redis 连接工厂
      * @return Redis 探测
      */
     @Bean
     @Order(30)
-    public ServiceHealthProbe redisHealthProbe(HealthContributorRegistry registry) {
-        return new ActuatorContributorHealthProbe("redis", "STORAGE", "redis", registry);
+    public ServiceHealthProbe redisHealthProbe(RedisConnectionFactory connectionFactory) {
+        return new RedisServiceHealthProbe(connectionFactory);
     }
 
     /**

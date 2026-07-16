@@ -482,6 +482,8 @@ declare namespace App {
           empty: string;
           historyTitle: string;
           immediateTitle: string;
+          checking: string;
+          checkProgress: string;
           trendTitle: string;
           trendLatency: string;
           trendEmpty: string;

@@ -207,6 +207,8 @@ const local: App.I18n.Schema = {
       empty: 'No checks are registered for this category',
       historyTitle: 'Runtime Status',
       immediateTitle: 'Immediate Check Results',
+      checking: 'Checking',
+      checkProgress: '{completed}/{total} completed',
       trendTitle: '{item} · {range} Trend',
       trendLatency: 'Probe Latency',
       trendEmpty: 'No historical samples are available for this range',

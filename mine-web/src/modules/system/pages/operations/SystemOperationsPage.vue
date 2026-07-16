@@ -12,7 +12,10 @@ import {
   NDrawerContent,
   NFlex,
   NInput,
+  NList,
+  NListItem,
   NPageHeader,
+  NProgress,
   NSelect,
   NSpin,
   NTag,
@@ -21,8 +24,8 @@ import {
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import {
+  checkSystemOperation,
   getSystemOperationSeries,
-  getSystemOperations,
   getSystemOperationsOverview
 } from '@/modules/system/api/operations';
 import type {
@@ -31,12 +34,28 @@ import type {
   OperationsObservabilityRange,
   OperationsObservabilitySeries,
   SystemOperationCategory,
-  SystemOperationItem,
-  SystemOperationsOverview
+  SystemOperationItem
 } from '@/modules/system/api/operations';
 import OperationsTrendChart from './OperationsTrendChart.vue';
 
 const { t, locale } = useI18n();
+
+type ImmediateCheckRow = {
+  key: string;
+  category: SystemOperationCategory;
+  state: 'CHECKING' | 'COMPLETE';
+  result: SystemOperationItem | null;
+};
+
+const defaultOperationItems: Array<Pick<ImmediateCheckRow, 'key' | 'category'>> = [
+  { key: 'mine-server', category: 'SERVICE' },
+  { key: 'mine-gateway', category: 'SERVICE' },
+  { key: 'mine-telemetry', category: 'SERVICE' },
+  { key: 'rabbitmq', category: 'MESSAGE' },
+  { key: 'postgres', category: 'STORAGE' },
+  { key: 'redis', category: 'STORAGE' },
+  { key: 'timescale', category: 'STORAGE' }
+];
 
 const ranges: OperationsObservabilityRange[] = ['1h', '6h', '24h', '7d', '15d'];
 const range = ref<OperationsObservabilityRange>('24h');
@@ -46,11 +65,12 @@ const seriesLoading = ref(false);
 const historyError = ref(false);
 const immediateDrawerVisible = ref(false);
 const overview = ref<OperationsObservabilityOverview | null>(null);
-const immediate = ref<SystemOperationsOverview | null>(null);
+const immediateChecks = ref<ImmediateCheckRow[]>([]);
 const selectedSeries = ref<OperationsObservabilitySeries | null>(null);
 const keyword = ref('');
 const statusFilter = ref<string | null>(null);
 const categoryFilter = ref<SystemOperationCategory | null>(null);
+let immediateCheckRunId = 0;
 
 const filteredItems = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLocaleLowerCase(locale.value);
@@ -62,7 +82,10 @@ const filteredItems = computed(() => {
   });
 });
 
-const immediateItems = computed(() => immediate.value?.items || []);
+const completedChecks = computed(() => immediateChecks.value.filter(item => item.state === 'COMPLETE').length);
+const checkProgress = computed(() =>
+  immediateChecks.value.length ? Math.round((completedChecks.value / immediateChecks.value.length) * 100) : 0
+);
 const selectedItem = computed(() =>
   overview.value?.items.find(item => item.key === selectedSeries.value?.key) || null
 );
@@ -150,18 +173,39 @@ async function loadHistory() {
 }
 
 async function runImmediateCheck() {
+  const runId = ++immediateCheckRunId;
   selectedSeries.value = null;
-  immediate.value = null;
   immediateDrawerVisible.value = true;
   checkLoading.value = true;
+  const sourceItems = overview.value?.items.length ? overview.value.items : defaultOperationItems;
+  const checks: ImmediateCheckRow[] = sourceItems.map(item => ({
+    key: item.key,
+    category: item.category,
+    state: 'CHECKING',
+    result: null
+  }));
+  immediateChecks.value = checks;
+  await Promise.all(checks.map(item => runImmediateItemCheck(item, runId)));
+  if (runId === immediateCheckRunId) checkLoading.value = false;
+}
+
+async function runImmediateItemCheck(item: ImmediateCheckRow, runId: number) {
+  let result: SystemOperationItem;
   try {
-    immediate.value = await getSystemOperations();
-  } catch (error) {
-    immediateDrawerVisible.value = false;
-    showError(error, 'mine.operations.loadFailed');
-  } finally {
-    checkLoading.value = false;
+    result = await checkSystemOperation(item.key);
+  } catch {
+    result = {
+      key: item.key,
+      category: item.category,
+      status: 'UNKNOWN',
+      latencyMillis: 0,
+      summary: 'checkFailed'
+    };
   }
+  if (runId !== immediateCheckRunId) return;
+  immediateChecks.value = immediateChecks.value.map(current =>
+    current.key === item.key ? { ...current, state: 'COMPLETE', result } : current
+  );
 }
 
 async function loadSeries(key: string) {
@@ -259,6 +303,7 @@ function showError(error: unknown, fallbackKey: App.I18n.I18nKey) {
     window.$message?.error(t(fallbackKey));
   }
 }
+
 </script>
 
 <template>
@@ -355,24 +400,44 @@ function showError(error: unknown, fallbackKey: App.I18n.I18nKey) {
   >
     <NDrawerContent closable :title="t('mine.operations.immediateTitle')">
       <div role="region" :aria-label="t('mine.operations.immediateTitle')">
-        <NSpin :show="checkLoading">
-          <NFlex vertical :size="12" class="min-h-120px">
-            <NFlex v-for="item in immediateItems" :key="item.key" justify="space-between" align="center">
-              <div>
-                <NText strong>{{ itemName(item.key) }}</NText>
-                <NText depth="3" class="ml-12px">{{ detailLabel(item.summary) }}</NText>
-              </div>
-              <NFlex align="center">
-                <NTag :type="statusType(item.status)" size="small" :bordered="false">
-                  {{ statusLabel(item.status) }}
-                </NTag>
-                <NText depth="3" class="whitespace-nowrap">
-                  {{ t('mine.operations.latency', { value: item.latencyMillis }) }}
-                </NText>
-              </NFlex>
+        <NFlex vertical :size="16">
+          <NFlex vertical :size="6">
+            <NFlex justify="space-between" align="center">
+              <NText depth="3">
+                {{ t('mine.operations.checkProgress', { completed: completedChecks, total: immediateChecks.length }) }}
+              </NText>
+              <NText depth="3">{{ checkProgress }}%</NText>
             </NFlex>
+            <NProgress type="line" :percentage="checkProgress" :show-indicator="false" />
           </NFlex>
-        </NSpin>
+
+          <NList hoverable>
+            <NListItem v-for="item in immediateChecks" :key="item.key">
+              <NFlex justify="space-between" align="center" :wrap="false">
+                <NFlex vertical :size="2">
+                  <NText strong>{{ itemName(item.key) }}</NText>
+                  <NText depth="3">
+                    {{ item.result ? detailLabel(item.result.summary) : categoryLabel(item.category) }}
+                  </NText>
+                </NFlex>
+                <NFlex align="center" :wrap="false">
+                  <template v-if="item.result">
+                    <NTag :type="statusType(item.result.status)" size="small" :bordered="false">
+                      {{ statusLabel(item.result.status) }}
+                    </NTag>
+                    <NText depth="3" class="whitespace-nowrap">
+                      {{ t('mine.operations.latency', { value: item.result.latencyMillis }) }}
+                    </NText>
+                  </template>
+                  <template v-else>
+                    <NSpin size="small" />
+                    <NText depth="3" class="whitespace-nowrap">{{ t('mine.operations.checking') }}</NText>
+                  </template>
+                </NFlex>
+              </NFlex>
+            </NListItem>
+          </NList>
+        </NFlex>
       </div>
     </NDrawerContent>
   </NDrawer>

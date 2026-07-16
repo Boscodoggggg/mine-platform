@@ -77,6 +77,28 @@ paths:
               schema: { $ref: '#/components/schemas/OperationsObservabilityOverview' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /system/operations/items/{key}/check:
+    get:
+      tags: [SystemOperations]
+      operationId: checkSystemOperation
+      summary: 独立执行单个运行检查项
+      description: |
+        供运行监控页面并发调用，单个检查项完成后即可独立展示结果。
+        每次调用只执行指定检查项，并受服务端统一超时限制。
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 单个检查项的即时脱敏结果。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SystemOperationItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/OperationItemNotFound' }
   /system/operations/items/{key}/series:
     get:
       tags: [SystemOperations]
@@ -1925,6 +1947,12 @@ components:
             $ref: '#/components/schemas/ApiError'
     Forbidden:
       description: 缺少当前操作要求的权限。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    OperationItemNotFound:
+      description: 运行检查项不存在，错误码 SYSTEM-404-006。
       content:
         application/json:
           schema:

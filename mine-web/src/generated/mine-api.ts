@@ -67,6 +67,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/operations/items/{key}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 独立执行单个运行检查项
+         * @description 供运行监控页面并发调用，单个检查项完成后即可独立展示结果。
+         *     每次调用只执行指定检查项，并受服务端统一超时限制。
+         */
+        get: operations["checkSystemOperation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/operations/items/{key}/series": {
         parameters: {
             query?: never;
@@ -1358,6 +1379,15 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
+        /** @description 运行检查项不存在，错误码 SYSTEM-404-006。 */
+        OperationItemNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
         /** @description 设备不存在，错误码 DEVICE-404-002。 */
         DeviceNotFound: {
             headers: {
@@ -1494,6 +1524,31 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    checkSystemOperation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 单个检查项的即时脱敏结果。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOperationItem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["OperationItemNotFound"];
         };
     };
     getSystemOperationSeries: {

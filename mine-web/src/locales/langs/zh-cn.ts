@@ -221,6 +221,8 @@ const local: App.I18n.Schema = {
       empty: '当前部署没有注册此类检查项',
       historyTitle: '运行状态',
       immediateTitle: '即时检查结果',
+      checking: '检查中',
+      checkProgress: '{completed}/{total} 项已完成',
       trendTitle: '{item} · {range}趋势',
       trendLatency: '探测耗时',
       trendEmpty: '所选范围没有可展示的历史样本',

@@ -45,6 +45,18 @@ public class SystemOperationsController {
     }
 
     /**
+     * 独立执行一个已注册检查项的即时探测。
+     *
+     * @param key 检查项稳定标识
+     * @return 单项即时检查结果
+     */
+    @GetMapping("/operations/items/{key}/check")
+    @SaCheckPermission("system:operations:view")
+    public SystemOperationsService.OperationItem check(@PathVariable String key) {
+        return service.check(key);
+    }
+
+    /**
      * 查询指定时间范围的运行历史总览。
      *
      * @param range 受控时间范围代码
