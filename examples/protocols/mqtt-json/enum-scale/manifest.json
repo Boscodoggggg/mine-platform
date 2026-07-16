@@ -1,0 +1,72 @@
+{
+  "protocolKey": "vendor-enum-scale-json",
+  "version": 1,
+  "trustedIdentity": {
+    "productKey": "ventilation-fan",
+    "deviceCode": "fan-001"
+  },
+  "metadata": {
+    "productKeyPath": "meta.product",
+    "deviceCodePath": "meta.device",
+    "bootIdPath": "meta.boot",
+    "sequencePath": "meta.seq",
+    "occurredAtPath": "meta.time",
+    "replayedPath": "meta.replayed"
+  },
+  "properties": [
+    { "identifier": "motorCurrent", "dataType": "DECIMAL" },
+    { "identifier": "runningState", "dataType": "ENUM" }
+  ],
+  "fields": [
+    {
+      "sourcePath": "values.currentRaw",
+      "sourceType": "INTEGER",
+      "targetIdentifier": "motorCurrent",
+      "transform": "SCALE",
+      "scaleFactor": 0.1,
+      "requiredField": true
+    },
+    {
+      "sourcePath": "values.stateCode",
+      "sourceType": "STRING",
+      "targetIdentifier": "runningState",
+      "transform": "ENUM",
+      "enumMapping": { "0": "STOPPED", "1": "RUNNING", "2": "FAULT" },
+      "requiredField": true
+    }
+  ],
+  "samples": [
+    {
+      "name": "缩放和枚举遥测",
+      "payload": {
+        "meta": {
+          "product": "ventilation-fan",
+          "device": "fan-001",
+          "boot": "fan-boot-1",
+          "seq": 42,
+          "time": "2026-07-16T00:00:02Z",
+          "replayed": true
+        },
+        "values": { "currentRaw": 253, "stateCode": "1" }
+      },
+      "expectedSuccess": true,
+      "expectedProperties": { "motorCurrent": 25.3, "runningState": "RUNNING" }
+    },
+    {
+      "name": "未知枚举码",
+      "payload": {
+        "meta": {
+          "product": "ventilation-fan",
+          "device": "fan-001",
+          "boot": "fan-boot-1",
+          "seq": 43,
+          "time": "2026-07-16T00:00:03Z",
+          "replayed": false
+        },
+        "values": { "currentRaw": 250, "stateCode": "9" }
+      },
+      "expectedSuccess": false,
+      "expectedErrorCode": "PROTOCOL-TRANSFORM-FAILED"
+    }
+  ]
+}

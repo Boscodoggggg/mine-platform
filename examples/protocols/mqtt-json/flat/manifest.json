@@ -1,0 +1,53 @@
+{
+  "protocolKey": "mine-flat-json",
+  "version": 1,
+  "trustedIdentity": {
+    "productKey": "haul-truck",
+    "deviceCode": "truck-001"
+  },
+  "metadata": {
+    "productKeyPath": "productKey",
+    "deviceCodePath": "deviceCode",
+    "bootIdPath": "bootId",
+    "sequencePath": "sequence",
+    "occurredAtPath": "occurredAt",
+    "replayedPath": "replayed"
+  },
+  "properties": [
+    { "identifier": "engineRpm", "dataType": "INTEGER" },
+    { "identifier": "vehicleSpeed", "dataType": "DECIMAL" }
+  ],
+  "fields": [
+    {
+      "sourcePath": "rpm",
+      "sourceType": "INTEGER",
+      "targetIdentifier": "engineRpm",
+      "transform": "NONE",
+      "requiredField": true
+    },
+    {
+      "sourcePath": "speed",
+      "sourceType": "DECIMAL",
+      "targetIdentifier": "vehicleSpeed",
+      "transform": "NONE",
+      "requiredField": true
+    }
+  ],
+  "samples": [
+    {
+      "name": "正常扁平遥测",
+      "payload": {
+        "productKey": "haul-truck",
+        "deviceCode": "truck-001",
+        "bootId": "boot-001",
+        "sequence": 1,
+        "occurredAt": "2026-07-16T00:00:00Z",
+        "replayed": false,
+        "rpm": 1280,
+        "speed": 12.5
+      },
+      "expectedSuccess": true,
+      "expectedProperties": { "engineRpm": 1280, "vehicleSpeed": 12.5 }
+    }
+  ]
+}
