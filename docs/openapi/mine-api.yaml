@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     智慧矿山平台对管理端开放的 REST 契约。本文件固化已实现的产品设备、遥测查询、
-    协议黄金样本、配置发布回滚和运行节点证据接口。
+    协议黄金样本、配置发布回滚、运行节点证据、设备组和三级有效策略接口。
     所有时间均为带时区的 ISO-8601 UTC 时间。命令中心只开放已发布的低风险命令模板。
 servers:
   - url: /api/v1
@@ -1534,7 +1534,7 @@ paths:
       summary: 冲突预检通过后原子发布策略
       description: |
         计算所有受影响设备的三级有效策略。同优先级设备组对同一字段给出不同值时，
-        返回 STRATEGY-409-001，策略版本、发布事实、审计和 Outbox 均不提交。
+        返回 STRATEGY-409-001，策略版本、发布事实和审计均不提交。
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:

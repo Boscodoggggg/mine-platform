@@ -166,6 +166,18 @@ POST             /api/v1/device-models/protocol-versions/{id}/publish
 GET/PUT          /api/v1/protocol-mapping-versions/{id}/samples
 POST             /api/v1/protocol-mapping-versions/{id}/test
 
+GET/POST         /api/v1/device-groups
+GET/PUT          /api/v1/device-groups/{id}
+GET/PUT          /api/v1/device-groups/{id}/members
+POST             /api/v1/device-groups/{id}/archive
+
+GET/POST         /api/v1/strategy-versions
+GET/PUT          /api/v1/strategy-versions/{id}
+GET/POST         /api/v1/strategy-releases
+GET              /api/v1/strategy-releases/{id}
+POST             /api/v1/strategy-releases/{id}/rollback
+GET              /api/v1/devices/{id}/effective-strategies/{type}
+
 GET/POST         /api/v1/config-releases
 GET              /api/v1/config-releases/{id}
 POST             /api/v1/config-releases/{id}/rollback
@@ -175,6 +187,8 @@ POST             /internal/v1/config-releases/{id}/nodes/{nodeId}
 ~~~
 
 样本、测试、发布、回滚和查看发布历史分别使用 `device:protocol:sample:view`、`device:protocol:sample:edit`、`device:protocol:test`、`device:configuration:publish`、`device:configuration:rollback`、`device:configuration:view` 权限。发布和回滚必须携带 `Idempotency-Key`；内部接口不使用用户会话，必须携带从只读 secret 文件加载的 `X-Mine-Service-Token`，且响应不包含任何凭据。
+
+设备组查看/维护分别使用 `device:group:view`、`device:group:edit`，策略查看/编辑/发布分别使用 `device:strategy:view`、`device:strategy:edit`、`device:strategy:publish`。设备组成员、优先级和归档变更采用乐观锁；发布和回滚要求 `Idempotency-Key` 与原因。当前策略白名单仅包含 `ONLINE_STATUS.offlineThresholdSeconds`，有效值查询返回最终字段、逐字段作用范围/发布来源、稳定内容哈希和冲突详情。同优先级设备组异值冲突返回 `409 / STRATEGY-409-001`，策略版本、发布事实和审计均不提交。
 
 ### 2.4 矿山业务
 
@@ -436,6 +450,11 @@ config_package_item
 config_release
 config_release_target
 config_node_status
+
+dev_device_group
+dev_device_group_membership
+dev_strategy_version
+dev_strategy_release
 ~~~
 
 建议把大型协议配置 JSON 存 jsonb，同时将可查询元数据关系化。不能只存一坨 JSON 而无法建立版本、样本和影响关系。
@@ -458,8 +477,12 @@ Phase 2 已落地表及关键语义：
 - `dev_config_release`：产品内单调发布序号、发布/回滚动作、原因和管理员幂等键。
 - `dev_config_release_target`：产品、设备组或设备目标；当前公开发布 API 先落产品作用域。
 - `dev_config_node_status`：节点维度的 `PENDING/LOADED/FAILED`、实际哈希、脱敏消息和加载时间。
+- `dev_device_group`：产品内稳定编码、显示名称、0～1000 策略优先级、归档状态和乐观锁。
+- `dev_device_group_membership`：设备组成员的生效/结束时间区间；当前关系由部分唯一索引约束，设备归档时由数据库自动关闭。
+- `dev_strategy_version`：经过策略类型注册表校验的局部字段版本；当前数据库白名单只允许 `ONLINE_STATUS`，已发布版本不可修改或删除。
+- `dev_strategy_release`：把已发布策略版本应用到产品、设备组或单设备的不可变事实，保存组优先级审计快照、幂等键、动作和回滚引用。
 
-所有新增表和字段均通过 `COMMENT ON TABLE`、`COMMENT ON COLUMN` 提供中文注释；`DatabaseMigrationIT` 会读取 PostgreSQL 元数据校验注释不缺失。配置包和发布表由触发器保护为不可变，产品内序号、哈希格式、回滚引用、状态与加载时间等均有数据库约束。
+所有新增表和字段均通过 `COMMENT ON TABLE`、`COMMENT ON COLUMN` 提供中文注释；`DatabaseMigrationIT` 会读取 PostgreSQL 元数据校验注释不缺失。配置包和发布表由触发器保护为不可变，产品内序号、哈希格式、回滚引用、状态与加载时间等均有数据库约束。成员关系触发器再次校验设备/组产品一致性和生命周期；策略发布触发器再次校验版本、产品、策略类型与多态作用范围一致性。
 
 ## 10. 矿山业务表
 
@@ -532,7 +555,7 @@ Outbox 投递约束：
 - 服务启动或数据库重连后执行一次有界恢复，必须命中 `status + next_attempt_at` 索引并限制批量。
 - `locked_by + lease_expires_at` 只用于实例崩溃后的接管，不允许用分布式锁替代数据库状态机。
 - relay 只允许精确白名单事件：`COMMAND/command.dispatch.requested` 与 `CONFIG_RELEASE/config.release.created`；配置事件路由到 `mine.config.x`，Gateway 使用手工 ACK。
-- Gateway 仅在快照匹配、编译激活、本地 last-known-good 持久化和节点 `LOADED` 回报全部成功后 ACK；HTTP、磁盘或状态回报瞬时失败 NACK 重投，非法事件或永久损坏快照拒绝并进入死信。
+- Gateway 仅在快照匹配、编译激活、本地 last-known-good 持久化和节点 `LOADED` 回报全部成功后 ACK；HTTP、磁盘或状态回报瞬时失败 NACK 重投，非法事件直接拒绝。永久损坏快照必须先回报脱敏且有界的节点 `FAILED` 证据再拒绝；失败证据无法回报时继续 NACK 重投。
 
 ### sys_inbox_event
 
