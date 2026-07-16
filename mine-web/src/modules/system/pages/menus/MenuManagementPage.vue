@@ -32,11 +32,14 @@ import {
   createMenu,
   deleteMenu,
   deleteMenus,
+  getMenuButtons,
   getMenuComponentOptions,
+  getMenus,
   getMenuTree,
   updateMenu
 } from '@/modules/system/api/access-management';
 import type {
+  ManagedMenuListItem,
   ManagedMenuNode,
   MenuComponentOption,
   MenuNodeType,
@@ -44,10 +47,10 @@ import type {
 } from '@/modules/system/api/access-management';
 import { useAuthStore } from '@/store/modules/auth';
 
-type MenuListRow = Omit<ManagedMenuNode, 'children'> & {
-  depth: number;
+type MenuListRow = ManagedMenuListItem & {
+  isLeaf: boolean;
   hierarchyPath: string | null;
-  childCount: number;
+  children?: MenuListRow[];
 };
 
 type MenuColumnKey =
@@ -68,7 +71,12 @@ const loading = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
 const buttonSaving = ref(false);
-const tree = ref<ManagedMenuNode[]>([]);
+const buttonLoading = ref(false);
+const rootRows = ref<MenuListRow[]>([]);
+const menuTree = ref<ManagedMenuNode[]>([]);
+const menuTreeLoaded = ref(false);
+const total = ref(0);
+const buttonRows = ref<ManagedMenuNode[]>([]);
 const componentOptions = ref<MenuComponentOption[]>([]);
 const modalVisible = ref(false);
 const buttonEditorVisible = ref(false);
@@ -96,24 +104,11 @@ const filters = reactive<{ name: string; type: Exclude<MenuNodeType, 'BUTTON'> |
 const form = reactive<MenuSavePayload>(emptyMenuForm());
 const buttonForm = reactive<MenuSavePayload>(emptyButtonForm());
 
-const menuRows = computed(() => projectMenuRows(tree.value));
-const filteredRows = computed(() => {
-  const keyword = filters.name.trim().toLocaleLowerCase();
-  return menuRows.value.filter(row => {
-    const matchesName = !keyword || row.name.toLocaleLowerCase().includes(keyword);
-    const matchesType = !filters.type || row.type === filters.type;
-    const matchesStatus = !filters.status || row.status === filters.status;
-    return matchesName && matchesType && matchesStatus;
-  });
-});
-const pagedRows = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return filteredRows.value.slice(start, start + pageSize.value);
-});
-const activeMenu = computed(() => (editingId.value ? findMenuNode(tree.value, editingId.value) : null));
-const buttonRows = computed(() => activeMenu.value?.children.filter(node => node.type === 'BUTTON') || []);
+const pagedRows = computed(() => rootRows.value);
 const descendantIds = computed(() =>
-  editingId.value ? collectDescendantIds(findMenuNode(tree.value, editingId.value)?.children || []) : new Set<string>()
+  editingId.value
+    ? collectDescendantIds(findMenuNode(menuTree.value, editingId.value)?.children || [])
+    : new Set<string>()
 );
 const menuTypeOptions = computed<SelectOption[]>(() => [
   { label: t('mine.menus.type.directory'), value: 'DIRECTORY' },
@@ -124,12 +119,9 @@ const statusOptions = computed<SelectOption[]>(() => [
   { label: t('mine.common.status.disabled'), value: 'DISABLED' }
 ]);
 const parentOptions = computed<SelectOption[]>(() =>
-  menuRows.value
-    .filter(row => row.type === 'DIRECTORY' && row.id !== editingId.value && !descendantIds.value.has(row.id))
-    .map(row => ({
-      label: row.hierarchyPath ? `${row.hierarchyPath} / ${row.name}` : row.name,
-      value: row.id
-    }))
+  projectDirectoryOptions(menuTree.value)
+    .filter(row => row.id !== editingId.value && !descendantIds.value.has(row.id))
+    .map(row => ({ label: row.label, value: row.id }))
 );
 const pageOptions = computed<SelectOption[]>(() =>
   componentOptions.value.map(option => ({ label: option.name, value: option.key }))
@@ -170,20 +162,8 @@ const columns = computed<DataTableColumns<MenuListRow>>(() => {
         key: 'name',
         minWidth: 150,
         fixed: 'left',
-        render: row =>
-          h(
-            NText,
-            {
-              depth: row.status === 'ENABLED' ? undefined : 3,
-              'data-menu-depth': row.depth
-            },
-            () => [
-              row.depth > 0
-                ? h('span', { 'aria-hidden': 'true' }, `${'　'.repeat(Math.max(0, row.depth - 1))}└─ `)
-                : null,
-              h('span', row.name)
-            ]
-          )
+        tree: true,
+        render: row => h(NText, { depth: row.status === 'ENABLED' ? undefined : 3 }, () => row.name)
       }
     },
     {
@@ -244,12 +224,7 @@ const columns = computed<DataTableColumns<MenuListRow>>(() => {
         key: 'hierarchyPath',
         minWidth: 180,
         ellipsis: { tooltip: true },
-        render: row =>
-          h(
-            NText,
-            { 'data-hierarchy-path': row.hierarchyPath || '' },
-            () => row.hierarchyPath || t('mine.menus.root')
-          )
+        render: row => row.hierarchyPath || t('mine.menus.root')
       }
     },
     {
@@ -263,7 +238,7 @@ const columns = computed<DataTableColumns<MenuListRow>>(() => {
   if (can('system:menu:delete')) {
     result.unshift({
       type: 'selection',
-      disabled: row => row.protectedNode || row.childCount > 0
+      disabled: row => row.protectedNode || row.hasChildren
     });
   }
   result.push({
@@ -276,7 +251,7 @@ const columns = computed<DataTableColumns<MenuListRow>>(() => {
         can('system:menu:update')
           ? h(NButton, { text: true, type: 'primary', onClick: () => openEdit(row) }, () => t('mine.common.edit'))
           : null,
-        can('system:menu:delete') && !row.protectedNode && row.childCount === 0
+        can('system:menu:delete') && !row.protectedNode && !row.hasChildren
           ? h(NButton, { text: true, type: 'error', onClick: () => remove(row) }, () => t('mine.common.delete'))
           : null
       ])
@@ -350,35 +325,99 @@ const MenuFieldLabel = defineComponent({
   }
 });
 
+let loadSequence = 0;
+
 watch(
   () => [filters.name, filters.type, filters.status],
   () => {
-    page.value = 1;
     checkedRowKeys.value = [];
+    if (page.value === 1) void load();
+    else page.value = 1;
   }
 );
-watch(pageSize, () => {
-  page.value = 1;
+watch(page, () => {
   checkedRowKeys.value = [];
+  void load();
 });
-watch(
-  () => filteredRows.value.length,
-  total => {
-    const lastPage = Math.max(1, Math.ceil(total / pageSize.value));
-    if (page.value > lastPage) page.value = lastPage;
-  }
-);
+watch(pageSize, () => {
+  checkedRowKeys.value = [];
+  if (page.value === 1) void load();
+  else page.value = 1;
+});
 
-onMounted(load);
+onMounted(async () => {
+  await Promise.all([load(), loadComponentOptions()]);
+});
 
 async function load() {
+  const sequence = ++loadSequence;
   loading.value = true;
   try {
-    [tree.value, componentOptions.value] = await Promise.all([getMenuTree(), getMenuComponentOptions()]);
+    const result = await getMenus({
+      parentId: undefined,
+      keyword: filters.name,
+      type: filters.type || '',
+      status: filters.status || '',
+      page: page.value,
+      size: pageSize.value
+    });
+    if (sequence !== loadSequence) return;
+    rootRows.value = result.items.map(item => toMenuRow(item, null));
+    total.value = result.total;
+    const lastPage = Math.max(1, Math.ceil(result.total / pageSize.value));
+    if (page.value > lastPage) page.value = lastPage;
   } catch (error) {
     showError(error);
   } finally {
-    loading.value = false;
+    if (sequence === loadSequence) loading.value = false;
+  }
+}
+
+async function loadComponentOptions() {
+  try {
+    componentOptions.value = await getMenuComponentOptions();
+  } catch (error) {
+    showError(error);
+  }
+}
+
+async function loadChildren(row: object) {
+  const menuRow = row as MenuListRow;
+  if (menuRow.children) return;
+  try {
+    const items: ManagedMenuListItem[] = [];
+    let childPage = 1;
+    let childTotal = 0;
+    do {
+      const result = await getMenus({
+        parentId: menuRow.id,
+        keyword: filters.name,
+        type: filters.type || '',
+        status: filters.status || '',
+        page: childPage,
+        size: 100
+      });
+      items.push(...result.items);
+      childTotal = result.total;
+      childPage += 1;
+      if (result.items.length === 0) break;
+    } while (items.length < childTotal);
+    const childPath = menuRow.hierarchyPath ? `${menuRow.hierarchyPath} / ${menuRow.name}` : menuRow.name;
+    menuRow.children = items.map(item => toMenuRow(item, childPath));
+    menuRow.isLeaf = menuRow.children.length === 0;
+    rootRows.value = [...rootRows.value];
+  } catch (error) {
+    showError(error);
+  }
+}
+
+async function ensureMenuTree() {
+  if (menuTreeLoaded.value) return;
+  try {
+    menuTree.value = await getMenuTree();
+    menuTreeLoaded.value = true;
+  } catch (error) {
+    showError(error);
   }
 }
 
@@ -387,11 +426,13 @@ function openCreate(type: Exclude<MenuNodeType, 'BUTTON'> = 'DIRECTORY') {
   buttonEditorVisible.value = false;
   Object.assign(form, emptyMenuForm(type));
   modalVisible.value = true;
+  void ensureMenuTree();
 }
 
 function openEdit(row: MenuListRow | ManagedMenuNode) {
   editingId.value = row.id;
   buttonEditorVisible.value = false;
+  buttonRows.value = [];
   Object.assign(form, {
     parentId: row.parentId,
     name: row.name,
@@ -407,6 +448,19 @@ function openEdit(row: MenuListRow | ManagedMenuNode) {
     version: row.version || 0
   });
   modalVisible.value = true;
+  void ensureMenuTree();
+  if (row.type === 'MENU') void loadButtons(row.id);
+}
+
+async function loadButtons(menuId: string) {
+  buttonLoading.value = true;
+  try {
+    buttonRows.value = await getMenuButtons(menuId);
+  } catch (error) {
+    showError(error);
+  } finally {
+    buttonLoading.value = false;
+  }
 }
 
 async function save() {
@@ -422,6 +476,7 @@ async function save() {
     else await createMenu(payload);
     window.$message?.success(t(editingId.value ? 'mine.menus.message.updated' : 'mine.menus.message.created'));
     modalVisible.value = false;
+    menuTreeLoaded.value = false;
     await load();
   } catch (error) {
     showError(error);
@@ -436,6 +491,7 @@ async function remove(row: MenuListRow) {
     await deleteMenu(row.id);
     window.$message?.success(t('mine.menus.message.deleted'));
     checkedRowKeys.value = checkedRowKeys.value.filter(id => id !== row.id);
+    menuTreeLoaded.value = false;
     await load();
   } catch (error) {
     showError(error);
@@ -450,6 +506,7 @@ async function batchRemove() {
     await deleteMenus([...checkedRowKeys.value]);
     window.$message?.success(t('mine.menus.message.batchDeleted', { count: checkedRowKeys.value.length }));
     checkedRowKeys.value = [];
+    menuTreeLoaded.value = false;
     await load();
   } catch (error) {
     showError(error);
@@ -501,7 +558,7 @@ async function saveButton() {
       t(editingButtonId.value ? 'mine.menus.message.buttonUpdated' : 'mine.menus.message.buttonCreated')
     );
     buttonEditorVisible.value = false;
-    await load();
+    await loadButtons(editingId.value);
   } catch (error) {
     showError(error);
   } finally {
@@ -514,7 +571,7 @@ async function removeButton(row: ManagedMenuNode) {
   try {
     await deleteMenu(row.id);
     window.$message?.success(t('mine.menus.message.buttonDeleted'));
-    await load();
+    if (editingId.value) await loadButtons(editingId.value);
   } catch (error) {
     showError(error);
   }
@@ -568,17 +625,23 @@ function cleanPayload(value: MenuSavePayload): MenuSavePayload {
   };
 }
 
-function projectMenuRows(nodes: ManagedMenuNode[], ancestors: string[] = []): MenuListRow[] {
+function toMenuRow(item: ManagedMenuListItem, hierarchyPath: string | null): MenuListRow {
+  return {
+    ...item,
+    isLeaf: !item.hasChildren,
+    hierarchyPath,
+    children: item.hasChildren ? undefined : []
+  };
+}
+
+function projectDirectoryOptions(
+  nodes: ManagedMenuNode[],
+  ancestors: string[] = []
+): Array<{ id: string; label: string }> {
   return nodes.flatMap(node => {
-    if (node.type === 'BUTTON') return [];
-    const { children, ...values } = node;
-    const row: MenuListRow = {
-      ...values,
-      depth: ancestors.length,
-      hierarchyPath: ancestors.length > 0 ? ancestors.join(' / ') : null,
-      childCount: children.length
-    };
-    return [row, ...projectMenuRows(children, [...ancestors, node.name])];
+    if (node.type !== 'DIRECTORY') return [];
+    const label = [...ancestors, node.name].join(' / ');
+    return [{ id: node.id, label }, ...projectDirectoryOptions(node.children, [...ancestors, node.name])];
   });
 }
 
@@ -690,20 +753,22 @@ function showError(error: unknown) {
           :data="pagedRows"
           :loading="loading"
           :row-key="row => row.id"
+          :on-load="loadChildren"
           :checked-row-keys="checkedRowKeys"
           :scroll-x="1280"
+          :indent="20"
           @update:checked-row-keys="updateCheckedRowKeys"
         />
 
         <NSpace justify="space-between" align="center">
-          <NText depth="3">{{ t('mine.menus.total', { count: filteredRows.length }) }}</NText>
+          <NText depth="3">{{ t('mine.menus.total', { count: total }) }}</NText>
           <NPagination
             v-model:page="page"
             v-model:page-size="pageSize"
             data-pagination
             show-size-picker
             :page-sizes="[10, 20, 50]"
-            :item-count="filteredRows.length"
+            :item-count="total"
           />
         </NSpace>
       </NSpace>
@@ -816,7 +881,13 @@ function showError(error: unknown) {
                 {{ t('mine.menus.action.addButton') }}
               </NButton>
             </NSpace>
-            <NDataTable :columns="buttonColumns" :data="buttonRows" :row-key="row => row.id" size="small" />
+            <NDataTable
+              :columns="buttonColumns"
+              :data="buttonRows"
+              :loading="buttonLoading"
+              :row-key="row => row.id"
+              size="small"
+            />
 
             <NGrid v-if="buttonEditorVisible" responsive="screen" cols="1 m:2" :x-gap="24">
               <NGi>

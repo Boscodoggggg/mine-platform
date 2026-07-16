@@ -38,6 +38,10 @@ export interface ManagedRole {
 }
 
 export type ManagedMenuNode = components['schemas']['ManagedMenuNode'];
+export type ManagedMenuListItem = Omit<ManagedMenuNode, 'children' | 'type'> & {
+  type: Exclude<MenuNodeType, 'BUTTON'>;
+  hasChildren: boolean;
+};
 export type MenuComponentOption = components['schemas']['MenuComponentOption'];
 export type MenuSavePayload = components['schemas']['MenuSaveRequest'];
 
@@ -51,6 +55,15 @@ export interface UserQuery {
 export interface RoleQuery {
   keyword?: string;
   status?: RoleStatus | '';
+  page: number;
+  size: number;
+}
+
+export interface MenuQuery {
+  parentId?: string;
+  keyword?: string;
+  type?: Exclude<MenuNodeType, 'BUTTON'> | '';
+  status?: 'ENABLED' | 'DISABLED' | '';
   page: number;
   size: number;
 }
@@ -135,6 +148,21 @@ export function replaceRoleMenus(roleId: string, menuIds: string[]) {
 /** 读取角色授权与菜单维护共用的完整权限树。 */
 export function getMenuTree() {
   return request<ManagedMenuNode[]>('/system/menus/tree');
+}
+
+/** 按父节点分页查询菜单管理树表格。 */
+export function getMenus(query: MenuQuery) {
+  const params = new URLSearchParams({ page: String(query.page), size: String(query.size) });
+  if (query.parentId) params.set('parentId', query.parentId);
+  if (query.keyword?.trim()) params.set('keyword', query.keyword.trim());
+  if (query.type) params.set('type', query.type);
+  if (query.status) params.set('status', query.status);
+  return request<PageResponse<ManagedMenuListItem>>(`/system/menus?${params.toString()}`);
+}
+
+/** 按需查询页面的直接按钮权限。 */
+export function getMenuButtons(menuId: string) {
+  return request<ManagedMenuNode[]>(`/system/menus/${menuId}/buttons`);
 }
 
 /** 查询前端允许配置的页面组件白名单。 */

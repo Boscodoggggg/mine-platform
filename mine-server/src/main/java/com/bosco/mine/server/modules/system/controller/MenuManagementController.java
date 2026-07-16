@@ -2,8 +2,12 @@ package com.bosco.mine.server.modules.system.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import cn.dev33.satoken.annotation.SaMode;
+import com.bosco.mine.common.error.ErrorCode;
+import com.bosco.mine.common.error.MineException;
+import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.system.service.MenuManagementService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -19,11 +23,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -34,6 +40,9 @@ import java.util.UUID;
 @RequestMapping("/api/v1/system/menus")
 public class MenuManagementController {
 
+    private static final ErrorCode PAGE_INVALID =
+            new ErrorCode("REQUEST-400-002", "分页参数不合法");
+
     private final MenuManagementService service;
 
     /**
@@ -43,6 +52,33 @@ public class MenuManagementController {
      */
     public MenuManagementController(MenuManagementService service) {
         this.service = service;
+    }
+
+    /**
+     * 按父节点分页查询菜单管理树表格。
+     *
+     * @param parentId 父节点标识，为空时查询根节点
+     * @param keyword  菜单名称关键词
+     * @param type     菜单类型
+     * @param status   菜单状态
+     * @param page     根节点页码
+     * @param size     每页根节点数量
+     * @return 当前层级菜单分页
+     */
+    @GetMapping
+    @SaCheckPermission("system:menu:view")
+    public PageResponse<MenuManagementService.MenuListItem> findMenus(
+            @RequestParam(required = false) UUID parentId,
+            @RequestParam(required = false) @Size(max = 128) String keyword,
+            @RequestParam(required = false) @Pattern(regexp = "DIRECTORY|MENU") String type,
+            @RequestParam(required = false) @Pattern(regexp = "ENABLED|DISABLED") String status,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "10") @Min(1) @Max(100) int size
+    ) {
+        if (page < 1 || size < 1 || size > 100) {
+            throw new MineException(PAGE_INVALID, Map.of("page", page, "size", size));
+        }
+        return service.findMenus(parentId, keyword, type, status, page, size);
     }
 
     /**
@@ -65,6 +101,18 @@ public class MenuManagementController {
     @SaCheckPermission("system:menu:view")
     public List<MenuManagementService.ComponentOption> findComponentOptions() {
         return service.findComponentOptions();
+    }
+
+    /**
+     * 按需查询页面节点的直接按钮权限。
+     *
+     * @param id 页面菜单标识
+     * @return 按钮权限节点
+     */
+    @GetMapping("/{id}/buttons")
+    @SaCheckPermission("system:menu:view")
+    public List<MenuManagementService.MenuNode> findMenuButtons(@PathVariable UUID id) {
+        return service.findMenuButtons(id);
     }
 
     /**

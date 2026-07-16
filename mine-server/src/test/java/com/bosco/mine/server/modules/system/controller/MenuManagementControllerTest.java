@@ -14,6 +14,7 @@ import java.util.UUID;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -47,6 +48,26 @@ class MenuManagementControllerTest {
                 .andExpect(status().isNoContent());
 
         verify(service).deleteMenus(List.of(directoryId, menuId));
+    }
+
+    @Test
+    void 应支持分页查询根菜单节点() throws Exception {
+        mockMvc.perform(get("/api/v1/system/menus")
+                        .param("page", "1")
+                        .param("size", "10"))
+                .andExpect(status().isOk());
+
+        verify(service).findMenus(null, null, null, null, 1, 10);
+    }
+
+    @Test
+    void 应支持按需查询页面的按钮权限() throws Exception {
+        UUID menuId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/system/menus/{menuId}/buttons", menuId))
+                .andExpect(status().isOk());
+
+        verify(service).findMenuButtons(menuId);
     }
 
     @Test

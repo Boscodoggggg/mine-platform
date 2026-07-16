@@ -7,7 +7,9 @@ const api = vi.hoisted(() => ({
   createMenu: vi.fn(),
   deleteMenu: vi.fn(),
   deleteMenus: vi.fn(),
+  getMenuButtons: vi.fn(),
   getMenuComponentOptions: vi.fn(),
+  getMenus: vi.fn(),
   getMenuTree: vi.fn(),
   updateMenu: vi.fn()
 }));
@@ -26,6 +28,23 @@ describe('MenuManagementPage', () => {
     setLocale('zh-CN');
     Object.values(api).forEach(mock => mock.mockReset());
     api.getMenuTree.mockResolvedValue(menuTree());
+    api.getMenus.mockImplementation((query: { parentId?: string }) => {
+      if (query.parentId === 'directory-1') {
+        return Promise.resolve({
+          items: [{ ...menuTree()[0].children[0], hasChildren: false, children: undefined }],
+          page: 1,
+          size: 100,
+          total: 1
+        });
+      }
+      return Promise.resolve({
+        items: [{ ...menuTree()[0], hasChildren: true, children: undefined }],
+        page: 1,
+        size: 10,
+        total: 1
+      });
+    });
+    api.getMenuButtons.mockResolvedValue(menuTree()[0].children[0].children);
     api.getMenuComponentOptions.mockResolvedValue([{ key: 'device-product-list', name: '产品管理' }]);
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
   });
@@ -33,19 +52,42 @@ describe('MenuManagementPage', () => {
   it('主表应只展示目录和页面并隐藏按钮权限节点', async () => {
     const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
     await flushPromises();
+    const page = wrapper.vm as unknown as {
+      pagedRows: Array<{ name: string; children?: Array<{ name: string }> }>;
+      loadChildren: (row: { name: string }) => Promise<void>;
+    };
 
-    expect(wrapper.text()).toContain('设备管理');
-    expect(wrapper.text()).toContain('产品管理');
-    expect(wrapper.text()).not.toContain('创建产品');
-  });
-
-  it('主表应通过名称缩进和上级路径表达菜单层级', async () => {
-    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    await page.loadChildren(page.pagedRows[0]);
     await flushPromises();
 
-    expect(wrapper.get('[data-menu-depth="0"]').text()).toBe('设备管理');
-    expect(wrapper.get('[data-menu-depth="1"]').text()).toContain('└─ 产品管理');
-    expect(wrapper.get('[data-hierarchy-path="设备管理"]').text()).toBe('设备管理');
+    expect(wrapper.text()).toContain('设备管理');
+    expect(page.pagedRows[0].children?.map(row => row.name)).toEqual(['产品管理']);
+    expect(page.pagedRows[0].children?.map(row => row.name)).not.toContain('创建产品');
+    expect(api.getMenus).toHaveBeenCalledWith({
+      parentId: 'directory-1',
+      keyword: '',
+      type: '',
+      status: '',
+      page: 1,
+      size: 100
+    });
+  });
+
+  it('首次应只展示根节点并等待展开加载子节点', async () => {
+    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const page = wrapper.vm as unknown as { pagedRows: Array<{ name: string }> };
+
+    expect(page.pagedRows.map(row => row.name)).toEqual(['设备管理']);
+    expect(wrapper.text()).not.toContain('产品管理');
+    expect(api.getMenus).toHaveBeenCalledWith({
+      parentId: undefined,
+      keyword: '',
+      type: '',
+      status: '',
+      page: 1,
+      size: 10
+    });
   });
 
   it('应提供筛选、分页、刷新和列设置', async () => {
@@ -61,15 +103,18 @@ describe('MenuManagementPage', () => {
   });
 
   it('菜单主表应按每页十条进行分页', async () => {
-    api.getMenuTree.mockResolvedValue(
-      Array.from({ length: 12 }, (_, index) => ({
-        ...menuTree()[0],
-        id: `directory-${index + 1}`,
-        name: `目录${index + 1}`,
-        protectedNode: false,
-        children: []
-      }))
-    );
+    const roots = Array.from({ length: 12 }, (_, index) => ({
+      ...menuTree()[0],
+      id: `directory-${index + 1}`,
+      name: `目录${index + 1}`,
+      protectedNode: false,
+      hasChildren: false,
+      children: undefined
+    }));
+    api.getMenus.mockImplementation((query: { page: number; size: number }) => {
+      const start = (query.page - 1) * query.size;
+      return Promise.resolve({ items: roots.slice(start, start + query.size), page: query.page, size: query.size, total: 12 });
+    });
     const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
     await flushPromises();
     const page = wrapper.vm as unknown as { pagedRows: unknown[]; page: number };

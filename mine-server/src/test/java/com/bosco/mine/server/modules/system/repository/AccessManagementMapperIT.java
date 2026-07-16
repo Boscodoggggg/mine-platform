@@ -39,6 +39,9 @@ class AccessManagementMapperIT {
     private AccessManagementMapper mapper;
 
     @Autowired
+    private MenuManagementMapper menuManagementMapper;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
@@ -122,5 +125,27 @@ class AccessManagementMapperIT {
         assertThat(mapper.findMenuIdsByRoleId(roleId)).containsExactly(userViewMenuId);
         assertThat(mapper.deleteRoleMenus(roleId)).isOne();
         assertThat(mapper.findMenuIdsByRoleId(roleId)).isEmpty();
+    }
+
+    @Test
+    void 应按层查询菜单并为搜索结果保留祖先链() {
+        List<MenuManagementMapper.MenuListRecord> roots =
+                menuManagementMapper.findMenuItems(null, null, null, null, 0, 10);
+        MenuManagementMapper.MenuListRecord systemRoot = roots.stream()
+                .filter(item -> "系统管理".equals(item.name()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(systemRoot.hasChildren()).isTrue();
+        assertThat(menuManagementMapper.countMenuItems(null, "菜单管理", null, null)).isOne();
+        List<MenuManagementMapper.MenuListRecord> matchedChildren = menuManagementMapper.findMenuItems(
+                systemRoot.id(), "菜单管理", null, null, 0, 100
+        );
+
+        assertThat(matchedChildren).singleElement().satisfies(item -> {
+            assertThat(item.name()).isEqualTo("菜单管理");
+            assertThat(item.hasChildren()).isFalse();
+            assertThat(menuManagementMapper.findButtonChildren(item.id())).isNotEmpty();
+        });
     }
 }

@@ -1,6 +1,7 @@
 package com.bosco.mine.server.modules.system.service;
 
 import com.bosco.mine.common.error.MineException;
+import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.system.repository.MenuManagementMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -142,6 +144,52 @@ class MenuManagementServiceTest {
                                 .isEqualTo("SYSTEM-409-006"));
 
         verify(mapper, never()).deleteMenu(any());
+    }
+
+    @Test
+    void 应只分页返回指定父节点下的菜单并标记可展开状态() {
+        UUID rootId = UUID.randomUUID();
+        UUID childId = UUID.randomUUID();
+        when(mapper.countMenuItems(null, null, null, null)).thenReturn(1L);
+        when(mapper.findMenuItems(null, null, null, null, 0, 10)).thenReturn(List.of(
+                menuListItem(rootId, null, "设备管理", "DIRECTORY", null, null, null, true)
+        ));
+        when(mapper.countMenuItems(rootId, null, null, null)).thenReturn(1L);
+        when(mapper.findMenuItems(rootId, null, null, null, 0, 10)).thenReturn(List.of(
+                menuListItem(childId, rootId, "设备台账", "MENU", "/devices", "device-device-list", "device:view", false)
+        ));
+
+        PageResponse<MenuManagementService.MenuListItem> roots =
+                service.findMenus(null, null, null, null, 1, 10);
+        PageResponse<MenuManagementService.MenuListItem> children =
+                service.findMenus(rootId, null, null, null, 1, 10);
+
+        assertThat(roots.total()).isEqualTo(1);
+        assertThat(roots.items()).singleElement().satisfies(item -> {
+            assertThat(item.name()).isEqualTo("设备管理");
+            assertThat(item.hasChildren()).isTrue();
+        });
+        assertThat(children.items()).singleElement().satisfies(item -> {
+            assertThat(item.name()).isEqualTo("设备台账");
+            assertThat(item.hasChildren()).isFalse();
+        });
+        verify(mapper, never()).findAllMenus();
+    }
+
+    private MenuManagementMapper.MenuListRecord menuListItem(
+            UUID id,
+            UUID parentId,
+            String name,
+            String type,
+            String path,
+            String componentKey,
+            String permission,
+            boolean hasChildren
+    ) {
+        return new MenuManagementMapper.MenuListRecord(
+                id, parentId, name, type, path, componentKey, permission, "mdi:menu",
+                10, true, "ENABLED", "mine.menu.test", false, 0, hasChildren
+        );
     }
 
     private MenuManagementMapper.MenuRecord menu(

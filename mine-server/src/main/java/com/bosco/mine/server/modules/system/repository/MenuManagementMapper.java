@@ -33,6 +33,133 @@ public interface MenuManagementMapper {
     List<MenuRecord> findAllMenus();
 
     /**
+     * 按父节点和筛选条件统计菜单树表格节点。
+     *
+     * @param parentId 父节点标识
+     * @param keyword  名称关键词
+     * @param type     菜单类型
+     * @param status   菜单状态
+     * @return 符合条件的直接子节点数量
+     */
+    @Select("""
+            <script>
+            WITH RECURSIVE matched AS (
+                SELECT id, parent_id
+                FROM sys_menu
+                WHERE type &lt;&gt; 'BUTTON'
+                <if test="keyword != null and keyword != ''">
+                  AND name ILIKE CONCAT('%', #{keyword}, '%')
+                </if>
+                <if test="type != null and type != ''">
+                  AND type = #{type}
+                </if>
+                <if test="status != null and status != ''">
+                  AND status = #{status}
+                </if>
+                UNION
+                SELECT parent.id, parent.parent_id
+                FROM sys_menu parent
+                JOIN matched child ON child.parent_id = parent.id
+                WHERE parent.type &lt;&gt; 'BUTTON'
+            )
+            SELECT COUNT(*)
+            FROM sys_menu menu
+            WHERE menu.type &lt;&gt; 'BUTTON'
+              AND menu.id IN (SELECT id FROM matched)
+            <choose>
+              <when test="parentId == null">AND menu.parent_id IS NULL</when>
+              <otherwise>AND menu.parent_id = #{parentId}</otherwise>
+            </choose>
+            </script>
+            """)
+    long countMenuItems(
+            @Param("parentId") UUID parentId,
+            @Param("keyword") String keyword,
+            @Param("type") String type,
+            @Param("status") String status
+    );
+
+    /**
+     * 按父节点分页查询菜单树表格节点。
+     *
+     * @param parentId 父节点标识
+     * @param keyword  名称关键词
+     * @param type     菜单类型
+     * @param status   菜单状态
+     * @param offset   分页偏移量
+     * @param limit    最大返回数量
+     * @return 当前层级菜单节点
+     */
+    @Select("""
+            <script>
+            WITH RECURSIVE matched AS (
+                SELECT id, parent_id
+                FROM sys_menu
+                WHERE type &lt;&gt; 'BUTTON'
+                <if test="keyword != null and keyword != ''">
+                  AND name ILIKE CONCAT('%', #{keyword}, '%')
+                </if>
+                <if test="type != null and type != ''">
+                  AND type = #{type}
+                </if>
+                <if test="status != null and status != ''">
+                  AND status = #{status}
+                </if>
+                UNION
+                SELECT parent.id, parent.parent_id
+                FROM sys_menu parent
+                JOIN matched child ON child.parent_id = parent.id
+                WHERE parent.type &lt;&gt; 'BUTTON'
+            )
+            SELECT menu.id, menu.parent_id AS parentId, menu.name, menu.type, menu.path,
+                   menu.component_key AS componentKey, menu.permission, menu.icon,
+                   menu.sort_order AS sortOrder, menu.visible, menu.status,
+                   menu.i18n_key AS i18nKey, menu.protected_node AS protectedNode, menu.version,
+                   EXISTS (
+                       SELECT 1
+                       FROM sys_menu child
+                       WHERE child.parent_id = menu.id
+                         AND child.type &lt;&gt; 'BUTTON'
+                         AND child.id IN (SELECT id FROM matched)
+                   ) AS hasChildren
+            FROM sys_menu menu
+            WHERE menu.type &lt;&gt; 'BUTTON'
+              AND menu.id IN (SELECT id FROM matched)
+            <choose>
+              <when test="parentId == null">AND menu.parent_id IS NULL</when>
+              <otherwise>AND menu.parent_id = #{parentId}</otherwise>
+            </choose>
+            ORDER BY menu.sort_order, menu.id
+            OFFSET #{offset} LIMIT #{limit}
+            </script>
+            """)
+    List<MenuListRecord> findMenuItems(
+            @Param("parentId") UUID parentId,
+            @Param("keyword") String keyword,
+            @Param("type") String type,
+            @Param("status") String status,
+            @Param("offset") int offset,
+            @Param("limit") int limit
+    );
+
+    /**
+     * 查询页面菜单下的直接按钮权限。
+     *
+     * @param parentId 页面菜单标识
+     * @return 按钮权限节点
+     */
+    @Select("""
+            SELECT id, parent_id AS parentId, name, type, path,
+                   component_key AS componentKey, permission, icon,
+                   sort_order AS sortOrder, visible, status,
+                   i18n_key AS i18nKey, protected_node AS protectedNode, version
+            FROM sys_menu
+            WHERE parent_id = #{parentId} AND type = 'BUTTON'
+            ORDER BY sort_order, id
+            """)
+    List<MenuRecord> findButtonChildren(@Param("parentId") UUID parentId);
+
+    /**
      * 按标识查询菜单节点。
      *
      * @param id 菜单标识
@@ -168,6 +295,28 @@ public interface MenuManagementMapper {
             String i18nKey,
             boolean protectedNode,
             long version
+    ) {
+    }
+
+    /**
+     * 菜单树表格按层查询投影。
+     */
+    record MenuListRecord(
+            UUID id,
+            UUID parentId,
+            String name,
+            String type,
+            String path,
+            String componentKey,
+            String permission,
+            String icon,
+            int sortOrder,
+            boolean visible,
+            String status,
+            String i18nKey,
+            boolean protectedNode,
+            long version,
+            boolean hasChildren
     ) {
     }
 }

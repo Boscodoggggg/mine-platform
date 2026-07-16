@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.system.repository.MenuManagementMapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -87,12 +88,60 @@ public class MenuManagementService {
     }
 
     /**
+     * 按父节点分页查询菜单管理节点。
+     *
+     * @param parentId 父节点标识
+     * @param keyword  名称关键词
+     * @param type     菜单类型
+     * @param status   菜单状态
+     * @param page     页码
+     * @param size     每页数量
+     * @return 当前层级菜单分页
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<MenuListItem> findMenus(
+            UUID parentId,
+            String keyword,
+            String type,
+            String status,
+            int page,
+            int size
+    ) {
+        String normalizedKeyword = normalize(keyword);
+        String normalizedType = normalize(type);
+        String normalizedStatus = normalize(status);
+        normalizedType = normalizedType == null ? null : normalizedType.toUpperCase(Locale.ROOT);
+        normalizedStatus = normalizedStatus == null ? null : normalizedStatus.toUpperCase(Locale.ROOT);
+        long total = mapper.countMenuItems(parentId, normalizedKeyword, normalizedType, normalizedStatus);
+        int offset = (page - 1) * size;
+        List<MenuListItem> items = mapper.findMenuItems(
+                        parentId, normalizedKeyword, normalizedType, normalizedStatus, offset, size
+                ).stream()
+                .map(this::toListItem)
+                .toList();
+        return new PageResponse<>(items, page, size, total);
+    }
+
+    /**
      * 查询允许配置的前端组件键，避免数据库注入任意模块路径。
      *
      * @return 组件选项
      */
     public List<ComponentOption> findComponentOptions() {
         return COMPONENTS;
+    }
+
+    /**
+     * 按需查询页面下的直接按钮权限。
+     *
+     * @param menuId 页面菜单标识
+     * @return 按钮权限节点
+     */
+    @Transactional(readOnly = true)
+    public List<MenuNode> findMenuButtons(UUID menuId) {
+        return mapper.findButtonChildren(menuId).stream()
+                .map(menu -> toNode(menu, Map.of()))
+                .toList();
     }
 
     /**
@@ -348,6 +397,14 @@ public class MenuManagementService {
         );
     }
 
+    private MenuListItem toListItem(MenuManagementMapper.MenuListRecord menu) {
+        return new MenuListItem(
+                menu.id(), menu.parentId(), menu.name(), menu.type(), menu.path(), menu.componentKey(),
+                menu.permission(), menu.icon(), menu.sortOrder(), menu.visible(), menu.status(), menu.i18nKey(),
+                menu.protectedNode(), menu.version(), menu.hasChildren()
+        );
+    }
+
     private Map<String, ?> summary(MenuManagementMapper.MenuRecord menu) {
         Map<String, Object> result = new HashMap<>();
         result.put("name", menu.name());
@@ -424,6 +481,28 @@ public class MenuManagementService {
         public MenuNode {
             children = List.copyOf(children);
         }
+    }
+
+    /**
+     * 菜单管理树表格的单层节点投影。
+     */
+    public record MenuListItem(
+            UUID id,
+            UUID parentId,
+            String name,
+            String type,
+            String path,
+            String componentKey,
+            String permission,
+            String icon,
+            int sortOrder,
+            boolean visible,
+            String status,
+            String i18nKey,
+            boolean protectedNode,
+            long version,
+            boolean hasChildren
+    ) {
     }
 
     /**
