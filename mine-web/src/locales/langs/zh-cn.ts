@@ -55,6 +55,7 @@ const local: App.I18n.Schema = {
       system: '系统管理',
       users: '用户管理',
       roles: '角色管理',
+      operations: '运行监控',
       device: '设备管理',
       products: '产品管理',
       devices: '设备台账',
@@ -136,32 +137,86 @@ const local: App.I18n.Schema = {
       }
     },
     home: {
-      title: '矿区运行总览',
-      welcome: '{name}，这里将汇总设备接入、数据链路与现场告警。',
-      localEnvironment: '矿区本地环境',
-      pendingMetrics: '待接入运行指标',
-      ready: '已就绪',
-      pending: '待建设',
+      title: '矿区运行态势',
+      subtitle: '关注设备数据是否持续上报，以及当前需要优先处理的异常设备。',
+      updatedAt: '更新于 {time}',
+      unavailable: '暂不可用',
+      never: '暂无记录',
+      loadFailed: '运行态势加载失败',
+      unavailableTitle: '运行数据暂不可用',
+      unavailableDescription: '设备台账仍可查看，但遥测统计暂时无法确认。请稍后刷新或联系系统管理员。',
+      runningState: {
+        loading: '正在更新',
+        normal: '运行平稳',
+        attention: '存在需关注设备',
+        empty: '尚未接入设备',
+        unavailable: '数据不可用'
+      },
       metric: {
-        onlineDevices: { label: '在线设备', description: '等待设备台账接入' },
-        todayTelemetry: { label: '今日遥测', description: '等待遥测服务接入' },
-        activeAlarms: { label: '活动告警', description: '等待告警规则接入' },
-        weakNetworkBacklog: { label: '弱网积压', description: '等待边缘节点接入' }
+        enabled: { label: '启用设备', description: '已纳入生产运行统计' },
+        reporting: { label: '正常上报', description: '新鲜度窗口内持续有数据' },
+        stale: { label: '数据中断', description: '曾上报但已超过新鲜度窗口' },
+        todayMessages: { label: '今日接收', description: '已可靠写入遥测库的报文' }
       },
-      pipeline: {
-        title: '采集链路状态',
-        devices: '设备与车辆',
-        gateway: '接入网关',
-        broker: '消息中枢',
-        telemetry: '遥测处理',
-        note: '接入真实设备后，本区域显示吞吐、延迟、离线缓存和失败重试情况。'
+      attention: {
+        title: '需要关注',
+        count: '{count} 台设备',
+        empty: '当前没有数据中断或从未上报的启用设备',
+        lastSeen: '最后上报：{time}',
+        noTelemetry: '尚未收到遥测数据',
+        state: { stale: '数据中断', neverReported: '从未上报' }
       },
-      readiness: {
-        title: 'Phase 0 基础能力',
-        authentication: '管理端身份认证',
-        passwordChange: '首次登录强制改密',
-        rabbitMq: 'RabbitMQ 双虚拟主机',
-        deviceModel: '设备与物模型管理'
+      distribution: {
+        title: '设备接入态势',
+        reporting: '正常上报',
+        stale: '数据中断',
+        neverReported: '从未上报',
+        freshness: '判定口径：最近 {seconds} 秒内收到数据视为正常上报。',
+        empty: '暂无可计算的设备上报状态'
+      },
+      telemetry: {
+        title: '最近 24 小时接收情况',
+        latest: '最近一条：{time}',
+        empty: '当前没有可展示的遥测报文'
+      },
+      quick: {
+        title: '常用操作',
+        monitor: '进入实时监控',
+        devices: '查看设备台账',
+        commands: '打开命令中心',
+        empty: '当前账号没有可用的生产操作入口'
+      }
+    },
+    operations: {
+      title: '运行监控',
+      subtitle: '按需检查平台服务、消息中枢和存储依赖，不在后台持续轮询。',
+      checkedAt: '检查于 {time}',
+      latency: '{value} ms',
+      loadFailed: '运行状态检查失败',
+      loadFailedDescription: '无法完成本次检查，请根据链路编号查询服务日志。',
+      onDemandNote: '页面只在进入或点击刷新时执行检查，不会定时扫描数据库或依赖服务。',
+      empty: '当前部署没有注册此类检查项',
+      status: { up: '正常', degraded: '部分异常', down: '异常', unknown: '未知' },
+      category: { service: '平台服务', message: '消息中枢', storage: '存储与缓存' },
+      item: {
+        mineServer: '管理服务',
+        mineGateway: '设备接入网关',
+        mineTelemetry: '遥测处理服务',
+        rabbitMq: 'RabbitMQ',
+        postgres: '业务 PostgreSQL',
+        redis: 'Redis',
+        timescale: 'TimescaleDB'
+      },
+      detail: {
+        serviceUp: '服务响应正常',
+        rabbitUp: '管理接口响应正常',
+        connectionUp: '连接正常',
+        connectionDown: '连接异常',
+        notEnabled: '当前部署未启用此检查',
+        healthFailed: '服务健康检查未通过',
+        checkFailed: '探测未完成，请检查服务日志',
+        checkTimeout: '探测超时',
+        checkInterrupted: '探测被中断'
       }
     },
     users: {

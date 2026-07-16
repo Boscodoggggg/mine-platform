@@ -6,6 +6,7 @@ const businessPages = [
   'src/modules/system/pages/login/LoginPage.vue',
   'src/modules/system/pages/users/UserManagementPage.vue',
   'src/modules/system/pages/roles/RoleManagementPage.vue',
+  'src/modules/system/pages/operations/SystemOperationsPage.vue',
   'src/modules/device/pages/product-list/ProductListPage.vue',
   'src/modules/device/pages/device-list/DeviceListPage.vue',
   'src/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue',

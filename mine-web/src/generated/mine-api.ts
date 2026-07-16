@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+    "/dashboard/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询矿区调度运行总览
+         * @description 返回启用设备、数据新鲜度、今日接收消息、二十四小时趋势和需要关注的设备。
+         *     遥测库不可用时，dataStatus 为 UNAVAILABLE，相关数字返回 null，不会用零值伪装查询失败。
+         */
+        get: operations["getOperationsDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/system/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 按需检查平台运行状态
+         * @description 仅在用户进入运行监控页面或主动刷新时执行，不启动后台轮询。
+         *     需要 system:operations:view 权限，响应不包含连接串、凭据或异常堆栈。
+         */
+        get: operations["getSystemOperations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/command-templates": {
         parameters: {
             query?: never;
@@ -226,6 +268,69 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        SystemOperationStatus: "UP" | "DEGRADED" | "DOWN" | "UNKNOWN";
+        /** @enum {string} */
+        SystemOperationCategory: "SERVICE" | "MESSAGE" | "STORAGE" | "OTHER";
+        SystemOperationsOverview: {
+            status: components["schemas"]["SystemOperationStatus"];
+            /** Format: date-time */
+            checkedAt: string;
+            items: components["schemas"]["SystemOperationItem"][];
+        };
+        SystemOperationItem: {
+            key: string;
+            category: components["schemas"]["SystemOperationCategory"];
+            status: components["schemas"]["SystemOperationStatus"];
+            /** Format: int64 */
+            latencyMillis: number;
+            summary: string;
+        };
+        /** @enum {string} */
+        DashboardDataStatus: "AVAILABLE" | "UNAVAILABLE";
+        /** @enum {string} */
+        DashboardDeviceState: "STALE" | "NEVER_REPORTED";
+        OperationsOverview: {
+            /** Format: date-time */
+            generatedAt: string;
+            dataStatus: components["schemas"]["DashboardDataStatus"];
+            freshnessSeconds: number;
+            devices: components["schemas"]["DashboardDeviceSummary"];
+            telemetry: components["schemas"]["DashboardTelemetrySummary"];
+            attentionDevices: components["schemas"]["DashboardAttentionDevice"][];
+        };
+        DashboardDeviceSummary: {
+            /** Format: int64 */
+            enabled: number;
+            /** Format: int64 */
+            reporting?: number | null;
+            /** Format: int64 */
+            stale?: number | null;
+            /** Format: int64 */
+            neverReported?: number | null;
+        };
+        DashboardTelemetrySummary: {
+            /** Format: int64 */
+            todayMessages?: number | null;
+            /** Format: date-time */
+            latestReceivedAt?: string | null;
+            hourly: components["schemas"]["DashboardHourBucket"][];
+        };
+        DashboardHourBucket: {
+            /** Format: date-time */
+            hour: string;
+            /** Format: int64 */
+            count: number;
+        };
+        DashboardAttentionDevice: {
+            /** Format: uuid */
+            deviceId: string;
+            deviceCode: string;
+            name: string;
+            state: components["schemas"]["DashboardDeviceState"];
+            /** Format: date-time */
+            lastSeenAt?: string | null;
+        };
         /** @enum {string} */
         CommandStatus: "CREATED" | "QUEUED" | "SENT" | "DEVICE_RECEIVED" | "SUCCEEDED" | "REFUSED" | "FAILED" | "EXPIRED" | "TIMEOUT" | "CANCELLED";
         /** @enum {string} */
@@ -549,6 +654,49 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getOperationsDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 调度运行总览。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationsOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getSystemOperations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 平台服务、消息和存储依赖的脱敏状态。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SystemOperationsOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     listCommandTemplates: {
         parameters: {
             query?: never;

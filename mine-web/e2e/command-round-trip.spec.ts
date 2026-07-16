@@ -31,7 +31,7 @@ test('离开命令中心后应正常显示其他页面', async ({ page }) => {
   await page.getByRole('menuitem', { name: '首页' }).click();
 
   await expect(page).toHaveURL(/\/home$/);
-  await expect(page.getByText('矿区运行总览', { exact: true })).toBeVisible();
+  await expect(page.getByText('矿区运行态势', { exact: true })).toBeVisible();
 });
 
 async function mockCommandCenter(page: import('@playwright/test').Page, terminalCase: (typeof terminalCases)[number]) {
@@ -105,6 +105,18 @@ async function mockCommandCenter(page: import('@playwright/test').Page, terminal
             ]
           }
         ]
+      }
+    })
+  );
+  await page.route('**/api/v1/dashboard/operations', route =>
+    route.fulfill({
+      json: {
+        generatedAt: '2026-07-16T02:30:00Z',
+        dataStatus: 'AVAILABLE',
+        freshnessSeconds: 300,
+        devices: { enabled: 1, reporting: 1, stale: 0, neverReported: 0 },
+        telemetry: { todayMessages: 32, latestReceivedAt: '2026-07-16T02:29:58Z', hourly: [] },
+        attentionDevices: []
       }
     })
   );

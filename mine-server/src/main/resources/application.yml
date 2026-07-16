@@ -41,6 +41,14 @@ sa-token:
   is-read-body: false
 
 mine:
+  site:
+    zone-id: ${MINE_SITE_ZONE_ID:Asia/Shanghai}
+  dashboard:
+    freshness-seconds: ${MINE_DASHBOARD_FRESHNESS_SECONDS:300}
+  operations:
+    probe-timeout: ${MINE_OPERATIONS_PROBE_TIMEOUT:PT2S}
+    gateway-health-url: ${MINE_GATEWAY_HEALTH_URL:http://mine-gateway:18081/actuator/health}
+    telemetry-health-url: ${MINE_TELEMETRY_HEALTH_URL:http://mine-telemetry:18082/actuator/health}
   platform:
     version: "@project.version@"
   security:

@@ -81,7 +81,7 @@ describe('buildDynamicNavigation', () => {
     expect(result.menus[0]?.children?.some(menu => menu.label === '查看详情')).toBe(false);
   });
 
-  it('系统用户和角色组件键应命中本地白名单', () => {
+  it('系统用户角色和运行监控组件键应命中本地白名单', () => {
     const systemNodes: NavigationMenuNode[] = [
       {
         ...nodes[0],
@@ -103,6 +103,14 @@ describe('buildDynamicNavigation', () => {
             path: '/system/roles',
             componentKey: 'system-role-list',
             children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'system-operations',
+            name: '运行监控',
+            path: '/system/operations',
+            componentKey: 'system-operations-monitor',
+            children: []
           }
         ]
       }
@@ -110,7 +118,7 @@ describe('buildDynamicNavigation', () => {
 
     const result = buildDynamicNavigation(systemNodes);
 
-    expect(result.routes).toHaveLength(2);
+    expect(result.routes).toHaveLength(3);
     expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
     expect(result.unknownComponentKeys).toEqual([]);
   });

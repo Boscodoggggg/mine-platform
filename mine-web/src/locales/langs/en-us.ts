@@ -55,6 +55,7 @@ const local: App.I18n.Schema = {
       system: 'System Management',
       users: 'User Management',
       roles: 'Role Management',
+      operations: 'Operations Monitor',
       device: 'Device Management',
       products: 'Product Management',
       devices: 'Device Registry',
@@ -122,32 +123,86 @@ const local: App.I18n.Schema = {
       service: { local: 'On-premises service', help: 'Contact the mine system administrator if the connection fails' }
     },
     home: {
-      title: 'Mine Operations Overview',
-      welcome: '{name}, this page summarizes device access, data pipelines, and site alarms.',
-      localEnvironment: 'On-premises environment',
-      pendingMetrics: 'Metrics pending',
-      ready: 'Ready',
-      pending: 'Pending',
+      title: 'Mine Operations',
+      subtitle: 'Monitor continuous device reporting and prioritize equipment requiring attention.',
+      updatedAt: 'Updated {time}',
+      unavailable: 'Unavailable',
+      never: 'No record',
+      loadFailed: 'Failed to load operations overview',
+      unavailableTitle: 'Operations data is unavailable',
+      unavailableDescription: 'The device registry remains available, but telemetry statistics cannot be confirmed.',
+      runningState: {
+        loading: 'Updating',
+        normal: 'Operating normally',
+        attention: 'Attention required',
+        empty: 'No devices connected',
+        unavailable: 'Data unavailable'
+      },
       metric: {
-        onlineDevices: { label: 'Online Devices', description: 'Waiting for the device registry' },
-        todayTelemetry: { label: 'Telemetry Today', description: 'Waiting for the telemetry service' },
-        activeAlarms: { label: 'Active Alarms', description: 'Waiting for alarm rules' },
-        weakNetworkBacklog: { label: 'Weak-network Backlog', description: 'Waiting for edge nodes' }
+        enabled: { label: 'Enabled Devices', description: 'Included in production monitoring' },
+        reporting: { label: 'Reporting', description: 'Data received within the freshness window' },
+        stale: { label: 'Data Interrupted', description: 'Previously reported but now stale' },
+        todayMessages: { label: 'Received Today', description: 'Messages durably stored in telemetry' }
       },
-      pipeline: {
-        title: 'Collection Pipeline',
-        devices: 'Devices and Vehicles',
-        gateway: 'Access Gateway',
-        broker: 'Message Broker',
-        telemetry: 'Telemetry Processing',
-        note: 'After real devices connect, this area shows throughput, latency, offline buffering, and retry status.'
+      attention: {
+        title: 'Needs Attention',
+        count: '{count} devices',
+        empty: 'No enabled devices are stale or have never reported',
+        lastSeen: 'Last report: {time}',
+        noTelemetry: 'No telemetry received',
+        state: { stale: 'Data interrupted', neverReported: 'Never reported' }
       },
-      readiness: {
-        title: 'Phase 0 Foundation',
-        authentication: 'Management Authentication',
-        passwordChange: 'Forced Initial Password Change',
-        rabbitMq: 'RabbitMQ Virtual Hosts',
-        deviceModel: 'Device and Thing Model Management'
+      distribution: {
+        title: 'Device Reporting',
+        reporting: 'Reporting',
+        stale: 'Data interrupted',
+        neverReported: 'Never reported',
+        freshness: 'Reporting is current when data arrives within {seconds} seconds.',
+        empty: 'No device reporting status is available'
+      },
+      telemetry: {
+        title: 'Received in the Last 24 Hours',
+        latest: 'Latest: {time}',
+        empty: 'No telemetry messages are available'
+      },
+      quick: {
+        title: 'Quick Actions',
+        monitor: 'Open Live Monitoring',
+        devices: 'View Device Registry',
+        commands: 'Open Command Center',
+        empty: 'No production actions are available for this account'
+      }
+    },
+    operations: {
+      title: 'Operations Monitor',
+      subtitle: 'Check platform services, messaging, and storage on demand without background polling.',
+      checkedAt: 'Checked {time}',
+      latency: '{value} ms',
+      loadFailed: 'Runtime check failed',
+      loadFailedDescription: 'This check could not be completed. Use the trace ID to inspect service logs.',
+      onDemandNote: 'Checks only run when this page opens or Refresh is selected.',
+      empty: 'No checks are registered for this category',
+      status: { up: 'Healthy', degraded: 'Degraded', down: 'Down', unknown: 'Unknown' },
+      category: { service: 'Platform Services', message: 'Messaging', storage: 'Storage and Cache' },
+      item: {
+        mineServer: 'Management Service',
+        mineGateway: 'Device Gateway',
+        mineTelemetry: 'Telemetry Service',
+        rabbitMq: 'RabbitMQ',
+        postgres: 'Business PostgreSQL',
+        redis: 'Redis',
+        timescale: 'TimescaleDB'
+      },
+      detail: {
+        serviceUp: 'Service responded normally',
+        rabbitUp: 'Management API responded normally',
+        connectionUp: 'Connection is healthy',
+        connectionDown: 'Connection failed',
+        notEnabled: 'This check is not enabled in the current deployment',
+        healthFailed: 'Service health check failed',
+        checkFailed: 'Check did not complete; inspect service logs',
+        checkTimeout: 'Check timed out',
+        checkInterrupted: 'Check interrupted'
       }
     },
     users: {

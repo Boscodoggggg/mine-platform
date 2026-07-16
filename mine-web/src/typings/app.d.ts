@@ -367,6 +367,7 @@ declare namespace App {
           | 'system'
           | 'users'
           | 'roles'
+          | 'operations'
           | 'device'
           | 'products'
           | 'devices'
@@ -420,17 +421,54 @@ declare namespace App {
         };
         home: {
           title: string;
-          welcome: string;
-          localEnvironment: string;
-          pendingMetrics: string;
-          ready: string;
-          pending: string;
-          metric: Record<
-            'onlineDevices' | 'todayTelemetry' | 'activeAlarms' | 'weakNetworkBacklog',
-            Record<'label' | 'description', string>
+          subtitle: string;
+          updatedAt: string;
+          unavailable: string;
+          never: string;
+          loadFailed: string;
+          unavailableTitle: string;
+          unavailableDescription: string;
+          runningState: Record<'loading' | 'normal' | 'attention' | 'empty' | 'unavailable', string>;
+          metric: Record<'enabled' | 'reporting' | 'stale' | 'todayMessages', Record<'label' | 'description', string>>;
+          attention: {
+            title: string;
+            count: string;
+            empty: string;
+            lastSeen: string;
+            noTelemetry: string;
+            state: Record<'stale' | 'neverReported', string>;
+          };
+          distribution: Record<'title' | 'reporting' | 'stale' | 'neverReported' | 'freshness' | 'empty', string>;
+          telemetry: Record<'title' | 'latest' | 'empty', string>;
+          quick: Record<'title' | 'monitor' | 'devices' | 'commands' | 'empty', string>;
+        };
+        operations: {
+          title: string;
+          subtitle: string;
+          checkedAt: string;
+          latency: string;
+          loadFailed: string;
+          loadFailedDescription: string;
+          onDemandNote: string;
+          empty: string;
+          status: Record<'up' | 'degraded' | 'down' | 'unknown', string>;
+          category: Record<'service' | 'message' | 'storage', string>;
+          item: Record<
+            'mineServer' | 'mineGateway' | 'mineTelemetry' | 'rabbitMq' | 'postgres' | 'redis' | 'timescale',
+            string
           >;
-          pipeline: Record<'title' | 'devices' | 'gateway' | 'broker' | 'telemetry' | 'note', string>;
-          readiness: Record<'title' | 'authentication' | 'passwordChange' | 'rabbitMq' | 'deviceModel', string>;
+          detail: Record<
+            | 'serviceUp'
+            | 'rabbitUp'
+            | 'connectionUp'
+            | 'connectionDown'
+            | 'notEnabled'
+            | 'healthFailed'
+            | 'checkFailed'
+            | 'checkTimeout'
+            | 'checkInterrupted',
+            string
+          >;
         };
         users: {
           title: string;

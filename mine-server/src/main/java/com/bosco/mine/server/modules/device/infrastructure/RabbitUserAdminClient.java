@@ -66,6 +66,13 @@ public class RabbitUserAdminClient {
     }
 
     /**
+     * 通过只读管理概览接口检查 RabbitMQ 管理面是否可用。
+     */
+    public void checkHealth() {
+        request("GET", "/api/overview", null, 200);
+    }
+
+    /**
      * 立即替换设备用户密码，既有连接断开后只能使用新密钥重连。
      *
      * @param username 设备用户名

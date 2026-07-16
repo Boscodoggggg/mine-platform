@@ -49,7 +49,7 @@ mine-web/src/
 
 | 一级模块 | 主要页面 |
 |---|---|
-| 总览 | 设备在线、告警、消息速率、运行摘要 |
+| 总览 | 调度运行态势、数据中断设备、今日遥测和常用生产入口 |
 | 实时监控 | 动态设备仪表、当前作业、实时位置 |
 | 设备中心 | 产品、设备、分组、凭据、在线会话 |
 | 协议中心 | 协议定义、样本、调试、版本和插件 |
@@ -62,8 +62,20 @@ mine-web/src/
 | 命令中心 | 模板、下发、状态时间线和回复 |
 | 告警中心 | 活动告警、历史、确认和恢复 |
 | 三维场景 | 场景、图层、车辆/人员/告警叠加 |
-| 运维中心 | 服务状态、积压、节点配置、备份任务 |
-| 系统管理 | 用户、角色、菜单、日志和字典 |
+| 系统管理 | 用户、角色、运行监控、日志和字典 |
+
+### 3.1 调度首页与系统运行监控边界
+
+默认 `/home` 只服务矿区调度员和值班人员，不展示数据库、Redis、RabbitMQ 等技术实现细节。首页从
+`GET /api/v1/dashboard/operations` 获取启用设备、正常上报、数据中断、从未上报、今日入库消息和关注设备；
+后端数据不可用时必须显示“暂不可用”，不得把未知状态渲染为零。
+
+系统管理员使用“系统管理 / 运行监控”，路径为 `/system/operations`，组件标识为
+`system-operations-monitor`，权限为 `system:operations:view`。该页面仅在进入或手动刷新时调用
+`GET /api/v1/system/operations`，不使用 `setInterval`，也不会触发服务启动扫表。页面按平台服务、消息中枢、
+存储与缓存分组显示脱敏状态；连接地址、账号、凭据和异常堆栈不得返回浏览器。
+
+两类页面不按角色名称硬编码。首页是登录后的生产入口；运行监控菜单与接口都由权限快照控制。
 
 ## 4. 路由、菜单和权限
 
@@ -92,7 +104,8 @@ src/store/modules/route/index.ts       登录后装载授权快照和动态路�
 ~~~ts
 const componentRegistry = {
   'home-overview': () => import('@/views/home/index.vue'),
-  'device-list': () => import('@/modules/device/pages/DeviceListPage.vue')
+  'device-device-list': () => import('@/modules/device/pages/device-list/DeviceListPage.vue'),
+  'system-operations-monitor': () => import('@/modules/system/pages/operations/SystemOperationsPage.vue')
 };
 ~~~
 

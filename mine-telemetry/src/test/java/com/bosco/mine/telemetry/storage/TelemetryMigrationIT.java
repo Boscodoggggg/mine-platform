@@ -87,6 +87,7 @@ class TelemetryMigrationIT {
                         "location_point:idx_location_tag_time",
                         "location_point:uq_location_event_time",
                         "telemetry_inbox:idx_ti_processed_at",
+                        "telemetry_inbox:idx_ti_received_at",
                         "telemetry_inbox:pk_telemetry_inbox",
                         "telemetry_inbox:uq_ti_business_key",
                         "telemetry_numeric:idx_tn_device_property_occurred_at",

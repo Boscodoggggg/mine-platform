@@ -104,6 +104,7 @@ class DatabaseMigrationIT {
                 "device-device-list",
                 "device-monitor",
                 "device-product-list",
+                "system-operations-monitor",
                 "system-role-list",
                 "system-user-list"
         );
@@ -113,6 +114,7 @@ class DatabaseMigrationIT {
                 WHERE permission LIKE 'system:%'
                 ORDER BY permission
                 """, String.class)).containsExactly(
+                "system:operations:view",
                 "system:role:assign-menu",
                 "system:role:create",
                 "system:role:delete",
@@ -160,7 +162,7 @@ class DatabaseMigrationIT {
                 WHERE parent.name = '系统管理'
                   AND parent.type = 'DIRECTORY'
                   AND child.type = 'MENU'
-                """, Long.class)).isEqualTo(2L);
+                """, Long.class)).isEqualTo(3L);
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu

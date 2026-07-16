@@ -10,6 +10,10 @@ servers:
 security:
   - MineToken: []
 tags:
+  - name: OperationsDashboard
+    description: 调度员和值班人员生产运行总览
+  - name: SystemOperations
+    description: 系统管理员按需运行状态检查
   - name: DeviceRegistry
     description: 产品和设备台账管理
   - name: DeviceTelemetry
@@ -17,6 +21,37 @@ tags:
   - name: CommandCenter
     description: 设备命令下发与可靠状态时间线
 paths:
+  /dashboard/operations:
+    get:
+      tags: [OperationsDashboard]
+      operationId: getOperationsDashboard
+      summary: 查询矿区调度运行总览
+      description: |
+        返回启用设备、数据新鲜度、今日接收消息、二十四小时趋势和需要关注的设备。
+        遥测库不可用时，dataStatus 为 UNAVAILABLE，相关数字返回 null，不会用零值伪装查询失败。
+      responses:
+        '200':
+          description: 调度运行总览。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OperationsOverview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /system/operations:
+    get:
+      tags: [SystemOperations]
+      operationId: getSystemOperations
+      summary: 按需检查平台运行状态
+      description: |
+        仅在用户进入运行监控页面或主动刷新时执行，不启动后台轮询。
+        需要 system:operations:view 权限，响应不包含连接串、凭据或异常堆栈。
+      responses:
+        '200':
+          description: 平台服务、消息和存储依赖的脱敏状态。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SystemOperationsOverview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /command-templates:
     get:
       tags: [CommandCenter]
@@ -475,6 +510,81 @@ components:
         maximum: 100
         default: 20
   schemas:
+    SystemOperationStatus:
+      type: string
+      enum: [UP, DEGRADED, DOWN, UNKNOWN]
+    SystemOperationCategory:
+      type: string
+      enum: [SERVICE, MESSAGE, STORAGE, OTHER]
+    SystemOperationsOverview:
+      type: object
+      required: [status, checkedAt, items]
+      properties:
+        status: { $ref: '#/components/schemas/SystemOperationStatus' }
+        checkedAt: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SystemOperationItem' }
+    SystemOperationItem:
+      type: object
+      required: [key, category, status, latencyMillis, summary]
+      properties:
+        key: { type: string }
+        category: { $ref: '#/components/schemas/SystemOperationCategory' }
+        status: { $ref: '#/components/schemas/SystemOperationStatus' }
+        latencyMillis: { type: integer, format: int64, minimum: 0 }
+        summary: { type: string }
+    DashboardDataStatus:
+      type: string
+      enum: [AVAILABLE, UNAVAILABLE]
+    DashboardDeviceState:
+      type: string
+      enum: [STALE, NEVER_REPORTED]
+    OperationsOverview:
+      type: object
+      required: [generatedAt, dataStatus, freshnessSeconds, devices, telemetry, attentionDevices]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        dataStatus: { $ref: '#/components/schemas/DashboardDataStatus' }
+        freshnessSeconds: { type: integer, minimum: 1 }
+        devices: { $ref: '#/components/schemas/DashboardDeviceSummary' }
+        telemetry: { $ref: '#/components/schemas/DashboardTelemetrySummary' }
+        attentionDevices:
+          type: array
+          maxItems: 8
+          items: { $ref: '#/components/schemas/DashboardAttentionDevice' }
+    DashboardDeviceSummary:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: integer, format: int64, minimum: 0 }
+        reporting: { type: [integer, 'null'], format: int64, minimum: 0 }
+        stale: { type: [integer, 'null'], format: int64, minimum: 0 }
+        neverReported: { type: [integer, 'null'], format: int64, minimum: 0 }
+    DashboardTelemetrySummary:
+      type: object
+      required: [hourly]
+      properties:
+        todayMessages: { type: [integer, 'null'], format: int64, minimum: 0 }
+        latestReceivedAt: { type: [string, 'null'], format: date-time }
+        hourly:
+          type: array
+          items: { $ref: '#/components/schemas/DashboardHourBucket' }
+    DashboardHourBucket:
+      type: object
+      required: [hour, count]
+      properties:
+        hour: { type: string, format: date-time }
+        count: { type: integer, format: int64, minimum: 0 }
+    DashboardAttentionDevice:
+      type: object
+      required: [deviceId, deviceCode, name, state]
+      properties:
+        deviceId: { type: string, format: uuid }
+        deviceCode: { type: string }
+        name: { type: string }
+        state: { $ref: '#/components/schemas/DashboardDeviceState' }
+        lastSeenAt: { type: [string, 'null'], format: date-time }
     CommandStatus:
       type: string
       enum: [CREATED, QUEUED, SENT, DEVICE_RECEIVED, SUCCEEDED, REFUSED, FAILED, EXPIRED, TIMEOUT, CANCELLED]
