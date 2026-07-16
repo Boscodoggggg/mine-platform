@@ -151,6 +151,26 @@ paths:
                 items: { $ref: '#/components/schemas/MenuComponentOption' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /system/menus/{menuId}/buttons:
+    get:
+      tags: [SystemConfiguration]
+      operationId: listManagedMenuButtons
+      summary: 按需查询页面的按钮权限
+      parameters:
+        - name: menuId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 页面的直接按钮权限节点。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ManagedMenuNode' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /system/menus/batch-delete:
     post:
       tags: [SystemConfiguration]
@@ -170,6 +190,37 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
   /system/menus:
+    get:
+      tags: [SystemConfiguration]
+      operationId: listManagedMenus
+      summary: 按父节点分页查询菜单树表格
+      description: |
+        不传 parentId 时查询根目录；展开目录时传入该目录标识，只返回直接子目录和页面。
+        筛选条件命中后会保留命中节点的祖先链，便于仍按树层级展开。
+      parameters:
+        - name: parentId
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Keyword'
+        - name: type
+          in: query
+          schema: { type: string, enum: [DIRECTORY, MENU] }
+        - name: status
+          in: query
+          schema: { type: string, enum: [ENABLED, DISABLED] }
+        - $ref: '#/components/parameters/Page'
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        '200':
+          description: 当前父节点下的菜单节点分页。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManagedMenuPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [SystemConfiguration]
       operationId: createManagedMenu
@@ -1253,6 +1304,43 @@ components:
         children:
           type: array
           items: { $ref: '#/components/schemas/ManagedMenuNode' }
+    ManagedMenuListItem:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - sortOrder
+        - visible
+        - status
+        - protectedNode
+        - version
+        - hasChildren
+      properties:
+        id: { type: string, format: uuid }
+        parentId: { type: [string, 'null'], format: uuid }
+        name: { type: string, maxLength: 128 }
+        type: { type: string, enum: [DIRECTORY, MENU] }
+        path: { type: [string, 'null'], maxLength: 255 }
+        componentKey: { type: [string, 'null'], maxLength: 128 }
+        permission: { type: [string, 'null'], maxLength: 128 }
+        icon: { type: [string, 'null'], maxLength: 128 }
+        sortOrder: { type: integer, minimum: 0 }
+        visible: { type: boolean }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        i18nKey: { type: [string, 'null'], maxLength: 255 }
+        protectedNode: { type: boolean }
+        version: { type: integer, format: int64, minimum: 0 }
+        hasChildren: { type: boolean }
+    ManagedMenuPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/ManagedMenuListItem' }
     MenuComponentOption:
       type: object
       required: [key, name]

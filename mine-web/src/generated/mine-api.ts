@@ -139,6 +139,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/system/menus/{menuId}/buttons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 按需查询页面的按钮权限 */
+        get: operations["listManagedMenuButtons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/system/menus/batch-delete": {
         parameters: {
             query?: never;
@@ -166,7 +183,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * 按父节点分页查询菜单树表格
+         * @description 不传 parentId 时查询根目录；展开目录时传入该目录标识，只返回直接子目录和页面。
+         *     筛选条件命中后会保留命中节点的祖先链，便于仍按树层级展开。
+         */
+        get: operations["listManagedMenus"];
         put?: never;
         /** 创建目录、页面或按钮权限节点 */
         post: operations["createManagedMenu"];
@@ -830,6 +852,31 @@ export interface components {
             /** Format: int64 */
             version: number;
             children: components["schemas"]["ManagedMenuNode"][];
+        };
+        ManagedMenuListItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            parentId?: string | null;
+            name: string;
+            /** @enum {string} */
+            type: "DIRECTORY" | "MENU";
+            path?: string | null;
+            componentKey?: string | null;
+            permission?: string | null;
+            icon?: string | null;
+            sortOrder: number;
+            visible: boolean;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            i18nKey?: string | null;
+            protectedNode: boolean;
+            /** Format: int64 */
+            version: number;
+            hasChildren: boolean;
+        };
+        ManagedMenuPage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["ManagedMenuListItem"][];
         };
         MenuComponentOption: {
             key: string;
@@ -1621,6 +1668,30 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    listManagedMenuButtons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                menuId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 页面的直接按钮权限节点。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedMenuNode"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     batchDeleteManagedMenus: {
         parameters: {
             query?: never;
@@ -1645,6 +1716,36 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listManagedMenus: {
+        parameters: {
+            query?: {
+                parentId?: string;
+                keyword?: components["parameters"]["Keyword"];
+                type?: "DIRECTORY" | "MENU";
+                status?: "ENABLED" | "DISABLED";
+                page?: components["parameters"]["Page"];
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前父节点下的菜单节点分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ManagedMenuPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     createManagedMenu: {
