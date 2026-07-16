@@ -424,9 +424,6 @@ services:
       - postgres_password
     volumes:
       - ../config/postgres-exporter/postgres_exporter.yml:/etc/postgres-exporter/postgres_exporter.yml:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
     networks:
       - data
       - observability
@@ -460,14 +457,41 @@ services:
       - timescale_password
     volumes:
       - ../config/postgres-exporter/postgres_exporter.yml:/etc/postgres-exporter/postgres_exporter.yml:ro
-    depends_on:
-      timescale:
-        condition: service_healthy
     networks:
       - data
       - observability
     healthcheck:
       test: ["CMD", "/bin/postgres_exporter", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+    logging: *default-logging
+
+  redis-exporter:
+    image: ${MINE_REDIS_EXPORTER_IMAGE:-oliver006/redis_exporter:v1.84.0}
+    profiles: ["observability"]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "65534:65534"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      REDIS_EXPORTER_CONNECTION_TIMEOUT: 5s
+    secrets:
+      - redis_password
+    networks:
+      - data
+      - observability
+    healthcheck:
+      test: ["CMD", "/redis_exporter", "--version"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -496,19 +520,6 @@ services:
       - prometheus_data:/prometheus
       - ../config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ../config/prometheus/rules:/etc/prometheus/rules:ro
-    depends_on:
-      mine-server:
-        condition: service_healthy
-      mine-gateway:
-        condition: service_healthy
-      mine-telemetry:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      postgres-exporter:
-        condition: service_healthy
-      timescale-exporter:
-        condition: service_healthy
     networks:
       - ingress
       - app

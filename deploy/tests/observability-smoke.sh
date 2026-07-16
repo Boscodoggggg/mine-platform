@@ -16,7 +16,7 @@ if [[ -n "${MINE_COMPOSE_PROJECT_NAME:-}" ]]; then
   compose+=(-p "${MINE_COMPOSE_PROJECT_NAME}")
 fi
 compose+=(--profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
-services=(prometheus grafana loki alloy postgres-exporter timescale-exporter)
+services=(prometheus grafana loki alloy postgres-exporter timescale-exporter redis-exporter)
 deadline=$((SECONDS + ${MINE_OBSERVABILITY_TIMEOUT_SECONDS:-180}))
 while (( SECONDS < deadline )); do
   all_ready=true
@@ -38,7 +38,7 @@ while (( SECONDS < deadline )); do
 done
 [[ "${all_ready:-false}" == "true" ]] || { echo "FAIL: 可观测服务未在限定时间内就绪" >&2; exit 1; }
 
-jobs=(mine-server mine-gateway mine-telemetry rabbitmq postgres timescale)
+jobs=(mine-server mine-gateway mine-telemetry rabbitmq postgres timescale redis)
 targets=""
 targets_ready=false
 for _ in $(seq 1 20); do

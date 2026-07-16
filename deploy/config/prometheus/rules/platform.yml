@@ -28,6 +28,15 @@ groups:
           summary: "数据库指标采集失败"
           description: "{{ $labels.job }} exporter 已连续 3 分钟不可用。"
 
+      - alert: MineRedisDown
+        expr: up{job="redis"} == 0 or redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis 不可用"
+          description: "Redis exporter 无法被采集或无法连接平台 Redis。"
+
   - name: mine-platform-capacity
     rules:
       - alert: MineJvmHeapPressureHigh
