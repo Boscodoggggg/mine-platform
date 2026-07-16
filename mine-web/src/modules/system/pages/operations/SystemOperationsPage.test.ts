@@ -103,6 +103,7 @@ describe('SystemOperationsPage', () => {
     await flushPromises();
 
     expect(api.getSystemOperations).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[role="region"][aria-label="即时检查结果"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('50 ms');
   });
 

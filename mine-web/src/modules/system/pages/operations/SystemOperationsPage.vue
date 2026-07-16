@@ -14,6 +14,7 @@ import {
   NInput,
   NPageHeader,
   NSelect,
+  NSpin,
   NTag,
   NText
 } from 'naive-ui';
@@ -43,6 +44,7 @@ const historyLoading = ref(false);
 const checkLoading = ref(false);
 const seriesLoading = ref(false);
 const historyError = ref(false);
+const immediateDrawerVisible = ref(false);
 const overview = ref<OperationsObservabilityOverview | null>(null);
 const immediate = ref<SystemOperationsOverview | null>(null);
 const selectedSeries = ref<OperationsObservabilitySeries | null>(null);
@@ -148,10 +150,14 @@ async function loadHistory() {
 }
 
 async function runImmediateCheck() {
+  selectedSeries.value = null;
+  immediate.value = null;
+  immediateDrawerVisible.value = true;
   checkLoading.value = true;
   try {
     immediate.value = await getSystemOperations();
   } catch (error) {
+    immediateDrawerVisible.value = false;
     showError(error, 'mine.operations.loadFailed');
   } finally {
     checkLoading.value = false;
@@ -159,6 +165,7 @@ async function runImmediateCheck() {
 }
 
 async function loadSeries(key: string) {
+  immediateDrawerVisible.value = false;
   seriesLoading.value = true;
   try {
     selectedSeries.value = await getSystemOperationSeries(key, range.value);
@@ -171,6 +178,10 @@ async function loadSeries(key: string) {
 
 function handleTrendDrawerVisibility(show: boolean) {
   if (!show) selectedSeries.value = null;
+}
+
+function handleImmediateDrawerVisibility(show: boolean) {
+  immediateDrawerVisible.value = show;
 }
 
 async function selectRange(value: OperationsObservabilityRange) {
@@ -334,24 +345,37 @@ function showError(error: unknown, fallbackKey: App.I18n.I18nKey) {
         :bordered="false"
       />
     </NCard>
-
-    <NCard v-if="immediate" :title="t('mine.operations.immediateTitle')" size="small">
-      <NFlex vertical :size="10">
-        <NFlex v-for="item in immediateItems" :key="item.key" justify="space-between" align="center">
-          <div>
-            <NText strong>{{ itemName(item.key) }}</NText>
-            <NText depth="3" class="ml-12px">{{ detailLabel(item.summary) }}</NText>
-          </div>
-          <NFlex align="center">
-            <NTag :type="statusType(item.status)" size="small" :bordered="false">
-              {{ statusLabel(item.status) }}
-            </NTag>
-            <NText depth="3" class="whitespace-nowrap">{{ t('mine.operations.latency', { value: item.latencyMillis }) }}</NText>
-          </NFlex>
-        </NFlex>
-      </NFlex>
-    </NCard>
   </NFlex>
+
+  <NDrawer
+    :show="immediateDrawerVisible"
+    :width="560"
+    placement="right"
+    @update:show="handleImmediateDrawerVisibility"
+  >
+    <NDrawerContent closable :title="t('mine.operations.immediateTitle')">
+      <div role="region" :aria-label="t('mine.operations.immediateTitle')">
+        <NSpin :show="checkLoading">
+          <NFlex vertical :size="12" class="min-h-120px">
+            <NFlex v-for="item in immediateItems" :key="item.key" justify="space-between" align="center">
+              <div>
+                <NText strong>{{ itemName(item.key) }}</NText>
+                <NText depth="3" class="ml-12px">{{ detailLabel(item.summary) }}</NText>
+              </div>
+              <NFlex align="center">
+                <NTag :type="statusType(item.status)" size="small" :bordered="false">
+                  {{ statusLabel(item.status) }}
+                </NTag>
+                <NText depth="3" class="whitespace-nowrap">
+                  {{ t('mine.operations.latency', { value: item.latencyMillis }) }}
+                </NText>
+              </NFlex>
+            </NFlex>
+          </NFlex>
+        </NSpin>
+      </div>
+    </NDrawerContent>
+  </NDrawer>
 
   <NDrawer
     :show="Boolean(selectedSeries)"
