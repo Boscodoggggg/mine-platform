@@ -39,6 +39,15 @@ describe('MenuManagementPage', () => {
     expect(wrapper.text()).not.toContain('创建产品');
   });
 
+  it('主表应通过名称缩进和上级路径表达菜单层级', async () => {
+    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+
+    expect(wrapper.get('[data-menu-depth="0"]').text()).toBe('设备管理');
+    expect(wrapper.get('[data-menu-depth="1"]').text()).toContain('└─ 产品管理');
+    expect(wrapper.get('[data-hierarchy-path="设备管理"]').text()).toBe('设备管理');
+  });
+
   it('应提供筛选、分页、刷新和列设置', async () => {
     const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
     await flushPromises();

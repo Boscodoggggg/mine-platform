@@ -45,7 +45,8 @@ import type {
 import { useAuthStore } from '@/store/modules/auth';
 
 type MenuListRow = Omit<ManagedMenuNode, 'children'> & {
-  parentName: string | null;
+  depth: number;
+  hierarchyPath: string | null;
   childCount: number;
 };
 
@@ -125,7 +126,10 @@ const statusOptions = computed<SelectOption[]>(() => [
 const parentOptions = computed<SelectOption[]>(() =>
   menuRows.value
     .filter(row => row.type === 'DIRECTORY' && row.id !== editingId.value && !descendantIds.value.has(row.id))
-    .map(row => ({ label: row.name, value: row.id }))
+    .map(row => ({
+      label: row.hierarchyPath ? `${row.hierarchyPath} / ${row.name}` : row.name,
+      value: row.id
+    }))
 );
 const pageOptions = computed<SelectOption[]>(() =>
   componentOptions.value.map(option => ({ label: option.name, value: option.key }))
@@ -166,7 +170,20 @@ const columns = computed<DataTableColumns<MenuListRow>>(() => {
         key: 'name',
         minWidth: 150,
         fixed: 'left',
-        render: row => h(NText, { depth: row.status === 'ENABLED' ? undefined : 3 }, () => row.name)
+        render: row =>
+          h(
+            NText,
+            {
+              depth: row.status === 'ENABLED' ? undefined : 3,
+              'data-menu-depth': row.depth
+            },
+            () => [
+              row.depth > 0
+                ? h('span', { 'aria-hidden': 'true' }, `${'　'.repeat(Math.max(0, row.depth - 1))}└─ `)
+                : null,
+              h('span', row.name)
+            ]
+          )
       }
     },
     {
@@ -224,9 +241,15 @@ const columns = computed<DataTableColumns<MenuListRow>>(() => {
       key: 'parent',
       column: {
         title: t('mine.menus.column.parent'),
-        key: 'parentName',
-        minWidth: 130,
-        render: row => row.parentName || t('mine.menus.root')
+        key: 'hierarchyPath',
+        minWidth: 180,
+        ellipsis: { tooltip: true },
+        render: row =>
+          h(
+            NText,
+            { 'data-hierarchy-path': row.hierarchyPath || '' },
+            () => row.hierarchyPath || t('mine.menus.root')
+          )
       }
     },
     {
@@ -545,12 +568,17 @@ function cleanPayload(value: MenuSavePayload): MenuSavePayload {
   };
 }
 
-function projectMenuRows(nodes: ManagedMenuNode[], parentName: string | null = null): MenuListRow[] {
+function projectMenuRows(nodes: ManagedMenuNode[], ancestors: string[] = []): MenuListRow[] {
   return nodes.flatMap(node => {
     if (node.type === 'BUTTON') return [];
     const { children, ...values } = node;
-    const row: MenuListRow = { ...values, parentName, childCount: children.length };
-    return [row, ...projectMenuRows(children, node.name)];
+    const row: MenuListRow = {
+      ...values,
+      depth: ancestors.length,
+      hierarchyPath: ancestors.length > 0 ? ancestors.join(' / ') : null,
+      childCount: children.length
+    };
+    return [row, ...projectMenuRows(children, [...ancestors, node.name])];
   });
 }
 
