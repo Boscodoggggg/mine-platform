@@ -42,6 +42,12 @@ class DatabaseMigrationIT {
             "dev_model_field",
             "dev_protocol_mapping_version",
             "dev_protocol_field_mapping",
+            "dev_protocol_sample",
+            "dev_protocol_test_run",
+            "dev_config_package",
+            "dev_config_release",
+            "dev_config_release_target",
+            "dev_config_node_status",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -149,6 +155,11 @@ class DatabaseMigrationIT {
                 WHERE permission LIKE 'device:%'
                 ORDER BY permission
                 """, String.class)).containsExactly(
+                "device:configuration:publish",
+                "device:configuration:rollback",
+                "device:connection:test",
+                "device:connection:update",
+                "device:connection:view",
                 "device:credential:create",
                 "device:credential:revoke",
                 "device:credential:rotate",
@@ -163,6 +174,9 @@ class DatabaseMigrationIT {
                 "device:product:create",
                 "device:product:update",
                 "device:product:view",
+                "device:protocol:sample:edit",
+                "device:protocol:sample:view",
+                "device:protocol:test",
                 "device:telemetry:view"
         );
         assertThat(jdbcTemplate.queryForList("""
@@ -265,6 +279,49 @@ class DatabaseMigrationIT {
                     'dev_protocol_mapping_version', 'dev_protocol_field_mapping'
                 )
                 """, String.class)).allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+    }
+
+    @Test
+    void 协议发布控制面必须具备不可变结构和完整中文注释() {
+        assertThat(constraintColumns("uk_dev_protocol_sample_version_name"))
+                .containsExactly("mapping_version_id", "name");
+        assertThat(constraintColumns("uk_dev_config_package_product_sequence"))
+                .containsExactly("product_id", "package_sequence");
+        assertThat(constraintColumns("uk_dev_config_release_product_sequence"))
+                .containsExactly("product_id", "release_sequence");
+        assertThat(constraintColumns("pk_dev_config_node_status"))
+                .containsExactly("release_id", "node_id");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN (
+                    'dev_protocol_sample'::regclass,
+                    'dev_protocol_test_run'::regclass,
+                    'dev_config_package'::regclass,
+                    'dev_config_release'::regclass,
+                    'dev_config_release_target'::regclass,
+                    'dev_config_node_status'::regclass
+                )
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'dev_protocol_sample', 'dev_protocol_test_run', 'dev_config_package',
+                    'dev_config_release', 'dev_config_release_target', 'dev_config_node_status'
+                )
+                """, String.class))
+                .hasSize(6)
+                .allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_trigger
+                WHERE tgname IN ('trg_dev_config_package_immutable', 'trg_dev_config_release_immutable')
+                  AND NOT tgisinternal
+                """, Long.class)).isEqualTo(2L);
     }
 
     @Test
