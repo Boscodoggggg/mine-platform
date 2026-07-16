@@ -9,9 +9,11 @@ const api = vi.hoisted(() => ({
   getProducts: vi.fn(),
   updateProduct: vi.fn()
 }));
+const dictionaryApi = vi.hoisted(() => ({ getEnabledDictionaryItems: vi.fn() }));
 const authState = vi.hoisted(() => ({ userInfo: { buttons: [] as string[] } }));
 
 vi.mock('@/modules/device/api/device', () => api);
+vi.mock('@/modules/system/api/dictionary', () => dictionaryApi);
 vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
 
 const product = {
@@ -30,6 +32,18 @@ describe('ProductListPage', () => {
   beforeEach(() => {
     setLocale('zh-CN');
     Object.values(api).forEach(mock => mock.mockReset());
+    dictionaryApi.getEnabledDictionaryItems.mockReset();
+    dictionaryApi.getEnabledDictionaryItems.mockImplementation((code: string) =>
+      Promise.resolve(
+        code === 'device_type'
+          ? [dictionaryItem('VEHICLE', '车辆设备', 'Vehicle', 'primary')]
+          : [
+              dictionaryItem('DRAFT', '草稿', 'Draft', 'warning'),
+              dictionaryItem('ACTIVE', '已发布', 'Active', 'primary'),
+              dictionaryItem('ARCHIVED', '已归档', 'Archived', 'default')
+            ]
+      )
+    );
     api.getProducts.mockResolvedValue({ items: [product], page: 1, size: 20, total: 1 });
     api.createProduct.mockResolvedValue(product);
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
@@ -71,6 +85,22 @@ describe('ProductListPage', () => {
     });
   });
 
+  it('应从字典加载设备类型和产品状态选项', async () => {
+    const wrapper = mountPage(['device:product:create']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      deviceTypeOptions: Array<{ label: string; value: string }>;
+      statusOptions: Array<{ label: string; value: string }>;
+      productStatusType: (status: string) => string;
+    };
+
+    expect(dictionaryApi.getEnabledDictionaryItems).toHaveBeenCalledWith('device_type');
+    expect(dictionaryApi.getEnabledDictionaryItems).toHaveBeenCalledWith('product_status');
+    expect(page.deviceTypeOptions).toEqual([{ label: '车辆设备', value: 'VEHICLE' }]);
+    expect(page.statusOptions.map(option => option.value)).toEqual(['DRAFT', 'ACTIVE', 'ARCHIVED']);
+    expect(page.productStatusType('ACTIVE')).toBe('primary');
+  });
+
   it('空列表应提供可执行的引导信息', async () => {
     api.getProducts.mockResolvedValue({ items: [], page: 1, size: 20, total: 0 });
     const wrapper = mountPage(['device:product:create']);
@@ -83,4 +113,19 @@ describe('ProductListPage', () => {
 function mountPage(permissions: string[]) {
   authState.userInfo.buttons = permissions;
   return mount(ProductListPage, { global: { plugins: [i18n] } });
+}
+
+function dictionaryItem(value: string, labelZh: string, labelEn: string, semanticType: string) {
+  return {
+    id: `item-${value}`,
+    typeId: 'type-1',
+    value,
+    labelZh,
+    labelEn,
+    semanticType,
+    sortOrder: 10,
+    defaultItem: false,
+    status: 'ENABLED',
+    version: 0
+  };
 }

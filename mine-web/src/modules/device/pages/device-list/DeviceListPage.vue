@@ -48,6 +48,8 @@ import type {
   DeviceStatus,
   Product
 } from '@/modules/device/api/device';
+import { getEnabledDictionaryItems } from '@/modules/system/api/dictionary';
+import type { DictionaryItem } from '@/modules/system/api/dictionary';
 import { useAuthStore } from '@/store/modules/auth';
 
 type ConnectionMode = DeviceConnectionProfileRequest['connectionMode'];
@@ -63,6 +65,7 @@ const authStore = useAuthStore();
 const loading = ref(false);
 const saving = ref(false);
 const devices = ref<Device[]>([]);
+const deviceStatusItems = ref<DictionaryItem[]>([]);
 const products = ref<Product[]>([]);
 const total = ref(0);
 const query = reactive<{ productId: string; keyword: string; status: DeviceStatus | ''; page: number; size: number }>({
@@ -117,12 +120,12 @@ const creatableProductOptions = computed(() =>
     .filter(product => product.status === 'ACTIVE')
     .map(product => ({ label: `${product.name} (${product.productKey})`, value: product.id }))
 );
-const statusOptions = computed<SelectOption[]>(() => [
-  { label: t('mine.devices.status.enabled'), value: 'ENABLED' },
-  { label: t('mine.devices.status.disabled'), value: 'DISABLED' },
-  { label: t('mine.devices.status.archived'), value: 'ARCHIVED' }
-]);
-const editableStatusOptions = computed(() => statusOptions.value.slice(0, 2));
+const statusOptions = computed<SelectOption[]>(() =>
+  deviceStatusItems.value.map(item => ({ label: dictionaryItemLabel(item), value: item.value }))
+);
+const editableStatusOptions = computed(() =>
+  statusOptions.value.filter(option => option.value === 'ENABLED' || option.value === 'DISABLED')
+);
 const connectionModeOptions = computed<SelectOption[]>(() =>
   CONNECTION_MODES.map(value => ({
     label: t(`mine.devices.connection.mode.${connectionKey(value)}`),
@@ -194,7 +197,7 @@ const columns = computed<DataTableColumns<Device>>(() => [
         {
           size: 'small',
           bordered: false,
-          type: row.status === 'ENABLED' ? 'success' : row.status === 'DISABLED' ? 'warning' : 'default'
+          type: deviceStatusType(row.status)
         },
         () => statusLabel(row.status)
       )
@@ -236,9 +239,18 @@ const columns = computed<DataTableColumns<Device>>(() => [
 ]);
 
 onMounted(async () => {
-  await loadProducts();
+  await Promise.all([loadProducts(), loadDeviceStatuses()]);
   await loadDevices();
 });
+
+async function loadDeviceStatuses() {
+  try {
+    const items = await getEnabledDictionaryItems('device_status');
+    deviceStatusItems.value = items.filter(item => ['ENABLED', 'DISABLED', 'ARCHIVED'].includes(item.value));
+  } catch (error) {
+    showError(error);
+  }
+}
 
 async function loadProducts() {
   try {
@@ -531,7 +543,18 @@ function can(permission: string) {
   return hasPermission(authStore.userInfo.buttons, permission);
 }
 function statusLabel(status: DeviceStatus) {
-  return t(`mine.devices.status.${status.toLowerCase()}`);
+  const item = deviceStatusItems.value.find(candidate => candidate.value === status);
+  return item ? dictionaryItemLabel(item) : t(`mine.devices.status.${status.toLowerCase()}`);
+}
+function deviceStatusType(status: DeviceStatus) {
+  const item = deviceStatusItems.value.find(candidate => candidate.value === status);
+  if (item) return item.semanticType;
+  if (status === 'ENABLED') return 'success' as const;
+  if (status === 'DISABLED') return 'warning' as const;
+  return 'default' as const;
+}
+function dictionaryItemLabel(item: DictionaryItem) {
+  return locale.value.toLowerCase().startsWith('en') && item.labelEn ? item.labelEn : item.labelZh;
 }
 function formatTime(value: string) {
   return new Date(value).toLocaleString(locale.value, { hour12: false });
@@ -552,6 +575,8 @@ function showError(error: unknown) {
 defineExpose({
   deviceForm,
   creatableProductOptions,
+  statusOptions,
+  deviceStatusType,
   connectionForm,
   connectionPresentation,
   accessTest,

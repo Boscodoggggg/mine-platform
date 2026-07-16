@@ -250,6 +250,24 @@ class DatabaseMigrationIT {
     }
 
     @Test
+    void 应预置设备类型与产品设备状态字典() {
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT code
+                FROM sys_dict_type
+                WHERE code IN ('device_type', 'product_status', 'device_status')
+                  AND status = 'ENABLED'
+                  AND built_in = TRUE
+                ORDER BY code
+                """, String.class)).containsExactly("device_status", "device_type", "product_status");
+        assertThat(dictionaryValues("device_type"))
+                .containsExactly("VEHICLE", "CONVEYOR", "PUMP", "FAN", "ELECTRICAL", "SENSOR", "OTHER");
+        assertThat(dictionaryValues("product_status"))
+                .containsExactly("DRAFT", "ACTIVE", "ARCHIVED");
+        assertThat(dictionaryValues("device_status"))
+                .containsExactly("ENABLED", "DISABLED", "ARCHIVED");
+    }
+
+    @Test
     void 物模型和协议映射表必须版本化并具有完整中文注释() {
         assertThat(constraintColumns("uk_dev_model_version_product_number"))
                 .containsExactly("product_id", "version_number");
@@ -280,6 +298,16 @@ class DatabaseMigrationIT {
                     'dev_protocol_mapping_version', 'dev_protocol_field_mapping'
                 )
                 """, String.class)).allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+    }
+
+    private List<String> dictionaryValues(String code) {
+        return jdbcTemplate.queryForList("""
+                SELECT item.value
+                FROM sys_dict_item item
+                JOIN sys_dict_type type ON type.id = item.type_id
+                WHERE type.code = ?
+                ORDER BY item.sort_order, item.id
+                """, String.class, code);
     }
 
     @Test

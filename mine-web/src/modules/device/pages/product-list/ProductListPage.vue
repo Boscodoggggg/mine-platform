@@ -23,6 +23,8 @@ import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import { archiveProduct, createProduct, getProducts, updateProduct } from '@/modules/device/api/device';
 import type { Product, ProductStatus } from '@/modules/device/api/device';
+import { getEnabledDictionaryItems } from '@/modules/system/api/dictionary';
+import type { DictionaryItem } from '@/modules/system/api/dictionary';
 import { useAuthStore } from '@/store/modules/auth';
 
 const { t, locale } = useI18n();
@@ -30,6 +32,8 @@ const authStore = useAuthStore();
 const loading = ref(false);
 const saving = ref(false);
 const products = ref<Product[]>([]);
+const deviceTypeItems = ref<DictionaryItem[]>([]);
+const productStatusItems = ref<DictionaryItem[]>([]);
 const total = ref(0);
 const query = reactive<{ keyword: string; status: ProductStatus | ''; page: number; size: number }>({
   keyword: '',
@@ -47,16 +51,20 @@ const productForm = reactive({
   version: 0
 });
 
-const statusOptions = computed<SelectOption[]>(() => [
-  { label: t('mine.products.status.draft'), value: 'DRAFT' },
-  { label: t('mine.products.status.active'), value: 'ACTIVE' },
-  { label: t('mine.products.status.archived'), value: 'ARCHIVED' }
-]);
-const editableStatusOptions = computed(() => statusOptions.value.slice(0, 2));
+const deviceTypeOptions = computed<SelectOption[]>(() => dictionaryOptions(deviceTypeItems.value));
+const statusOptions = computed<SelectOption[]>(() => dictionaryOptions(productStatusItems.value));
+const editableStatusOptions = computed(() =>
+  statusOptions.value.filter(option => option.value === 'DRAFT' || option.value === 'ACTIVE')
+);
 const columns = computed<DataTableColumns<Product>>(() => [
   { title: t('mine.products.column.key'), key: 'productKey', minWidth: 150 },
   { title: t('mine.products.column.name'), key: 'name', minWidth: 160 },
-  { title: t('mine.products.column.type'), key: 'deviceType', minWidth: 130 },
+  {
+    title: t('mine.products.column.type'),
+    key: 'deviceType',
+    minWidth: 130,
+    render: row => dictionaryLabel(deviceTypeItems.value, row.deviceType) || row.deviceType
+  },
   {
     title: t('mine.products.column.status'),
     key: 'status',
@@ -88,7 +96,24 @@ const columns = computed<DataTableColumns<Product>>(() => [
   }
 ]);
 
-onMounted(loadProducts);
+onMounted(async () => {
+  await Promise.all([loadDictionaries(), loadProducts()]);
+});
+
+async function loadDictionaries() {
+  try {
+    const [types, statuses] = await Promise.all([
+      getEnabledDictionaryItems('device_type'),
+      getEnabledDictionaryItems('product_status')
+    ]);
+    deviceTypeItems.value = types;
+    productStatusItems.value = statuses.filter(item =>
+      ['DRAFT', 'ACTIVE', 'ARCHIVED'].includes(item.value)
+    );
+  } catch (error) {
+    showError(error);
+  }
+}
 
 async function loadProducts() {
   loading.value = true;
@@ -193,13 +218,28 @@ function can(permission: string) {
 }
 
 function statusLabel(status: ProductStatus) {
-  return t(`mine.products.status.${status.toLowerCase()}`);
+  return dictionaryLabel(productStatusItems.value, status) || t(`mine.products.status.${status.toLowerCase()}`);
+}
+
+function dictionaryOptions(items: DictionaryItem[]): SelectOption[] {
+  return items.map(item => ({ label: dictionaryItemLabel(item), value: item.value }));
+}
+
+function dictionaryLabel(items: DictionaryItem[], value: string) {
+  const item = items.find(candidate => candidate.value === value);
+  return item ? dictionaryItemLabel(item) : null;
+}
+
+function dictionaryItemLabel(item: DictionaryItem) {
+  return locale.value.toLowerCase().startsWith('en') && item.labelEn ? item.labelEn : item.labelZh;
 }
 
 function productStatusType(status: ProductStatus) {
-  if (status === 'ACTIVE') return 'success';
-  if (status === 'ARCHIVED') return 'default';
-  return 'warning';
+  const item = productStatusItems.value.find(candidate => candidate.value === status);
+  if (item) return item.semanticType;
+  if (status === 'ACTIVE') return 'success' as const;
+  if (status === 'ARCHIVED') return 'default' as const;
+  return 'warning' as const;
 }
 
 function formatTime(value: string) {
@@ -216,7 +256,15 @@ function showError(error: unknown) {
   window.$message?.error(t('mine.common.operationFailed'));
 }
 
-defineExpose({ productForm, openCreate, openEdit, saveProduct });
+defineExpose({
+  productForm,
+  deviceTypeOptions,
+  statusOptions,
+  productStatusType,
+  openCreate,
+  openEdit,
+  saveProduct
+});
 </script>
 
 <template>
@@ -316,9 +364,9 @@ defineExpose({ productForm, openCreate, openEdit, saveProduct });
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.products.field.type')">
-              <NInput
+              <NSelect
                 v-model:value="productForm.deviceType"
-                maxlength="64"
+                :options="deviceTypeOptions"
                 :placeholder="t('mine.products.placeholder.type')"
               />
             </NFormItem>

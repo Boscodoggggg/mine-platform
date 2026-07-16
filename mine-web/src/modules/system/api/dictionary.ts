@@ -33,6 +33,11 @@ export function getDictionaryItems(typeId: string) {
   return request<DictionaryItem[]>(`/system/dictionaries/${typeId}/items`);
 }
 
+/** 业务页面按稳定编码查询启用字典项。 */
+export function getEnabledDictionaryItems(code: string) {
+  return request<DictionaryItem[]>(`/dictionaries/${encodeURIComponent(code)}/items`);
+}
+
 /** 创建字典数据项。 */
 export function createDictionaryItem(typeId: string, payload: DictionaryItemCreatePayload) {
   return request<DictionaryItem>(`/system/dictionaries/${typeId}/items`, json('POST', payload));

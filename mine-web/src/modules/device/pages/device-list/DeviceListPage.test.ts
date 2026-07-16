@@ -15,9 +15,11 @@ const api = vi.hoisted(() => ({
   testDeviceConnectionProfile: vi.fn(),
   updateDevice: vi.fn()
 }));
+const dictionaryApi = vi.hoisted(() => ({ getEnabledDictionaryItems: vi.fn() }));
 const authState = vi.hoisted(() => ({ userInfo: { buttons: [] as string[] } }));
 
 vi.mock('@/modules/device/api/device', () => api);
+vi.mock('@/modules/system/api/dictionary', () => dictionaryApi);
 vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
 
 const product = {
@@ -67,6 +69,12 @@ describe('DeviceListPage', () => {
   beforeEach(() => {
     setLocale('zh-CN');
     Object.values(api).forEach(mock => mock.mockReset());
+    dictionaryApi.getEnabledDictionaryItems.mockReset();
+    dictionaryApi.getEnabledDictionaryItems.mockResolvedValue([
+      dictionaryItem('ENABLED', '启用', 'Enabled', 'primary'),
+      dictionaryItem('DISABLED', '停用', 'Disabled', 'warning'),
+      dictionaryItem('ARCHIVED', '已归档', 'Archived', 'default')
+    ]);
     api.getProducts.mockResolvedValue({ items: [product], page: 1, size: 100, total: 1 });
     api.getDevices.mockResolvedValue({ items: [device], page: 1, size: 20, total: 1 });
     api.getDeviceAccessStatuses.mockResolvedValue([
@@ -164,6 +172,23 @@ describe('DeviceListPage', () => {
       name: '二号运输车',
       status: 'ENABLED'
     });
+  });
+
+  it('应从字典加载设备状态选项', async () => {
+    const wrapper = mountPage(['device:device:create']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      statusOptions: Array<{ label: string; value: string }>;
+      deviceStatusType: (status: string) => string;
+    };
+
+    expect(dictionaryApi.getEnabledDictionaryItems).toHaveBeenCalledWith('device_status');
+    expect(page.statusOptions).toEqual([
+      { label: '启用', value: 'ENABLED' },
+      { label: '停用', value: 'DISABLED' },
+      { label: '已归档', value: 'ARCHIVED' }
+    ]);
+    expect(page.deviceStatusType('ENABLED')).toBe('primary');
   });
 
   it('创建设备时只能选择已发布产品', async () => {
@@ -353,4 +378,19 @@ describe('DeviceListPage', () => {
 function mountPage(permissions: string[]) {
   authState.userInfo.buttons = permissions;
   return mount(DeviceListPage, { global: { plugins: [i18n] } });
+}
+
+function dictionaryItem(value: string, labelZh: string, labelEn: string, semanticType: string) {
+  return {
+    id: `item-${value}`,
+    typeId: 'type-1',
+    value,
+    labelZh,
+    labelEn,
+    semanticType,
+    sortOrder: 10,
+    defaultItem: false,
+    status: 'ENABLED',
+    version: 0
+  };
 }
