@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 将菜单管理调整为 SoybeanAdmin 在线演示的分页表格交互，并在不破坏现有 Sa-Token 权限模型的前提下，将按钮权限从主列表移入页面编辑区域。
+**Goal:** 将菜单管理调整为 SoybeanAdmin 风格的分页树表格，根节点分页、子节点按需加载，并在不破坏现有 Sa-Token 权限模型的前提下，将按钮权限从主列表移入页面编辑区域。
 
-**Architecture:** 后端继续以 `sys_menu` 的 `DIRECTORY/MENU/BUTTON` 统一模型保存导航节点和按钮权限，角色授权继续读取完整树。菜单管理主表在前端将完整树投影为仅包含目录和页面的扁平列表并进行本地分页；批量删除通过后端事务接口原子校验和执行。页面编辑时从原树读取直接按钮子节点，并通过现有单节点接口维护。
+**Architecture:** 后端继续以 `sys_menu` 的 `DIRECTORY/MENU/BUTTON` 统一模型保存导航节点和按钮权限，角色授权继续读取完整树。菜单管理使用独立的按父节点分页查询：首次只返回根目录，展开目录时再查询直接子目录和页面。搜索使用递归祖先投影，返回匹配节点及其祖先链，仍按层级懒加载。按钮权限不进入树表格，编辑页面时单独按需读取。
 
 **Tech Stack:** Vue 3、TypeScript、Naive UI、Vue I18n、Vitest、Spring Boot、Sa-Token、MyBatis、JUnit 5、Mockito、OpenAPI。
 
@@ -13,10 +13,11 @@
 ## 1. 交互边界
 
 - 主表只展示 `DIRECTORY` 和 `MENU`，避免创建、修改、删除等 `BUTTON` 节点形成重复行。
-- 主表使用普通分页，默认每页 10 条，可切换 10、20、50 条。
+- 主表使用树形分页，分页只计算根节点，默认每页 10 个根节点，可切换 10、20、50 条。
+- 根节点首次进入时加载；目录展开时才请求其直接子节点，已加载子节点不重复请求。
 - 保留名称、类型、状态筛选；筛选变化后回到第一页。
 - 表格支持多选、原子批量删除、刷新和列设置。
-- 目录和页面仍按后端排序及树的先序顺序排列，通过“父菜单”列表达层级。
+- 名称列使用 Naive UI 树表格的展开箭头和缩进表达层级，不使用文本符号伪造树结构。
 - 新建和编辑采用双列表单；每个当前可见字段继续提供国际化 Tooltip。
 - 仅编辑已存在的页面时显示“按钮权限”，支持新增、编辑和删除按钮权限。
 - 新建页面保存后需要重新进入编辑才能配置按钮权限，避免在父节点尚未持久化时制造临时状态。
@@ -103,7 +104,26 @@
 
 ## 4. 国际化、契约和验证
 
-### Task 6: 补齐契约与语言资源
+### Task 6: 实现按需加载树表格
+
+**Files:**
+
+- Modify: `mine-server/src/main/java/com/bosco/mine/server/modules/system/controller/MenuManagementController.java`
+- Modify: `mine-server/src/main/java/com/bosco/mine/server/modules/system/service/MenuManagementService.java`
+- Modify: `mine-server/src/main/java/com/bosco/mine/server/modules/system/repository/MenuManagementMapper.java`
+- Modify: `mine-web/src/modules/system/api/access-management.ts`
+- Modify: `mine-web/src/modules/system/pages/menus/MenuManagementPage.vue`
+- Modify: `docs/openapi/mine-api.yaml`
+
+**Steps:**
+
+1. 先编写根节点分页、直接子节点查询和展开行按需请求的失败测试。
+2. 新增菜单管理分页投影，返回 `hasChildren`，不返回子树。
+3. 表格根节点使用服务端分页，展开节点通过 `parentId` 请求直接子节点。
+4. 编辑页面时单独加载按钮权限；新建和修改成功后刷新当前根节点页。
+5. 运行前后端定向和全量验证。
+
+### Task 7: 补齐契约与语言资源
 
 **Files:**
 
@@ -120,7 +140,7 @@
 3. 更新 OpenAPI 并重新生成前端类型。
 4. 将“菜单树不分页”的旧结论修订为“授权树不分页、菜单维护投影分页”。
 
-### Task 7: 完整验证和提交
+### Task 8: 完整验证和提交
 
 **Steps:**
 
