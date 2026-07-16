@@ -121,6 +121,7 @@ class DatabaseMigrationIT {
                 "device-model-management",
                 "device-monitor",
                 "device-product-list",
+                "device-strategy-workbench",
                 "system-dictionary-list",
                 "system-menu-list",
                 "system-operations-monitor",
@@ -208,6 +209,33 @@ class DatabaseMigrationIT {
                   AND parent.type = 'DIRECTORY'
                   AND child.type = 'MENU'
                 """, Long.class)).isEqualTo(5L);
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT parent.component_key AS parent_component_key,
+                       strategy.path,
+                       strategy.permission,
+                       strategy.visible,
+                       strategy.i18n_key
+                FROM sys_menu strategy
+                JOIN sys_menu parent ON parent.id = strategy.parent_id
+                WHERE strategy.component_key = 'device-strategy-workbench'
+                """)).containsEntry("parent_component_key", null)
+                .containsEntry("path", "/device/strategies")
+                .containsEntry("permission", "device:strategy:view")
+                .containsEntry("visible", true)
+                .containsEntry("i18n_key", "mine.menu.strategies");
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE parent_id = (
+                    SELECT id FROM sys_menu WHERE component_key = 'device-strategy-workbench'
+                )
+                ORDER BY permission
+                """, String.class)).containsExactly(
+                "device:group:edit",
+                "device:group:view",
+                "device:strategy:edit",
+                "device:strategy:publish"
+        );
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu

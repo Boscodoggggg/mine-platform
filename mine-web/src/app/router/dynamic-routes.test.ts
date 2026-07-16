@@ -134,6 +134,7 @@ describe('buildDynamicNavigation', () => {
             name: '产品管理',
             path: '/device/products',
             componentKey: 'device-product-list',
+            sortOrder: 10,
             children: []
           },
           {
@@ -142,6 +143,16 @@ describe('buildDynamicNavigation', () => {
             name: '设备台账',
             path: '/device/devices',
             componentKey: 'device-device-list',
+            sortOrder: 20,
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'device-strategies',
+            name: '策略工作台',
+            path: '/device/strategies',
+            componentKey: 'device-strategy-workbench',
+            sortOrder: 35,
             children: []
           },
           {
@@ -150,6 +161,7 @@ describe('buildDynamicNavigation', () => {
             name: '设备监控',
             path: '/device/monitor',
             componentKey: 'device-monitor',
+            sortOrder: 40,
             children: []
           }
         ]
@@ -160,12 +172,13 @@ describe('buildDynamicNavigation', () => {
     const result = buildDynamicNavigation(deviceNodes);
     setLocale('zh-CN');
 
-    expect(result.routes).toHaveLength(3);
+    expect(result.routes).toHaveLength(4);
     expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
     expect(result.unknownComponentKeys).toEqual([]);
     expect(result.menus[0]?.children?.map(menu => menu.label)).toEqual([
       'Product Management',
       'Device Registry',
+      'Strategy Workbench',
       'Device Monitoring'
     ]);
   });

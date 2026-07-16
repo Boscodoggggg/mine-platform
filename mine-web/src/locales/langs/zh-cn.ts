@@ -62,6 +62,7 @@ const local: App.I18n.Schema = {
       products: '产品管理',
       devices: '设备台账',
       models: '物模型与协议',
+      strategies: '策略工作台',
       monitor: '设备监控',
       command: '命令管理',
       commandCenter: '命令中心',
@@ -604,6 +605,121 @@ const local: App.I18n.Schema = {
           failed: '失败',
           skipped: '待确认'
         }
+      }
+    },
+    strategy: {
+      title: '策略工作台',
+      subtitle: '管理产品、设备组和单设备三级策略，发布前验证范围，发布后解释每台设备的最终有效值。',
+      policyName: '在线状态判定策略',
+      productionHelp: '策略发布会立即影响设备在线状态判定。请先核对目标范围、最终阈值和冲突证据，并填写可审计的业务原因。',
+      section: {
+        context: '配置上下文',
+        groups: '设备组与优先级',
+        members: '设备组成员',
+        draft: '策略草稿',
+        publish: '发布控制',
+        history: '不可变发布历史',
+        effective: '设备最终有效策略'
+      },
+      field: {
+        product: '产品',
+        device: '验证设备',
+        group: '设备组',
+        groupKey: '设备组编码',
+        groupName: '设备组名称',
+        priority: '策略优先级',
+        description: '说明',
+        threshold: '离线判定阈值',
+        scope: '发布范围',
+        reason: '业务原因',
+        members: '当前成员',
+        version: '策略版本',
+        status: '状态',
+        hash: '内容哈希',
+        release: '发布记录',
+        source: '最终值来源'
+      },
+      action: {
+        newGroup: '新建设备组',
+        editGroup: '编辑设备组',
+        saveGroup: '保存设备组',
+        archiveGroup: '归档设备组',
+        saveMembers: '保存成员关系',
+        newDraft: '新建草稿',
+        saveDraft: '保存草稿',
+        publish: '发布策略',
+        rollback: '回滚到此发布',
+        refresh: '刷新有效值'
+      },
+      status: {
+        draft: '草稿',
+        published: '已发布',
+        valid: '有效',
+        invalid: '无效',
+        active: '生效中',
+        archived: '已归档',
+        publish: '发布',
+        rollback: '回滚'
+      },
+      scope: { product: '产品默认', group: '设备组覆盖', device: '单设备覆盖' },
+      source: {
+        product: '产品默认',
+        group: '设备组覆盖',
+        device: '单设备覆盖',
+        unknown: '来源未知',
+        priority: '优先级 {priority}',
+        release: '发布 {release}'
+      },
+      empty: {
+        products: '暂无可配置的有效产品',
+        groups: '当前产品尚未建设备组',
+        devices: '当前产品暂无有效设备',
+        versions: '尚未创建在线状态策略草稿',
+        releases: '尚无策略发布记录',
+        effective: '选择设备后查看最终有效策略',
+        members: '该设备组暂无成员'
+      },
+      placeholder: { enter: '请输入{field}', select: '请选择{field}' },
+      validation: {
+        required: '请完整填写必填项',
+        threshold: '离线判定阈值必须在 30 至 86400 秒之间',
+        scope: '请选择与发布范围匹配的目标',
+        reason: '业务原因至少填写 4 个字符',
+        draft: '请先选择一个草稿版本'
+      },
+      message: {
+        groupCreated: '设备组已创建',
+        groupUpdated: '设备组已更新',
+        groupArchived: '设备组已归档',
+        membersUpdated: '成员关系已更新',
+        draftCreated: '策略草稿已创建',
+        draftUpdated: '策略草稿已保存',
+        published: '策略已发布并开始生效',
+        rolledBack: '已创建新的回滚发布'
+      },
+      confirm: {
+        archiveGroup: '确认归档此设备组？当前成员关系将结束，历史发布事实仍会保留。',
+        rollback: '确认基于此历史发布创建新的回滚发布？'
+      },
+      error: {
+        title: '策略操作失败',
+        conflictTitle: '策略存在冲突',
+        invalidTitle: '最终策略无效',
+        code: '错误码：{code}',
+        details: '冲突证据：{details}'
+      },
+      help: {
+        groupPriority: '数值越大优先级越高；同优先级设备组对同一字段给出不同值时将阻止发布。',
+        scope: '产品默认会覆盖全部设备；设备组和单设备范围需要先在左侧选中目标。',
+        members: '成员只能来自当前产品，保存时使用乐观锁防止覆盖其他管理员的修改。',
+        readonly: '当前账号可查看策略，但没有维护或发布权限。'
+      },
+      text: {
+        seconds: '秒',
+        version: '版本 v{version}',
+        sequence: '发布序号 #{sequence}',
+        memberCount: '{count} 台设备',
+        priority: '优先级 {priority}'
       }
     },
     models: {

@@ -62,6 +62,7 @@ const local: App.I18n.Schema = {
       products: 'Product Management',
       devices: 'Device Registry',
       models: 'Thing Models & Protocols',
+      strategies: 'Strategy Workbench',
       monitor: 'Device Monitoring',
       command: 'Command Management',
       commandCenter: 'Command Center',
@@ -648,6 +649,121 @@ const local: App.I18n.Schema = {
           failed: 'Failed',
           skipped: 'Awaiting Confirmation'
         }
+      }
+    },
+    strategy: {
+      title: 'Strategy Workbench',
+      subtitle: 'Manage product, group, and device policies; verify target scope before release and explain each device’s final effective value.',
+      policyName: 'Online Status Policy',
+      productionHelp: 'A release immediately changes online-status evaluation. Verify the scope, final threshold, and conflict evidence, then provide an auditable business reason.',
+      section: {
+        context: 'Configuration Context',
+        groups: 'Device Groups & Priority',
+        members: 'Group Members',
+        draft: 'Policy Draft',
+        publish: 'Release Control',
+        history: 'Immutable Release History',
+        effective: 'Final Effective Device Policy'
+      },
+      field: {
+        product: 'Product',
+        device: 'Validation Device',
+        group: 'Device Group',
+        groupKey: 'Group Key',
+        groupName: 'Group Name',
+        priority: 'Policy Priority',
+        description: 'Description',
+        threshold: 'Offline Threshold',
+        scope: 'Release Scope',
+        reason: 'Business Reason',
+        members: 'Current Members',
+        version: 'Policy Version',
+        status: 'Status',
+        hash: 'Content Hash',
+        release: 'Release',
+        source: 'Final Value Source'
+      },
+      action: {
+        newGroup: 'New Group',
+        editGroup: 'Edit Group',
+        saveGroup: 'Save Group',
+        archiveGroup: 'Archive Group',
+        saveMembers: 'Save Membership',
+        newDraft: 'New Draft',
+        saveDraft: 'Save Draft',
+        publish: 'Release Policy',
+        rollback: 'Roll Back to This Release',
+        refresh: 'Refresh Effective Value'
+      },
+      status: {
+        draft: 'Draft',
+        published: 'Published',
+        valid: 'Valid',
+        invalid: 'Invalid',
+        active: 'Active',
+        archived: 'Archived',
+        publish: 'Publish',
+        rollback: 'Rollback'
+      },
+      scope: { product: 'Product Default', group: 'Group Override', device: 'Device Override' },
+      source: {
+        product: 'Product Default',
+        group: 'Group Override',
+        device: 'Device Override',
+        unknown: 'Unknown Source',
+        priority: 'Priority {priority}',
+        release: 'Release {release}'
+      },
+      empty: {
+        products: 'No active products are available for configuration',
+        groups: 'No device groups exist for this product',
+        devices: 'No active devices exist for this product',
+        versions: 'No online-status policy draft exists yet',
+        releases: 'No policy releases exist yet',
+        effective: 'Select a device to inspect its final effective policy',
+        members: 'This group has no members'
+      },
+      placeholder: { enter: 'Enter {field}', select: 'Select {field}' },
+      validation: {
+        required: 'Complete all required fields',
+        threshold: 'The offline threshold must be between 30 and 86400 seconds',
+        scope: 'Select a target matching the release scope',
+        reason: 'Enter at least 4 characters for the business reason',
+        draft: 'Select a draft version first'
+      },
+      message: {
+        groupCreated: 'Device group created',
+        groupUpdated: 'Device group updated',
+        groupArchived: 'Device group archived',
+        membersUpdated: 'Membership updated',
+        draftCreated: 'Policy draft created',
+        draftUpdated: 'Policy draft saved',
+        published: 'Policy released and taking effect',
+        rolledBack: 'A new rollback release was created'
+      },
+      confirm: {
+        archiveGroup: 'Archive this device group? Current memberships will end while release history remains immutable.',
+        rollback: 'Create a new rollback release from this historical release?'
+      },
+      error: {
+        title: 'Policy Operation Failed',
+        conflictTitle: 'Policy Conflict Detected',
+        invalidTitle: 'Final Policy Is Invalid',
+        code: 'Error code: {code}',
+        details: 'Conflict evidence: {details}'
+      },
+      help: {
+        groupPriority: 'Higher numbers win. Conflicting values from groups at the same priority block the release.',
+        scope: 'A product default targets all devices. Select a group or device on the left before using narrower scopes.',
+        members: 'Members must belong to this product. Optimistic locking prevents overwriting another administrator’s update.',
+        readonly: 'This account can inspect policies but cannot maintain or release them.'
+      },
+      text: {
+        seconds: 'seconds',
+        version: 'Version v{version}',
+        sequence: 'Release #{sequence}',
+        memberCount: '{count} devices',
+        priority: 'Priority {priority}'
       }
     },
     models: {

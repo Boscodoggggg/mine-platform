@@ -23,6 +23,7 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'device-product-list': () => import('@/modules/device/pages/product-list/ProductListPage.vue'),
   'device-device-list': () => import('@/modules/device/pages/device-list/DeviceListPage.vue'),
   'device-model-management': () => import('@/modules/device/pages/model-management/DeviceModelManagementPage.vue'),
+  'device-strategy-workbench': () => import('@/modules/device/pages/strategy/StrategyWorkbenchPage.vue'),
   'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
   'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue')
 };
@@ -40,6 +41,7 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/device/products': 'mine.menu.products',
   '/device/devices': 'mine.menu.devices',
   '/device/models': 'mine.menu.models',
+  '/device/strategies': 'mine.menu.strategies',
   '/device/monitor': 'mine.menu.monitor',
   '/command': 'mine.menu.command',
   '/command/center': 'mine.menu.commandCenter'
@@ -54,6 +56,7 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'device-product-list': 'mine.menu.products',
   'device-device-list': 'mine.menu.devices',
   'device-model-management': 'mine.menu.models',
+  'device-strategy-workbench': 'mine.menu.strategies',
   'device-monitor': 'mine.menu.monitor',
   'command-center': 'mine.menu.commandCenter'
 };

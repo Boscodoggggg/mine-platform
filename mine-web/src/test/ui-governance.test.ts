@@ -13,6 +13,8 @@ const businessPages = [
   'src/modules/device/pages/product-list/ProductListPage.vue',
   'src/modules/device/pages/device-list/DeviceListPage.vue',
   'src/modules/device/pages/model-management/DeviceModelManagementPage.vue',
+  'src/modules/device/pages/strategy/StrategyWorkbenchPage.vue',
+  'src/modules/device/components/strategy/EffectiveStrategyPanel.vue',
   'src/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue',
   'src/modules/monitoring/components/NumericCard.vue',
   'src/modules/command/pages/command-center/CommandCenterPage.vue',

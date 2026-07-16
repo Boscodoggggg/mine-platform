@@ -374,6 +374,7 @@ declare namespace App {
           | 'products'
           | 'devices'
           | 'models'
+          | 'strategies'
           | 'monitor'
           | 'command'
           | 'commandCenter'
@@ -747,6 +748,66 @@ declare namespace App {
             stage: Record<'config' | 'dns' | 'tcp' | 'tls' | 'deviceconfirmation', string>;
             testStatus: Record<'notTested' | 'passed' | 'partial' | 'failed' | 'skipped', string>;
           };
+        };
+        strategy: {
+          title: string;
+          subtitle: string;
+          policyName: string;
+          productionHelp: string;
+          section: Record<'context' | 'groups' | 'members' | 'draft' | 'publish' | 'history' | 'effective', string>;
+          field: Record<
+            | 'product'
+            | 'device'
+            | 'group'
+            | 'groupKey'
+            | 'groupName'
+            | 'priority'
+            | 'description'
+            | 'threshold'
+            | 'scope'
+            | 'reason'
+            | 'members'
+            | 'version'
+            | 'status'
+            | 'hash'
+            | 'release'
+            | 'source',
+            string
+          >;
+          action: Record<
+            | 'newGroup'
+            | 'editGroup'
+            | 'saveGroup'
+            | 'archiveGroup'
+            | 'saveMembers'
+            | 'newDraft'
+            | 'saveDraft'
+            | 'publish'
+            | 'rollback'
+            | 'refresh',
+            string
+          >;
+          status: Record<'draft' | 'published' | 'valid' | 'invalid' | 'active' | 'archived' | 'publish' | 'rollback', string>;
+          scope: Record<'product' | 'group' | 'device', string>;
+          source: Record<'product' | 'group' | 'device' | 'unknown' | 'priority' | 'release', string>;
+          empty: Record<'products' | 'groups' | 'devices' | 'versions' | 'releases' | 'effective' | 'members', string>;
+          placeholder: Record<'enter' | 'select', string>;
+          validation: Record<'required' | 'threshold' | 'scope' | 'reason' | 'draft', string>;
+          message: Record<
+            | 'groupCreated'
+            | 'groupUpdated'
+            | 'groupArchived'
+            | 'membersUpdated'
+            | 'draftCreated'
+            | 'draftUpdated'
+            | 'published'
+            | 'rolledBack',
+            string
+          >;
+          confirm: Record<'archiveGroup' | 'rollback', string>;
+          error: Record<'title' | 'conflictTitle' | 'invalidTitle' | 'code' | 'details', string>;
+          help: Record<'groupPriority' | 'scope' | 'members' | 'readonly', string>;
+          text: Record<'seconds' | 'version' | 'sequence' | 'memberCount' | 'priority', string>;
         };
         models: {
           title: string;
