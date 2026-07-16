@@ -48,6 +48,10 @@ class DatabaseMigrationIT {
             "dev_config_release",
             "dev_config_release_target",
             "dev_config_node_status",
+            "dev_device_group",
+            "dev_device_group_membership",
+            "dev_strategy_version",
+            "dev_strategy_release",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -168,6 +172,8 @@ class DatabaseMigrationIT {
                 "device:device:create",
                 "device:device:update",
                 "device:device:view",
+                "device:group:edit",
+                "device:group:view",
                 "device:model:edit",
                 "device:model:publish",
                 "device:model:view",
@@ -178,6 +184,9 @@ class DatabaseMigrationIT {
                 "device:protocol:sample:edit",
                 "device:protocol:sample:view",
                 "device:protocol:test",
+                "device:strategy:edit",
+                "device:strategy:publish",
+                "device:strategy:view",
                 "device:telemetry:view"
         );
         assertThat(jdbcTemplate.queryForList("""
@@ -362,6 +371,65 @@ class DatabaseMigrationIT {
                 SELECT COUNT(*)
                 FROM pg_trigger
                 WHERE tgname IN ('trg_dev_config_package_immutable', 'trg_dev_config_release_immutable')
+                  AND NOT tgisinternal
+                """, Long.class)).isEqualTo(2L);
+    }
+
+    @Test
+    void 策略作用域控制面必须具备历史约束索引和完整中文注释() {
+        assertThat(constraintColumns("uk_dev_device_group_product_key"))
+                .containsExactly("product_id", "group_key");
+        assertThat(constraintColumns("uk_dev_strategy_version_product_type_number"))
+                .containsExactly("product_id", "strategy_type", "version_number");
+        assertThat(constraintColumns("uk_dev_strategy_release_product_sequence"))
+                .containsExactly("product_id", "release_sequence");
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname IN (
+                    'uk_dev_device_group_membership_active',
+                    'idx_dev_device_group_membership_device_active',
+                    'idx_dev_device_group_membership_group_active',
+                    'idx_dev_strategy_release_current_scope'
+                  )
+                ORDER BY indexname
+                """, String.class)).containsExactly(
+                "idx_dev_device_group_membership_device_active",
+                "idx_dev_device_group_membership_group_active",
+                "idx_dev_strategy_release_current_scope",
+                "uk_dev_device_group_membership_active"
+        );
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN (
+                    'dev_device_group'::regclass,
+                    'dev_device_group_membership'::regclass,
+                    'dev_strategy_version'::regclass,
+                    'dev_strategy_release'::regclass
+                )
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'dev_device_group', 'dev_device_group_membership',
+                    'dev_strategy_version', 'dev_strategy_release'
+                )
+                """, String.class))
+                .hasSize(4)
+                .allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_trigger
+                WHERE tgname IN (
+                    'trg_dev_strategy_version_published_immutable',
+                    'trg_dev_strategy_release_immutable'
+                )
                   AND NOT tgisinternal
                 """, Long.class)).isEqualTo(2L);
     }
