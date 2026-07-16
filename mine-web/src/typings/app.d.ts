@@ -468,11 +468,31 @@ declare namespace App {
           title: string;
           subtitle: string;
           checkedAt: string;
+          generatedAt: string;
+          summary: string;
           latency: string;
+          notAvailable: string;
           loadFailed: string;
           loadFailedDescription: string;
+          historyLoadFailed: string;
+          trendLoadFailed: string;
+          historyUnavailableTitle: string;
+          historyUnavailableDescription: string;
           onDemandNote: string;
           empty: string;
+          historyTitle: string;
+          immediateTitle: string;
+          trendTitle: string;
+          trendLatency: string;
+          trendEmpty: string;
+          trendAriaLabel: string;
+          action: Record<'checkNow' | 'viewTrend', string>;
+          filter: Record<'search' | 'status' | 'category', string>;
+          column: Record<
+            'status' | 'item' | 'category' | 'availability' | 'p95Latency' | 'lastChanged' | 'action',
+            string
+          >;
+          range: Record<'hour' | 'sixHours' | 'day' | 'week' | 'fifteenDays', string>;
           status: Record<'up' | 'degraded' | 'down' | 'unknown', string>;
           category: Record<'service' | 'message' | 'storage', string>;
           item: Record<
