@@ -7,6 +7,9 @@ import {
   NButtonGroup,
   NCard,
   NDataTable,
+  NDivider,
+  NDrawer,
+  NDrawerContent,
   NFlex,
   NInput,
   NPageHeader,
@@ -58,6 +61,9 @@ const filteredItems = computed(() => {
 });
 
 const immediateItems = computed(() => immediate.value?.items || []);
+const selectedItem = computed(() =>
+  overview.value?.items.find(item => item.key === selectedSeries.value?.key) || null
+);
 
 const statusOptions = computed<SelectOption[]>(() =>
   ['UP', 'DEGRADED', 'DOWN', 'UNKNOWN'].map(value => ({
@@ -161,6 +167,10 @@ async function loadSeries(key: string) {
   } finally {
     seriesLoading.value = false;
   }
+}
+
+function handleTrendDrawerVisibility(show: boolean) {
+  if (!show) selectedSeries.value = null;
 }
 
 async function selectRange(value: OperationsObservabilityRange) {
@@ -341,13 +351,56 @@ function showError(error: unknown, fallbackKey: App.I18n.I18nKey) {
         </NFlex>
       </NFlex>
     </NCard>
-
-    <NCard
-      v-if="selectedSeries"
-      :title="t('mine.operations.trendTitle', { item: itemName(selectedSeries.key), range: rangeLabel(selectedSeries.range) })"
-      size="small"
-    >
-      <OperationsTrendChart :series="selectedSeries" :loading="seriesLoading" />
-    </NCard>
   </NFlex>
+
+  <NDrawer
+    :show="Boolean(selectedSeries)"
+    :width="760"
+    placement="right"
+    @update:show="handleTrendDrawerVisibility"
+  >
+    <NDrawerContent v-if="selectedSeries" closable>
+      <template #header>
+        <NFlex align="center" :size="10">
+          <NText strong>
+            {{
+              t('mine.operations.trendTitle', {
+                item: itemName(selectedSeries.key),
+                range: rangeLabel(selectedSeries.range)
+              })
+            }}
+          </NText>
+          <NTag v-if="selectedItem" :type="statusType(selectedItem.status)" size="small" :bordered="false">
+            {{ statusLabel(selectedItem.status) }}
+          </NTag>
+        </NFlex>
+      </template>
+
+      <NFlex vertical :size="20">
+        <NFlex v-if="selectedItem" justify="space-between" :wrap="true">
+          <NFlex vertical :size="2">
+            <NText depth="3">{{ t('mine.operations.column.category') }}</NText>
+            <NText strong>{{ categoryLabel(selectedItem.category) }}</NText>
+          </NFlex>
+          <NFlex vertical :size="2">
+            <NText depth="3">{{ t('mine.operations.column.availability') }}</NText>
+            <NText strong>{{ formatAvailability(selectedItem.availabilityPercent) }}</NText>
+          </NFlex>
+          <NFlex vertical :size="2">
+            <NText depth="3">{{ t('mine.operations.column.lastChanged') }}</NText>
+            <NText strong>
+              {{
+                selectedItem.lastChangedAt
+                  ? formatTime(selectedItem.lastChangedAt)
+                  : t('mine.operations.notAvailable')
+              }}
+            </NText>
+          </NFlex>
+        </NFlex>
+
+        <NDivider />
+        <OperationsTrendChart :series="selectedSeries" :loading="seriesLoading" />
+      </NFlex>
+    </NDrawerContent>
+  </NDrawer>
 </template>

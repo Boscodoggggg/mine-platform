@@ -14,6 +14,10 @@ docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FI
 jq -e '.services["redis-exporter"]' "${rendered}" >/dev/null \
   || { echo "FAIL: observability profile 缺少 redis-exporter" >&2; exit 1; }
 
+jq -e '.services["redis-exporter"].environment.REDIS_PASSWORD_FILE == "/run/secrets/redis_exporter_passwords"
+  and (.services["redis-exporter"].secrets | any(.source == "redis_exporter_passwords"))' "${rendered}" >/dev/null \
+  || { echo "FAIL: redis-exporter 必须使用专用 JSON 密码映射 secret" >&2; exit 1; }
+
 jq -e '.services.prometheus.depends_on // {} | keys | all(. != "mine-server" and . != "mine-gateway" and . != "mine-telemetry" and . != "rabbitmq" and . != "postgres-exporter" and . != "timescale-exporter" and . != "redis-exporter")' \
   "${rendered}" >/dev/null \
   || { echo "FAIL: Prometheus 不得等待被观测目标健康后才启动" >&2; exit 1; }

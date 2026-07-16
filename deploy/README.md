@@ -56,7 +56,7 @@ cp deploy/env/standalone.env.example deploy/env/standalone.env
 mkdir -p deploy/secrets
 ~~~
 
-按 [secrets.example/README.md](secrets.example/README.md) 创建全部 secret 文件。每个密码文件只放一行随机值，私钥文件权限建议为 `0600`。现场证书应由矿区信任的 CA 签发，并包含浏览器访问域名和设备连接域名。
+按 [secrets.example/README.md](secrets.example/README.md) 创建全部 secret 文件。普通密码文件只放一行随机值；Redis Exporter 使用独立 JSON 密码映射。私钥文件权限建议为 `0600`。现场证书应由矿区信任的 CA 签发，并包含浏览器访问域名和设备连接域名。
 
 然后修改 `deploy/env/standalone.env`：
 

@@ -485,10 +485,10 @@ services:
       - no-new-privileges:true
     environment:
       REDIS_ADDR: redis://redis:6379
-      REDIS_PASSWORD_FILE: /run/secrets/redis_password
+      REDIS_PASSWORD_FILE: /run/secrets/redis_exporter_passwords
       REDIS_EXPORTER_CONNECTION_TIMEOUT: 5s
     secrets:
-      - redis_password
+      - redis_exporter_passwords
     networks:
       - data
       - observability
@@ -682,6 +682,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/timescale_reader_password
   redis_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/redis_password
+  redis_exporter_passwords:
+    file: ${MINE_SECRETS_DIR:-../secrets}/redis_exporter_passwords.json
   rabbitmq_admin_username:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_admin_username
   rabbitmq_admin_password:

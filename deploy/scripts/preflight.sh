@@ -27,7 +27,7 @@ fi
 
 required=(postgres_password timescale_password timescale_reader_password redis_password rabbitmq_admin_username rabbitmq_admin_password rabbitmq_gateway_device_password rabbitmq_gateway_platform_password rabbitmq_telemetry_password rabbitmq_server_realtime_password rabbitmq_server_command_password mine_super_admin_password tls.crt tls.key)
 if [[ "${MINE_PREFLIGHT_PROFILE:-}" == "observability" ]]; then
-  required+=(grafana_admin_password)
+  required+=(grafana_admin_password redis_exporter_passwords.json)
 fi
 for name in "${required[@]}"; do
   file="${secrets_dir}/${name}"
@@ -37,6 +37,12 @@ for name in "${required[@]}"; do
     [[ "${mode}" == "600" || "${mode}" == "400" ]] || { echo "FAIL: tls.key 权限必须为 0600 或 0400" >&2; exit 1; }
   fi
 done
+
+if [[ "${MINE_PREFLIGHT_PROFILE:-}" == "observability" ]]; then
+  jq -e 'type == "object" and (.["redis://redis:6379"] | type == "string" and length > 0)' \
+    "${secrets_dir}/redis_exporter_passwords.json" >/dev/null \
+    || { echo "FAIL: redis_exporter_passwords.json 必须包含 redis://redis:6379 的非空密码映射" >&2; exit 1; }
+fi
 
 available_kb="$(df -Pk "${ROOT_DIR}" | awk 'NR==2 {print $4}')"
 minimum_kb="$(( ${MINE_MIN_FREE_GB:-20} * 1024 * 1024 ))"

@@ -116,7 +116,11 @@ describe('SystemOperationsPage', () => {
     await flushPromises();
 
     expect(api.getSystemOperationSeries).toHaveBeenCalledWith('rabbitmq', '24h');
+    expect(wrapper.find('[data-testid="trend-drawer"]').exists()).toBe(true);
     expect(wrapper.text()).toContain('RabbitMQ · 24 小时趋势');
+
+    await wrapper.find('[data-testid="close-trend-drawer"]').trigger('click');
+    expect(wrapper.find('[data-testid="trend-drawer"]').exists()).toBe(false);
   });
 });
 
@@ -125,6 +129,13 @@ function mountPage() {
     global: {
       plugins: [i18n],
       stubs: {
+        Drawer: {
+          props: ['show'],
+          emits: ['update:show'],
+          template:
+            '<aside v-if="show" data-testid="trend-drawer"><button data-testid="close-trend-drawer" @click="$emit(\'update:show\', false)">关闭</button><slot /></aside>'
+        },
+        DrawerContent: { template: '<section><slot name="header" /><slot /></section>' },
         OperationsTrendChart: { template: '<div data-testid="operations-trend-chart"></div>' }
       }
     }
