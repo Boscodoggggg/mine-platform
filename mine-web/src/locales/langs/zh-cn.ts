@@ -167,7 +167,10 @@ const local: App.I18n.Schema = {
       attention: {
         title: '需要关注',
         count: '{count} 台设备',
-        empty: '当前没有数据中断或从未上报的启用设备',
+        empty: '当前没有异常设备',
+        emptyHint: '如发现未上报的设备，可前往设备台账进行排查',
+        unavailable: '异常状态暂不可确认',
+        unavailableHint: '运行数据恢复后将自动显示需要关注的设备',
         lastSeen: '最后上报：{time}',
         noTelemetry: '尚未收到遥测数据',
         state: { stale: '数据中断', neverReported: '从未上报' }
@@ -183,13 +186,20 @@ const local: App.I18n.Schema = {
       telemetry: {
         title: '最近 24 小时接收情况',
         latest: '最近一条：{time}',
-        empty: '当前没有可展示的遥测报文'
+        empty: '暂无数据',
+        zero: '最近 24 小时未收到遥测报文',
+        emptySummary: '最近 24 小时暂无遥测数据',
+        unavailableSummary: '最近 24 小时遥测数据暂不可用',
+        summary: '最近 24 小时遥测报文总计 {total} 条，峰值每小时 {peak} 条'
       },
       quick: {
         title: '常用操作',
         monitor: '进入实时监控',
+        monitorDescription: '查看实时数据与设备状态',
         devices: '查看设备台账',
+        devicesDescription: '管理设备与接入配置',
         commands: '打开命令中心',
+        commandsDescription: '下发与查看命令记录',
         empty: '当前账号没有可用的生产操作入口'
       }
     },

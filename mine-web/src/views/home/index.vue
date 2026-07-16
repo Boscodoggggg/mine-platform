@@ -23,9 +23,11 @@ import {
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
+import SvgIcon from '@/components/custom/svg-icon.vue';
 import { getOperationsDashboard } from '@/modules/dashboard/api/operations';
 import type { DashboardAttentionDevice, OperationsOverview } from '@/modules/dashboard/api/operations';
 import { useAuthStore } from '@/store/modules/auth';
+import OperationsTrendChart from './modules/operations-trend-chart.vue';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -39,22 +41,26 @@ const metrics = computed(() => [
   {
     key: 'enabled',
     value: overview.value?.devices.enabled ?? null,
-    tone: 'default' as const
+    tone: 'default' as const,
+    icon: 'carbon:devices'
   },
   {
     key: 'reporting',
     value: overview.value?.devices.reporting ?? null,
-    tone: 'success' as const
+    tone: 'success' as const,
+    icon: 'carbon:checkmark-outline'
   },
   {
     key: 'stale',
     value: overview.value?.devices.stale ?? null,
-    tone: 'warning' as const
+    tone: 'warning' as const,
+    icon: 'carbon:warning-alt'
   },
   {
     key: 'todayMessages',
     value: overview.value?.telemetry.todayMessages ?? null,
-    tone: 'primary' as const
+    tone: 'primary' as const,
+    icon: 'carbon:data-structured'
   }
 ]);
 
@@ -83,11 +89,21 @@ const distribution = computed(() => {
   ].map(item => ({ ...item, percentage: Math.round((item.count / enabled) * 100) }));
 });
 
+const telemetrySummary = computed(() => {
+  const counts = overview.value?.telemetry.hourly.map(bucket => bucket.count) ?? [];
+  if (loadError.value || dataUnavailable.value) return t('mine.home.telemetry.unavailableSummary');
+  if (!counts.length) return t('mine.home.telemetry.emptySummary');
+
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  const peak = Math.max(...counts, 0);
+  return t('mine.home.telemetry.summary', { total: metricValue(total), peak: metricValue(peak) });
+});
+
 const quickActions = computed(() =>
   [
-    { key: 'monitor', permission: 'device:telemetry:view', path: '/device/monitor' },
-    { key: 'devices', permission: 'device:device:view', path: '/device/devices' },
-    { key: 'commands', permission: 'command:instance:view', path: '/command/center' }
+    { key: 'monitor', permission: 'device:telemetry:view', path: '/device/monitor', icon: 'carbon:play-outline' },
+    { key: 'devices', permission: 'device:device:view', path: '/device/devices', icon: 'carbon:devices' },
+    { key: 'commands', permission: 'command:instance:view', path: '/command/center', icon: 'carbon:code' }
   ].filter(item => hasPermission(authStore.userInfo.buttons, item.permission))
 );
 
@@ -159,33 +175,30 @@ function showError(error: unknown) {
         </template>
       </NPageHeader>
 
-      <NAlert
-        v-if="loadError || dataUnavailable"
-        type="error"
-        :title="t('mine.home.unavailableTitle')"
-      >
+      <NAlert v-if="loadError || dataUnavailable" type="error" :title="t('mine.home.unavailableTitle')">
         {{ t('mine.home.unavailableDescription') }}
       </NAlert>
 
       <NCard size="small">
-        <NGrid responsive="screen" cols="2 m:4" :x-gap="24" :y-gap="20">
+        <NGrid responsive="screen" cols="2 m:4" :x-gap="16" :y-gap="16">
           <NGi v-for="metric in metrics" :key="metric.key">
             <NSkeleton v-if="loading && !overview" text :repeat="2" />
-            <NStatistic v-else :label="t(`mine.home.metric.${metric.key}.label`)">
-              <template #default>
-                <NText :type="metric.tone === 'primary' ? undefined : metric.tone">
-                  {{ metricValue(metric.value) }}
-                </NText>
-              </template>
-            </NStatistic>
-            <NText depth="3">{{ t(`mine.home.metric.${metric.key}.description`) }}</NText>
+            <NFlex v-else align="center" :size="12">
+              <NText :type="metric.tone === 'default' ? undefined : metric.tone">
+                <SvgIcon :icon="metric.icon" class="text-28px" />
+              </NText>
+              <div>
+                <NStatistic :label="t(`mine.home.metric.${metric.key}.label`)" :value="metricValue(metric.value)" />
+                <NText depth="3">{{ t(`mine.home.metric.${metric.key}.description`) }}</NText>
+              </div>
+            </NFlex>
           </NGi>
         </NGrid>
       </NCard>
 
       <NGrid responsive="screen" cols="1 l:5" :x-gap="16" :y-gap="16">
         <NGi span="1 l:3">
-          <NCard :title="t('mine.home.attention.title')">
+          <NCard :title="t('mine.home.attention.title')" class="h-full" data-testid="home-attention">
             <template #header-extra>
               <NTag v-if="overview?.attentionDevices.length" type="warning" :bordered="false">
                 {{ t('mine.home.attention.count', { count: overview.attentionDevices.length }) }}
@@ -212,7 +225,34 @@ function showError(error: unknown) {
                 </template>
               </NListItem>
             </NList>
-            <NEmpty v-else :description="t('mine.home.attention.empty')" />
+            <NFlex
+              v-else-if="loadError || dataUnavailable"
+              vertical
+              align="center"
+              justify="center"
+              :size="12"
+              class="min-h-150px py-4"
+            >
+              <NText depth="3" class="text-28px">
+                <SvgIcon icon="carbon:unknown" />
+              </NText>
+              <NText strong>{{ t('mine.home.attention.unavailable') }}</NText>
+              <NText depth="3">{{ t('mine.home.attention.unavailableHint') }}</NText>
+            </NFlex>
+            <NFlex v-else vertical align="center" justify="center" :size="12" class="min-h-150px py-4">
+              <NText type="success" class="text-28px">
+                <SvgIcon icon="carbon:checkmark-outline" />
+              </NText>
+              <NText strong>{{ t('mine.home.attention.empty') }}</NText>
+              <NButton
+                v-if="hasPermission(authStore.userInfo.buttons, 'device:device:view')"
+                data-testid="attention-device-registry"
+                @click="open('/device/devices')"
+              >
+                {{ t('mine.home.quick.devices') }}
+              </NButton>
+              <NText depth="3">{{ t('mine.home.attention.emptyHint') }}</NText>
+            </NFlex>
           </NCard>
         </NGi>
 
@@ -245,34 +285,49 @@ function showError(error: unknown) {
 
       <NGrid responsive="screen" cols="1 l:5" :x-gap="16" :y-gap="16">
         <NGi span="1 l:3">
-          <NCard :title="t('mine.home.telemetry.title')">
+          <NCard :title="t('mine.home.telemetry.title')" class="h-full">
             <template #header-extra>
               <NText depth="3">
                 {{ t('mine.home.telemetry.latest', { time: formatTime(overview?.telemetry.latestReceivedAt) }) }}
               </NText>
             </template>
-            <NEmpty v-if="!overview?.telemetry.hourly.length" :description="t('mine.home.telemetry.empty')" />
-            <NGrid v-else responsive="screen" cols="2 m:4" :x-gap="16" :y-gap="12">
-              <NGi v-for="bucket in overview.telemetry.hourly" :key="bucket.hour">
-                <NText depth="3">{{ new Date(bucket.hour).toLocaleTimeString(locale, { hour: '2-digit' }) }}</NText>
-                <div class="text-lg font-600">{{ metricValue(bucket.count) }}</div>
-              </NGi>
-            </NGrid>
+            <OperationsTrendChart
+              :buckets="overview?.telemetry.hourly ?? []"
+              :locale="locale"
+              :empty-text="t('mine.home.telemetry.empty')"
+              :zero-text="t('mine.home.telemetry.zero')"
+              :chart-label="telemetrySummary"
+            />
           </NCard>
         </NGi>
 
         <NGi span="1 l:2">
           <NCard :title="t('mine.home.quick.title')" class="h-full">
-            <NSpace vertical>
+            <NSpace vertical :size="12">
               <NButton
                 v-for="action in quickActions"
                 :key="action.key"
                 block
                 secondary
-                type="primary"
+                :type="action.key === 'monitor' ? 'primary' : 'default'"
+                size="large"
+                class="h-auto whitespace-normal py-3"
+                data-testid="quick-action"
+                :data-action-priority="action.key === 'monitor' ? 'primary' : 'secondary'"
                 @click="open(action.path)"
               >
-                {{ t(`mine.home.quick.${action.key}`) }}
+                <NFlex align="center" justify="space-between" class="min-w-0 w-full text-left">
+                  <NFlex align="center" :wrap="false" class="min-w-0">
+                    <SvgIcon :icon="action.icon" class="text-22px" />
+                    <div class="min-w-0">
+                      <div class="font-500">{{ t(`mine.home.quick.${action.key}`) }}</div>
+                      <NText depth="3" class="block whitespace-normal break-words text-xs leading-relaxed">
+                        {{ t(`mine.home.quick.${action.key}Description`) }}
+                      </NText>
+                    </div>
+                  </NFlex>
+                  <SvgIcon icon="carbon:chevron-right" />
+                </NFlex>
               </NButton>
               <NText v-if="quickActions.length === 0" depth="3">{{ t('mine.home.quick.empty') }}</NText>
             </NSpace>

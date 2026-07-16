@@ -153,7 +153,10 @@ const local: App.I18n.Schema = {
       attention: {
         title: 'Needs Attention',
         count: '{count} devices',
-        empty: 'No enabled devices are stale or have never reported',
+        empty: 'No devices need attention',
+        emptyHint: 'If a device stops reporting, investigate it from the device registry',
+        unavailable: 'Attention status cannot be confirmed',
+        unavailableHint: 'Devices requiring attention will appear when operations data recovers',
         lastSeen: 'Last report: {time}',
         noTelemetry: 'No telemetry received',
         state: { stale: 'Data interrupted', neverReported: 'Never reported' }
@@ -169,13 +172,20 @@ const local: App.I18n.Schema = {
       telemetry: {
         title: 'Received in the Last 24 Hours',
         latest: 'Latest: {time}',
-        empty: 'No telemetry messages are available'
+        empty: 'No data',
+        zero: 'No telemetry messages were received in the last 24 hours',
+        emptySummary: 'No telemetry data is available for the last 24 hours',
+        unavailableSummary: 'Telemetry data for the last 24 hours is unavailable',
+        summary: '{total} telemetry messages in the last 24 hours, with a peak of {peak} per hour'
       },
       quick: {
         title: 'Quick Actions',
         monitor: 'Open Live Monitoring',
+        monitorDescription: 'View live data and device status',
         devices: 'View Device Registry',
+        devicesDescription: 'Manage devices and connection settings',
         commands: 'Open Command Center',
+        commandsDescription: 'Issue commands and view command history',
         empty: 'No production actions are available for this account'
       }
     },

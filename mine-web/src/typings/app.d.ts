@@ -440,13 +440,29 @@ declare namespace App {
             title: string;
             count: string;
             empty: string;
+            emptyHint: string;
+            unavailable: string;
+            unavailableHint: string;
             lastSeen: string;
             noTelemetry: string;
             state: Record<'stale' | 'neverReported', string>;
           };
           distribution: Record<'title' | 'reporting' | 'stale' | 'neverReported' | 'freshness' | 'empty', string>;
-          telemetry: Record<'title' | 'latest' | 'empty', string>;
-          quick: Record<'title' | 'monitor' | 'devices' | 'commands' | 'empty', string>;
+          telemetry: Record<
+            'title' | 'latest' | 'empty' | 'zero' | 'emptySummary' | 'unavailableSummary' | 'summary',
+            string
+          >;
+          quick: Record<
+            | 'title'
+            | 'monitor'
+            | 'monitorDescription'
+            | 'devices'
+            | 'devicesDescription'
+            | 'commands'
+            | 'commandsDescription'
+            | 'empty',
+            string
+          >;
         };
         operations: {
           title: string;
