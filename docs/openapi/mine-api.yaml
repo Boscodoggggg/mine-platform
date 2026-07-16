@@ -23,6 +23,8 @@ tags:
     description: 物模型字段和厂商协议映射版本管理
   - name: ProtocolConfiguration
     description: 协议黄金样本、配置发布、节点加载状态与回滚管理
+  - name: DeviceStrategy
+    description: 设备组、三级策略作用域、冲突预检、发布回滚与有效值追踪
   - name: DeviceTelemetry
     description: 设备最新值与数值遥测历史
   - name: CommandCenter
@@ -1273,6 +1275,346 @@ paths:
           $ref: '#/components/responses/DeviceNotFound'
         '503':
           $ref: '#/components/responses/TelemetryBusy'
+  /device-groups:
+    get:
+      tags: [DeviceStrategy]
+      operationId: listDeviceGroups
+      summary: 分页查询产品内设备组
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Keyword'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/DeviceGroupStatus' }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 设备组分页。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceGroupPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [DeviceStrategy]
+      operationId: createDeviceGroup
+      summary: 创建设备组
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceGroupCreateRequest' }
+      responses:
+        '201':
+          description: 设备组已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceGroup' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /device-groups/{groupId}:
+    parameters:
+      - $ref: '#/components/parameters/DeviceGroupId'
+    get:
+      tags: [DeviceStrategy]
+      operationId: getDeviceGroup
+      summary: 查询设备组详情
+      responses:
+        '200':
+          description: 设备组详情。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceGroup' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+    put:
+      tags: [DeviceStrategy]
+      operationId: updateDeviceGroup
+      summary: 修改设备组和策略优先级
+      description: 优先级变化会对当前成员执行策略冲突预检，存在同级异值时整笔拒绝。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceGroupUpdateRequest' }
+      responses:
+        '200':
+          description: 修改后的设备组。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceGroup' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /device-groups/{groupId}/members:
+    parameters:
+      - $ref: '#/components/parameters/DeviceGroupId'
+    get:
+      tags: [DeviceStrategy]
+      operationId: listDeviceGroupMembers
+      summary: 查询设备组当前成员
+      responses:
+        '200':
+          description: 当前成员列表。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DeviceGroupMember' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+    put:
+      tags: [DeviceStrategy]
+      operationId: replaceDeviceGroupMembers
+      summary: 差异化替换设备组当前成员
+      description: 新增成员前执行策略冲突预检，历史成员关系以生效区间保留。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceGroupMembersRequest' }
+      responses:
+        '200':
+          description: 成员差异摘要。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceGroupMembershipChange' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /device-groups/{groupId}/archive:
+    post:
+      tags: [DeviceStrategy]
+      operationId: archiveDeviceGroup
+      summary: 归档设备组并结束当前成员关系
+      parameters:
+        - $ref: '#/components/parameters/DeviceGroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ArchiveRequest' }
+      responses:
+        '204': { description: 设备组已归档。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /strategy-versions:
+    get:
+      tags: [DeviceStrategy]
+      operationId: listStrategyVersions
+      summary: 查询策略版本
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: strategyType
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/StrategyType' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/StrategyVersionStatus' }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: 最近的策略版本。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StrategyVersion' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [DeviceStrategy]
+      operationId: createStrategyDraft
+      summary: 创建白名单类型策略草稿
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StrategyDraftCreateRequest' }
+      responses:
+        '201':
+          description: 策略草稿已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyVersion' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /strategy-versions/{strategyVersionId}:
+    parameters:
+      - $ref: '#/components/parameters/StrategyVersionId'
+    get:
+      tags: [DeviceStrategy]
+      operationId: getStrategyVersion
+      summary: 查询单个策略版本
+      responses:
+        '200':
+          description: 策略版本详情。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyVersion' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+    put:
+      tags: [DeviceStrategy]
+      operationId: updateStrategyDraft
+      summary: 使用乐观锁修改策略草稿
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StrategyDraftUpdateRequest' }
+      responses:
+        '200':
+          description: 修改后的策略草稿。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyVersion' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /strategy-releases:
+    get:
+      tags: [DeviceStrategy]
+      operationId: listStrategyReleases
+      summary: 查询不可变策略发布历史
+      parameters:
+        - name: productId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: strategyType
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/StrategyType' }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '200':
+          description: 最近的策略发布历史。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/StrategyRelease' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [DeviceStrategy]
+      operationId: publishStrategy
+      summary: 冲突预检通过后原子发布策略
+      description: |
+        计算所有受影响设备的三级有效策略。同优先级设备组对同一字段给出不同值时，
+        返回 STRATEGY-409-001，策略版本、发布事实、审计和 Outbox 均不提交。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StrategyPublishRequest' }
+      responses:
+        '201':
+          description: 不可变策略发布已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyRelease' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /strategy-releases/{strategyReleaseId}:
+    get:
+      tags: [DeviceStrategy]
+      operationId: getStrategyRelease
+      summary: 查询单个不可变策略发布
+      parameters:
+        - $ref: '#/components/parameters/StrategyReleaseId'
+      responses:
+        '200':
+          description: 策略发布详情。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyRelease' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+  /strategy-releases/{strategyReleaseId}/rollback:
+    post:
+      tags: [DeviceStrategy]
+      operationId: rollbackStrategyRelease
+      summary: 复用历史版本创建更高序号的回滚发布
+      parameters:
+        - $ref: '#/components/parameters/StrategyReleaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StrategyRollbackRequest' }
+      responses:
+        '201':
+          description: 回滚发布已创建，历史记录未被修改。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StrategyRelease' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /devices/{deviceId}/effective-strategies/{strategyType}:
+    get:
+      tags: [DeviceStrategy]
+      operationId: getEffectiveDeviceStrategy
+      summary: 查询设备当前有效策略和逐字段来源
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - name: strategyType
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/StrategyType' }
+      responses:
+        '200':
+          description: 按产品默认、设备组优先级和单设备覆盖计算的有效值。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EffectiveStrategy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/StrategyNotFound' }
 components:
   securitySchemes:
     MineToken:
@@ -1315,6 +1657,24 @@ components:
       required: true
       description: 配置发布 UUID。
       schema: { type: string, format: uuid }
+    DeviceGroupId:
+      name: groupId
+      in: path
+      required: true
+      description: 设备组 UUID。
+      schema: { type: string, format: uuid }
+    StrategyVersionId:
+      name: strategyVersionId
+      in: path
+      required: true
+      description: 策略版本 UUID。
+      schema: { type: string, format: uuid }
+    StrategyReleaseId:
+      name: strategyReleaseId
+      in: path
+      required: true
+      description: 不可变策略发布 UUID。
+      schema: { type: string, format: uuid }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1344,6 +1704,259 @@ components:
         maximum: 100
         default: 20
   schemas:
+    DeviceGroupStatus:
+      type: string
+      enum: [ACTIVE, ARCHIVED]
+    DeviceGroup:
+      type: object
+      required:
+        - id
+        - productId
+        - groupKey
+        - name
+        - priority
+        - status
+        - createdAt
+        - updatedAt
+        - version
+        - memberCount
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        groupKey:
+          type: string
+          pattern: '^[a-z][a-z0-9-]{2,63}$'
+        name: { type: string, minLength: 1, maxLength: 128 }
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          description: 数值越大优先级越高；同级同字段异值会触发冲突门禁。
+        status: { $ref: '#/components/schemas/DeviceGroupStatus' }
+        description: { type: [string, 'null'], maxLength: 500 }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+        memberCount: { type: integer, format: int64, minimum: 0 }
+    DeviceGroupPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceGroup' }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    DeviceGroupCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [productId, groupKey, name, priority]
+      properties:
+        productId: { type: string, format: uuid }
+        groupKey:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9-]{2,63}$'
+        name: { type: string, minLength: 1, maxLength: 128 }
+        priority: { type: integer, minimum: 0, maximum: 1000 }
+        description: { type: [string, 'null'], maxLength: 500 }
+    DeviceGroupUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, priority, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        priority: { type: integer, minimum: 0, maximum: 1000 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    DeviceGroupMember:
+      type: object
+      required: [id, deviceCode, name, status, effectiveFrom]
+      properties:
+        id: { type: string, format: uuid }
+        deviceCode: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        effectiveFrom: { type: string, format: date-time }
+    DeviceGroupMembersRequest:
+      type: object
+      additionalProperties: false
+      required: [deviceIds, version]
+      properties:
+        deviceIds:
+          type: array
+          maxItems: 5000
+          uniqueItems: true
+          items: { type: string, format: uuid }
+        version: { type: integer, format: int64, minimum: 0 }
+    DeviceGroupMembershipChange:
+      type: object
+      required: [groupId, addedDeviceIds, removedDeviceIds, memberCount, version]
+      properties:
+        groupId: { type: string, format: uuid }
+        addedDeviceIds:
+          type: array
+          items: { type: string, format: uuid }
+        removedDeviceIds:
+          type: array
+          items: { type: string, format: uuid }
+        memberCount: { type: integer, minimum: 0 }
+        version: { type: integer, format: int64, minimum: 0 }
+    StrategyType:
+      type: string
+      enum: [ONLINE_STATUS]
+    StrategyScopeType:
+      type: string
+      enum: [PRODUCT, GROUP, DEVICE]
+    StrategyVersionStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED]
+    OnlineStatusStrategyValues:
+      type: object
+      additionalProperties: false
+      required: [offlineThresholdSeconds]
+      properties:
+        offlineThresholdSeconds:
+          type: integer
+          minimum: 1
+          maximum: 604800
+          description: 无有效上行活动后判定设备离线的秒数。
+    StrategyVersion:
+      type: object
+      required:
+        - id
+        - productId
+        - strategyType
+        - versionNumber
+        - status
+        - values
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        strategyType: { $ref: '#/components/schemas/StrategyType' }
+        versionNumber: { type: integer, format: int64, minimum: 1 }
+        status: { $ref: '#/components/schemas/StrategyVersionStatus' }
+        values: { $ref: '#/components/schemas/OnlineStatusStrategyValues' }
+        contentHash:
+          type: [string, 'null']
+          pattern: '^sha256:[0-9a-f]{64}$'
+        description: { type: [string, 'null'], maxLength: 500 }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    StrategyDraftCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [productId, strategyType, values]
+      properties:
+        productId: { type: string, format: uuid }
+        strategyType: { $ref: '#/components/schemas/StrategyType' }
+        values: { $ref: '#/components/schemas/OnlineStatusStrategyValues' }
+        description: { type: [string, 'null'], maxLength: 500 }
+    StrategyDraftUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [values, version]
+      properties:
+        values: { $ref: '#/components/schemas/OnlineStatusStrategyValues' }
+        description: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    StrategyPublishRequest:
+      type: object
+      additionalProperties: false
+      required: [strategyVersionId, scopeType, scopeId, reason]
+      properties:
+        strategyVersionId: { type: string, format: uuid }
+        scopeType: { $ref: '#/components/schemas/StrategyScopeType' }
+        scopeId:
+          type: string
+          format: uuid
+          description: 产品、设备组或设备标识，必须与策略版本所属产品兼容。
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    StrategyRollbackRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    StrategyRelease:
+      type: object
+      required:
+        - id
+        - productId
+        - strategyVersionId
+        - strategyType
+        - releaseSequence
+        - scopeType
+        - scopeId
+        - action
+        - contentHash
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        strategyVersionId: { type: string, format: uuid }
+        strategyType: { $ref: '#/components/schemas/StrategyType' }
+        releaseSequence: { type: integer, format: int64, minimum: 1 }
+        scopeType: { $ref: '#/components/schemas/StrategyScopeType' }
+        scopeId: { type: string, format: uuid }
+        groupPriority:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 1000
+          description: 发布时的设备组优先级审计快照，非设备组范围为空。
+        action: { type: string, enum: [PUBLISH, ROLLBACK] }
+        rollbackOfReleaseId: { type: [string, 'null'], format: uuid }
+        contentHash:
+          type: string
+          pattern: '^sha256:[0-9a-f]{64}$'
+    StrategyValueSource:
+      type: object
+      required: [scopeType, scopeId, releaseId]
+      properties:
+        scopeType: { $ref: '#/components/schemas/StrategyScopeType' }
+        scopeId: { type: string, format: uuid }
+        releaseId: { type: string, format: uuid }
+        groupPriority: { type: [integer, 'null'], minimum: 0, maximum: 1000 }
+    StrategyConflict:
+      type: object
+      required: [field, groupPriority, groupIds]
+      properties:
+        field: { type: string }
+        groupPriority: { type: integer, minimum: 0, maximum: 1000 }
+        groupIds:
+          type: array
+          minItems: 2
+          items: { type: string, format: uuid }
+    EffectiveStrategy:
+      type: object
+      required: [deviceId, productId, strategyType, valid, values, sources, conflicts]
+      properties:
+        deviceId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        strategyType: { $ref: '#/components/schemas/StrategyType' }
+        valid: { type: boolean }
+        values:
+          type: object
+          additionalProperties: false
+          properties:
+            offlineThresholdSeconds:
+              type: integer
+              minimum: 1
+              maximum: 604800
+        sources:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/StrategyValueSource' }
+        conflicts:
+          type: array
+          items: { $ref: '#/components/schemas/StrategyConflict' }
+        contentHash:
+          type: [string, 'null']
+          pattern: '^sha256:[0-9a-f]{64}$'
     SystemOperationStatus:
       type: string
       enum: [UP, DEGRADED, DOWN, UNKNOWN]
@@ -2412,14 +3025,20 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
+    StrategyNotFound:
+      description: 设备组、策略版本、策略发布或目标设备不存在，错误码前缀为 STRATEGY-404。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
     Conflict:
-      description: 编码重复、状态冲突或乐观锁版本冲突。
+      description: 编码重复、状态冲突、策略同级异值、幂等语义或乐观锁版本冲突。
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
     UnprocessableEntity:
-      description: 命令模板、目标设备、参数或时间约束不允许下发。
+      description: 命令、目标设备、策略类型、字段值或作用范围不符合业务约束。
       content:
         application/json:
           schema:

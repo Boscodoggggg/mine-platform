@@ -33,13 +33,15 @@ class DeviceGroupServiceTest {
 
     private StrategyScopeMapper mapper;
     private OperationAuditService auditService;
+    private StrategyConflictGuard conflictGuard;
     private DeviceGroupService service;
 
     @BeforeEach
     void 创建设备组服务测试环境() {
         mapper = mock(StrategyScopeMapper.class);
         auditService = mock(OperationAuditService.class);
-        service = new DeviceGroupService(mapper, auditService);
+        conflictGuard = mock(StrategyConflictGuard.class);
+        service = new DeviceGroupService(mapper, auditService, conflictGuard);
     }
 
     @Test
@@ -88,6 +90,20 @@ class DeviceGroupServiceTest {
     }
 
     @Test
+    void 应能按资源地址查询单个设备组() {
+        UUID productId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        when(mapper.findGroupById(groupId)).thenReturn(Optional.of(group(
+                groupId, productId, "haul-team", "运输一组", 800, "ACTIVE", 0
+        )));
+
+        assertThat(service.findGroup(groupId)).satisfies(group -> {
+            assertThat(group.id()).isEqualTo(groupId);
+            assertThat(group.productId()).isEqualTo(productId);
+        });
+    }
+
+    @Test
     void 重复设备组编码应映射为独立冲突错误码() {
         UUID productId = UUID.randomUUID();
         when(mapper.isActiveProduct(productId)).thenReturn(true);
@@ -122,9 +138,11 @@ class DeviceGroupServiceTest {
         UUID retainedDeviceId = UUID.randomUUID();
         UUID removedDeviceId = UUID.randomUUID();
         UUID addedDeviceId = UUID.randomUUID();
-        when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(group(
+        StrategyScopeMapper.DeviceGroupRecord group = group(
                 groupId, productId, "haul-team", "运输一组", 800, "ACTIVE", 2
-        )));
+        );
+        when(mapper.findGroupById(groupId)).thenReturn(Optional.of(group));
+        when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(group));
         when(mapper.findActiveMemberIds(groupId)).thenReturn(List.of(retainedDeviceId, removedDeviceId));
         when(mapper.countEligibleDevices(productId, List.of(retainedDeviceId, addedDeviceId))).thenReturn(2L);
         when(mapper.touchGroup(groupId, 2, null)).thenReturn(1);
@@ -143,6 +161,7 @@ class DeviceGroupServiceTest {
         assertThat(insertsCaptor.getValue())
                 .extracting(StrategyScopeMapper.MembershipInsert::deviceId)
                 .containsExactly(addedDeviceId);
+        verify(conflictGuard).verifyMembershipChange(group, List.of(addedDeviceId));
         verify(mapper).touchGroup(groupId, 2, null);
     }
 
@@ -152,9 +171,11 @@ class DeviceGroupServiceTest {
         UUID groupId = UUID.randomUUID();
         UUID validDeviceId = UUID.randomUUID();
         UUID foreignDeviceId = UUID.randomUUID();
-        when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(group(
+        StrategyScopeMapper.DeviceGroupRecord group = group(
                 groupId, productId, "haul-team", "运输一组", 800, "ACTIVE", 0
-        )));
+        );
+        when(mapper.findGroupById(groupId)).thenReturn(Optional.of(group));
+        when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(group));
         when(mapper.findActiveMemberIds(groupId)).thenReturn(List.of());
         when(mapper.countEligibleDevices(productId, List.of(validDeviceId, foreignDeviceId))).thenReturn(1L);
 
@@ -173,9 +194,11 @@ class DeviceGroupServiceTest {
     void 归档时应先结束成员关系再归档设备组() {
         UUID productId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
-        when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(group(
+        StrategyScopeMapper.DeviceGroupRecord group = group(
                 groupId, productId, "haul-team", "运输一组", 800, "ACTIVE", 4
-        )));
+        );
+        when(mapper.findGroupById(groupId)).thenReturn(Optional.of(group));
+        when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(group));
         when(mapper.archiveGroup(groupId, 4, null)).thenReturn(1);
 
         service.archiveGroup(groupId, 4);
@@ -189,15 +212,19 @@ class DeviceGroupServiceTest {
     void 更新时乐观锁冲突应返回稳定错误码() {
         UUID productId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
-        when(mapper.findGroupById(groupId)).thenReturn(Optional.of(group(
+        StrategyScopeMapper.DeviceGroupRecord group = group(
                 groupId, productId, "haul-team", "运输一组", 800, "ACTIVE", 3
-        )));
+        );
+        when(mapper.findGroupById(groupId)).thenReturn(Optional.of(group));
+        when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(group));
+        when(mapper.findActiveMemberIds(groupId)).thenReturn(List.of());
         when(mapper.updateGroup(groupId, "运输二组", 900, null, 3, null)).thenReturn(0);
 
         assertThatThrownBy(() -> service.updateGroup(groupId,
                 new DeviceGroupService.UpdateGroupCommand("运输二组", 900, null, 3)))
                 .isInstanceOfSatisfying(MineException.class, exception ->
                         assertThat(exception.errorCode().code()).isEqualTo("STRATEGY-409-003"));
+        verify(conflictGuard).verifyPriorityChange(group, 900, List.of());
     }
 
     private StrategyScopeMapper.DeviceGroupRecord group(

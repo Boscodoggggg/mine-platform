@@ -75,6 +75,18 @@ public class DeviceGroupController {
     }
 
     /**
+     * 查询单个设备组详情。
+     *
+     * @param groupId 设备组标识
+     * @return 设备组详情
+     */
+    @GetMapping("/{id}")
+    @SaCheckPermission("device:group:view")
+    public DeviceGroupService.DeviceGroupView findGroup(@PathVariable("id") UUID groupId) {
+        return service.findGroup(groupId);
+    }
+
+    /**
      * 查询设备组当前成员。
      *
      * @param groupId 设备组标识

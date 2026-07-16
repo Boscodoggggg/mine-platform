@@ -827,10 +827,383 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/device-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询产品内设备组 */
+        get: operations["listDeviceGroups"];
+        put?: never;
+        /** 创建设备组 */
+        post: operations["createDeviceGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/device-groups/{groupId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备组 UUID。 */
+                groupId: components["parameters"]["DeviceGroupId"];
+            };
+            cookie?: never;
+        };
+        /** 查询设备组详情 */
+        get: operations["getDeviceGroup"];
+        /**
+         * 修改设备组和策略优先级
+         * @description 优先级变化会对当前成员执行策略冲突预检，存在同级异值时整笔拒绝。
+         */
+        put: operations["updateDeviceGroup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/device-groups/{groupId}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备组 UUID。 */
+                groupId: components["parameters"]["DeviceGroupId"];
+            };
+            cookie?: never;
+        };
+        /** 查询设备组当前成员 */
+        get: operations["listDeviceGroupMembers"];
+        /**
+         * 差异化替换设备组当前成员
+         * @description 新增成员前执行策略冲突预检，历史成员关系以生效区间保留。
+         */
+        put: operations["replaceDeviceGroupMembers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/device-groups/{groupId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档设备组并结束当前成员关系 */
+        post: operations["archiveDeviceGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/strategy-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询策略版本 */
+        get: operations["listStrategyVersions"];
+        put?: never;
+        /** 创建白名单类型策略草稿 */
+        post: operations["createStrategyDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/strategy-versions/{strategyVersionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 策略版本 UUID。 */
+                strategyVersionId: components["parameters"]["StrategyVersionId"];
+            };
+            cookie?: never;
+        };
+        /** 查询单个策略版本 */
+        get: operations["getStrategyVersion"];
+        /** 使用乐观锁修改策略草稿 */
+        put: operations["updateStrategyDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/strategy-releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询不可变策略发布历史 */
+        get: operations["listStrategyReleases"];
+        put?: never;
+        /**
+         * 冲突预检通过后原子发布策略
+         * @description 计算所有受影响设备的三级有效策略。同优先级设备组对同一字段给出不同值时，
+         *     返回 STRATEGY-409-001，策略版本、发布事实、审计和 Outbox 均不提交。
+         */
+        post: operations["publishStrategy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/strategy-releases/{strategyReleaseId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询单个不可变策略发布 */
+        get: operations["getStrategyRelease"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/strategy-releases/{strategyReleaseId}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 复用历史版本创建更高序号的回滚发布 */
+        post: operations["rollbackStrategyRelease"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{deviceId}/effective-strategies/{strategyType}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询设备当前有效策略和逐字段来源 */
+        get: operations["getEffectiveDeviceStrategy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        DeviceGroupStatus: "ACTIVE" | "ARCHIVED";
+        DeviceGroup: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            groupKey: string;
+            name: string;
+            /** @description 数值越大优先级越高；同级同字段异值会触发冲突门禁。 */
+            priority: number;
+            status: components["schemas"]["DeviceGroupStatus"];
+            description?: string | null;
+            /** Format: date-time */
+            archivedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: int64 */
+            memberCount: number;
+        };
+        DeviceGroupPage: {
+            items: components["schemas"]["DeviceGroup"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        DeviceGroupCreateRequest: {
+            /** Format: uuid */
+            productId: string;
+            groupKey: string;
+            name: string;
+            priority: number;
+            description?: string | null;
+        };
+        DeviceGroupUpdateRequest: {
+            name: string;
+            priority: number;
+            description?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        DeviceGroupMember: {
+            /** Format: uuid */
+            id: string;
+            deviceCode: string;
+            name: string;
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            /** Format: date-time */
+            effectiveFrom: string;
+        };
+        DeviceGroupMembersRequest: {
+            deviceIds: string[];
+            /** Format: int64 */
+            version: number;
+        };
+        DeviceGroupMembershipChange: {
+            /** Format: uuid */
+            groupId: string;
+            addedDeviceIds: string[];
+            removedDeviceIds: string[];
+            memberCount: number;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @enum {string} */
+        StrategyType: "ONLINE_STATUS";
+        /** @enum {string} */
+        StrategyScopeType: "PRODUCT" | "GROUP" | "DEVICE";
+        /** @enum {string} */
+        StrategyVersionStatus: "DRAFT" | "PUBLISHED";
+        OnlineStatusStrategyValues: {
+            /** @description 无有效上行活动后判定设备离线的秒数。 */
+            offlineThresholdSeconds: number;
+        };
+        StrategyVersion: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            strategyType: components["schemas"]["StrategyType"];
+            /** Format: int64 */
+            versionNumber: number;
+            status: components["schemas"]["StrategyVersionStatus"];
+            values: components["schemas"]["OnlineStatusStrategyValues"];
+            contentHash?: string | null;
+            description?: string | null;
+            /** Format: date-time */
+            publishedAt?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        StrategyDraftCreateRequest: {
+            /** Format: uuid */
+            productId: string;
+            strategyType: components["schemas"]["StrategyType"];
+            values: components["schemas"]["OnlineStatusStrategyValues"];
+            description?: string | null;
+        };
+        StrategyDraftUpdateRequest: {
+            values: components["schemas"]["OnlineStatusStrategyValues"];
+            description?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        StrategyPublishRequest: {
+            /** Format: uuid */
+            strategyVersionId: string;
+            scopeType: components["schemas"]["StrategyScopeType"];
+            /**
+             * Format: uuid
+             * @description 产品、设备组或设备标识，必须与策略版本所属产品兼容。
+             */
+            scopeId: string;
+            reason: string;
+        };
+        StrategyRollbackRequest: {
+            reason: string;
+        };
+        StrategyRelease: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            /** Format: uuid */
+            strategyVersionId: string;
+            strategyType: components["schemas"]["StrategyType"];
+            /** Format: int64 */
+            releaseSequence: number;
+            scopeType: components["schemas"]["StrategyScopeType"];
+            /** Format: uuid */
+            scopeId: string;
+            /** @description 发布时的设备组优先级审计快照，非设备组范围为空。 */
+            groupPriority?: number | null;
+            /** @enum {string} */
+            action: "PUBLISH" | "ROLLBACK";
+            /** Format: uuid */
+            rollbackOfReleaseId?: string | null;
+            contentHash: string;
+        };
+        StrategyValueSource: {
+            scopeType: components["schemas"]["StrategyScopeType"];
+            /** Format: uuid */
+            scopeId: string;
+            /** Format: uuid */
+            releaseId: string;
+            groupPriority?: number | null;
+        };
+        StrategyConflict: {
+            field: string;
+            groupPriority: number;
+            groupIds: string[];
+        };
+        EffectiveStrategy: {
+            /** Format: uuid */
+            deviceId: string;
+            /** Format: uuid */
+            productId: string;
+            strategyType: components["schemas"]["StrategyType"];
+            valid: boolean;
+            values: {
+                offlineThresholdSeconds?: number;
+            };
+            sources: {
+                [key: string]: components["schemas"]["StrategyValueSource"];
+            };
+            conflicts: components["schemas"]["StrategyConflict"][];
+            contentHash?: string | null;
+        };
         /** @enum {string} */
         SystemOperationStatus: "UP" | "DEGRADED" | "DOWN" | "UNKNOWN";
         /** @enum {string} */
@@ -1726,7 +2099,16 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
-        /** @description 编码重复、状态冲突或乐观锁版本冲突。 */
+        /** @description 设备组、策略版本、策略发布或目标设备不存在，错误码前缀为 STRATEGY-404。 */
+        StrategyNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 编码重复、状态冲突、策略同级异值、幂等语义或乐观锁版本冲突。 */
         Conflict: {
             headers: {
                 [name: string]: unknown;
@@ -1735,7 +2117,7 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
-        /** @description 命令模板、目标设备、参数或时间约束不允许下发。 */
+        /** @description 命令、目标设备、策略类型、字段值或作用范围不符合业务约束。 */
         UnprocessableEntity: {
             headers: {
                 [name: string]: unknown;
@@ -1764,6 +2146,12 @@ export interface components {
         ProtocolVersionId: string;
         /** @description 配置发布 UUID。 */
         ReleaseId: string;
+        /** @description 设备组 UUID。 */
+        DeviceGroupId: string;
+        /** @description 策略版本 UUID。 */
+        StrategyVersionId: string;
+        /** @description 不可变策略发布 UUID。 */
+        StrategyReleaseId: string;
         /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
         IdempotencyKey: string;
         Keyword: string;
@@ -3346,6 +3734,472 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["DeviceNotFound"];
             503: components["responses"]["TelemetryBusy"];
+        };
+    };
+    listDeviceGroups: {
+        parameters: {
+            query: {
+                productId: string;
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["DeviceGroupStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设备组分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceGroupPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createDeviceGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceGroupCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 设备组已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceGroup"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getDeviceGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备组 UUID。 */
+                groupId: components["parameters"]["DeviceGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设备组详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceGroup"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+        };
+    };
+    updateDeviceGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备组 UUID。 */
+                groupId: components["parameters"]["DeviceGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceGroupUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的设备组。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceGroup"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listDeviceGroupMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备组 UUID。 */
+                groupId: components["parameters"]["DeviceGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前成员列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceGroupMember"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+        };
+    };
+    replaceDeviceGroupMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备组 UUID。 */
+                groupId: components["parameters"]["DeviceGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceGroupMembersRequest"];
+            };
+        };
+        responses: {
+            /** @description 成员差异摘要。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceGroupMembershipChange"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    archiveDeviceGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备组 UUID。 */
+                groupId: components["parameters"]["DeviceGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 设备组已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listStrategyVersions: {
+        parameters: {
+            query: {
+                productId: string;
+                strategyType: components["schemas"]["StrategyType"];
+                status?: components["schemas"]["StrategyVersionStatus"];
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近的策略版本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyVersion"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createStrategyDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrategyDraftCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 策略草稿已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyVersion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getStrategyVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 策略版本 UUID。 */
+                strategyVersionId: components["parameters"]["StrategyVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 策略版本详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyVersion"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+        };
+    };
+    updateStrategyDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 策略版本 UUID。 */
+                strategyVersionId: components["parameters"]["StrategyVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrategyDraftUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的策略草稿。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyVersion"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listStrategyReleases: {
+        parameters: {
+            query: {
+                productId: string;
+                strategyType: components["schemas"]["StrategyType"];
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近的策略发布历史。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyRelease"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    publishStrategy: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrategyPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description 不可变策略发布已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyRelease"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getStrategyRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 不可变策略发布 UUID。 */
+                strategyReleaseId: components["parameters"]["StrategyReleaseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 策略发布详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyRelease"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+        };
+    };
+    rollbackStrategyRelease: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 不可变策略发布 UUID。 */
+                strategyReleaseId: components["parameters"]["StrategyReleaseId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrategyRollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description 回滚发布已创建，历史记录未被修改。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyRelease"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getEffectiveDeviceStrategy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+                strategyType: components["schemas"]["StrategyType"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按产品默认、设备组优先级和单设备覆盖计算的有效值。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EffectiveStrategy"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["StrategyNotFound"];
         };
     };
 }

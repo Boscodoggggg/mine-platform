@@ -83,6 +83,18 @@ class DeviceGroupControllerTest {
     }
 
     @Test
+    void 设备组资源地址应支持详情查询() throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        when(service.findGroup(groupId)).thenReturn(group(groupId, productId));
+
+        mockMvc.perform(get("/api/v1/device-groups/{id}", groupId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(groupId.toString()))
+                .andExpect(jsonPath("$.productId").value(productId.toString()));
+    }
+
+    @Test
     void 替换成员应返回差异并拒绝重复设备标识() throws Exception {
         UUID groupId = UUID.randomUUID();
         UUID first = UUID.randomUUID();
@@ -127,6 +139,7 @@ class DeviceGroupControllerTest {
     void 每个设备组入口都应声明明确权限() throws Exception {
         assertPermission("findGroups", "device:group:view",
                 UUID.class, String.class, String.class, int.class, int.class);
+        assertPermission("findGroup", "device:group:view", UUID.class);
         assertPermission("findMembers", "device:group:view", UUID.class);
         assertPermission("createGroup", "device:group:edit", DeviceGroupController.CreateRequest.class);
         assertPermission("updateGroup", "device:group:edit",

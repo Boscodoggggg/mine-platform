@@ -18,6 +18,15 @@ import java.util.UUID;
 public interface StrategyScopeMapper {
 
     /**
+     * 锁定产品行，统一设备组与策略发布的并发顺序。
+     *
+     * @param productId 产品标识
+     * @return 被锁定的产品标识
+     */
+    @Select("SELECT id FROM dev_product WHERE id = #{productId} FOR UPDATE")
+    UUID lockProduct(@Param("productId") UUID productId);
+
+    /**
      * 判断产品是否存在且处于启用状态。
      *
      * @param productId 产品标识

@@ -42,17 +42,24 @@ public class DeviceGroupService {
 
     private final StrategyScopeMapper mapper;
     private final OperationAuditService auditService;
+    private final StrategyConflictGuard conflictGuard;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
      * 创建设备组服务。
      *
      * @param mapper       策略作用域数据接口
-     * @param auditService 操作审计服务
+     * @param auditService  操作审计服务
+     * @param conflictGuard 策略冲突门禁
      */
-    public DeviceGroupService(StrategyScopeMapper mapper, OperationAuditService auditService) {
+    public DeviceGroupService(
+            StrategyScopeMapper mapper,
+            OperationAuditService auditService,
+            StrategyConflictGuard conflictGuard
+    ) {
         this.mapper = mapper;
         this.auditService = auditService;
+        this.conflictGuard = conflictGuard;
     }
 
     /**
@@ -81,6 +88,17 @@ public class DeviceGroupService {
                 : mapper.findGroups(productId, normalizedKeyword, normalizedStatus, (page - 1) * size, size)
                 .stream().map(DeviceGroupService::toView).toList();
         return new PageResponse<>(items, page, size, total);
+    }
+
+    /**
+     * 按资源标识查询设备组详情。
+     *
+     * @param groupId 设备组标识
+     * @return 设备组详情
+     */
+    @Transactional(readOnly = true)
+    public DeviceGroupView findGroup(UUID groupId) {
+        return toView(requireGroup(groupId));
     }
 
     /**
@@ -144,7 +162,14 @@ public class DeviceGroupService {
      */
     @Transactional
     public DeviceGroupView updateGroup(UUID groupId, UpdateGroupCommand command) {
-        DeviceGroupView before = toView(requireActiveGroup(groupId));
+        StrategyScopeMapper.DeviceGroupRecord initial = requireActiveGroup(groupId);
+        mapper.lockProduct(initial.productId());
+        StrategyScopeMapper.DeviceGroupRecord locked = requireActiveGroupForUpdate(groupId);
+        DeviceGroupView before = toView(locked);
+        if (locked.priority() != command.priority()) {
+            conflictGuard.verifyPriorityChange(
+                    locked, command.priority(), mapper.findActiveMemberIds(groupId));
+        }
         int affected = mapper.updateGroup(
                 groupId,
                 command.name().strip(),
@@ -174,6 +199,8 @@ public class DeviceGroupService {
      */
     @Transactional
     public MembershipChange replaceMembers(UUID groupId, List<UUID> deviceIds, long version) {
+        StrategyScopeMapper.DeviceGroupRecord initial = requireActiveGroup(groupId);
+        mapper.lockProduct(initial.productId());
         StrategyScopeMapper.DeviceGroupRecord group = requireActiveGroupForUpdate(groupId);
         if (group.version() != version) {
             throw versionConflict(groupId);
@@ -199,6 +226,8 @@ public class DeviceGroupService {
         if (added.isEmpty() && removed.isEmpty()) {
             return new MembershipChange(groupId, List.of(), List.of(), current.size(), version);
         }
+
+        conflictGuard.verifyMembershipChange(group, added);
 
         UUID operatorId = currentOperatorId();
         if (!removed.isEmpty()) {
@@ -237,6 +266,8 @@ public class DeviceGroupService {
      */
     @Transactional
     public void archiveGroup(UUID groupId, long version) {
+        StrategyScopeMapper.DeviceGroupRecord initial = requireActiveGroup(groupId);
+        mapper.lockProduct(initial.productId());
         DeviceGroupView before = toView(requireActiveGroupForUpdate(groupId));
         if (before.version() != version) {
             throw versionConflict(groupId);
