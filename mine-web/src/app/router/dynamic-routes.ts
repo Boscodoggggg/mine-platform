@@ -17,9 +17,12 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'home-overview': () => import('@/views/home/index.vue'),
   'system-user-list': () => import('@/modules/system/pages/users/UserManagementPage.vue'),
   'system-role-list': () => import('@/modules/system/pages/roles/RoleManagementPage.vue'),
+  'system-menu-list': () => import('@/modules/system/pages/menus/MenuManagementPage.vue'),
+  'system-dictionary-list': () => import('@/modules/system/pages/dictionaries/DictionaryManagementPage.vue'),
   'system-operations-monitor': () => import('@/modules/system/pages/operations/SystemOperationsPage.vue'),
   'device-product-list': () => import('@/modules/device/pages/product-list/ProductListPage.vue'),
   'device-device-list': () => import('@/modules/device/pages/device-list/DeviceListPage.vue'),
+  'device-model-management': () => import('@/modules/device/pages/model-management/DeviceModelManagementPage.vue'),
   'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
   'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue')
 };
@@ -30,10 +33,13 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/system': 'mine.menu.system',
   '/system/users': 'mine.menu.users',
   '/system/roles': 'mine.menu.roles',
+  '/system/menus': 'mine.menu.menus',
+  '/system/dictionaries': 'mine.menu.dictionaries',
   '/system/operations': 'mine.menu.operations',
   '/device': 'mine.menu.device',
   '/device/products': 'mine.menu.products',
   '/device/devices': 'mine.menu.devices',
+  '/device/models': 'mine.menu.models',
   '/device/monitor': 'mine.menu.monitor',
   '/command': 'mine.menu.command',
   '/command/center': 'mine.menu.commandCenter'
@@ -42,9 +48,12 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'home-overview': 'mine.menu.overview',
   'system-user-list': 'mine.menu.users',
   'system-role-list': 'mine.menu.roles',
+  'system-menu-list': 'mine.menu.menus',
+  'system-dictionary-list': 'mine.menu.dictionaries',
   'system-operations-monitor': 'mine.menu.operations',
   'device-product-list': 'mine.menu.products',
   'device-device-list': 'mine.menu.devices',
+  'device-model-management': 'mine.menu.models',
   'device-monitor': 'mine.menu.monitor',
   'command-center': 'mine.menu.commandCenter'
 };
@@ -142,10 +151,19 @@ function createMenu(node: NavigationMenuNode, children?: App.Global.Menu[]): App
 }
 
 function resolveNavigationI18nKey(node: NavigationMenuNode): App.I18n.I18nKey | undefined {
+  if (node.i18nKey && supportedI18nKeys.has(node.i18nKey)) {
+    return node.i18nKey as App.I18n.I18nKey;
+  }
   if (node.path && navigationI18nKeyByPath[node.path]) return navigationI18nKeyByPath[node.path];
   if (node.componentKey) return navigationI18nKeyByComponent[node.componentKey];
   return undefined;
 }
+
+const supportedI18nKeys = new Set<string>(
+  [...Object.values(navigationI18nKeyByPath), ...Object.values(navigationI18nKeyByComponent)].filter(
+    (key): key is App.I18n.I18nKey => Boolean(key)
+  )
+);
 
 function visitNodes(nodes: NavigationMenuNode[], visitor: (node: NavigationMenuNode) => void) {
   nodes.forEach(node => {

@@ -31,7 +31,7 @@ public enum CommandStatus {
 
     private static final Map<CommandStatus, Set<CommandStatus>> TRANSITIONS = Map.of(
             CREATED, EnumSet.of(QUEUED, CANCELLED),
-            QUEUED, EnumSet.of(SENT, EXPIRED),
+            QUEUED, EnumSet.of(SENT, EXPIRED, CANCELLED),
             SENT, EnumSet.of(DEVICE_RECEIVED, TIMEOUT),
             DEVICE_RECEIVED, EnumSet.of(SUCCEEDED, REFUSED, FAILED, TIMEOUT)
     );

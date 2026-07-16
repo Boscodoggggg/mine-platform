@@ -16,6 +16,8 @@ plans/ 是面向 Codex 的任务执行手册。执行任何计划前：
 |---|---|
 | [2026-07-14-phase-0-foundation.md](2026-07-14-phase-0-foundation.md) | 创建可登录、可部署、可观测的工程底座 |
 | [2026-07-14-phase-1-device-loop.md](2026-07-14-phase-1-device-loop.md) | 打通首个 MQTT 设备上下行闭环 |
+| [2026-07-16-management-model-command-design.md](2026-07-16-management-model-command-design.md) | 菜单、通用字典、设备字段映射与生产命令安全边界 |
+| [2026-07-16-management-model-command-implementation.md](2026-07-16-management-model-command-implementation.md) | 在线配置与命令中心分阶段实施和交付状态 |
 
 阶段 2–4 的架构范围和退出标准已经在 12-roadmap-and-codex-workflow.md 确定。只有阶段 1 的实际代码、协议样本和性能数据出现后，再生成对应细粒度计划；否则现在写具体类名和 SQL 容易变成伪精确。
 

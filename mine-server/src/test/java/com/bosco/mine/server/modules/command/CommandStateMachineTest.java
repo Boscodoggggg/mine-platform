@@ -22,6 +22,7 @@ class CommandStateMachineTest {
             "CREATED->CANCELLED",
             "QUEUED->SENT",
             "QUEUED->EXPIRED",
+            "QUEUED->CANCELLED",
             "SENT->DEVICE_RECEIVED",
             "SENT->TIMEOUT",
             "DEVICE_RECEIVED->SUCCEEDED",

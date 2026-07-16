@@ -122,6 +122,7 @@ public final class NavigationService {
                 record.icon(),
                 record.sortOrder(),
                 record.visible(),
+                record.i18nKey(),
                 node.children.stream().map(this::freeze).toList()
         );
     }
@@ -163,6 +164,7 @@ public final class NavigationService {
      * @param icon         图标键
      * @param sortOrder    同级顺序
      * @param visible      是否显示在菜单
+     * @param i18nKey      国际化资源键
      * @param children     子节点
      */
     public record MenuNode(
@@ -176,6 +178,7 @@ public final class NavigationService {
             String icon,
             int sortOrder,
             boolean visible,
+            String i18nKey,
             List<MenuNode> children
     ) {
     }

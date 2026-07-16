@@ -14,8 +14,12 @@ tags:
     description: 调度员和值班人员生产运行总览
   - name: SystemOperations
     description: 系统管理员按需运行状态检查
+  - name: SystemConfiguration
+    description: 菜单、权限节点和通用字典在线管理
   - name: DeviceRegistry
     description: 产品和设备台账管理
+  - name: DeviceModel
+    description: 物模型字段和厂商协议映射版本管理
   - name: DeviceTelemetry
     description: 设备最新值与数值遥测历史
   - name: CommandCenter
@@ -52,6 +56,410 @@ paths:
               schema: { $ref: '#/components/schemas/SystemOperationsOverview' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /system/menus/tree:
+    get:
+      tags: [SystemConfiguration]
+      operationId: getManagedMenuTree
+      summary: 查询菜单与按钮权限树
+      responses:
+        '200':
+          description: 完整菜单树，供菜单维护和角色授权复用。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ManagedMenuNode' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /system/menus/component-options:
+    get:
+      tags: [SystemConfiguration]
+      operationId: listMenuComponentOptions
+      summary: 查询允许配置的前端页面组件
+      responses:
+        '200':
+          description: 编译期注册的页面组件白名单。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MenuComponentOption' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /system/menus:
+    post:
+      tags: [SystemConfiguration]
+      operationId: createManagedMenu
+      summary: 创建目录、页面或按钮权限节点
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuSaveRequest' }
+      responses:
+        '201':
+          description: 菜单节点已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManagedMenuNode' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /system/menus/{menuId}:
+    parameters:
+      - name: menuId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [SystemConfiguration]
+      operationId: updateManagedMenu
+      summary: 修改菜单节点
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MenuSaveRequest' }
+      responses:
+        '200':
+          description: 修改后的菜单节点。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ManagedMenuNode' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [SystemConfiguration]
+      operationId: deleteManagedMenu
+      summary: 删除未被引用的非保护菜单节点
+      responses:
+        '204': { description: 菜单节点已删除。 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /system/dictionaries:
+    get:
+      tags: [SystemConfiguration]
+      operationId: listDictionaryTypes
+      summary: 查询全部通用字典类型
+      responses:
+        '200':
+          description: 字典类型列表。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DictionaryType' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [SystemConfiguration]
+      operationId: createDictionaryType
+      summary: 创建通用字典类型
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DictionaryTypeCreateRequest' }
+      responses:
+        '200':
+          description: 字典类型已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryType' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /system/dictionaries/{dictionaryTypeId}:
+    parameters:
+      - name: dictionaryTypeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [SystemConfiguration]
+      operationId: updateDictionaryType
+      summary: 修改字典类型的可变信息
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DictionaryTypeUpdateRequest' }
+      responses:
+        '200':
+          description: 修改后的字典类型。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryType' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [SystemConfiguration]
+      operationId: deleteDictionaryType
+      summary: 删除空的非内置字典类型
+      responses:
+        '204': { description: 字典类型已删除。 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /system/dictionaries/{dictionaryTypeId}/items:
+    parameters:
+      - name: dictionaryTypeId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [SystemConfiguration]
+      operationId: listDictionaryItems
+      summary: 查询字典类型下的全部数据项
+      responses:
+        '200':
+          description: 字典数据项列表。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DictionaryItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [SystemConfiguration]
+      operationId: createDictionaryItem
+      summary: 创建字典数据项
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DictionaryItemCreateRequest' }
+      responses:
+        '200':
+          description: 字典数据项已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /system/dictionaries/items/{dictionaryItemId}:
+    parameters:
+      - name: dictionaryItemId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      tags: [SystemConfiguration]
+      operationId: updateDictionaryItem
+      summary: 修改字典数据项的可变信息
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DictionaryItemUpdateRequest' }
+      responses:
+        '200':
+          description: 修改后的字典数据项。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DictionaryItem' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [SystemConfiguration]
+      operationId: deleteDictionaryItem
+      summary: 删除字典数据项
+      responses:
+        '204': { description: 字典数据项已删除。 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /dictionaries/{dictionaryCode}/items:
+    get:
+      tags: [SystemConfiguration]
+      operationId: listEnabledDictionaryItems
+      summary: 按稳定编码查询启用字典项
+      parameters:
+        - name: dictionaryCode
+          in: path
+          required: true
+          schema: { type: string, pattern: '^[a-z][a-z0-9_]{2,63}$' }
+      responses:
+        '200':
+          description: 可供业务页面使用的启用字典项。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DictionaryItem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /device-models/products/{productId}/configuration:
+    get:
+      tags: [DeviceModel]
+      operationId: getProductDeviceConfiguration
+      summary: 查询产品的物模型与协议映射版本
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      responses:
+        '200':
+          description: 产品全部物模型和协议映射版本。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDeviceConfiguration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ProductNotFound' }
+  /device-models/products/{productId}/model-drafts:
+    post:
+      tags: [DeviceModel]
+      operationId: createDeviceModelDraft
+      summary: 创建空物模型草稿版本
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DescriptionRequest' }
+      responses:
+        '200':
+          description: 新建的物模型草稿版本。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceModelVersion' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ProductNotFound' }
+  /device-models/model-versions/{modelVersionId}/fields:
+    put:
+      tags: [DeviceModel]
+      operationId: replaceDeviceModelFields
+      summary: 原子替换物模型草稿的全部字段
+      parameters:
+        - name: modelVersionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceModelFieldsRequest' }
+      responses:
+        '200':
+          description: 保存后的物模型字段。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DeviceModelField' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /device-models/model-versions/{modelVersionId}/publish:
+    post:
+      tags: [DeviceModel]
+      operationId: publishDeviceModelVersion
+      summary: 发布物模型草稿并退役旧发布版本
+      parameters:
+        - name: modelVersionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionRequest' }
+      responses:
+        '204': { description: 物模型版本已发布。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /device-models/products/{productId}/protocol-drafts:
+    post:
+      tags: [DeviceModel]
+      operationId: createProtocolMappingDraft
+      summary: 创建厂商协议字段映射草稿
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProtocolMappingDraftRequest' }
+      responses:
+        '200':
+          description: 新建的协议映射草稿版本。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProtocolMappingVersion' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/ProductNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /device-models/protocol-versions/{protocolVersionId}/fields:
+    put:
+      tags: [DeviceModel]
+      operationId: replaceProtocolMappingFields
+      summary: 原子替换协议草稿的全部字段映射
+      parameters:
+        - name: protocolVersionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProtocolMappingFieldsRequest' }
+      responses:
+        '200':
+          description: 保存后的协议字段映射。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProtocolMappingField' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /device-models/protocol-versions/{protocolVersionId}/publish:
+    post:
+      tags: [DeviceModel]
+      operationId: publishProtocolMappingVersion
+      summary: 发布协议映射草稿并退役旧发布版本
+      parameters:
+        - name: protocolVersionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionRequest' }
+      responses:
+        '204': { description: 协议映射版本已发布。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /command-templates:
     get:
       tags: [CommandCenter]
@@ -103,6 +511,9 @@ paths:
         - name: status
           in: query
           schema: { $ref: '#/components/schemas/CommandStatus' }
+        - name: templateKey
+          in: query
+          schema: { type: string, maxLength: 128 }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
       responses:
@@ -154,6 +565,34 @@ paths:
               schema: { $ref: '#/components/schemas/Command' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CommandNotFound' }
+  /commands/{commandId}/cancel:
+    post:
+      tags: [CommandCenter]
+      operationId: cancelCommand
+      summary: 取消尚未开始发送的排队命令
+      parameters:
+        - $ref: '#/components/parameters/CommandId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, reason]
+              properties:
+                version: { type: integer, format: int64, minimum: 0 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        '200':
+          description: 命令已取消。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Command' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
         '404': { $ref: '#/components/responses/CommandNotFound' }
   /products:
     get:
@@ -591,9 +1030,328 @@ components:
     CommandRiskLevel:
       type: string
       enum: [LOW, MEDIUM, HIGH]
+    ManagedMenuNode:
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - sortOrder
+        - visible
+        - status
+        - protectedNode
+        - version
+        - children
+      properties:
+        id: { type: string, format: uuid }
+        parentId: { type: [string, 'null'], format: uuid }
+        name: { type: string, maxLength: 128 }
+        type: { type: string, enum: [DIRECTORY, MENU, BUTTON] }
+        path: { type: [string, 'null'], maxLength: 255 }
+        componentKey: { type: [string, 'null'], maxLength: 128 }
+        permission: { type: [string, 'null'], maxLength: 128 }
+        icon: { type: [string, 'null'], maxLength: 128 }
+        sortOrder: { type: integer, minimum: 0 }
+        visible: { type: boolean }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        i18nKey: { type: [string, 'null'], maxLength: 255 }
+        protectedNode: { type: boolean }
+        version: { type: integer, format: int64, minimum: 0 }
+        children:
+          type: array
+          items: { $ref: '#/components/schemas/ManagedMenuNode' }
+    MenuComponentOption:
+      type: object
+      required: [key, name]
+      properties:
+        key: { type: string }
+        name: { type: string }
+    MenuSaveRequest:
+      type: object
+      required: [name, type, sortOrder, visible, status, version]
+      properties:
+        parentId: { type: [string, 'null'], format: uuid }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        type: { type: string, enum: [DIRECTORY, MENU, BUTTON] }
+        path: { type: [string, 'null'], maxLength: 255 }
+        componentKey: { type: [string, 'null'], maxLength: 128 }
+        permission: { type: [string, 'null'], maxLength: 128 }
+        icon: { type: [string, 'null'], maxLength: 128 }
+        sortOrder: { type: integer, minimum: 0 }
+        visible: { type: boolean }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        i18nKey: { type: [string, 'null'], maxLength: 255 }
+        version: { type: integer, format: int64, minimum: 0 }
+    DictionaryType:
+      type: object
+      required: [id, code, name, status, builtIn, version]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, pattern: '^[a-z][a-z0-9_]{2,63}$' }
+        name: { type: string, maxLength: 128 }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        description: { type: [string, 'null'], maxLength: 500 }
+        builtIn: { type: boolean }
+        version: { type: integer, format: int64, minimum: 0 }
+    DictionaryTypeCreateRequest:
+      type: object
+      required: [code, name, status]
+      properties:
+        code: { type: string, pattern: '^[a-z][a-z0-9_]{2,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        description: { type: [string, 'null'], maxLength: 500 }
+    DictionaryTypeUpdateRequest:
+      type: object
+      required: [name, status, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        description: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    DictionaryItem:
+      type: object
+      required:
+        - id
+        - typeId
+        - value
+        - labelZh
+        - semanticType
+        - sortOrder
+        - defaultItem
+        - status
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        typeId: { type: string, format: uuid }
+        value: { type: string, maxLength: 128 }
+        labelZh: { type: string, maxLength: 128 }
+        labelEn: { type: [string, 'null'], maxLength: 128 }
+        semanticType: { $ref: '#/components/schemas/SemanticType' }
+        sortOrder: { type: integer, minimum: 0 }
+        defaultItem: { type: boolean }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        version: { type: integer, format: int64, minimum: 0 }
+    DictionaryItemCreateRequest:
+      type: object
+      required: [value, labelZh, semanticType, sortOrder, defaultItem, status]
+      properties:
+        value: { type: string, minLength: 1, maxLength: 128 }
+        labelZh: { type: string, minLength: 1, maxLength: 128 }
+        labelEn: { type: [string, 'null'], maxLength: 128 }
+        semanticType: { $ref: '#/components/schemas/SemanticType' }
+        sortOrder: { type: integer, minimum: 0 }
+        defaultItem: { type: boolean }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+    DictionaryItemUpdateRequest:
+      type: object
+      required: [labelZh, semanticType, sortOrder, defaultItem, status, version]
+      properties:
+        labelZh: { type: string, minLength: 1, maxLength: 128 }
+        labelEn: { type: [string, 'null'], maxLength: 128 }
+        semanticType: { $ref: '#/components/schemas/SemanticType' }
+        sortOrder: { type: integer, minimum: 0 }
+        defaultItem: { type: boolean }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        version: { type: integer, format: int64, minimum: 0 }
+    SemanticType:
+      type: string
+      enum: [default, primary, info, success, warning, error]
+    ProductDeviceConfiguration:
+      type: object
+      required: [models, protocols]
+      properties:
+        models:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceModelVersionView' }
+        protocols:
+          type: array
+          items: { $ref: '#/components/schemas/ProtocolMappingVersionView' }
+    DeviceModelVersionView:
+      type: object
+      required: [version, fields]
+      properties:
+        version: { $ref: '#/components/schemas/DeviceModelVersion' }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceModelField' }
+    ProtocolMappingVersionView:
+      type: object
+      required: [version, fields]
+      properties:
+        version: { $ref: '#/components/schemas/ProtocolMappingVersion' }
+        fields:
+          type: array
+          items: { $ref: '#/components/schemas/ProtocolMappingField' }
+    DeviceModelVersion:
+      type: object
+      required: [id, productId, versionNumber, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        status: { $ref: '#/components/schemas/ConfigurationVersionStatus' }
+        description: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    DeviceModelField:
+      type: object
+      required:
+        - id
+        - modelVersionId
+        - identifier
+        - nameZh
+        - dataType
+        - accessMode
+        - requiredField
+        - sortOrder
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        modelVersionId: { type: string, format: uuid }
+        identifier: { type: string, pattern: '^[a-z][A-Za-z0-9_]{1,127}$' }
+        nameZh: { type: string, maxLength: 128 }
+        nameEn: { type: [string, 'null'], maxLength: 128 }
+        dataType:
+          type: string
+          enum: [INTEGER, DECIMAL, BOOLEAN, STRING, ENUM, DATETIME, GEO_POINT]
+        unit: { type: [string, 'null'], maxLength: 32 }
+        accessMode: { type: string, enum: [READ, WRITE, READ_WRITE] }
+        requiredField: { type: boolean }
+        minimumValue: { type: [number, 'null'] }
+        maximumValue: { type: [number, 'null'] }
+        decimalPlaces: { type: [integer, 'null'], minimum: 0 }
+        sortOrder: { type: integer, minimum: 0 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    DeviceModelFieldsRequest:
+      type: object
+      required: [fields]
+      properties:
+        fields:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { $ref: '#/components/schemas/DeviceModelFieldInput' }
+    DeviceModelFieldInput:
+      type: object
+      required: [identifier, nameZh, dataType, accessMode, requiredField, sortOrder]
+      properties:
+        identifier: { type: string, pattern: '^[a-z][A-Za-z0-9_]{1,127}$' }
+        nameZh: { type: string, minLength: 1, maxLength: 128 }
+        nameEn: { type: [string, 'null'], maxLength: 128 }
+        dataType:
+          type: string
+          enum: [INTEGER, DECIMAL, BOOLEAN, STRING, ENUM, DATETIME, GEO_POINT]
+        unit: { type: [string, 'null'], maxLength: 32 }
+        accessMode: { type: string, enum: [READ, WRITE, READ_WRITE] }
+        requiredField: { type: boolean }
+        minimumValue: { type: [number, 'null'] }
+        maximumValue: { type: [number, 'null'] }
+        decimalPlaces: { type: [integer, 'null'], minimum: 0 }
+        sortOrder: { type: integer, minimum: 0 }
+        description: { type: [string, 'null'], maxLength: 500 }
+    ProtocolMappingVersion:
+      type: object
+      required:
+        - id
+        - productId
+        - profileKey
+        - name
+        - protocolType
+        - messageType
+        - versionNumber
+        - status
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        profileKey: { type: string, pattern: '^[a-z][a-z0-9_-]{2,63}$' }
+        name: { type: string, maxLength: 128 }
+        protocolType: { type: string, enum: [MQTT_JSON, MQTT_BINARY, TCP_BINARY] }
+        messageType: { type: string, enum: [TELEMETRY, STATE, EVENT, COMMAND_REPLY] }
+        versionNumber: { type: integer, minimum: 1 }
+        status: { $ref: '#/components/schemas/ConfigurationVersionStatus' }
+        topicOrFrame: { type: [string, 'null'], maxLength: 255 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    ProtocolMappingField:
+      type: object
+      required:
+        - id
+        - mappingVersionId
+        - sourcePath
+        - sourceDataType
+        - targetIdentifier
+        - transformType
+        - requiredField
+        - sortOrder
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        mappingVersionId: { type: string, format: uuid }
+        sourcePath: { type: string, maxLength: 255 }
+        sourceDataType: { type: string, enum: [INTEGER, DECIMAL, BOOLEAN, STRING, BINARY, DATETIME] }
+        targetIdentifier: { type: string, pattern: '^[a-z][A-Za-z0-9_]{1,127}$' }
+        transformType: { type: string, enum: [NONE, SCALE, OFFSET, SCALE_OFFSET, ENUM, EXPRESSION] }
+        scaleFactor: { type: [number, 'null'] }
+        offsetValue: { type: [number, 'null'] }
+        expression: { type: [string, 'null'], maxLength: 1000 }
+        requiredField: { type: boolean }
+        sortOrder: { type: integer, minimum: 0 }
+        version: { type: integer, format: int64, minimum: 0 }
+    ProtocolMappingDraftRequest:
+      type: object
+      required: [profileKey, name, protocolType, messageType]
+      properties:
+        profileKey: { type: string, pattern: '^[a-z][a-z0-9_-]{2,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        protocolType: { type: string, enum: [MQTT_JSON, MQTT_BINARY, TCP_BINARY] }
+        messageType: { type: string, enum: [TELEMETRY, STATE, EVENT, COMMAND_REPLY] }
+        topicOrFrame: { type: [string, 'null'], maxLength: 255 }
+        description: { type: [string, 'null'], maxLength: 500 }
+    ProtocolMappingFieldsRequest:
+      type: object
+      required: [fields]
+      properties:
+        fields:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/ProtocolMappingFieldInput' }
+    ProtocolMappingFieldInput:
+      type: object
+      required:
+        - sourcePath
+        - sourceDataType
+        - targetIdentifier
+        - transformType
+        - requiredField
+        - sortOrder
+      properties:
+        sourcePath: { type: string, minLength: 1, maxLength: 255 }
+        sourceDataType: { type: string, enum: [INTEGER, DECIMAL, BOOLEAN, STRING, BINARY, DATETIME] }
+        targetIdentifier: { type: string, pattern: '^[a-z][A-Za-z0-9_]{1,127}$' }
+        transformType: { type: string, enum: [NONE, SCALE, OFFSET, SCALE_OFFSET, ENUM, EXPRESSION] }
+        scaleFactor: { type: [number, 'null'] }
+        offsetValue: { type: [number, 'null'] }
+        expression: { type: [string, 'null'], maxLength: 1000 }
+        requiredField: { type: boolean }
+        sortOrder: { type: integer, minimum: 0 }
+    ConfigurationVersionStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, RETIRED]
+    DescriptionRequest:
+      type: object
+      properties:
+        description: { type: [string, 'null'], maxLength: 500 }
+    VersionRequest:
+      type: object
+      required: [version]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
     CommandTemplate:
       type: object
-      required: [key, version, riskLevel, defaultTtlSeconds, defaultTimeoutSeconds, parameterSchema]
+      required: [key, version, riskLevel, defaultTtlSeconds, defaultTimeoutSeconds, parameterSchema, requiresReason]
       properties:
         key: { type: string, maxLength: 128 }
         version: { type: integer, minimum: 1 }
@@ -601,6 +1359,7 @@ components:
         defaultTtlSeconds: { type: integer, minimum: 1 }
         defaultTimeoutSeconds: { type: integer, minimum: 1 }
         parameterSchema: { type: object, additionalProperties: true }
+        requiresReason: { type: boolean }
     Command:
       type: object
       required: [id, deviceId, templateKey, templateVersion, parameters, riskLevel, status, ttlSeconds, timeoutSeconds, idempotencyKey, createdAt, updatedAt, queuedAt, expiresAt, version]
@@ -610,6 +1369,10 @@ components:
         templateKey: { type: string }
         templateVersion: { type: integer, minimum: 1 }
         parameters: { type: object, additionalProperties: true }
+        reason: { type: [string, 'null'], maxLength: 1000 }
+        workOrderNo: { type: [string, 'null'], maxLength: 128 }
+        cancelledBy: { type: [string, 'null'], format: uuid }
+        cancelReason: { type: [string, 'null'], maxLength: 500 }
         riskLevel: { $ref: '#/components/schemas/CommandRiskLevel' }
         status: { $ref: '#/components/schemas/CommandStatus' }
         ttlSeconds: { type: integer, minimum: 1 }
@@ -657,6 +1420,8 @@ components:
         deviceId: { type: string, format: uuid }
         templateKey: { type: string, minLength: 1, maxLength: 128 }
         parameters: { type: object, additionalProperties: true }
+        reason: { type: string, maxLength: 1000 }
+        workOrderNo: { type: string, maxLength: 128 }
         ttlSeconds: { type: integer, minimum: 1, maximum: 86400 }
         timeoutSeconds: { type: integer, minimum: 1, maximum: 86400 }
     ProductStatus:

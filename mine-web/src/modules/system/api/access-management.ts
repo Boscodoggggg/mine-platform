@@ -1,8 +1,9 @@
 import { request } from '@/api/client';
+import type { components } from '@/generated/mine-api';
 
 export type UserStatus = 'ENABLED' | 'DISABLED' | 'LOCKED';
 export type RoleStatus = 'ENABLED' | 'DISABLED';
-export type MenuNodeType = 'DIRECTORY' | 'MENU' | 'BUTTON';
+export type MenuNodeType = components['schemas']['ManagedMenuNode']['type'];
 
 export interface PageResponse<T> {
   items: T[];
@@ -36,20 +37,9 @@ export interface ManagedRole {
   menuIds: string[];
 }
 
-export interface ManagedMenuNode {
-  id: string;
-  parentId: string | null;
-  name: string;
-  type: MenuNodeType;
-  path: string | null;
-  componentKey: string | null;
-  permission: string | null;
-  icon: string | null;
-  sortOrder: number;
-  visible: boolean;
-  status: RoleStatus;
-  children: ManagedMenuNode[];
-}
+export type ManagedMenuNode = components['schemas']['ManagedMenuNode'];
+export type MenuComponentOption = components['schemas']['MenuComponentOption'];
+export type MenuSavePayload = components['schemas']['MenuSaveRequest'];
 
 export interface UserQuery {
   keyword?: string;
@@ -142,9 +132,29 @@ export function replaceRoleMenus(roleId: string, menuIds: string[]) {
   return request<void>(`/system/roles/${roleId}/menus`, jsonRequest('PUT', { menuIds }));
 }
 
-/** 读取发布版本维护的完整只读权限树。 */
+/** 读取角色授权与菜单维护共用的完整权限树。 */
 export function getMenuTree() {
   return request<ManagedMenuNode[]>('/system/menus/tree');
+}
+
+/** 查询前端允许配置的页面组件白名单。 */
+export function getMenuComponentOptions() {
+  return request<MenuComponentOption[]>('/system/menus/component-options');
+}
+
+/** 创建菜单、页面或按钮权限节点。 */
+export function createMenu(payload: MenuSavePayload) {
+  return request<ManagedMenuNode>('/system/menus', jsonRequest('POST', payload));
+}
+
+/** 修改菜单、页面或按钮权限节点。 */
+export function updateMenu(menuId: string, payload: MenuSavePayload) {
+  return request<ManagedMenuNode>(`/system/menus/${menuId}`, jsonRequest('PUT', payload));
+}
+
+/** 删除未使用的非核心菜单节点。 */
+export function deleteMenu(menuId: string) {
+  return request<void>(`/system/menus/${menuId}`, { method: 'DELETE' });
 }
 
 function jsonRequest(method: string, payload: unknown): RequestInit {

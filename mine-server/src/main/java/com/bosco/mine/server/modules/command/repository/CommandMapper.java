@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 import java.util.Optional;
@@ -81,13 +82,13 @@ public interface CommandMapper {
     @Insert("""
             INSERT INTO cmd_instance (
                 id, device_id, template_key, template_version, parameters,
-                reason, risk_level, status, ttl_seconds, timeout_seconds,
+                reason, work_order_no, risk_level, status, ttl_seconds, timeout_seconds,
                 idempotency_key, protocol_version, config_release_id, created_by,
                 created_at, updated_at, queued_at, expires_at, version
             ) VALUES (
                 #{command.id}, #{command.deviceId}, #{command.templateKey},
                 #{command.templateVersion}, CAST(#{parametersJson} AS JSONB),
-                #{command.reason}, #{command.riskLevel}, #{command.status},
+                #{command.reason}, #{command.workOrderNo}, #{command.riskLevel}, #{command.status},
                 #{command.ttlSeconds}, #{command.timeoutSeconds},
                 #{command.idempotencyKey}, #{command.protocolVersion},
                 #{command.configReleaseId}, #{command.createdBy},
@@ -112,6 +113,8 @@ public interface CommandMapper {
             SELECT id, device_id AS deviceId, template_key AS templateKey,
                    template_version AS templateVersion,
                    parameters::TEXT AS parametersJson, reason,
+                   work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
+                   cancel_reason AS cancelReason,
                    risk_level AS riskLevel, status,
                    ttl_seconds AS ttlSeconds, timeout_seconds AS timeoutSeconds,
                    idempotency_key AS idempotencyKey,
@@ -141,7 +144,8 @@ public interface CommandMapper {
     @Select("""
             SELECT id, device_id AS deviceId, template_key AS templateKey,
                    template_version AS templateVersion, parameters::TEXT AS parametersJson,
-                   reason, risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
+                   reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
+                   cancel_reason AS cancelReason, risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
                    timeout_seconds AS timeoutSeconds, idempotency_key AS idempotencyKey,
                    protocol_version AS protocolVersion, config_release_id AS configReleaseId,
                    created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
@@ -152,6 +156,67 @@ public interface CommandMapper {
             FROM cmd_instance WHERE id = #{commandId}
             """)
     Optional<StoredCommand> findById(@Param("commandId") UUID commandId);
+
+    /**
+     * 以排他锁读取待取消命令，和发送状态更新形成明确顺序。
+     *
+     * @param commandId 命令标识
+     * @return 命令持久化行
+     */
+    @Select("""
+            SELECT id, device_id AS deviceId, template_key AS templateKey,
+                   template_version AS templateVersion, parameters::TEXT AS parametersJson,
+                   reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
+                   cancel_reason AS cancelReason, risk_level AS riskLevel, status,
+                   ttl_seconds AS ttlSeconds, timeout_seconds AS timeoutSeconds,
+                   idempotency_key AS idempotencyKey, protocol_version AS protocolVersion,
+                   config_release_id AS configReleaseId, created_by AS createdBy,
+                   created_at AS createdAt, updated_at AS updatedAt, queued_at AS queuedAt,
+                   sent_at AS sentAt, device_received_at AS deviceReceivedAt,
+                   completed_at AS completedAt, expires_at AS expiresAt,
+                   last_error_code AS lastErrorCode, reply::TEXT AS replyJson, version
+            FROM cmd_instance WHERE id = #{commandId} FOR UPDATE
+            """)
+    Optional<StoredCommand> lockById(@Param("commandId") UUID commandId);
+
+    /**
+     * 将尚未被出站中继领取的命令事件标记为终止。
+     *
+     * @param commandId 命令标识
+     * @return 影响事件数
+     */
+    @Update("""
+            UPDATE sys_outbox_event
+            SET status = 'DEAD', last_error = 'cancelled before dispatch',
+                locked_by = NULL, locked_at = NULL, lease_expires_at = NULL
+            WHERE aggregate_id = #{commandId}
+              AND event_type = 'command.dispatch.requested'
+              AND status IN ('PENDING', 'FAILED')
+            """)
+    int cancelPendingDispatch(@Param("commandId") UUID commandId);
+
+    /**
+     * 使用乐观锁把排队命令置为已取消。
+     *
+     * @param commandId 命令标识
+     * @param version 期望版本
+     * @param cancelledBy 取消人
+     * @param cancelReason 取消原因
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE cmd_instance
+            SET status = 'CANCELLED', completed_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP, cancelled_by = #{cancelledBy},
+                cancel_reason = #{cancelReason}, version = version + 1
+            WHERE id = #{commandId} AND status = 'QUEUED' AND version = #{version}
+            """)
+    int cancelQueuedCommand(
+            @Param("commandId") UUID commandId,
+            @Param("version") long version,
+            @Param("cancelledBy") UUID cancelledBy,
+            @Param("cancelReason") String cancelReason
+    );
 
     /**
      * 按设备和状态分页查询命令。
@@ -166,7 +231,8 @@ public interface CommandMapper {
             <script>
             SELECT id, device_id AS deviceId, template_key AS templateKey,
                    template_version AS templateVersion, parameters::TEXT AS parametersJson,
-                   reason, risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
+                   reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
+                   cancel_reason AS cancelReason, risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
                    timeout_seconds AS timeoutSeconds, idempotency_key AS idempotencyKey,
                    protocol_version AS protocolVersion, config_release_id AS configReleaseId,
                    created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
@@ -178,6 +244,7 @@ public interface CommandMapper {
             WHERE 1 = 1
             <if test="deviceId != null">AND device_id = #{deviceId}</if>
             <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="templateKey != null and templateKey != ''">AND template_key = #{templateKey}</if>
             ORDER BY created_at DESC, id DESC
             OFFSET #{offset} LIMIT #{limit}
             </script>
@@ -185,6 +252,7 @@ public interface CommandMapper {
     List<StoredCommand> findCommands(
             @Param("deviceId") UUID deviceId,
             @Param("status") String status,
+            @Param("templateKey") String templateKey,
             @Param("offset") int offset,
             @Param("limit") int limit
     );
@@ -202,7 +270,12 @@ public interface CommandMapper {
             WHERE 1 = 1
             <if test="deviceId != null">AND device_id = #{deviceId}</if>
             <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="templateKey != null and templateKey != ''">AND template_key = #{templateKey}</if>
             </script>
             """)
-    long countCommands(@Param("deviceId") UUID deviceId, @Param("status") String status);
+    long countCommands(
+            @Param("deviceId") UUID deviceId,
+            @Param("status") String status,
+            @Param("templateKey") String templateKey
+    );
 }

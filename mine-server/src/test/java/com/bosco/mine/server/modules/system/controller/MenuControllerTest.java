@@ -36,15 +36,15 @@ class MenuControllerTest {
         UUID buttonId = UUID.fromString("0198aef6-2e80-7000-8000-000000000103");
         NavigationService.MenuNode button = new NavigationService.MenuNode(
                 buttonId, menuId, "查看设备", "BUTTON", null, null,
-                "device:device:list", null, 1, true, List.of()
+                "device:device:list", null, 1, true, null, List.of()
         );
         NavigationService.MenuNode menu = new NavigationService.MenuNode(
                 menuId, directoryId, "设备台账", "MENU", "/devices", "device-list",
-                null, "mdi:truck", 1, true, List.of(button)
+                null, "mdi:truck", 1, true, "mine.menu.devices", List.of(button)
         );
         NavigationService.MenuNode directory = new NavigationService.MenuNode(
                 directoryId, null, "设备管理", "DIRECTORY", "/device", null,
-                null, "mdi:factory", 1, true, List.of(menu)
+                null, "mdi:factory", 1, true, "mine.menu.device", List.of(menu)
         );
         when(navigationService.currentNavigation()).thenReturn(new NavigationService.NavigationResult(
                 List.of("DEVICE_OPERATOR"),

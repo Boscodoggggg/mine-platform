@@ -39,6 +39,7 @@ export interface NavigationMenuNode {
   icon: string | null;
   sortOrder: number;
   visible: boolean;
+  i18nKey?: string | null;
   children: NavigationMenuNode[];
 }
 

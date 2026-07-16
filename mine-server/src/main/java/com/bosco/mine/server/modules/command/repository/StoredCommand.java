@@ -12,6 +12,9 @@ import java.util.UUID;
  * @param templateVersion 模板版本
  * @param parametersJson 命令参数 JSON
  * @param reason 提交原因
+ * @param workOrderNo 作业单号
+ * @param cancelledBy 取消人标识
+ * @param cancelReason 取消原因
  * @param riskLevel 风险级别
  * @param status 命令状态
  * @param ttlSeconds TTL 秒数
@@ -38,6 +41,9 @@ public record StoredCommand(
         int templateVersion,
         String parametersJson,
         String reason,
+        String workOrderNo,
+        UUID cancelledBy,
+        String cancelReason,
         String riskLevel,
         String status,
         int ttlSeconds,

@@ -14,6 +14,10 @@ import java.util.UUID;
  * @param templateKey 模板编码
  * @param templateVersion 模板版本
  * @param parameters 已固化参数
+ * @param reason 下发原因
+ * @param workOrderNo 作业单号
+ * @param cancelledBy 取消人标识
+ * @param cancelReason 取消原因
  * @param riskLevel 风险级别
  * @param status 当前状态
  * @param ttlSeconds 排队存活秒数
@@ -36,6 +40,10 @@ public record CommandResponse(
         String templateKey,
         int templateVersion,
         Map<String, Object> parameters,
+        String reason,
+        String workOrderNo,
+        UUID cancelledBy,
+        String cancelReason,
         String riskLevel,
         String status,
         int ttlSeconds,
@@ -61,7 +69,8 @@ public record CommandResponse(
     public static CommandResponse from(CommandInstance command) {
         return new CommandResponse(
                 command.id(), command.deviceId(), command.templateKey(), command.templateVersion(),
-                command.parameters(), command.riskLevel().name(), command.status().name(),
+                command.parameters(), command.reason(), command.workOrderNo(), command.cancelledBy(),
+                command.cancelReason(), command.riskLevel().name(), command.status().name(),
                 command.ttlSeconds(), command.timeoutSeconds(), command.idempotencyKey(),
                 command.createdAt(), command.updatedAt(), command.queuedAt(), command.sentAt(),
                 command.deviceReceivedAt(), command.completedAt(), command.expiresAt(),

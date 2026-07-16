@@ -36,6 +36,12 @@ class DatabaseMigrationIT {
             "sys_menu",
             "sys_user_role",
             "sys_role_menu",
+            "sys_dict_type",
+            "sys_dict_item",
+            "dev_model_version",
+            "dev_model_field",
+            "dev_protocol_mapping_version",
+            "dev_protocol_field_mapping",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -102,8 +108,11 @@ class DatabaseMigrationIT {
                 """, String.class)).containsExactly(
                 "command-center",
                 "device-device-list",
+                "device-model-management",
                 "device-monitor",
                 "device-product-list",
+                "system-dictionary-list",
+                "system-menu-list",
                 "system-operations-monitor",
                 "system-role-list",
                 "system-user-list"
@@ -114,6 +123,14 @@ class DatabaseMigrationIT {
                 WHERE permission LIKE 'system:%'
                 ORDER BY permission
                 """, String.class)).containsExactly(
+                "system:dictionary:create",
+                "system:dictionary:delete",
+                "system:dictionary:update",
+                "system:dictionary:view",
+                "system:menu:create",
+                "system:menu:delete",
+                "system:menu:update",
+                "system:menu:view",
                 "system:operations:view",
                 "system:role:assign-menu",
                 "system:role:create",
@@ -139,6 +156,9 @@ class DatabaseMigrationIT {
                 "device:device:create",
                 "device:device:update",
                 "device:device:view",
+                "device:model:edit",
+                "device:model:publish",
+                "device:model:view",
                 "device:product:archive",
                 "device:product:create",
                 "device:product:update",
@@ -151,6 +171,7 @@ class DatabaseMigrationIT {
                 WHERE permission LIKE 'command:%'
                 ORDER BY permission
                 """, String.class)).containsExactly(
+                "command:instance:cancel",
                 "command:instance:create",
                 "command:instance:view",
                 "command:template:view"
@@ -162,7 +183,7 @@ class DatabaseMigrationIT {
                 WHERE parent.name = '系统管理'
                   AND parent.type = 'DIRECTORY'
                   AND child.type = 'MENU'
-                """, Long.class)).isEqualTo(3L);
+                """, Long.class)).isEqualTo(5L);
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu
@@ -175,6 +196,75 @@ class DatabaseMigrationIT {
                 WHERE visible = TRUE
                   AND path IN ('/command', '/command/center')
                 """, Long.class)).isEqualTo(2L);
+    }
+
+    @Test
+    void 菜单扩展和字典表必须具备约束索引及中文注释() {
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'sys_menu'
+                  AND column_name IN ('i18n_key', 'protected_node')
+                ORDER BY column_name
+                """, String.class)).containsExactly("i18n_key", "protected_node");
+        assertThat(constraintColumns("uk_sys_dict_type_code")).containsExactly("code");
+        assertThat(constraintColumns("uk_sys_dict_item_type_value")).containsExactly("type_id", "value");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN ('sys_dict_type'::regclass, 'sys_dict_item'::regclass)
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT obj_description('sys_dict_type'::regclass, 'pg_class')",
+                String.class
+        )).containsPattern("[\\u4e00-\\u9fff]");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT obj_description('sys_dict_item'::regclass, 'pg_class')",
+                String.class
+        )).containsPattern("[\\u4e00-\\u9fff]");
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT component_key
+                FROM sys_menu
+                WHERE path IN ('/system/menus', '/system/dictionaries')
+                ORDER BY path
+                """, String.class)).containsExactly("system-dictionary-list", "system-menu-list");
+    }
+
+    @Test
+    void 物模型和协议映射表必须版本化并具有完整中文注释() {
+        assertThat(constraintColumns("uk_dev_model_version_product_number"))
+                .containsExactly("product_id", "version_number");
+        assertThat(constraintColumns("uk_dev_model_field_identifier"))
+                .containsExactly("model_version_id", "identifier");
+        assertThat(constraintColumns("uk_dev_protocol_mapping_product_number"))
+                .containsExactly("product_id", "profile_key", "version_number");
+        assertThat(constraintColumns("uk_dev_protocol_field_source"))
+                .containsExactly("mapping_version_id", "source_path");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN (
+                    'dev_model_version'::regclass,
+                    'dev_model_field'::regclass,
+                    'dev_protocol_mapping_version'::regclass,
+                    'dev_protocol_field_mapping'::regclass
+                )
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'dev_model_version', 'dev_model_field',
+                    'dev_protocol_mapping_version', 'dev_protocol_field_mapping'
+                )
+                """, String.class)).allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
     }
 
     @Test

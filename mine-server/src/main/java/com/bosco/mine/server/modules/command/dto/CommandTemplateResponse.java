@@ -11,6 +11,7 @@ import java.util.Map;
  * @param defaultTtlSeconds 默认 TTL 秒数
  * @param defaultTimeoutSeconds 默认回复超时秒数
  * @param parameterSchema 参数 JSON Schema
+ * @param requiresReason 是否强制填写下发原因
  */
 public record CommandTemplateResponse(
         String key,
@@ -18,6 +19,7 @@ public record CommandTemplateResponse(
         String riskLevel,
         int defaultTtlSeconds,
         int defaultTimeoutSeconds,
-        Map<String, Object> parameterSchema
+        Map<String, Object> parameterSchema,
+        boolean requiresReason
 ) {
 }

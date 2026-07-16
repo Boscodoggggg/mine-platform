@@ -50,13 +50,28 @@ public class CommandQueryService {
      */
     @Transactional(readOnly = true)
     public PageResponse<CommandResponse> findCommands(UUID deviceId, String status, int page, int size) {
+        return findCommands(deviceId, status, null, page, size);
+    }
+
+    /**
+     * 按设备、状态和模板分页查询命令。
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<CommandResponse> findCommands(
+            UUID deviceId,
+            String status,
+            String templateKey,
+            int page,
+            int size
+    ) {
         String normalizedStatus = status == null || status.isBlank()
                 ? null : status.strip().toUpperCase(Locale.ROOT);
+        String normalizedTemplate = templateKey == null || templateKey.isBlank() ? null : templateKey.strip();
         int offset = offsetOf(page, size);
         return new PageResponse<>(
-                mapper.findCommands(deviceId, normalizedStatus, offset, size)
+                mapper.findCommands(deviceId, normalizedStatus, normalizedTemplate, offset, size)
                         .stream().map(this::toResponse).toList(),
-                page, size, mapper.countCommands(deviceId, normalizedStatus)
+                page, size, mapper.countCommands(deviceId, normalizedStatus, normalizedTemplate)
         );
     }
 
@@ -100,7 +115,8 @@ public class CommandQueryService {
     private CommandResponse toResponse(StoredCommand stored) {
         return new CommandResponse(
                 stored.id(), stored.deviceId(), stored.templateKey(), stored.templateVersion(),
-                readMap(stored.parametersJson()), stored.riskLevel(), stored.status(),
+                readMap(stored.parametersJson()), stored.reason(), stored.workOrderNo(),
+                stored.cancelledBy(), stored.cancelReason(), stored.riskLevel(), stored.status(),
                 stored.ttlSeconds(), stored.timeoutSeconds(), stored.idempotencyKey(),
                 stored.createdAt(), stored.updatedAt(), stored.queuedAt(), stored.sentAt(),
                 stored.deviceReceivedAt(), stored.completedAt(), stored.expiresAt(),

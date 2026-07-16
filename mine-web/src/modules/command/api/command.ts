@@ -12,6 +12,7 @@ export type CommandCreateRequest = components['schemas']['CommandCreateRequest']
 export interface CommandQuery {
   deviceId?: string;
   status?: CommandStatus | '';
+  templateKey?: string;
   page?: number;
   size?: number;
 }
@@ -48,6 +49,14 @@ export function createCommand(body: CommandCreateRequest, idempotencyKey: string
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(body)
+  });
+}
+
+/** 取消尚未开始发送的排队命令。 */
+export function cancelCommand(commandId: string, version: number, reason: string) {
+  return request<Command>(`/commands/${encodeURIComponent(commandId)}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ version, reason })
   });
 }
 

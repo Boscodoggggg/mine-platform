@@ -85,6 +85,7 @@ public class CommandController {
      *
      * @param deviceId 设备筛选
      * @param status 状态筛选
+     * @param templateKey 模板筛选
      * @param page 页码
      * @param size 每页数量
      * @return 命令分页
@@ -96,10 +97,11 @@ public class CommandController {
             @RequestParam(required = false) @Pattern(regexp =
                     "CREATED|QUEUED|SENT|DEVICE_RECEIVED|SUCCEEDED|REFUSED|FAILED|EXPIRED|TIMEOUT|CANCELLED")
             String status,
+            @RequestParam(required = false) @Size(max = 128) String templateKey,
             @RequestParam(defaultValue = "1") @Min(1) @Max(1_000_000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
-        return queryService.findCommands(deviceId, status, page, size);
+        return queryService.findCommands(deviceId, status, templateKey, page, size);
     }
 
     /**
@@ -131,11 +133,40 @@ public class CommandController {
     ) {
         String traceId = String.valueOf(httpRequest.getAttribute(TraceIdFilter.TRACE_ID_ATTRIBUTE));
         CommandResponse command = commandService.createCurrentUserCommand(
-                request.deviceId(), request.templateKey(), request.parameters(), idempotencyKey,
+                request.deviceId(), request.templateKey(), request.parameters(), request.reason(),
+                request.workOrderNo(), idempotencyKey,
                 request.ttlSeconds(), request.timeoutSeconds(), traceId
         );
         URI location = UriComponentsBuilder.fromPath("/api/v1/commands/{id}")
                 .buildAndExpand(command.id()).toUri();
         return ResponseEntity.created(location).body(command);
+    }
+
+    /**
+     * 取消尚未开始发送的排队命令。
+     *
+     * @param commandId 命令标识
+     * @param request 取消请求
+     * @return 取消后的命令
+     */
+    @PostMapping("/commands/{id}/cancel")
+    @SaCheckPermission("command:instance:cancel")
+    public CommandResponse cancelCommand(
+            @PathVariable("id") UUID commandId,
+            @Valid @RequestBody CommandCancelRequest request
+    ) {
+        return commandService.cancelCurrentUserCommand(commandId, request.version(), request.reason());
+    }
+
+    /**
+     * 命令取消请求。
+     *
+     * @param version 期望状态版本
+     * @param reason 取消原因
+     */
+    public record CommandCancelRequest(
+            @Min(0) long version,
+            @NotBlank @Size(max = 500) String reason
+    ) {
     }
 }

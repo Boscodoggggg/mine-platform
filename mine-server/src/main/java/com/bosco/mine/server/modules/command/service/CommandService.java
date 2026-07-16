@@ -37,6 +37,12 @@ public class CommandService {
             new ErrorCode("COMMAND-422-004", "命令 TTL 或回复超时不合法");
     private static final ErrorCode IDEMPOTENCY_CONFLICT =
             new ErrorCode("COMMAND-409-001", "幂等键已用于其他命令请求");
+    private static final ErrorCode CANCEL_CONFLICT =
+            new ErrorCode("COMMAND-409-002", "命令已开始发送或状态已变化，不能取消");
+    private static final ErrorCode COMMAND_NOT_FOUND =
+            new ErrorCode("COMMAND-404-001", "命令不存在");
+    private static final ErrorCode REASON_REQUIRED =
+            new ErrorCode("COMMAND-422-005", "该命令必须填写现场下发原因");
 
     private final CommandMapper commandMapper;
     private final OutboxMapper outboxMapper;
@@ -88,9 +94,30 @@ public class CommandService {
             int timeoutSeconds,
             String traceId
     ) {
+        return createCurrentUserCommand(
+                deviceId, templateKey, parameters, null, null, idempotencyKey,
+                ttlSeconds, timeoutSeconds, traceId
+        );
+    }
+
+    /**
+     * 以当前登录用户身份创建带现场原因和作业单号的命令。
+     */
+    @Transactional
+    public CommandResponse createCurrentUserCommand(
+            UUID deviceId,
+            String templateKey,
+            Map<String, Object> parameters,
+            String reason,
+            String workOrderNo,
+            String idempotencyKey,
+            int ttlSeconds,
+            int timeoutSeconds,
+            String traceId
+    ) {
         UUID userId = UUID.fromString(StpUtil.getLoginIdAsString());
         CommandResponse response = CommandResponse.from(createLowRiskCommand(
-                userId, deviceId, templateKey, parameters, idempotencyKey,
+                userId, deviceId, templateKey, parameters, reason, workOrderNo, idempotencyKey,
                 ttlSeconds, timeoutSeconds, traceId
         ));
         auditService.recordSuccess(
@@ -136,10 +163,37 @@ public class CommandService {
             int timeoutSeconds,
             String traceId
     ) {
+        return createLowRiskCommand(
+                createdBy, deviceId, templateKey, parameters, null, null,
+                idempotencyKey, ttlSeconds, timeoutSeconds, traceId
+        );
+    }
+
+    /**
+     * 创建并入队带现场原因和作业单号的低风险命令。
+     */
+    @Transactional
+    public CommandInstance createLowRiskCommand(
+            UUID createdBy,
+            UUID deviceId,
+            String templateKey,
+            Map<String, Object> parameters,
+            String reason,
+            String workOrderNo,
+            String idempotencyKey,
+            int ttlSeconds,
+            int timeoutSeconds,
+            String traceId
+    ) {
         Objects.requireNonNull(createdBy, "命令创建人不能为空");
         Objects.requireNonNull(deviceId, "设备标识不能为空");
         String normalizedTemplate = requireText(templateKey, 128, "命令模板编码");
         PublishedCommandTemplates.validateParameters(normalizedTemplate, parameters);
+        String normalizedReason = normalizeOptional(reason, 1000, "下发原因");
+        String normalizedWorkOrder = normalizeOptional(workOrderNo, 128, "作业单号");
+        if (PublishedCommandTemplates.requiresReason(normalizedTemplate) && normalizedReason == null) {
+            throw new MineException(REASON_REQUIRED, Map.of("templateKey", normalizedTemplate));
+        }
         validateTimeConstraints(ttlSeconds, timeoutSeconds);
         String normalizedKey = requireText(idempotencyKey, 128, "幂等键");
         String normalizedTraceId = requireText(traceId, 64, "链路追踪标识");
@@ -147,7 +201,8 @@ public class CommandService {
         if (storedExisting.isPresent()) {
             CommandInstance existing = toCommandInstance(storedExisting.orElseThrow());
             verifySameIdempotentRequest(
-                    existing, deviceId, normalizedTemplate, parameters, ttlSeconds, timeoutSeconds
+                    existing, deviceId, normalizedTemplate, parameters, normalizedReason,
+                    normalizedWorkOrder, ttlSeconds, timeoutSeconds
             );
             return existing;
         }
@@ -157,15 +212,16 @@ public class CommandService {
 
         Instant now = clock.instant();
         CommandInstance queued = CommandInstance.createLowRisk(
-                idGenerator.next(), deviceId, normalizedTemplate,
-                Objects.requireNonNull(parameters, "命令参数不能为空"),
+                idGenerator.next(), deviceId, normalizedTemplate, Objects.requireNonNull(parameters, "命令参数不能为空"),
+                normalizedReason, normalizedWorkOrder,
                 normalizedKey, createdBy, now, ttlSeconds, timeoutSeconds
         ).transitionTo(CommandStatus.QUEUED, now);
         int inserted = commandMapper.insert(queued, writeJson(queued.parameters()));
         if (inserted == 0) {
             CommandInstance existing = loadByIdempotencyKey(createdBy, normalizedKey);
             verifySameIdempotentRequest(
-                    existing, deviceId, normalizedTemplate, parameters, ttlSeconds, timeoutSeconds
+                    existing, deviceId, normalizedTemplate, parameters, normalizedReason,
+                    normalizedWorkOrder, ttlSeconds, timeoutSeconds
             );
             return existing;
         }
@@ -204,7 +260,8 @@ public class CommandService {
     private CommandInstance toCommandInstance(StoredCommand stored) {
         return new CommandInstance(
                 stored.id(), stored.deviceId(), stored.templateKey(), stored.templateVersion(),
-                readMap(stored.parametersJson()), stored.reason(), CommandRiskLevel.valueOf(stored.riskLevel()),
+                readMap(stored.parametersJson()), stored.reason(), stored.workOrderNo(),
+                stored.cancelledBy(), stored.cancelReason(), CommandRiskLevel.valueOf(stored.riskLevel()),
                 CommandStatus.valueOf(stored.status()), stored.ttlSeconds(), stored.timeoutSeconds(),
                 stored.idempotencyKey(), stored.protocolVersion(), stored.configReleaseId(), stored.createdBy(),
                 stored.createdAt(), stored.updatedAt(), stored.queuedAt(), stored.sentAt(),
@@ -229,6 +286,8 @@ public class CommandService {
             UUID deviceId,
             String templateKey,
             Map<String, Object> parameters,
+            String reason,
+            String workOrderNo,
             int ttlSeconds,
             int timeoutSeconds
     ) {
@@ -236,11 +295,44 @@ public class CommandService {
                 && existing.templateKey().equals(templateKey)
                 && existing.templateVersion() == 1
                 && existing.parameters().equals(parameters)
+                && Objects.equals(existing.reason(), reason)
+                && Objects.equals(existing.workOrderNo(), workOrderNo)
                 && existing.ttlSeconds() == ttlSeconds
                 && existing.timeoutSeconds() == timeoutSeconds;
         if (!sameRequest) {
             throw new MineException(IDEMPOTENCY_CONFLICT, Map.of("commandId", existing.id()));
         }
+    }
+
+    /**
+     * 取消尚未被出站中继领取的排队命令。
+     *
+     * @param commandId 命令标识
+     * @param version 期望状态版本
+     * @param cancelReason 取消原因
+     * @return 取消后的命令
+     */
+    @Transactional
+    public CommandResponse cancelCurrentUserCommand(UUID commandId, long version, String cancelReason) {
+        StoredCommand command = commandMapper.lockById(commandId)
+                .orElseThrow(() -> new MineException(COMMAND_NOT_FOUND, Map.of("commandId", commandId)));
+        String normalizedReason = requireText(cancelReason, 500, "取消原因");
+        if (!"QUEUED".equals(command.status()) || command.version() != version
+                || commandMapper.cancelPendingDispatch(commandId) == 0) {
+            throw new MineException(CANCEL_CONFLICT, Map.of("commandId", commandId));
+        }
+        UUID operatorId = UUID.fromString(StpUtil.getLoginIdAsString());
+        if (commandMapper.cancelQueuedCommand(commandId, version, operatorId, normalizedReason) == 0) {
+            throw new MineException(CANCEL_CONFLICT, Map.of("commandId", commandId));
+        }
+        CommandResponse response = CommandResponse.from(toCommandInstance(
+                commandMapper.findById(commandId).orElseThrow()
+        ));
+        auditService.recordSuccess(
+                "COMMAND_CENTER", "CANCEL_COMMAND", "command:instance:cancel", "COMMAND", commandId,
+                Map.of("status", command.status()), Map.of("status", response.status(), "reason", normalizedReason)
+        );
+        return response;
     }
 
     private void validateTimeConstraints(int ttlSeconds, int timeoutSeconds) {
@@ -273,5 +365,10 @@ public class CommandService {
             throw new IllegalArgumentException(label + "不合法");
         }
         return normalized;
+    }
+
+    private String normalizeOptional(String value, int maxLength, String label) {
+        if (value == null || value.isBlank()) return null;
+        return requireText(value, maxLength, label);
     }
 }

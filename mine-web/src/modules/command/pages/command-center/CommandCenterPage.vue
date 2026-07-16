@@ -15,6 +15,7 @@ import {
   NFormItem,
   NGi,
   NGrid,
+  NInput,
   NInputNumber,
   NModal,
   NPageHeader,
@@ -26,6 +27,7 @@ import {
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import {
+  cancelCommand,
   createCommand,
   getCommand,
   getCommands,
@@ -46,15 +48,33 @@ const templates = ref<CommandTemplate[]>([]);
 const total = ref(0);
 const modalVisible = ref(false);
 const drawerVisible = ref(false);
+const cancelModalVisible = ref(false);
+const cancellingCommand = ref<Command | null>(null);
+const cancelReason = ref('');
 const selectedCommand = ref<Command | null>(null);
 const currentIdempotencyKey = ref('');
-const query = reactive<{ deviceId: string; status: CommandStatus | ''; page: number; size: number }>({
+const query = reactive<{
+  deviceId: string;
+  status: CommandStatus | '';
+  templateKey: string;
+  page: number;
+  size: number;
+}>({
   deviceId: '',
   status: '',
+  templateKey: '',
   page: 1,
   size: 20
 });
-const commandForm = reactive({ deviceId: '', templateKey: '', ttlSeconds: 300, timeoutSeconds: 30 });
+const commandForm = reactive({
+  deviceId: '',
+  templateKey: '',
+  parameters: {} as Record<string, unknown>,
+  reason: '',
+  workOrderNo: '',
+  ttlSeconds: 300,
+  timeoutSeconds: 30
+});
 const commandStatuses: CommandStatus[] = [
   'CREATED',
   'QUEUED',
@@ -76,11 +96,24 @@ const deviceOptions = computed<SelectOption[]>(() =>
   }))
 );
 const templateOptions = computed<SelectOption[]>(() =>
-  templates.value.filter(supportsEmptyParameters).map(template => ({
+  templates.value.map(template => ({
     label: templateLabel(template.key),
     value: template.key
   }))
 );
+const selectedTemplate = computed(() => templates.value.find(item => item.key === commandForm.templateKey) || null);
+const parameterFields = computed(() => {
+  const schema = selectedTemplate.value?.parameterSchema as Record<string, unknown> | undefined;
+  const properties = schema?.properties as Record<string, Record<string, unknown>> | undefined;
+  const required = new Set(Array.isArray(schema?.required) ? (schema.required as string[]) : []);
+  return Object.entries(properties || {}).map(([key, definition]) => ({
+    key,
+    type: String(definition.type || 'string'),
+    minimum: typeof definition.minimum === 'number' ? definition.minimum : undefined,
+    maximum: typeof definition.maximum === 'number' ? definition.maximum : undefined,
+    required: required.has(key)
+  }));
+});
 const statusOptions = computed<SelectOption[]>(() =>
   commandStatuses.map(status => ({
     label: statusLabel(status),
@@ -116,11 +149,18 @@ const columns = computed<DataTableColumns<Command>>(() => [
   {
     title: t('mine.common.action'),
     key: 'actions',
-    width: 100,
+    width: 160,
     render: row =>
-      h(NButton, { text: true, type: 'primary', onClick: () => showDetails(row) }, () =>
-        t('mine.commands.action.detail')
-      )
+      h(NSpace, { size: 8 }, () => [
+        h(NButton, { text: true, type: 'primary', onClick: () => showDetails(row) }, () =>
+          t('mine.commands.action.detail')
+        ),
+        row.status === 'QUEUED' && can('command:instance:cancel')
+          ? h(NButton, { text: true, type: 'error', onClick: () => openCancel(row) }, () =>
+              t('mine.commands.action.cancel')
+            )
+          : null
+      ])
   }
 ]);
 
@@ -167,15 +207,18 @@ function search() {
 }
 
 function resetQuery() {
-  Object.assign(query, { deviceId: '', status: '', page: 1 });
+  Object.assign(query, { deviceId: '', status: '', templateKey: '', page: 1 });
   return loadCommands();
 }
 
 function openCreate() {
-  const template = templates.value.find(supportsEmptyParameters);
+  const template = templates.value[0];
   Object.assign(commandForm, {
     deviceId: targets.value[0]?.id || '',
     templateKey: template?.key || '',
+    parameters: {},
+    reason: '',
+    workOrderNo: '',
     ttlSeconds: template?.defaultTtlSeconds || 300,
     timeoutSeconds: template?.defaultTimeoutSeconds || 30
   });
@@ -184,8 +227,9 @@ function openCreate() {
 }
 
 function syncTemplateDefaults(templateKey: string) {
-  const template = templates.value.find(item => item.key === templateKey && supportsEmptyParameters(item));
+  const template = templates.value.find(item => item.key === templateKey);
   if (!template) return;
+  commandForm.parameters = {};
   commandForm.ttlSeconds = template.defaultTtlSeconds;
   commandForm.timeoutSeconds = template.defaultTimeoutSeconds;
 }
@@ -196,8 +240,12 @@ function requestSubmit() {
     return;
   }
   const template = templates.value.find(item => item.key === commandForm.templateKey);
-  if (!template || !supportsEmptyParameters(template)) {
-    window.$message?.warning(t('mine.commands.validation.unsupportedParameters'));
+  if (!template || (template.requiresReason && !commandForm.reason.trim())) {
+    window.$message?.warning(t('mine.commands.validation.reasonRequired'));
+    return;
+  }
+  if (parameterFields.value.some(field => field.required && commandForm.parameters[field.key] === undefined)) {
+    window.$message?.warning(t('mine.commands.validation.parametersRequired'));
     return;
   }
   window.$dialog?.warning({
@@ -219,7 +267,9 @@ async function submitCommand() {
       {
         deviceId: commandForm.deviceId,
         templateKey: commandForm.templateKey,
-        parameters: {},
+        parameters: commandForm.parameters,
+        reason: commandForm.reason.trim() || undefined,
+        workOrderNo: commandForm.workOrderNo.trim() || undefined,
         ttlSeconds: commandForm.ttlSeconds,
         timeoutSeconds: commandForm.timeoutSeconds
       },
@@ -227,6 +277,48 @@ async function submitCommand() {
     );
     window.$message?.success(t('mine.commands.message.created'));
     modalVisible.value = false;
+    await loadCommands();
+  } catch (error) {
+    showError(error);
+  } finally {
+    saving.value = false;
+  }
+}
+
+function setParameter(key: string, value: string | number | null) {
+  if (value === null || value === '') Reflect.deleteProperty(commandForm.parameters, key);
+  else commandForm.parameters[key] = value;
+}
+
+function getParameterLabel(key: string) {
+  return t(`mine.commands.parameter.${key}` as App.I18n.I18nKey);
+}
+
+function getNumberParameter(key: string) {
+  const value = commandForm.parameters[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+function getStringParameter(key: string) {
+  const value = commandForm.parameters[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function openCancel(command: Command) {
+  cancellingCommand.value = command;
+  cancelReason.value = '';
+  cancelModalVisible.value = true;
+}
+
+async function performCancel() {
+  if (!cancellingCommand.value || !cancelReason.value.trim()) {
+    return window.$message?.warning(t('mine.commands.validation.cancelReasonRequired'));
+  }
+  saving.value = true;
+  try {
+    await cancelCommand(cancellingCommand.value.id, cancellingCommand.value.version, cancelReason.value.trim());
+    cancelModalVisible.value = false;
+    window.$message?.success(t('mine.commands.message.cancelled'));
     await loadCommands();
   } catch (error) {
     showError(error);
@@ -255,19 +347,12 @@ function can(permission: string) {
 }
 
 function templateLabel(key: string) {
-  return key === 'QUERY_STATUS' ? t('mine.commands.template.queryStatus') : key;
-}
-
-function supportsEmptyParameters(template: CommandTemplate) {
-  const schema = template.parameterSchema;
-  const properties = schema.properties;
-  return (
-    schema.type === 'object' &&
-    schema.additionalProperties === false &&
-    typeof properties === 'object' &&
-    properties !== null &&
-    Object.keys(properties).length === 0
-  );
+  const labels: Record<string, App.I18n.I18nKey> = {
+    QUERY_STATUS: 'mine.commands.template.queryStatus',
+    SET_REPORT_INTERVAL: 'mine.commands.template.setReportInterval',
+    REQUEST_LOCATION: 'mine.commands.template.requestLocation'
+  };
+  return labels[key] ? t(labels[key]) : key;
 }
 
 function statusLabel(status: CommandStatus) {
@@ -337,6 +422,14 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
           </NGi>
           <NGi>
             <NSelect
+              v-model:value="query.templateKey"
+              clearable
+              :options="templateOptions"
+              :placeholder="t('mine.commands.placeholder.template')"
+            />
+          </NGi>
+          <NGi>
+            <NSelect
               v-model:value="query.status"
               clearable
               :options="statusOptions"
@@ -393,6 +486,37 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
             @update:value="syncTemplateDefaults"
           />
         </NFormItem>
+        <NFormItem
+          v-for="field in parameterFields"
+          :key="field.key"
+          :label="getParameterLabel(field.key)"
+          :required="field.required"
+        >
+          <NInputNumber
+            v-if="field.type === 'integer' || field.type === 'number'"
+            :value="getNumberParameter(field.key)"
+            :min="field.minimum"
+            :max="field.maximum"
+            @update:value="value => setParameter(field.key, value)"
+          />
+          <NInput
+            v-else
+            :value="getStringParameter(field.key)"
+            @update:value="value => setParameter(field.key, value)"
+          />
+        </NFormItem>
+        <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
+          <NGi>
+            <NFormItem :label="t('mine.commands.field.reason')" :required="selectedTemplate?.requiresReason">
+              <NInput v-model:value="commandForm.reason" type="textarea" :maxlength="1000" show-count />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem :label="t('mine.commands.field.workOrderNo')">
+              <NInput v-model:value="commandForm.workOrderNo" :maxlength="128" />
+            </NFormItem>
+          </NGi>
+        </NGrid>
         <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
           <NGi>
             <NFormItem :label="t('mine.commands.field.ttl')">
@@ -443,6 +567,15 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
               <NDescriptionsItem :label="t('mine.commands.field.parameters')">
                 <NText code>{{ formatJson(selectedCommand.parameters) }}</NText>
               </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.reason')">
+                {{ selectedCommand.reason || t('mine.common.empty') }}
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.workOrderNo')">
+                {{ selectedCommand.workOrderNo || t('mine.common.empty') }}
+              </NDescriptionsItem>
+              <NDescriptionsItem v-if="selectedCommand.cancelReason" :label="t('mine.commands.field.cancelReason')">
+                {{ selectedCommand.cancelReason }}
+              </NDescriptionsItem>
               <NDescriptionsItem :label="t('mine.commands.field.reply')">
                 <NText code>{{ formatJson(selectedCommand.reply) }}</NText>
               </NDescriptionsItem>
@@ -457,5 +590,26 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
         </template>
       </NDrawerContent>
     </NDrawer>
+
+    <NModal
+      v-model:show="cancelModalVisible"
+      preset="card"
+      :title="t('mine.commands.modal.cancel')"
+      class="max-w-92vw w-120"
+    >
+      <NForm label-placement="top">
+        <NFormItem :label="t('mine.commands.field.cancelReason')" required>
+          <NInput v-model:value="cancelReason" type="textarea" :maxlength="500" show-count />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="cancelModalVisible = false">{{ t('mine.common.cancel') }}</NButton>
+          <NButton type="error" :loading="saving" @click="performCancel">
+            {{ t('mine.commands.action.confirmCancel') }}
+          </NButton>
+        </NSpace>
+      </template>
+    </NModal>
   </div>
 </template>

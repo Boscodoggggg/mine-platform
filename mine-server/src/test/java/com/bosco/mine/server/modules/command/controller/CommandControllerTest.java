@@ -56,7 +56,7 @@ class CommandControllerTest {
     void 下发命令应要求幂等键并返回资源地址() throws Exception {
         CommandResponse command = command("QUEUED");
         when(commandService.createCurrentUserCommand(
-                any(UUID.class), anyString(), any(), anyString(), anyInt(), anyInt(), anyString()
+                any(UUID.class), anyString(), any(), any(), any(), anyString(), anyInt(), anyInt(), anyString()
         )).thenReturn(command);
 
         mockMvc.perform(post("/api/v1/commands")
@@ -77,7 +77,7 @@ class CommandControllerTest {
                 .andExpect(jsonPath("$.status").value("QUEUED"));
 
         verify(commandService).createCurrentUserCommand(
-                command.deviceId(), "QUERY_STATUS", Map.of(), "request-command-001",
+                command.deviceId(), "QUERY_STATUS", Map.of(), null, null, "request-command-001",
                 300, 30, "trace-command-api"
         );
     }
@@ -101,7 +101,7 @@ class CommandControllerTest {
     @Test
     void 命令业务校验失败应返回稳定的四百二十二错误() throws Exception {
         when(commandService.createCurrentUserCommand(
-                any(UUID.class), anyString(), any(), anyString(), anyInt(), anyInt(), anyString()
+                any(UUID.class), anyString(), any(), any(), any(), anyString(), anyInt(), anyInt(), anyString()
         )).thenThrow(new MineException(
                 new ErrorCode("COMMAND-422-003", "命令参数不符合模板约束"), Map.of()
         ));
@@ -125,7 +125,7 @@ class CommandControllerTest {
     @Test
     void 命令列表和详情应返回完整状态时间线() throws Exception {
         CommandResponse command = command("SUCCEEDED");
-        when(queryService.findCommands(command.deviceId(), "SUCCEEDED", 1, 20))
+        when(queryService.findCommands(command.deviceId(), "SUCCEEDED", null, 1, 20))
                 .thenReturn(new PageResponse<>(List.of(command), 1, 20, 1));
         when(queryService.findById(command.id())).thenReturn(command);
 
@@ -159,11 +159,13 @@ class CommandControllerTest {
         assertPermission("templates", "command:template:view");
         assertPermission("targets", "command:instance:view", String.class, int.class, int.class);
         assertPermission("findCommands", "command:instance:view",
-                UUID.class, String.class, int.class, int.class);
+                UUID.class, String.class, String.class, int.class, int.class);
         assertPermission("findCommand", "command:instance:view", UUID.class);
         assertPermission("createCommand", "command:instance:create",
                 String.class, jakarta.servlet.http.HttpServletRequest.class,
                 com.bosco.mine.server.modules.command.dto.CommandCreateRequest.class);
+        assertPermission("cancelCommand", "command:instance:cancel",
+                UUID.class, CommandController.CommandCancelRequest.class);
     }
 
     private CommandResponse command(String status) {
@@ -171,7 +173,7 @@ class CommandControllerTest {
         return new CommandResponse(
                 UUID.fromString("019f64e5-a000-7000-8000-000000000010"),
                 UUID.fromString("019f64e5-a000-7000-8000-000000000020"),
-                "QUERY_STATUS", 1, Map.of(), "LOW", status, 300, 30,
+                "QUERY_STATUS", 1, Map.of(), null, null, null, null, "LOW", status, 300, 30,
                 "request-command-001", createdAt, createdAt, createdAt,
                 createdAt.plusSeconds(1), createdAt.plusSeconds(2), createdAt.plusSeconds(3),
                 createdAt.plusSeconds(300), null, Map.of("online", true), 4

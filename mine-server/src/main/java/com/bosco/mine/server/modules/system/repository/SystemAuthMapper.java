@@ -239,7 +239,7 @@ public interface SystemAuthMapper {
      */
     @Select("""
             SELECT id, parent_id, name, type, path, component_key,
-                   permission, icon, sort_order, visible
+                   permission, icon, sort_order, visible, i18n_key
             FROM sys_menu
             WHERE status = 'ENABLED'
             ORDER BY sort_order, id
@@ -256,7 +256,7 @@ public interface SystemAuthMapper {
             WITH RECURSIVE granted_menu AS (
                 SELECT DISTINCT menu.id, menu.parent_id, menu.name, menu.type,
                        menu.path, menu.component_key, menu.permission,
-                       menu.icon, menu.sort_order, menu.visible
+                       menu.icon, menu.sort_order, menu.visible, menu.i18n_key
                 FROM sys_user_role user_role
                 JOIN sys_user user_account ON user_account.id = user_role.user_id
                 JOIN sys_role role ON role.id = user_role.role_id
@@ -271,13 +271,13 @@ public interface SystemAuthMapper {
                 UNION
                 SELECT parent.id, parent.parent_id, parent.name, parent.type,
                        parent.path, parent.component_key, parent.permission,
-                       parent.icon, parent.sort_order, parent.visible
+                       parent.icon, parent.sort_order, parent.visible, parent.i18n_key
                 FROM sys_menu parent
                 JOIN accessible_menu child ON child.parent_id = parent.id
                 WHERE parent.status = 'ENABLED'
             )
             SELECT DISTINCT id, parent_id, name, type, path, component_key,
-                   permission, icon, sort_order, visible
+                   permission, icon, sort_order, visible, i18n_key
             FROM accessible_menu
             ORDER BY sort_order, id
             """)
@@ -316,6 +316,7 @@ public interface SystemAuthMapper {
      * @param icon         图标键
      * @param sortOrder    同级顺序
      * @param visible      是否在菜单中可见
+     * @param i18nKey      国际化资源键
      */
     record MenuRecord(
             UUID id,
@@ -327,7 +328,8 @@ public interface SystemAuthMapper {
             String permission,
             String icon,
             int sortOrder,
-            boolean visible
+            boolean visible,
+            String i18nKey
     ) {
     }
 }

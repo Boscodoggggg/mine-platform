@@ -5,6 +5,7 @@ import com.bosco.mine.server.bootstrap.web.GlobalExceptionHandler;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.bootstrap.web.TraceIdFilter;
 import com.bosco.mine.server.modules.system.service.AccessManagementService;
+import com.bosco.mine.server.modules.system.service.MenuManagementService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -34,14 +35,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class RoleManagementControllerTest {
 
     private AccessManagementService service;
+    private MenuManagementService menuService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void 创建角色管理接口测试环境() {
         service = mock(AccessManagementService.class);
+        menuService = mock(MenuManagementService.class);
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new RoleManagementController(service),
-                        new MenuManagementController(service)
+                        new MenuManagementController(menuService)
                 )
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .addFilters(new TraceIdFilter())
@@ -129,7 +132,7 @@ class RoleManagementControllerTest {
     void 应返回包含按钮权限码的只读菜单树() throws Exception {
         UUID directoryId = UUID.randomUUID();
         UUID buttonId = UUID.randomUUID();
-        when(service.findMenuTree()).thenReturn(List.of(new AccessManagementService.MenuNode(
+        when(menuService.findMenuTree()).thenReturn(List.of(new MenuManagementService.MenuNode(
                 directoryId,
                 null,
                 "系统管理",
@@ -141,7 +144,10 @@ class RoleManagementControllerTest {
                 100,
                 true,
                 "ENABLED",
-                List.of(new AccessManagementService.MenuNode(
+                "mine.menu.system",
+                true,
+                0,
+                List.of(new MenuManagementService.MenuNode(
                         buttonId,
                         directoryId,
                         "查看用户",
@@ -153,6 +159,9 @@ class RoleManagementControllerTest {
                         10,
                         false,
                         "ENABLED",
+                        null,
+                        true,
+                        0,
                         List.of()
                 ))
         )));
@@ -179,7 +188,7 @@ class RoleManagementControllerTest {
                 .getMethod("findMenuTree")
                 .getAnnotation(SaCheckPermission.class);
         assertThat(menuPermission).isNotNull();
-        assertThat(menuPermission.value()).containsExactly("system:role:view");
+        assertThat(menuPermission.value()).containsExactly("system:role:view", "system:menu:view");
     }
 
     @Test

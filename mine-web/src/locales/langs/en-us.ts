@@ -55,10 +55,13 @@ const local: App.I18n.Schema = {
       system: 'System Management',
       users: 'User Management',
       roles: 'Role Management',
+      menus: 'Menu Management',
+      dictionaries: 'Dictionary Management',
       operations: 'Operations Monitor',
       device: 'Device Management',
       products: 'Product Management',
       devices: 'Device Registry',
+      models: 'Thing Models & Protocols',
       monitor: 'Device Monitoring',
       command: 'Command Management',
       commandCenter: 'Command Center',
@@ -74,6 +77,9 @@ const local: App.I18n.Schema = {
       reset: 'Reset',
       cancel: 'Cancel',
       save: 'Save',
+      saved: 'Saved',
+      yes: 'Yes',
+      no: 'No',
       requestFailed: 'The request could not be processed. Please try again later.',
       traceId: 'Trace ID: {traceId}',
       operationFailed: 'The operation failed. Please try again later.',
@@ -289,6 +295,79 @@ const local: App.I18n.Schema = {
           'Configuring {name}. Directory, page, and button nodes can be assigned; button nodes display stable permission codes.'
       }
     },
+    menus: {
+      title: 'Menu Management',
+      subtitle:
+        'Maintain directories, pages, and button permissions online. Page components come from a safe registry and require no restart.',
+      column: { name: 'Node Name', type: 'Node Type', path: 'Route Path', permission: 'Permission', status: 'Status' },
+      type: { directory: 'Directory', menu: 'Page', button: 'Button' },
+      action: { create: 'Add Node' },
+      modal: { create: 'Add Menu Node', edit: 'Edit Menu Node' },
+      field: {
+        name: 'Node Name',
+        type: 'Node Type',
+        parent: 'Parent Node',
+        path: 'Route Path',
+        component: 'Page Component',
+        permission: 'Permission',
+        icon: 'Icon Key',
+        sort: 'Sort Order',
+        visible: 'Visible in Navigation',
+        status: 'Status',
+        i18nKey: 'I18n Resource Key'
+      },
+      validation: { required: 'Complete all fields required by this node type' },
+      confirmDelete: 'Delete node “{name}”?',
+      message: { created: 'Menu node created', updated: 'Menu node updated', deleted: 'Menu node deleted' }
+    },
+    dictionaries: {
+      title: 'Common Dictionary Management',
+      subtitle:
+        'Maintain low-frequency enums such as statuses and categories. Device fields, thing models, and protocol mappings remain separate.',
+      typeList: 'Dictionary Types',
+      selectType: 'Select a dictionary type to view its items',
+      builtIn: 'Built-in',
+      column: {
+        typeName: 'Type Name',
+        code: 'Stable Code',
+        status: 'Status',
+        labelZh: 'Chinese Label',
+        value: 'Value',
+        semantic: 'Semantic Style',
+        sort: 'Sort',
+        default: 'Default'
+      },
+      action: { createType: 'Add Dictionary Type', createItem: 'Add Item', items: 'Items' },
+      modal: {
+        createType: 'Add Dictionary Type',
+        editType: 'Edit Dictionary Type',
+        createItem: 'Add Dictionary Item',
+        editItem: 'Edit Dictionary Item'
+      },
+      field: {
+        code: 'Stable Code',
+        name: 'Type Name',
+        status: 'Status',
+        description: 'Description',
+        value: 'Stable Value',
+        labelZh: 'Chinese Label',
+        labelEn: 'English Label',
+        semantic: 'Theme Semantic',
+        sort: 'Sort Order',
+        default: 'Set as Default'
+      },
+      semantic: {
+        default: 'Default',
+        primary: 'Primary',
+        info: 'Info',
+        success: 'Success',
+        warning: 'Warning',
+        error: 'Error'
+      },
+      validation: { required: 'Complete all required fields' },
+      confirmDeleteType: 'Delete dictionary type “{name}”? Only empty non-built-in types can be deleted.',
+      confirmDeleteItem: 'Delete dictionary item “{label}”?'
+    },
     products: {
       title: 'Product Management',
       subtitle: 'Maintain stable product identities for thing models, protocols, and policy releases.',
@@ -319,6 +398,86 @@ const local: App.I18n.Schema = {
       validation: { required: 'Select a product and enter a valid device code and name' },
       message: { created: 'Device created', updated: 'Device updated', archived: 'Device archived' },
       confirmArchive: 'Archive device “{name}”? Historical data will be retained.'
+    },
+    models: {
+      title: 'Thing Models and Protocol Mapping',
+      subtitle:
+        'Normalize vendor payloads into stable fields. Publish validated drafts without restarting site services.',
+      product: 'Device Product',
+      publishHelp:
+        'Publish a thing model first, then map vendor MQTT/TCP fields. Publishing switches immutable versions and preserves history.',
+      tab: { model: 'Unified Thing Model', protocol: 'Protocol Field Mapping' },
+      version: 'Thing Model v{version}',
+      selectVersion: 'Select a thing model version',
+      selectProtocol: 'Select a protocol version',
+      description: 'Change description',
+      modelFields: 'Unified Field Definitions',
+      protocolFields: 'Vendor Source Field Mapping',
+      status: { draft: 'Draft', published: 'Published', retired: 'Retired' },
+      action: {
+        newModel: 'New Model Draft',
+        addField: 'Add Field',
+        publish: 'Publish Version',
+        newProtocol: 'New Protocol Draft',
+        addMapping: 'Add Mapping'
+      },
+      column: {
+        identifier: 'Identifier',
+        name: 'Field Name',
+        dataType: 'Data Type',
+        unit: 'Unit',
+        access: 'Access',
+        source: 'Vendor Field Path',
+        sourceType: 'Source Type',
+        target: 'Unified Field',
+        transform: 'Transform'
+      },
+      modal: { field: 'Add Thing Model Field', protocol: 'New Protocol Draft', mapping: 'Add Field Mapping' },
+      field: {
+        identifier: 'Field Identifier',
+        nameZh: 'Chinese Name',
+        dataType: 'Data Type',
+        unit: 'Engineering Unit',
+        access: 'Access Mode',
+        required: 'Required Field',
+        minimum: 'Minimum',
+        maximum: 'Maximum',
+        profileKey: 'Profile Key',
+        profileName: 'Profile Name',
+        protocolType: 'Protocol Type',
+        messageType: 'Message Type',
+        topicOrFrame: 'MQTT Topic Template / TCP Frame Type',
+        sourcePath: 'Source Field Path',
+        sourceType: 'Source Data Type',
+        target: 'Target Unified Field',
+        transform: 'Transform',
+        scale: 'Scale Factor',
+        offset: 'Offset',
+        expression: 'Restricted Expression'
+      },
+      dataType: {
+        integer: 'Integer',
+        decimal: 'Decimal',
+        boolean: 'Boolean',
+        string: 'String',
+        enum: 'Enum',
+        datetime: 'Date Time',
+        geo_point: 'Geo Point'
+      },
+      access: { read: 'Read', write: 'Write', read_write: 'Read/Write' },
+      protocol: { mqtt_json: 'MQTT JSON', mqtt_binary: 'MQTT Binary', tcp_binary: 'TCP Binary' },
+      messageType: { telemetry: 'Telemetry', state: 'State', event: 'Event', command_reply: 'Command Reply' },
+      transform: {
+        none: 'None',
+        scale: 'Scale',
+        offset: 'Offset',
+        scale_offset: 'Scale and Offset',
+        enum: 'Enum Mapping',
+        expression: 'Restricted Expression'
+      },
+      validation: { required: 'Complete the field identifier, name, and mapping target' },
+      confirmPublishModel: 'Publish this thing model? The previous published version will be retired.',
+      confirmPublishProtocol: 'Publish this protocol mapping? All target fields will be validated.'
     },
     monitor: {
       title: 'Live Device Monitoring',
@@ -352,8 +511,15 @@ const local: App.I18n.Schema = {
       subtitle: 'Send published low-risk device commands and track reliable delivery through device execution.',
       empty: 'No commands match the current filters',
       column: { device: 'Device', template: 'Command Template', status: 'Status', createdAt: 'Created' },
-      action: { create: 'Send Command', send: 'Review Command', confirmSend: 'Confirm Send', detail: 'Details' },
-      modal: { create: 'Send Device Command' },
+      action: {
+        create: 'Send Command',
+        send: 'Review Command',
+        confirmSend: 'Confirm Send',
+        detail: 'Details',
+        cancel: 'Cancel',
+        confirmCancel: 'Confirm Cancel'
+      },
+      modal: { create: 'Send Device Command', cancel: 'Cancel Queued Command' },
       field: {
         id: 'Command ID',
         device: 'Target Device',
@@ -363,19 +529,33 @@ const local: App.I18n.Schema = {
         timeout: 'Device Reply Timeout (seconds)',
         parameters: 'Command Parameters',
         reply: 'Device Reply (Redacted)',
-        errorCode: 'Error Code'
+        errorCode: 'Error Code',
+        reason: 'Dispatch Reason',
+        workOrderNo: 'Work Order',
+        cancelReason: 'Cancellation Reason'
       },
-      placeholder: { device: 'Select a device', status: 'All command statuses' },
+      placeholder: { device: 'Select a device', status: 'All command statuses', template: 'All command templates' },
       validation: {
         required: 'Select a target device and command template',
-        unsupportedParameters: 'This page only supports published low-risk templates without parameters'
+        unsupportedParameters: 'This page only supports published low-risk templates',
+        reasonRequired: 'This command changes device configuration; enter the site dispatch reason',
+        parametersRequired: 'Complete all parameters required by the command template',
+        cancelReasonRequired: 'Enter a cancellation reason'
       },
       confirm: {
         title: 'Confirm Command',
         content: 'Send “{template}” to “{device}”? Confirm the site and operating conditions are safe.'
       },
-      message: { created: 'Command entered the reliable delivery queue' },
-      template: { queryStatus: 'Status Query' },
+      message: {
+        created: 'Command entered the reliable delivery queue',
+        cancelled: 'Command cancelled before dispatch'
+      },
+      template: {
+        queryStatus: 'Status Query',
+        setReportInterval: 'Set Reporting Interval',
+        requestLocation: 'Request Location Now'
+      },
+      parameter: { intervalSeconds: 'Reporting Interval (seconds)' },
       detail: { title: 'Command Details', timeline: 'Status Timeline' },
       timeline: { queued: 'Queued', sent: 'Sent', received: 'Device Received' },
       status: {

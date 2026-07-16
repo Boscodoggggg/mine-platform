@@ -307,6 +307,28 @@ class CommandOutboxIT {
     }
 
     @Test
+    void 排队命令应在出站事件被认领前原子取消() {
+        CommandInstance command = createCommand("request-cancel");
+        try (var stpUtil = mockStatic(cn.dev33.satoken.stp.StpUtil.class)) {
+            stpUtil.when(cn.dev33.satoken.stp.StpUtil::getLoginIdAsString)
+                    .thenReturn(USER_ID.toString());
+
+            CommandResponse cancelled = commandService.cancelCurrentUserCommand(
+                    command.id(), command.version(), "现场作业计划变更"
+            );
+
+            assertThat(cancelled.status()).isEqualTo("CANCELLED");
+            assertThat(cancelled.cancelReason()).isEqualTo("现场作业计划变更");
+            assertThat(cancelled.cancelledBy()).isEqualTo(USER_ID);
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT status FROM sys_outbox_event WHERE aggregate_id = ?",
+                    String.class,
+                    command.id()
+            )).isEqualTo("DEAD");
+        }
+    }
+
+    @Test
     void 应拒绝未发布的命令模板并且不留下半成品() {
         assertThatThrownBy(() -> commandService.createLowRiskCommand(
                 USER_ID, DEVICE_ID, "RESTART_ENGINE", Map.of(), "request-invalid",

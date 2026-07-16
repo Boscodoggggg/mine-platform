@@ -14,6 +14,9 @@ import java.util.UUID;
  * @param templateVersion 命令模板版本
  * @param parameters 已校验命令参数
  * @param reason 提交原因
+ * @param workOrderNo 作业单号
+ * @param cancelledBy 取消人标识
+ * @param cancelReason 取消原因
  * @param riskLevel 风险级别
  * @param status 当前状态
  * @param ttlSeconds 队列存活秒数
@@ -40,6 +43,9 @@ public record CommandInstance(
         int templateVersion,
         Map<String, Object> parameters,
         String reason,
+        String workOrderNo,
+        UUID cancelledBy,
+        String cancelReason,
         CommandRiskLevel riskLevel,
         CommandStatus status,
         int ttlSeconds,
@@ -109,8 +115,44 @@ public record CommandInstance(
             int ttlSeconds,
             int timeoutSeconds
     ) {
+        return createLowRisk(
+                id, deviceId, templateKey, parameters, null, null,
+                idempotencyKey, createdBy, createdAt, ttlSeconds, timeoutSeconds
+        );
+    }
+
+    /**
+     * 创建包含现场原因和作业单号的低风险命令实例。
+     *
+     * @param id 命令标识
+     * @param deviceId 设备标识
+     * @param templateKey 模板编码
+     * @param parameters 命令参数
+     * @param reason 下发原因
+     * @param workOrderNo 作业单号
+     * @param idempotencyKey 幂等键
+     * @param createdBy 创建人
+     * @param createdAt 创建时间
+     * @param ttlSeconds TTL 秒数
+     * @param timeoutSeconds 超时秒数
+     * @return CREATED 状态命令
+     */
+    public static CommandInstance createLowRisk(
+            UUID id,
+            UUID deviceId,
+            String templateKey,
+            Map<String, Object> parameters,
+            String reason,
+            String workOrderNo,
+            String idempotencyKey,
+            UUID createdBy,
+            Instant createdAt,
+            int ttlSeconds,
+            int timeoutSeconds
+    ) {
         return new CommandInstance(
-                id, deviceId, templateKey, 1, parameters, null, CommandRiskLevel.LOW,
+                id, deviceId, templateKey, 1, parameters, normalize(reason), normalize(workOrderNo),
+                null, null, CommandRiskLevel.LOW,
                 CommandStatus.CREATED, ttlSeconds, timeoutSeconds, idempotencyKey,
                 null, null, createdBy, createdAt, createdAt,
                 null, null, null, null, createdAt.plusSeconds(ttlSeconds),
@@ -130,7 +172,8 @@ public record CommandInstance(
         Objects.requireNonNull(occurredAt, "迁移时间不能为空");
         if (occurredAt.isBefore(updatedAt)) throw new IllegalArgumentException("迁移时间不能早于上次更新时间");
         return new CommandInstance(
-                id, deviceId, templateKey, templateVersion, parameters, reason, riskLevel,
+                id, deviceId, templateKey, templateVersion, parameters, reason, workOrderNo,
+                cancelledBy, cancelReason, riskLevel,
                 target, ttlSeconds, timeoutSeconds, idempotencyKey, protocolVersion,
                 configReleaseId, createdBy, createdAt, occurredAt,
                 target == CommandStatus.QUEUED ? occurredAt : queuedAt,
@@ -145,5 +188,9 @@ public record CommandInstance(
         Objects.requireNonNull(value, label + "不能为空");
         if (value.isBlank()) throw new IllegalArgumentException(label + "不能为空白");
         return value.strip();
+    }
+
+    private static String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 }

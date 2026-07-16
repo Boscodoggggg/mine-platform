@@ -15,6 +15,10 @@ import java.util.Map;
 public final class PublishedCommandTemplates {
     /** 状态查询模板编码。 */
     public static final String QUERY_STATUS = "QUERY_STATUS";
+    /** 修改设备遥测上报周期模板编码。 */
+    public static final String SET_REPORT_INTERVAL = "SET_REPORT_INTERVAL";
+    /** 请求设备立即上报位置模板编码。 */
+    public static final String REQUEST_LOCATION = "REQUEST_LOCATION";
 
     private static final ErrorCode TEMPLATE_NOT_PUBLISHED =
             new ErrorCode("COMMAND-422-001", "命令模板未发布");
@@ -30,10 +34,27 @@ public final class PublishedCommandTemplates {
      * @return 不可变模板列表
      */
     public static List<CommandTemplateResponse> publishedTemplates() {
-        return List.of(new CommandTemplateResponse(
-                QUERY_STATUS, 1, "LOW", 300, 30,
-                Map.of("type", "object", "additionalProperties", false, "properties", Map.of())
-        ));
+        return List.of(
+                new CommandTemplateResponse(
+                        QUERY_STATUS, 1, "LOW", 300, 30, emptyObjectSchema(), false
+                ),
+                new CommandTemplateResponse(
+                        SET_REPORT_INTERVAL, 1, "LOW", 600, 60,
+                        Map.of(
+                                "type", "object",
+                                "additionalProperties", false,
+                                "required", List.of("intervalSeconds"),
+                                "properties", Map.of("intervalSeconds", Map.of(
+                                        "type", "integer", "minimum", 30, "maximum", 3600,
+                                        "titleKey", "mine.commands.parameter.intervalSeconds"
+                                ))
+                        ),
+                        true
+                ),
+                new CommandTemplateResponse(
+                        REQUEST_LOCATION, 1, "LOW", 300, 30, emptyObjectSchema(), false
+                )
+        );
     }
 
     /**
@@ -43,12 +64,24 @@ public final class PublishedCommandTemplates {
      * @param parameters 命令参数
      */
     public static void validateParameters(String templateKey, Map<String, Object> parameters) {
-        if (!QUERY_STATUS.equals(templateKey)) {
-            throw new MineException(TEMPLATE_NOT_PUBLISHED, Map.of("templateKey", templateKey));
+        if (parameters == null) throw invalid(templateKey);
+        switch (templateKey) {
+            case QUERY_STATUS, REQUEST_LOCATION -> {
+                if (!parameters.isEmpty()) throw invalid(templateKey);
+            }
+            case SET_REPORT_INTERVAL -> validateInterval(templateKey, parameters);
+            default -> throw new MineException(TEMPLATE_NOT_PUBLISHED, Map.of("templateKey", templateKey));
         }
-        if (parameters == null || !parameters.isEmpty()) {
-            throw new MineException(PARAMETERS_INVALID, Map.of("templateKey", templateKey));
-        }
+    }
+
+    /**
+     * 判断模板是否强制填写现场下发原因。
+     *
+     * @param templateKey 模板编码
+     * @return 是否必填原因
+     */
+    public static boolean requiresReason(String templateKey) {
+        return SET_REPORT_INTERVAL.equals(templateKey);
     }
 
     /**
@@ -61,10 +94,41 @@ public final class PublishedCommandTemplates {
      * @return 已脱敏且有界的回复
      */
     public static Map<String, Object> sanitizeReply(String templateKey, Map<String, Object> reply) {
-        if (!QUERY_STATUS.equals(templateKey) || reply == null) {
+        if (reply == null) {
             return Map.of();
         }
-        Object online = reply.get("online");
-        return online instanceof Boolean ? Map.of("online", online) : Map.of();
+        if (QUERY_STATUS.equals(templateKey)) {
+            Object online = reply.get("online");
+            return online instanceof Boolean ? Map.of("online", online) : Map.of();
+        }
+        if (SET_REPORT_INTERVAL.equals(templateKey)) {
+            Object applied = reply.get("applied");
+            return applied instanceof Boolean ? Map.of("applied", applied) : Map.of();
+        }
+        if (REQUEST_LOCATION.equals(templateKey)) {
+            Object latitude = reply.get("latitude");
+            Object longitude = reply.get("longitude");
+            return latitude instanceof Number && longitude instanceof Number
+                    ? Map.of("latitude", latitude, "longitude", longitude) : Map.of();
+        }
+        return Map.of();
+    }
+
+    private static Map<String, Object> emptyObjectSchema() {
+        return Map.of("type", "object", "additionalProperties", false, "properties", Map.of());
+    }
+
+    private static void validateInterval(String templateKey, Map<String, Object> parameters) {
+        if (!parameters.keySet().equals(java.util.Set.of("intervalSeconds"))) throw invalid(templateKey);
+        Object value = parameters.get("intervalSeconds");
+        if (!(value instanceof Number number)
+                || number.doubleValue() != Math.rint(number.doubleValue())
+                || number.longValue() < 30 || number.longValue() > 3600) {
+            throw invalid(templateKey);
+        }
+    }
+
+    private static MineException invalid(String templateKey) {
+        return new MineException(PARAMETERS_INVALID, Map.of("templateKey", templateKey));
     }
 }

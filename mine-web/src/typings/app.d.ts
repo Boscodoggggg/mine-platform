@@ -367,10 +367,13 @@ declare namespace App {
           | 'system'
           | 'users'
           | 'roles'
+          | 'menus'
+          | 'dictionaries'
           | 'operations'
           | 'device'
           | 'products'
           | 'devices'
+          | 'models'
           | 'monitor'
           | 'command'
           | 'commandCenter'
@@ -387,6 +390,9 @@ declare namespace App {
           reset: string;
           cancel: string;
           save: string;
+          saved: string;
+          yes: string;
+          no: string;
           requestFailed: string;
           traceId: string;
           operationFailed: string;
@@ -500,6 +506,61 @@ declare namespace App {
           placeholder: Record<'code', string>;
           tip: Record<'permissions', string>;
         };
+        menus: {
+          title: string;
+          subtitle: string;
+          column: Record<'name' | 'type' | 'path' | 'permission' | 'status', string>;
+          type: Record<'directory' | 'menu' | 'button', string>;
+          action: Record<'create', string>;
+          modal: Record<'create' | 'edit', string>;
+          field: Record<
+            | 'name'
+            | 'type'
+            | 'parent'
+            | 'path'
+            | 'component'
+            | 'permission'
+            | 'icon'
+            | 'sort'
+            | 'visible'
+            | 'status'
+            | 'i18nKey',
+            string
+          >;
+          validation: Record<'required', string>;
+          confirmDelete: string;
+          message: Record<'created' | 'updated' | 'deleted', string>;
+        };
+        dictionaries: {
+          title: string;
+          subtitle: string;
+          typeList: string;
+          selectType: string;
+          builtIn: string;
+          column: Record<
+            'typeName' | 'code' | 'status' | 'labelZh' | 'value' | 'semantic' | 'sort' | 'default',
+            string
+          >;
+          action: Record<'createType' | 'createItem' | 'items', string>;
+          modal: Record<'createType' | 'editType' | 'createItem' | 'editItem', string>;
+          field: Record<
+            | 'code'
+            | 'name'
+            | 'status'
+            | 'description'
+            | 'value'
+            | 'labelZh'
+            | 'labelEn'
+            | 'semantic'
+            | 'sort'
+            | 'default',
+            string
+          >;
+          semantic: Record<'default' | 'primary' | 'info' | 'success' | 'warning' | 'error', string>;
+          validation: Record<'required', string>;
+          confirmDeleteType: string;
+          confirmDeleteItem: string;
+        };
         products: {
           title: string;
           subtitle: string;
@@ -531,6 +592,57 @@ declare namespace App {
           message: Record<'created' | 'updated' | 'archived', string>;
           confirmArchive: string;
         };
+        models: {
+          title: string;
+          subtitle: string;
+          product: string;
+          publishHelp: string;
+          tab: Record<'model' | 'protocol', string>;
+          version: string;
+          selectVersion: string;
+          selectProtocol: string;
+          description: string;
+          modelFields: string;
+          protocolFields: string;
+          status: Record<'draft' | 'published' | 'retired', string>;
+          action: Record<'newModel' | 'addField' | 'publish' | 'newProtocol' | 'addMapping', string>;
+          column: Record<
+            'identifier' | 'name' | 'dataType' | 'unit' | 'access' | 'source' | 'sourceType' | 'target' | 'transform',
+            string
+          >;
+          modal: Record<'field' | 'protocol' | 'mapping', string>;
+          field: Record<
+            | 'identifier'
+            | 'nameZh'
+            | 'dataType'
+            | 'unit'
+            | 'access'
+            | 'required'
+            | 'minimum'
+            | 'maximum'
+            | 'profileKey'
+            | 'profileName'
+            | 'protocolType'
+            | 'messageType'
+            | 'topicOrFrame'
+            | 'sourcePath'
+            | 'sourceType'
+            | 'target'
+            | 'transform'
+            | 'scale'
+            | 'offset'
+            | 'expression',
+            string
+          >;
+          dataType: Record<'integer' | 'decimal' | 'boolean' | 'string' | 'enum' | 'datetime' | 'geo_point', string>;
+          access: Record<'read' | 'write' | 'read_write', string>;
+          protocol: Record<'mqtt_json' | 'mqtt_binary' | 'tcp_binary', string>;
+          messageType: Record<'telemetry' | 'state' | 'event' | 'command_reply', string>;
+          transform: Record<'none' | 'scale' | 'offset' | 'scale_offset' | 'enum' | 'expression', string>;
+          validation: Record<'required', string>;
+          confirmPublishModel: string;
+          confirmPublishProtocol: string;
+        };
         monitor: {
           title: string;
           subtitle: string;
@@ -552,17 +664,32 @@ declare namespace App {
           subtitle: string;
           empty: string;
           column: Record<'device' | 'template' | 'status' | 'createdAt', string>;
-          action: Record<'create' | 'send' | 'confirmSend' | 'detail', string>;
-          modal: Record<'create', string>;
+          action: Record<'create' | 'send' | 'confirmSend' | 'detail' | 'cancel' | 'confirmCancel', string>;
+          modal: Record<'create' | 'cancel', string>;
           field: Record<
-            'id' | 'device' | 'template' | 'status' | 'ttl' | 'timeout' | 'parameters' | 'reply' | 'errorCode',
+            | 'id'
+            | 'device'
+            | 'template'
+            | 'status'
+            | 'ttl'
+            | 'timeout'
+            | 'parameters'
+            | 'reply'
+            | 'errorCode'
+            | 'reason'
+            | 'workOrderNo'
+            | 'cancelReason',
             string
           >;
-          placeholder: Record<'device' | 'status', string>;
-          validation: Record<'required' | 'unsupportedParameters', string>;
+          placeholder: Record<'device' | 'status' | 'template', string>;
+          validation: Record<
+            'required' | 'unsupportedParameters' | 'reasonRequired' | 'parametersRequired' | 'cancelReasonRequired',
+            string
+          >;
           confirm: Record<'title' | 'content', string>;
-          message: Record<'created', string>;
-          template: Record<'queryStatus', string>;
+          message: Record<'created' | 'cancelled', string>;
+          template: Record<'queryStatus' | 'setReportInterval' | 'requestLocation', string>;
+          parameter: Record<'intervalSeconds', string>;
           detail: Record<'title' | 'timeline', string>;
           timeline: Record<'queued' | 'sent' | 'received', string>;
           status: Record<
