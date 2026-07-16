@@ -10,8 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -165,6 +167,95 @@ public class MenuManagementService {
         auditService.recordSuccess(
                 "DELETE_MENU", "system:menu:delete", "MENU", id, summary(before), Map.of()
         );
+    }
+
+    /**
+     * 原子删除一组菜单节点，父子节点同批删除时先删除子节点。
+     *
+     * @param ids 待删除菜单标识
+     */
+    @Transactional
+    public void deleteMenus(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw invalid();
+        }
+        Set<UUID> selectedIds = new LinkedHashSet<>(ids);
+        Map<UUID, MenuManagementMapper.MenuRecord> menus = mapper.findAllMenus().stream()
+                .collect(java.util.stream.Collectors.toMap(MenuManagementMapper.MenuRecord::id, item -> item));
+        List<MenuManagementMapper.MenuRecord> selectedMenus = selectedIds.stream()
+                .map(id -> requireMenu(id, menus))
+                .toList();
+
+        selectedMenus.forEach(menu -> validateBatchDeletion(menu, selectedIds, menus.values()));
+        selectedMenus.stream()
+                .sorted(Comparator.comparingInt(
+                        (MenuManagementMapper.MenuRecord menu) -> menuDepth(menu, menus)
+                ).reversed())
+                .forEach(menu -> {
+                    mapper.deleteMenu(menu.id());
+                    auditService.recordSuccess(
+                            "DELETE_MENU", "system:menu:delete", "MENU", menu.id(), summary(menu), Map.of()
+                    );
+                });
+    }
+
+    /**
+     * 从菜单快照中读取必然存在的节点。
+     *
+     * @param id    菜单标识
+     * @param menus 菜单快照
+     * @return 菜单节点
+     */
+    private MenuManagementMapper.MenuRecord requireMenu(
+            UUID id,
+            Map<UUID, MenuManagementMapper.MenuRecord> menus
+    ) {
+        MenuManagementMapper.MenuRecord menu = menus.get(id);
+        if (menu == null) {
+            throw new MineException(MENU_NOT_FOUND, Map.of("menuId", id));
+        }
+        return menu;
+    }
+
+    /**
+     * 验证批量删除不会移除核心、已授权或仍有未选中子节点的菜单。
+     *
+     * @param menu        当前菜单
+     * @param selectedIds 本批次标识
+     * @param allMenus    完整菜单快照
+     */
+    private void validateBatchDeletion(
+            MenuManagementMapper.MenuRecord menu,
+            Set<UUID> selectedIds,
+            java.util.Collection<MenuManagementMapper.MenuRecord> allMenus
+    ) {
+        boolean hasUnselectedChild = allMenus.stream()
+                .anyMatch(child -> menu.id().equals(child.parentId()) && !selectedIds.contains(child.id()));
+        if (menu.protectedNode() || mapper.countRoleReferences(menu.id()) > 0 || hasUnselectedChild) {
+            throw new MineException(MENU_IN_USE, Map.of("menuId", menu.id()));
+        }
+    }
+
+    /**
+     * 计算菜单层级，用于保证批量删除的子节点先于父节点执行。
+     *
+     * @param menu  当前菜单
+     * @param menus 完整菜单快照
+     * @return 从根节点开始的层级
+     */
+    private int menuDepth(
+            MenuManagementMapper.MenuRecord menu,
+            Map<UUID, MenuManagementMapper.MenuRecord> menus
+    ) {
+        int depth = 0;
+        UUID cursor = menu.parentId();
+        Set<UUID> visited = new HashSet<>();
+        while (cursor != null && visited.add(cursor)) {
+            depth++;
+            MenuManagementMapper.MenuRecord parent = menus.get(cursor);
+            cursor = parent == null ? null : parent.parentId();
+        }
+        return depth;
     }
 
     private NormalizedMenu validateAndNormalize(UUID currentId, MenuSaveCommand command) {

@@ -321,19 +321,41 @@ const local: App.I18n.Schema = {
     },
     menus: {
       title: '菜单管理',
-      subtitle: '在线维护目录、页面和按钮权限；页面组件只能从平台白名单选择，保存后无需重启。',
-      column: { name: '节点名称', type: '节点类型', path: '路由地址', permission: '权限码', status: '状态' },
+      subtitle: '维护导航目录和页面；按钮权限在对应页面中独立配置，发布后无需重启。',
+      listTitle: '菜单列表',
+      root: '根目录',
+      total: '共 {count} 条',
+      buttonPermissions: '按钮权限',
+      buttonPermissionTip: '按钮权限不显示在菜单主列表中，只控制页面操作和后端接口访问。',
+      column: {
+        id: 'ID',
+        name: '菜单名称',
+        type: '菜单类型',
+        icon: '图标',
+        path: '路由路径',
+        permission: '权限码',
+        status: '菜单状态',
+        visible: '隐藏菜单',
+        parent: '父级菜单',
+        sort: '排序'
+      },
       type: { directory: '目录', menu: '页面', button: '按钮' },
-      action: { create: '新增节点', expandAll: '展开全部', collapseAll: '折叠全部' },
+      action: {
+        create: '新增菜单',
+        batchDelete: '批量删除（{count}）',
+        refresh: '刷新',
+        columns: '列设置',
+        addButton: '新增按钮权限'
+      },
       filter: {
-        name: '节点名称',
-        namePlaceholder: '搜索节点名称',
-        type: '节点类型',
+        name: '菜单名称',
+        namePlaceholder: '搜索菜单名称',
+        type: '菜单类型',
         allTypes: '全部类型',
         status: '状态',
         allStatuses: '全部状态'
       },
-      modal: { create: '新增菜单节点', edit: '编辑菜单节点' },
+      modal: { create: '新增菜单', edit: '编辑菜单' },
       field: {
         name: '节点名称',
         type: '节点类型',
@@ -359,11 +381,26 @@ const local: App.I18n.Schema = {
         icon: '侧边导航使用的图标键；按钮节点通常无需图标，留空时使用平台默认展示。',
         i18nKey: '对应中英文资源中的稳定键，例如 mine.menu.menus；留空时使用节点名称。',
         status: '停用后该节点不会进入用户的导航和授权结果，子节点也将无法正常访问。',
-        visible: '只控制是否出现在侧边导航，不等于权限停用；隐藏页面仍可通过路由和权限访问。'
+        visible: '只控制是否出现在侧边导航，不等于权限停用；隐藏页面仍可通过路由和权限访问。',
+        buttonName: '显示在角色授权和操作审计中的按钮名称，例如“创建产品”或“下发命令”。',
+        buttonPermission: '必须与后端 Sa-Token 注解及前端操作权限完全一致，例如 device:product:create。'
       },
-      validation: { required: '请完整填写当前节点类型要求的配置' },
-      confirmDelete: '确认删除节点“{name}”吗？',
-      message: { created: '菜单节点已创建', updated: '菜单节点已更新', deleted: '菜单节点已删除' }
+      validation: {
+        required: '请完整填写当前菜单类型要求的配置',
+        buttonRequired: '请填写按钮名称和权限码'
+      },
+      confirmDelete: '确认删除菜单“{name}”吗？',
+      confirmBatchDelete: '确认删除选中的 {count} 个菜单吗？该操作会整批校验，失败时不会删除任何菜单。',
+      confirmDeleteButton: '确认删除按钮权限“{name}”吗？',
+      message: {
+        created: '菜单已创建',
+        updated: '菜单已更新',
+        deleted: '菜单已删除',
+        batchDeleted: '已删除 {count} 个菜单',
+        buttonCreated: '按钮权限已创建',
+        buttonUpdated: '按钮权限已更新',
+        buttonDeleted: '按钮权限已删除'
+      }
     },
     dictionaries: {
       title: '通用字典管理',

@@ -545,9 +545,17 @@ declare namespace App {
         menus: {
           title: string;
           subtitle: string;
-          column: Record<'name' | 'type' | 'path' | 'permission' | 'status', string>;
+          listTitle: string;
+          root: string;
+          total: string;
+          buttonPermissions: string;
+          buttonPermissionTip: string;
+          column: Record<
+            'id' | 'name' | 'type' | 'icon' | 'path' | 'permission' | 'status' | 'visible' | 'parent' | 'sort',
+            string
+          >;
           type: Record<'directory' | 'menu' | 'button', string>;
-          action: Record<'create' | 'expandAll' | 'collapseAll', string>;
+          action: Record<'create' | 'batchDelete' | 'refresh' | 'columns' | 'addButton', string>;
           filter: Record<'name' | 'namePlaceholder' | 'type' | 'allTypes' | 'status' | 'allStatuses', string>;
           modal: Record<'create' | 'edit', string>;
           field: Record<
@@ -576,12 +584,19 @@ declare namespace App {
             | 'icon'
             | 'i18nKey'
             | 'status'
-            | 'visible',
+            | 'visible'
+            | 'buttonName'
+            | 'buttonPermission',
             string
           >;
-          validation: Record<'required', string>;
+          validation: Record<'required' | 'buttonRequired', string>;
           confirmDelete: string;
-          message: Record<'created' | 'updated' | 'deleted', string>;
+          confirmBatchDelete: string;
+          confirmDeleteButton: string;
+          message: Record<
+            'created' | 'updated' | 'deleted' | 'batchDeleted' | 'buttonCreated' | 'buttonUpdated' | 'buttonDeleted',
+            string
+          >;
         };
         dictionaries: {
           title: string;

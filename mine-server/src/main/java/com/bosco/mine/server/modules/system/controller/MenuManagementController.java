@@ -6,6 +6,8 @@ import com.bosco.mine.server.modules.system.service.MenuManagementService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
@@ -110,6 +112,19 @@ public class MenuManagementController {
     }
 
     /**
+     * 在同一事务中批量删除菜单节点。
+     *
+     * @param request 批量删除请求
+     * @return 空响应
+     */
+    @PostMapping("/batch-delete")
+    @SaCheckPermission("system:menu:delete")
+    public ResponseEntity<Void> deleteMenus(@Valid @RequestBody MenuBatchDeleteRequest request) {
+        service.deleteMenus(request.menuIds());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * 菜单保存请求。
      */
     public record MenuSaveRequest(
@@ -137,5 +152,15 @@ public class MenuManagementController {
                     sortOrder, visible, status, i18nKey
             );
         }
+    }
+
+    /**
+     * 菜单批量删除请求。
+     *
+     * @param menuIds 待删除菜单标识
+     */
+    public record MenuBatchDeleteRequest(
+            @NotEmpty @Size(max = 100) List<@NotNull UUID> menuIds
+    ) {
     }
 }

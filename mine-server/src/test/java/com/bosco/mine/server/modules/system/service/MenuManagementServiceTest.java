@@ -14,6 +14,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -86,6 +87,61 @@ class MenuManagementServiceTest {
         verify(mapper, never()).updateMenu(any(), any(), anyString(), anyString(), any(), any(), any(), any(),
                 org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyBoolean(), anyString(),
                 any(), org.mockito.ArgumentMatchers.anyLong(), any());
+    }
+
+    @Test
+    void 批量删除父子节点时应先删除子节点再删除父节点() {
+        UUID directoryId = UUID.randomUUID();
+        UUID menuId = UUID.randomUUID();
+        when(mapper.findAllMenus()).thenReturn(List.of(
+                menu(directoryId, null, "临时目录", "DIRECTORY", null, null, null, false),
+                menu(menuId, directoryId, "临时页面", "MENU", "/temporary", "device-device-list",
+                        "temporary:view", false)
+        ));
+        when(mapper.countRoleReferences(directoryId)).thenReturn(0L);
+        when(mapper.countRoleReferences(menuId)).thenReturn(0L);
+
+        service.deleteMenus(List.of(directoryId, menuId));
+
+        org.mockito.InOrder deletionOrder = inOrder(mapper);
+        deletionOrder.verify(mapper).deleteMenu(menuId);
+        deletionOrder.verify(mapper).deleteMenu(directoryId);
+    }
+
+    @Test
+    void 批量删除包含核心节点时应整批拒绝且不删除任何节点() {
+        UUID ordinaryId = UUID.randomUUID();
+        UUID protectedId = UUID.randomUUID();
+        when(mapper.findAllMenus()).thenReturn(List.of(
+                menu(ordinaryId, null, "临时目录", "DIRECTORY", null, null, null, false),
+                menu(protectedId, null, "系统管理", "DIRECTORY", null, null, null, true)
+        ));
+
+        assertThatThrownBy(() -> service.deleteMenus(List.of(ordinaryId, protectedId)))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        org.assertj.core.api.Assertions.assertThat(exception.errorCode().code())
+                                .isEqualTo("SYSTEM-409-006"));
+
+        verify(mapper, never()).deleteMenu(any());
+    }
+
+    @Test
+    void 批量删除未包含全部子节点时应整批拒绝() {
+        UUID directoryId = UUID.randomUUID();
+        UUID menuId = UUID.randomUUID();
+        when(mapper.findAllMenus()).thenReturn(List.of(
+                menu(directoryId, null, "临时目录", "DIRECTORY", null, null, null, false),
+                menu(menuId, directoryId, "临时页面", "MENU", "/temporary", "device-device-list",
+                        "temporary:view", false)
+        ));
+        when(mapper.countRoleReferences(directoryId)).thenReturn(0L);
+
+        assertThatThrownBy(() -> service.deleteMenus(List.of(directoryId)))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        org.assertj.core.api.Assertions.assertThat(exception.errorCode().code())
+                                .isEqualTo("SYSTEM-409-006"));
+
+        verify(mapper, never()).deleteMenu(any());
     }
 
     private MenuManagementMapper.MenuRecord menu(

@@ -6,6 +6,7 @@ import MenuManagementPage from './MenuManagementPage.vue';
 const api = vi.hoisted(() => ({
   createMenu: vi.fn(),
   deleteMenu: vi.fn(),
+  deleteMenus: vi.fn(),
   getMenuComponentOptions: vi.fn(),
   getMenuTree: vi.fn(),
   updateMenu: vi.fn()
@@ -29,27 +30,83 @@ describe('MenuManagementPage', () => {
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
   });
 
-  it('默认应折叠权限树并支持一键展开全部', async () => {
+  it('主表应只展示目录和页面并隐藏按钮权限节点', async () => {
     const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
     await flushPromises();
 
     expect(wrapper.text()).toContain('设备管理');
+    expect(wrapper.text()).toContain('产品管理');
     expect(wrapper.text()).not.toContain('创建产品');
-
-    await wrapper.get('[data-action="toggle-tree"]').trigger('click');
-    await flushPromises();
-
-    expect(wrapper.text()).toContain('创建产品');
   });
 
-  it('应提供树节点筛选而不是普通分页', async () => {
+  it('应提供筛选、分页、刷新和列设置', async () => {
     const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
     await flushPromises();
 
     expect(wrapper.find('[data-filter="menu-name"]').exists()).toBe(true);
     expect(wrapper.find('[data-filter="menu-type"]').exists()).toBe(true);
     expect(wrapper.find('[data-filter="menu-status"]').exists()).toBe(true);
-    expect(wrapper.find('[data-pagination]').exists()).toBe(false);
+    expect(wrapper.find('[data-pagination]').exists()).toBe(true);
+    expect(wrapper.find('[data-action="refresh-menu"]').exists()).toBe(true);
+    expect(wrapper.find('[data-action="configure-columns"]').exists()).toBe(true);
+  });
+
+  it('菜单主表应按每页十条进行分页', async () => {
+    api.getMenuTree.mockResolvedValue(
+      Array.from({ length: 12 }, (_, index) => ({
+        ...menuTree()[0],
+        id: `directory-${index + 1}`,
+        name: `目录${index + 1}`,
+        protectedNode: false,
+        children: []
+      }))
+    );
+    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const page = wrapper.vm as unknown as { pagedRows: unknown[]; page: number };
+
+    expect(page.pagedRows).toHaveLength(10);
+    page.page = 2;
+    await flushPromises();
+    expect(page.pagedRows).toHaveLength(2);
+  });
+
+  it('批量删除应一次提交选中的菜单标识', async () => {
+    window.confirm = vi.fn(() => true);
+    api.deleteMenus.mockResolvedValue(undefined);
+    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      checkedRowKeys: string[];
+      batchRemove: () => Promise<void>;
+    };
+
+    page.checkedRowKeys = ['menu-1'];
+    await page.batchRemove();
+    await flushPromises();
+
+    expect(api.deleteMenus).toHaveBeenCalledWith(['menu-1']);
+  });
+
+  it('编辑页面时应在独立区域维护按钮权限', async () => {
+    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      openEdit: (row: ReturnType<typeof menuTree>[number]['children'][number]) => void;
+      openButtonCreate: () => void;
+    };
+
+    page.openEdit(menuTree()[0].children[0]);
+    await flushPromises();
+
+    expect(document.body.textContent).toContain('按钮权限');
+    expect(document.body.textContent).toContain('创建产品');
+
+    page.openButtonCreate();
+    await flushPromises();
+    const buttonFields = document.body.querySelectorAll('[data-button-field]');
+    expect(buttonFields.length).toBeGreaterThan(0);
+    buttonFields.forEach(item => expect(item.querySelector('[data-field-help]')).not.toBeNull());
   });
 
   it('创建菜单时每个当前可见字段都应提供说明入口', async () => {
@@ -61,9 +118,8 @@ describe('MenuManagementPage', () => {
     await flushPromises();
 
     const formItems = document.body.querySelectorAll('[data-menu-field]');
-    const helpTriggers = document.body.querySelectorAll('[data-field-help]');
     expect(formItems.length).toBeGreaterThan(0);
-    expect(helpTriggers.length).toBe(formItems.length);
+    formItems.forEach(item => expect(item.querySelector('[data-field-help]')).not.toBeNull());
   });
 });
 

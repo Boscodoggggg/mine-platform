@@ -332,20 +332,41 @@ const local: App.I18n.Schema = {
     },
     menus: {
       title: 'Menu Management',
-      subtitle:
-        'Maintain directories, pages, and button permissions online. Page components come from a safe registry and require no restart.',
-      column: { name: 'Node Name', type: 'Node Type', path: 'Route Path', permission: 'Permission', status: 'Status' },
+      subtitle: 'Maintain navigation directories and pages. Button permissions are configured inside each page.',
+      listTitle: 'Menu List',
+      root: 'Root',
+      total: '{count} items',
+      buttonPermissions: 'Button Permissions',
+      buttonPermissionTip: 'Button permissions stay out of the menu list and only control page actions and API access.',
+      column: {
+        id: 'ID',
+        name: 'Menu Name',
+        type: 'Menu Type',
+        icon: 'Icon',
+        path: 'Route Path',
+        permission: 'Permission',
+        status: 'Menu Status',
+        visible: 'Hidden',
+        parent: 'Parent Menu',
+        sort: 'Sort'
+      },
       type: { directory: 'Directory', menu: 'Page', button: 'Button' },
-      action: { create: 'Add Node', expandAll: 'Expand All', collapseAll: 'Collapse All' },
+      action: {
+        create: 'Add Menu',
+        batchDelete: 'Delete Selected ({count})',
+        refresh: 'Refresh',
+        columns: 'Columns',
+        addButton: 'Add Button Permission'
+      },
       filter: {
-        name: 'Node Name',
-        namePlaceholder: 'Search node name',
-        type: 'Node Type',
+        name: 'Menu Name',
+        namePlaceholder: 'Search menu name',
+        type: 'Menu Type',
         allTypes: 'All Types',
         status: 'Status',
         allStatuses: 'All Statuses'
       },
-      modal: { create: 'Add Menu Node', edit: 'Edit Menu Node' },
+      modal: { create: 'Add Menu', edit: 'Edit Menu' },
       field: {
         name: 'Node Name',
         type: 'Node Type',
@@ -373,11 +394,28 @@ const local: App.I18n.Schema = {
         status:
           'Disabled nodes are excluded from navigation and authorization results, making descendants unavailable.',
         visible:
-          'Controls sidebar visibility only. A hidden page can still be opened when its route and permission allow it.'
+          'Controls sidebar visibility only. A hidden page can still be opened when its route and permission allow it.',
+        buttonName: 'Name shown in role assignment and operation audit, such as “Create Product” or “Send Command”.',
+        buttonPermission:
+          'Must exactly match backend Sa-Token annotations and frontend action checks, such as device:product:create.'
       },
-      validation: { required: 'Complete all fields required by this node type' },
-      confirmDelete: 'Delete node “{name}”?',
-      message: { created: 'Menu node created', updated: 'Menu node updated', deleted: 'Menu node deleted' }
+      validation: {
+        required: 'Complete all fields required by this menu type',
+        buttonRequired: 'Enter the button name and permission code'
+      },
+      confirmDelete: 'Delete menu “{name}”?',
+      confirmBatchDelete:
+        'Delete the selected {count} menus? The entire batch is validated first and nothing is deleted on failure.',
+      confirmDeleteButton: 'Delete button permission “{name}”?',
+      message: {
+        created: 'Menu created',
+        updated: 'Menu updated',
+        deleted: 'Menu deleted',
+        batchDeleted: '{count} menus deleted',
+        buttonCreated: 'Button permission created',
+        buttonUpdated: 'Button permission updated',
+        buttonDeleted: 'Button permission deleted'
+      }
     },
     dictionaries: {
       title: 'Common Dictionary Management',

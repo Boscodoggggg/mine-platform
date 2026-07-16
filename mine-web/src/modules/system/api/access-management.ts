@@ -157,6 +157,11 @@ export function deleteMenu(menuId: string) {
   return request<void>(`/system/menus/${menuId}`, { method: 'DELETE' });
 }
 
+/** 在后端事务中原子删除多个菜单节点。 */
+export function deleteMenus(menuIds: string[]) {
+  return request<void>('/system/menus/batch-delete', jsonRequest('POST', { menuIds }));
+}
+
 function jsonRequest(method: string, payload: unknown): RequestInit {
   return {
     method,
