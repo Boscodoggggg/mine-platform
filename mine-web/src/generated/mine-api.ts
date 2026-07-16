@@ -579,6 +579,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/devices/{deviceId}/connection-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询设备接入配置与最近诊断结果 */
+        get: operations["getDeviceConnectionProfile"];
+        /** 创建或更新设备接入配置 */
+        put: operations["saveDeviceConnectionProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/devices/{deviceId}/connection-profile/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 执行设备接入端点分层连通性诊断
+         * @description 依次验证配置、DNS、TCP 和可选 TLS。对于设备主动接入平台的模式，成功只表示平台端点可用，
+         *     仍必须等待真实设备连接和首帧数据才能确认设备已经上线。
+         */
+        post: operations["testDeviceConnectionProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{deviceId}/latest": {
         parameters: {
             query?: never;
@@ -1139,6 +1178,71 @@ export interface components {
             name: string;
             /** @enum {string} */
             status: "ENABLED" | "DISABLED";
+        };
+        /** @enum {string} */
+        DeviceConnectionMode: "DEVICE_TO_PLATFORM_MQTT" | "DEVICE_TO_PLATFORM_TCP" | "PLATFORM_TO_DEVICE_TCP";
+        /** @enum {string} */
+        DeviceConnectionTestStatus: "NOT_TESTED" | "PASSED" | "PARTIAL" | "FAILED";
+        DeviceConnectionTestStage: {
+            /** @enum {string} */
+            stage: "CONFIG" | "DNS" | "TCP" | "TLS" | "DEVICE_CONFIRMATION";
+            /** @enum {string} */
+            status: "PASSED" | "FAILED" | "SKIPPED";
+            /** @description 稳定诊断原因码，由客户端国际化展示 */
+            message: string;
+            /** Format: int64 */
+            durationMillis: number;
+        };
+        DeviceConnectionProfile: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deviceId: string;
+            connectionMode: components["schemas"]["DeviceConnectionMode"];
+            host: string;
+            port: number;
+            tlsEnabled: boolean;
+            tlsServerName?: string | null;
+            connectTimeoutMillis: number;
+            keepAliveSeconds: number;
+            offlineThresholdSeconds: number;
+            lastTestStatus: components["schemas"]["DeviceConnectionTestStatus"];
+            /** Format: date-time */
+            lastTestAt?: string | null;
+            /** Format: int64 */
+            lastTestDurationMillis?: number | null;
+            lastTestMessage?: string | null;
+            lastTestStages: components["schemas"]["DeviceConnectionTestStage"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        DeviceConnectionProfileRequest: {
+            connectionMode: components["schemas"]["DeviceConnectionMode"];
+            host: string;
+            port: number;
+            tlsEnabled: boolean;
+            tlsServerName?: string | null;
+            connectTimeoutMillis: number;
+            keepAliveSeconds: number;
+            offlineThresholdSeconds: number;
+            /** Format: int64 */
+            version: number;
+        };
+        DeviceConnectionTestResult: {
+            /** Format: uuid */
+            deviceId: string;
+            status: components["schemas"]["DeviceConnectionTestStatus"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: int64 */
+            durationMillis: number;
+            /** @description 稳定诊断结论码，由客户端国际化展示 */
+            message: string;
+            stages: components["schemas"]["DeviceConnectionTestStage"][];
         };
         DeviceUpdateRequest: {
             name: string;
@@ -2408,6 +2512,90 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["DeviceNotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getDeviceConnectionProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 设备接入配置，不包含任何明文凭据。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceConnectionProfile"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+        };
+    };
+    saveDeviceConnectionProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceConnectionProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存后的设备接入配置。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceConnectionProfile"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    testDeviceConnectionProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 设备 UUID。 */
+                deviceId: components["parameters"]["DeviceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 本次诊断结果。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceConnectionTestResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
         };
     };
     getDeviceLatestTelemetry: {

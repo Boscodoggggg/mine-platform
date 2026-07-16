@@ -6,8 +6,11 @@ import DeviceListPage from './DeviceListPage.vue';
 const api = vi.hoisted(() => ({
   archiveDevice: vi.fn(),
   createDevice: vi.fn(),
+  getDeviceConnectionProfile: vi.fn(),
   getDevices: vi.fn(),
   getProducts: vi.fn(),
+  saveDeviceConnectionProfile: vi.fn(),
+  testDeviceConnectionProfile: vi.fn(),
   updateDevice: vi.fn()
 }));
 const authState = vi.hoisted(() => ({ userInfo: { buttons: [] as string[] } }));
@@ -37,6 +40,26 @@ const device = {
   updatedAt: '2026-07-15T00:00:00Z',
   version: 0
 };
+const connectionProfile = {
+  id: 'connection-1',
+  deviceId: 'device-1',
+  connectionMode: 'DEVICE_TO_PLATFORM_MQTT' as const,
+  host: 'mqtt.mine.local',
+  port: 8883,
+  tlsEnabled: true,
+  tlsServerName: 'mqtt.mine.local',
+  connectTimeoutMillis: 5000,
+  keepAliveSeconds: 60,
+  offlineThresholdSeconds: 180,
+  lastTestStatus: 'NOT_TESTED' as const,
+  lastTestAt: null,
+  lastTestDurationMillis: null,
+  lastTestMessage: null,
+  lastTestStages: [],
+  createdAt: '2026-07-16T00:00:00Z',
+  updatedAt: '2026-07-16T00:00:00Z',
+  version: 0
+};
 
 describe('DeviceListPage', () => {
   beforeEach(() => {
@@ -45,6 +68,19 @@ describe('DeviceListPage', () => {
     api.getProducts.mockResolvedValue({ items: [product], page: 1, size: 100, total: 1 });
     api.getDevices.mockResolvedValue({ items: [device], page: 1, size: 20, total: 1 });
     api.createDevice.mockResolvedValue(device);
+    api.getDeviceConnectionProfile.mockResolvedValue(connectionProfile);
+    api.saveDeviceConnectionProfile.mockResolvedValue({ ...connectionProfile, version: 1 });
+    api.testDeviceConnectionProfile.mockResolvedValue({
+      deviceId: 'device-1',
+      status: 'PARTIAL',
+      startedAt: '2026-07-16T01:00:00Z',
+      durationMillis: 12,
+      message: 'TEST_PARTIAL',
+      stages: [
+        { stage: 'CONFIG', status: 'PASSED', message: 'CONFIG_OK', durationMillis: 0 },
+        { stage: 'DEVICE_CONFIRMATION', status: 'SKIPPED', message: 'FIRST_MESSAGE_REQUIRED', durationMillis: 0 }
+      ]
+    });
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
   });
 
@@ -56,6 +92,7 @@ describe('DeviceListPage', () => {
     expect(wrapper.text()).toContain('一号运输车');
     expect(wrapper.text()).toContain('矿用运输车');
     expect(wrapper.find('[data-action="create-device"]').exists()).toBe(true);
+    expect(wrapper.find('[data-action="connection-profile"]').exists()).toBe(false);
   });
 
   it('创建设备时应提交产品标识和矿区内设备编码', async () => {
@@ -98,6 +135,40 @@ describe('DeviceListPage', () => {
       creatableProductOptions: Array<{ value: string }>;
     };
     expect(page.creatableProductOptions.map(option => option.value)).toEqual(['product-1']);
+  });
+
+  it('应按权限加载保存接入配置并执行分层诊断', async () => {
+    const wrapper = mountPage([
+      'device:connection:view',
+      'device:connection:update',
+      'device:connection:test'
+    ]);
+    await flushPromises();
+
+    expect(wrapper.find('[data-action="connection-profile"]').exists()).toBe(true);
+    const page = wrapper.vm as unknown as {
+      connectionForm: Record<string, string | number | boolean>;
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      saveConnectionProfile: () => Promise<void>;
+      runConnectionTest: () => Promise<void>;
+    };
+    await page.openConnectionConfig(device);
+    expect(api.getDeviceConnectionProfile).toHaveBeenCalledWith('device-1');
+
+    page.connectionForm.host = 'edge.mine.local';
+    page.connectionForm.port = 1883;
+    await page.runConnectionTest();
+    expect(api.testDeviceConnectionProfile).not.toHaveBeenCalled();
+
+    await page.saveConnectionProfile();
+    expect(api.saveDeviceConnectionProfile).toHaveBeenCalledWith(
+      'device-1',
+      expect.objectContaining({ host: 'edge.mine.local', port: 1883, version: 0 })
+    );
+
+    await page.runConnectionTest();
+    expect(api.testDeviceConnectionProfile).toHaveBeenCalledWith('device-1');
+    expect(window.$message?.warning).toHaveBeenCalledWith('网络端点检查通过，仍需设备首帧确认');
   });
 });
 

@@ -41,6 +41,9 @@ sa-token:
   is-read-body: false
 
 mine:
+  device-connection:
+    allowed-cidrs: ${MINE_DEVICE_CONNECTION_ALLOWED_CIDRS:}
+    max-concurrent-probes: ${MINE_DEVICE_CONNECTION_MAX_CONCURRENT_PROBES:8}
   site:
     zone-id: ${MINE_SITE_ZONE_ID:Asia/Shanghai}
   dashboard:

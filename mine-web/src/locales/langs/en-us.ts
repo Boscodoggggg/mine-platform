@@ -347,7 +347,7 @@ const local: App.I18n.Schema = {
         permission: 'Permission',
         status: 'Menu Status',
         visible: 'Hidden',
-        parent: 'Parent Menu',
+        parent: 'Hierarchy Path',
         sort: 'Sort'
       },
       type: { directory: 'Directory', menu: 'Page', button: 'Button' },
@@ -487,14 +487,82 @@ const local: App.I18n.Schema = {
       search: 'Search device name or code',
       empty: 'No devices match the current filters',
       column: { code: 'Device Code', name: 'Device Name', product: 'Product', status: 'Status', updatedAt: 'Updated' },
-      action: { create: 'Create Device', archive: 'Archive' },
+      action: { create: 'Create Device', archive: 'Archive', connection: 'Connection' },
       modal: { create: 'Create Device', edit: 'Edit Device' },
       field: { code: 'Device Code', name: 'Device Name', product: 'Product', status: 'Status' },
       placeholder: { product: 'Select a published product', code: 'For example, truck-001' },
       status: { enabled: 'Enabled', disabled: 'Disabled', archived: 'Archived' },
       validation: { required: 'Select a product and enter a valid device code and name' },
       message: { created: 'Device created', updated: 'Device updated', archived: 'Device archived' },
-      confirmArchive: 'Archive device “{name}”? Historical data will be retained.'
+      confirmArchive: 'Archive device “{name}”? Historical data will be retained.',
+      connection: {
+        title: '{name} · Device Onboarding',
+        boundary:
+          'Endpoint tests verify configuration, DNS, TCP, and TLS only. Inbound devices are not online until a real first message is received.',
+        configuration: 'Connection Configuration',
+        diagnostics: 'Layered Diagnostics',
+        notTested: 'Save the connection configuration to run a layered connectivity test.',
+        validation: 'Enter a valid host, port, and connection parameters',
+        saved: 'Device connection configuration saved',
+        saveBeforeTest: 'Save the device connection configuration first',
+        testCompleted: 'Endpoint diagnostics completed',
+        result: {
+          testpassed: 'The device onboarding path passed diagnostics',
+          testpartial: 'The endpoint passed, but a real first device message is still required',
+          testfailed: 'The endpoint test failed. Review the failed stage',
+          configok: 'Connection configuration is valid',
+          dnsok: 'DNS resolution succeeded',
+          dnstargetblocked: 'The resolved address is outside the allowed mine network ranges',
+          dnstimeout: 'DNS resolution timed out',
+          dnsinterrupted: 'DNS resolution was interrupted',
+          dnsnotfound: 'The domain does not exist or cannot be resolved from this node',
+          dnsfailed: 'DNS resolution failed',
+          tcpok: 'The TCP port accepted a connection',
+          tcptimeout: 'The TCP connection timed out',
+          tcprefused: 'The target port refused the connection',
+          tcpfailed: 'The TCP connection failed',
+          tlsok: 'The TLS handshake and hostname verification succeeded',
+          tlstimeout: 'The TLS handshake timed out',
+          tlsfailed: 'The TLS handshake or certificate verification failed',
+          tlsdisabled: 'TLS is disabled for this connection',
+          dependencyskipped: 'A prerequisite failed, so this stage was not run',
+          firstmessagerequired: 'A real first device message is still required to confirm online status',
+          activeendpointconfirmed: 'The platform connected to the device endpoint',
+          probebusy: 'Too many diagnostics are running. Try again shortly',
+          unknown: 'The diagnostic returned an unrecognized result'
+        },
+        action: { save: 'Save Configuration', test: 'Test Connectivity' },
+        field: {
+          mode: 'Connection Mode',
+          host: 'Host or Domain',
+          port: 'Port',
+          tls: 'Validate TLS',
+          tlsServerName: 'TLS Server Name',
+          timeout: 'Connection Timeout (ms)',
+          keepAlive: 'Keep Alive (seconds)',
+          offlineThreshold: 'Offline Threshold (seconds)'
+        },
+        placeholder: { host: 'For example, mqtt.mine.local', tlsServerName: 'Uses the host when empty' },
+        mode: {
+          devicetoplatformmqtt: 'Device Connects to Platform MQTT',
+          devicetoplatformtcp: 'Device Connects to Platform TCP',
+          platformtodevicetcp: 'Platform Connects to Device TCP'
+        },
+        stage: {
+          config: 'Configuration',
+          dns: 'DNS Resolution',
+          tcp: 'TCP Connection',
+          tls: 'TLS Handshake',
+          deviceconfirmation: 'First Device Message'
+        },
+        testStatus: {
+          notTested: 'Not Tested',
+          passed: 'Passed',
+          partial: 'Partially Passed',
+          failed: 'Failed',
+          skipped: 'Awaiting Confirmation'
+        }
+      }
     },
     models: {
       title: 'Thing Models and Protocol Mapping',

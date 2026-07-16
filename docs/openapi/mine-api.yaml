@@ -837,6 +837,63 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/DeviceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /devices/{deviceId}/connection-profile:
+    get:
+      tags: [DeviceRegistry]
+      operationId: getDeviceConnectionProfile
+      summary: 查询设备接入配置与最近诊断结果
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: 设备接入配置，不包含任何明文凭据。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceConnectionProfile' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DeviceNotFound' }
+    put:
+      tags: [DeviceRegistry]
+      operationId: saveDeviceConnectionProfile
+      summary: 创建或更新设备接入配置
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceConnectionProfileRequest' }
+      responses:
+        '200':
+          description: 保存后的设备接入配置。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceConnectionProfile' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DeviceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /devices/{deviceId}/connection-profile/test:
+    post:
+      tags: [DeviceRegistry]
+      operationId: testDeviceConnectionProfile
+      summary: 执行设备接入端点分层连通性诊断
+      description: |
+        依次验证配置、DNS、TCP 和可选 TLS。对于设备主动接入平台的模式，成功只表示平台端点可用，
+        仍必须等待真实设备连接和首帧数据才能确认设备已经上线。
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: 本次诊断结果。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceConnectionTestResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DeviceNotFound' }
   /devices/{deviceId}/latest:
     get:
       tags: [DeviceTelemetry]
@@ -1621,6 +1678,97 @@ components:
         deviceCode: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$' }
         name: { type: string, minLength: 1, maxLength: 128 }
         status: { type: string, enum: [ENABLED, DISABLED] }
+    DeviceConnectionMode:
+      type: string
+      enum: [DEVICE_TO_PLATFORM_MQTT, DEVICE_TO_PLATFORM_TCP, PLATFORM_TO_DEVICE_TCP]
+    DeviceConnectionTestStatus:
+      type: string
+      enum: [NOT_TESTED, PASSED, PARTIAL, FAILED]
+    DeviceConnectionTestStage:
+      type: object
+      required: [stage, status, message, durationMillis]
+      properties:
+        stage: { type: string, enum: [CONFIG, DNS, TCP, TLS, DEVICE_CONFIRMATION] }
+        status: { type: string, enum: [PASSED, FAILED, SKIPPED] }
+        message:
+          type: string
+          maxLength: 500
+          description: 稳定诊断原因码，由客户端国际化展示
+        durationMillis: { type: integer, format: int64, minimum: 0 }
+    DeviceConnectionProfile:
+      type: object
+      required:
+        - id
+        - deviceId
+        - connectionMode
+        - host
+        - port
+        - tlsEnabled
+        - connectTimeoutMillis
+        - keepAliveSeconds
+        - offlineThresholdSeconds
+        - lastTestStatus
+        - lastTestStages
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        connectionMode: { $ref: '#/components/schemas/DeviceConnectionMode' }
+        host: { type: string, minLength: 1, maxLength: 253, pattern: '^[A-Za-z0-9](?:[A-Za-z0-9.:-]{0,251}[A-Za-z0-9])?$' }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        tlsEnabled: { type: boolean }
+        tlsServerName: { type: [string, 'null'], maxLength: 253, pattern: '^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$' }
+        connectTimeoutMillis: { type: integer, minimum: 250, maximum: 30000 }
+        keepAliveSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        offlineThresholdSeconds: { type: integer, minimum: 1, maximum: 604800 }
+        lastTestStatus: { $ref: '#/components/schemas/DeviceConnectionTestStatus' }
+        lastTestAt: { type: [string, 'null'], format: date-time }
+        lastTestDurationMillis: { type: [integer, 'null'], format: int64, minimum: 0 }
+        lastTestMessage: { type: [string, 'null'], maxLength: 500 }
+        lastTestStages:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceConnectionTestStage' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    DeviceConnectionProfileRequest:
+      type: object
+      required:
+        - connectionMode
+        - host
+        - port
+        - tlsEnabled
+        - connectTimeoutMillis
+        - keepAliveSeconds
+        - offlineThresholdSeconds
+        - version
+      properties:
+        connectionMode: { $ref: '#/components/schemas/DeviceConnectionMode' }
+        host: { type: string, minLength: 1, maxLength: 253, pattern: '^[A-Za-z0-9](?:[A-Za-z0-9.:-]{0,251}[A-Za-z0-9])?$' }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        tlsEnabled: { type: boolean }
+        tlsServerName: { type: [string, 'null'], maxLength: 253, pattern: '^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$' }
+        connectTimeoutMillis: { type: integer, minimum: 250, maximum: 30000 }
+        keepAliveSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        offlineThresholdSeconds: { type: integer, minimum: 1, maximum: 604800 }
+        version: { type: integer, format: int64, minimum: 0 }
+    DeviceConnectionTestResult:
+      type: object
+      required: [deviceId, status, startedAt, durationMillis, message, stages]
+      properties:
+        deviceId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/DeviceConnectionTestStatus' }
+        startedAt: { type: string, format: date-time }
+        durationMillis: { type: integer, format: int64, minimum: 0 }
+        message:
+          type: string
+          maxLength: 500
+          description: 稳定诊断结论码，由客户端国际化展示
+        stages:
+          type: array
+          items: { $ref: '#/components/schemas/DeviceConnectionTestStage' }
     DeviceUpdateRequest:
       type: object
       required: [name, status, version]

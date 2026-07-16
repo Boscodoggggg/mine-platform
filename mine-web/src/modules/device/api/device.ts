@@ -13,6 +13,9 @@ export type DeviceCreateRequest = components['schemas']['DeviceCreateRequest'];
 export type DeviceUpdateRequest = components['schemas']['DeviceUpdateRequest'];
 export type DeviceLatest = components['schemas']['DeviceLatest'];
 export type TelemetryLatestItem = components['schemas']['TelemetryLatestItem'];
+export type DeviceConnectionProfile = components['schemas']['DeviceConnectionProfile'];
+export type DeviceConnectionProfileRequest = components['schemas']['DeviceConnectionProfileRequest'];
+export type DeviceConnectionTestResult = components['schemas']['DeviceConnectionTestResult'];
 
 export interface ProductQuery {
   keyword?: string;
@@ -78,6 +81,26 @@ export function archiveDevice(deviceId: string, version: number) {
   return request<void>(`/devices/${encodeURIComponent(deviceId)}/archive`, {
     method: 'POST',
     body: JSON.stringify({ version })
+  });
+}
+
+/** 查询设备网络接入配置和最近一次诊断结果。 */
+export function getDeviceConnectionProfile(deviceId: string) {
+  return request<DeviceConnectionProfile>(`/devices/${encodeURIComponent(deviceId)}/connection-profile`);
+}
+
+/** 创建或使用乐观锁修改设备网络接入配置。 */
+export function saveDeviceConnectionProfile(deviceId: string, body: DeviceConnectionProfileRequest) {
+  return request<DeviceConnectionProfile>(`/devices/${encodeURIComponent(deviceId)}/connection-profile`, {
+    method: 'PUT',
+    body: JSON.stringify(body)
+  });
+}
+
+/** 执行配置、DNS、TCP、TLS 和设备确认分层诊断。 */
+export function testDeviceConnectionProfile(deviceId: string) {
+  return request<DeviceConnectionTestResult>(`/devices/${encodeURIComponent(deviceId)}/connection-profile/test`, {
+    method: 'POST'
   });
 }
 

@@ -336,7 +336,7 @@ const local: App.I18n.Schema = {
         permission: '权限码',
         status: '菜单状态',
         visible: '隐藏菜单',
-        parent: '父级菜单',
+        parent: '层级路径',
         sort: '排序'
       },
       type: { directory: '目录', menu: '页面', button: '按钮' },
@@ -459,14 +459,81 @@ const local: App.I18n.Schema = {
       search: '搜索设备名称或编码',
       empty: '当前筛选条件下没有设备',
       column: { code: '设备编码', name: '设备名称', product: '所属产品', status: '状态', updatedAt: '更新时间' },
-      action: { create: '创建设备', archive: '归档' },
+      action: { create: '创建设备', archive: '归档', connection: '接入配置' },
       modal: { create: '创建设备', edit: '编辑设备' },
       field: { code: '设备编码', name: '设备名称', product: '所属产品', status: '状态' },
       placeholder: { product: '请选择已发布产品', code: '例如 truck-001' },
       status: { enabled: '已启用', disabled: '已停用', archived: '已归档' },
       validation: { required: '请选择产品并填写合法的设备编码和名称' },
       message: { created: '设备已创建', updated: '设备已更新', archived: '设备已归档' },
-      confirmArchive: '确认归档设备“{name}”吗？历史数据仍会保留。'
+      confirmArchive: '确认归档设备“{name}”吗？历史数据仍会保留。',
+      connection: {
+        title: '{name} · 设备接入',
+        boundary: '端点测试只验证配置、DNS、TCP 和 TLS。设备主动接入时，仍需收到真实设备首帧才能确认上线。',
+        configuration: '连接配置',
+        diagnostics: '分层诊断',
+        notTested: '保存接入配置后，可以执行一次分层连通性诊断。',
+        validation: '请填写合法的主机、端口和连接参数',
+        saved: '设备接入配置已保存',
+        saveBeforeTest: '请先保存设备接入配置',
+        testCompleted: '接入端点诊断已完成',
+        result: {
+          testpassed: '设备接入链路诊断通过',
+          testpartial: '网络端点检查通过，仍需设备首帧确认',
+          testfailed: '设备接入端点检查失败，请查看失败阶段',
+          configok: '接入配置校验通过',
+          dnsok: 'DNS 解析成功',
+          dnstargetblocked: '解析地址不在允许的矿区网段内',
+          dnstimeout: 'DNS 解析超时',
+          dnsinterrupted: 'DNS 解析被中断',
+          dnsnotfound: '域名不存在或当前节点无法解析',
+          dnsfailed: 'DNS 解析失败',
+          tcpok: 'TCP 端口连接成功',
+          tcptimeout: 'TCP 连接超时',
+          tcprefused: '目标端口拒绝连接',
+          tcpfailed: 'TCP 连接失败',
+          tlsok: 'TLS 握手和证书主机名校验成功',
+          tlstimeout: 'TLS 握手超时',
+          tlsfailed: 'TLS 握手或证书校验失败',
+          tlsdisabled: '当前接入配置未启用 TLS',
+          dependencyskipped: '前置阶段未通过，本阶段未执行',
+          firstmessagerequired: '仍需等待真实设备首帧确认上线',
+          activeendpointconfirmed: '平台已成功连接设备端点',
+          probebusy: '当前诊断任务较多，请稍后重试',
+          unknown: '诊断返回了未识别的结果'
+        },
+        action: { save: '保存配置', test: '测试连通性' },
+        field: {
+          mode: '接入方式',
+          host: '主机或域名',
+          port: '端口',
+          tls: '启用 TLS 校验',
+          tlsServerName: 'TLS 服务名称',
+          timeout: '连接超时（毫秒）',
+          keepAlive: '保活间隔（秒）',
+          offlineThreshold: '离线阈值（秒）'
+        },
+        placeholder: { host: '例如 mqtt.mine.local', tlsServerName: '为空时使用主机名' },
+        mode: {
+          devicetoplatformmqtt: '设备主动连接平台 MQTT',
+          devicetoplatformtcp: '设备主动连接平台 TCP',
+          platformtodevicetcp: '平台主动连接设备 TCP'
+        },
+        stage: {
+          config: '配置校验',
+          dns: 'DNS 解析',
+          tcp: 'TCP 连接',
+          tls: 'TLS 握手',
+          deviceconfirmation: '设备首帧确认'
+        },
+        testStatus: {
+          notTested: '未测试',
+          passed: '通过',
+          partial: '部分通过',
+          failed: '失败',
+          skipped: '待确认'
+        }
+      }
     },
     models: {
       title: '物模型与协议映射',

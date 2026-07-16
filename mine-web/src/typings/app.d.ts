@@ -650,7 +650,7 @@ declare namespace App {
           search: string;
           empty: string;
           column: Record<'code' | 'name' | 'product' | 'status' | 'updatedAt', string>;
-          action: Record<'create' | 'archive', string>;
+          action: Record<'create' | 'archive' | 'connection', string>;
           modal: Record<'create' | 'edit', string>;
           field: Record<'code' | 'name' | 'product' | 'status', string>;
           placeholder: Record<'product' | 'code', string>;
@@ -658,6 +658,52 @@ declare namespace App {
           validation: Record<'required', string>;
           message: Record<'created' | 'updated' | 'archived', string>;
           confirmArchive: string;
+          connection: {
+            title: string;
+            boundary: string;
+            configuration: string;
+            diagnostics: string;
+            notTested: string;
+            validation: string;
+            saved: string;
+            saveBeforeTest: string;
+            testCompleted: string;
+            result: Record<
+              | 'testpassed'
+              | 'testpartial'
+              | 'testfailed'
+              | 'configok'
+              | 'dnsok'
+              | 'dnstargetblocked'
+              | 'dnstimeout'
+              | 'dnsinterrupted'
+              | 'dnsnotfound'
+              | 'dnsfailed'
+              | 'tcpok'
+              | 'tcptimeout'
+              | 'tcprefused'
+              | 'tcpfailed'
+              | 'tlsok'
+              | 'tlstimeout'
+              | 'tlsfailed'
+              | 'tlsdisabled'
+              | 'dependencyskipped'
+              | 'firstmessagerequired'
+              | 'activeendpointconfirmed'
+              | 'probebusy'
+              | 'unknown',
+              string
+            >;
+            action: Record<'save' | 'test', string>;
+            field: Record<
+              'mode' | 'host' | 'port' | 'tls' | 'tlsServerName' | 'timeout' | 'keepAlive' | 'offlineThreshold',
+              string
+            >;
+            placeholder: Record<'host' | 'tlsServerName', string>;
+            mode: Record<'devicetoplatformmqtt' | 'devicetoplatformtcp' | 'platformtodevicetcp', string>;
+            stage: Record<'config' | 'dns' | 'tcp' | 'tls' | 'deviceconfirmation', string>;
+            testStatus: Record<'notTested' | 'passed' | 'partial' | 'failed' | 'skipped', string>;
+          };
         };
         models: {
           title: string;

@@ -163,6 +163,34 @@ docker compose --env-file deploy/env/standalone.env \
 
 禁止关闭服务端证书校验，禁止把 MQTTS 临时改成公网明文 MQTT。首次连接后同时检查 RabbitMQ 连接、设备用户名、vhost、订阅和权限，确认该设备不能发布或订阅其他设备主题。
 
+### 7.1 管理端接入配置与端点诊断
+
+有 `device:connection:view` 权限的接入工程师可以在“设备台账”选择“接入配置”，查看设备当前连接参数和最近一次诊断。首次接入按以下顺序操作：
+
+1. 选择接入方式：设备主动连接平台 MQTT、设备主动连接平台 TCP，或平台主动连接设备 TCP。
+2. 填写平台接入端点或目标设备的主机、端口、TLS 服务名称、连接超时、保活间隔和离线阈值。
+3. 使用 `device:connection:update` 权限保存配置。连接配置不保存明文密码；MQTT 密钥仍通过受控凭据接口一次性交付。
+4. 使用 `device:connection:test` 权限执行分层诊断，依次查看配置、DNS、TCP、TLS 和设备首帧确认结果。
+5. 根据失败阶段排查 DNS、端口、防火墙、证书链或证书主机名，不得通过关闭 TLS 校验绕过问题。
+
+部署前必须用 `MINE_DEVICE_CONNECTION_ALLOWED_CIDRS` 配置该矿区允许探测的业务网段（逗号分隔 CIDR）；默认不允许探测任何地址。不要把管理网、宿主机网段或 `0.0.0.0/0` 加入范围。系统始终拒绝 loopback、link-local、组播和任意地址；域名解析出的任一地址越界时会拒绝整个目标，以避免 DNS 重绑定。`MINE_DEVICE_CONNECTION_MAX_CONCURRENT_PROBES` 控制单实例最大并发诊断数，默认值为 `8`。
+
+端点诊断有明确边界：
+
+- `DNS/TCP/TLS` 通过只证明从运行 `mine-server` 的节点可以访问所配置端点。
+- 对于设备主动连接平台的 MQTT/TCP 模式，平台不能用反向探测证明现场设备已经连通；因此在收到真实设备首帧前，总体状态为“部分通过”。
+- 对于平台主动连接设备的 TCP 模式，TCP 成功仍不等于厂商协议登录、报文解析和业务入库成功。
+- 页面修改连接参数后必须先保存再测试，防止界面展示新参数却实际探测旧配置。
+- 设备最终上线必须继续完成下一节的 RabbitMQ、gateway、telemetry、Redis/TimescaleDB 和管理端逐层首帧核验。
+
+三个管理接口为：
+
+- `GET /api/v1/devices/{deviceId}/connection-profile`：查看配置和最近诊断。
+- `PUT /api/v1/devices/{deviceId}/connection-profile`：创建或使用乐观锁修改配置。
+- `POST /api/v1/devices/{deviceId}/connection-profile/test`：执行一次按需分层诊断。
+
+诊断只在接入工程师点击时执行，不作为高频健康检查或 Prometheus 采集接口；持续在线状态必须由设备会话、心跳和遥测新鲜度共同判定。
+
 ## 8. 首批遥测核验
 
 让设备先发送小批量数据，逐层检查：

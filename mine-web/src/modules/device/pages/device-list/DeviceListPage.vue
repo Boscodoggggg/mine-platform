@@ -4,27 +4,49 @@ import { useI18n } from 'vue-i18n';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import {
   NButton,
+  NAlert,
   NCard,
   NDataTable,
+  NDrawer,
+  NDrawerContent,
   NEmpty,
   NForm,
   NFormItem,
   NGi,
   NGrid,
   NInput,
+  NInputNumber,
   NModal,
   NPageHeader,
   NSelect,
   NSpace,
+  NSpin,
+  NSwitch,
   NTag
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
-import { archiveDevice, createDevice, getDevices, getProducts, updateDevice } from '@/modules/device/api/device';
-import type { Device, DeviceStatus, Product } from '@/modules/device/api/device';
+import {
+  archiveDevice,
+  createDevice,
+  getDeviceConnectionProfile,
+  getDevices,
+  getProducts,
+  saveDeviceConnectionProfile,
+  testDeviceConnectionProfile,
+  updateDevice
+} from '@/modules/device/api/device';
+import type {
+  Device,
+  DeviceConnectionProfile,
+  DeviceConnectionProfileRequest,
+  DeviceConnectionTestResult,
+  DeviceStatus,
+  Product
+} from '@/modules/device/api/device';
 import { useAuthStore } from '@/store/modules/auth';
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
 const authStore = useAuthStore();
 const loading = ref(false);
 const saving = ref(false);
@@ -47,6 +69,24 @@ const deviceForm = reactive({
   status: 'ENABLED' as 'ENABLED' | 'DISABLED',
   version: 0
 });
+const connectionDrawerVisible = ref(false);
+const connectionLoading = ref(false);
+const connectionSaving = ref(false);
+const connectionTesting = ref(false);
+const connectionDevice = ref<Device | null>(null);
+const connectionProfile = ref<DeviceConnectionProfile | null>(null);
+const connectionTest = ref<DeviceConnectionTestResult | null>(null);
+const connectionForm = reactive<DeviceConnectionProfileRequest>({
+  connectionMode: 'DEVICE_TO_PLATFORM_MQTT',
+  host: '',
+  port: 8883,
+  tlsEnabled: true,
+  tlsServerName: null,
+  connectTimeoutMillis: 5000,
+  keepAliveSeconds: 60,
+  offlineThresholdSeconds: 180,
+  version: 0
+});
 
 const productMap = computed(() => new Map(products.value.map(product => [product.id, product])));
 const productOptions = computed<SelectOption[]>(() =>
@@ -66,6 +106,30 @@ const statusOptions = computed<SelectOption[]>(() => [
   { label: t('mine.devices.status.archived'), value: 'ARCHIVED' }
 ]);
 const editableStatusOptions = computed(() => statusOptions.value.slice(0, 2));
+const connectionModeOptions = computed<SelectOption[]>(() =>
+  ['DEVICE_TO_PLATFORM_MQTT', 'DEVICE_TO_PLATFORM_TCP', 'PLATFORM_TO_DEVICE_TCP'].map(value => ({
+    label: t(`mine.devices.connection.mode.${connectionKey(value)}`),
+    value
+  }))
+);
+const connectionStages = computed(
+  () => connectionTest.value?.stages || connectionProfile.value?.lastTestStages || []
+);
+const connectionDirty = computed(() => {
+  const profile = connectionProfile.value;
+  if (!profile) return true;
+  return (
+    connectionForm.connectionMode !== profile.connectionMode ||
+    connectionForm.host.trim() !== profile.host ||
+    connectionForm.port !== profile.port ||
+    connectionForm.tlsEnabled !== profile.tlsEnabled ||
+    (connectionForm.tlsServerName?.trim() || null) !== profile.tlsServerName ||
+    connectionForm.connectTimeoutMillis !== profile.connectTimeoutMillis ||
+    connectionForm.keepAliveSeconds !== profile.keepAliveSeconds ||
+    connectionForm.offlineThresholdSeconds !== profile.offlineThresholdSeconds ||
+    connectionForm.version !== profile.version
+  );
+});
 const columns = computed<DataTableColumns<Device>>(() => [
   { title: t('mine.devices.column.code'), key: 'deviceCode', minWidth: 150 },
   { title: t('mine.devices.column.name'), key: 'name', minWidth: 160 },
@@ -99,9 +163,21 @@ const columns = computed<DataTableColumns<Device>>(() => [
   {
     title: t('mine.common.action'),
     key: 'actions',
-    width: 150,
+    width: 230,
     render: row =>
       h(NSpace, { size: 12 }, () => [
+        can('device:connection:view') && row.status !== 'ARCHIVED'
+          ? h(
+              NButton,
+              {
+                text: true,
+                type: 'primary',
+                'data-action': 'connection-profile',
+                onClick: () => openConnectionConfig(row)
+              },
+              () => t('mine.devices.action.connection')
+            )
+          : null,
         can('device:device:update') && row.status !== 'ARCHIVED'
           ? h(NButton, { text: true, type: 'primary', onClick: () => openEdit(row) }, () => t('mine.common.edit'))
           : null,
@@ -224,6 +300,114 @@ async function performArchive(device: Device) {
   }
 }
 
+async function openConnectionConfig(device: Device) {
+  connectionDevice.value = device;
+  connectionProfile.value = null;
+  connectionTest.value = null;
+  Object.assign(connectionForm, defaultConnectionForm());
+  connectionDrawerVisible.value = true;
+  await loadConnectionProfile();
+}
+
+async function loadConnectionProfile() {
+  if (!connectionDevice.value) return;
+  connectionLoading.value = true;
+  try {
+    const profile = await getDeviceConnectionProfile(connectionDevice.value.id);
+    applyConnectionProfile(profile);
+  } catch (error) {
+    if (!(error instanceof ApiError && error.code === 'DEVICE-404-004')) showError(error);
+  } finally {
+    connectionLoading.value = false;
+  }
+}
+
+async function saveConnectionProfile() {
+  if (!connectionDevice.value || !connectionForm.host.trim() || connectionForm.port < 1) {
+    return window.$message?.warning(t('mine.devices.connection.validation'));
+  }
+  connectionSaving.value = true;
+  try {
+    const saved = await saveDeviceConnectionProfile(connectionDevice.value.id, {
+      ...connectionForm,
+      host: connectionForm.host.trim(),
+      tlsServerName: connectionForm.tlsServerName?.trim() || null
+    });
+    applyConnectionProfile(saved);
+    window.$message?.success(t('mine.devices.connection.saved'));
+  } catch (error) {
+    showError(error);
+  } finally {
+    connectionSaving.value = false;
+  }
+}
+
+async function runConnectionTest() {
+  if (!connectionDevice.value || !connectionProfile.value || connectionDirty.value) {
+    return window.$message?.warning(t('mine.devices.connection.saveBeforeTest'));
+  }
+  connectionTesting.value = true;
+  try {
+    connectionTest.value = await testDeviceConnectionProfile(connectionDevice.value.id);
+    if (connectionTest.value.status === 'PASSED') {
+      window.$message?.success(t('mine.devices.connection.testCompleted'));
+    } else {
+      window.$message?.warning(connectionMessage(connectionTest.value.message));
+    }
+    await loadConnectionProfile();
+  } catch (error) {
+    showError(error);
+  } finally {
+    connectionTesting.value = false;
+  }
+}
+
+function applyConnectionProfile(profile: DeviceConnectionProfile) {
+  connectionProfile.value = profile;
+  Object.assign(connectionForm, {
+    connectionMode: profile.connectionMode,
+    host: profile.host,
+    port: profile.port,
+    tlsEnabled: profile.tlsEnabled,
+    tlsServerName: profile.tlsServerName,
+    connectTimeoutMillis: profile.connectTimeoutMillis,
+    keepAliveSeconds: profile.keepAliveSeconds,
+    offlineThresholdSeconds: profile.offlineThresholdSeconds,
+    version: profile.version
+  });
+}
+
+function defaultConnectionForm(): DeviceConnectionProfileRequest {
+  return {
+    connectionMode: 'DEVICE_TO_PLATFORM_MQTT',
+    host: '',
+    port: 8883,
+    tlsEnabled: true,
+    tlsServerName: null,
+    connectTimeoutMillis: 5000,
+    keepAliveSeconds: 60,
+    offlineThresholdSeconds: 180,
+    version: 0
+  };
+}
+
+function connectionKey(value: string) {
+  return value.toLowerCase().replaceAll('_', '');
+}
+
+function connectionMessage(value: string | null | undefined) {
+  if (!value) return t('mine.devices.connection.result.unknown');
+  const key = `mine.devices.connection.result.${connectionKey(value)}`;
+  return te(key) ? t(key) : t('mine.devices.connection.result.unknown');
+}
+
+function testStatusType(status: string) {
+  if (status === 'PASSED') return 'success' as const;
+  if (status === 'FAILED') return 'error' as const;
+  if (status === 'PARTIAL' || status === 'SKIPPED') return 'warning' as const;
+  return 'default' as const;
+}
+
 function can(permission: string) {
   return hasPermission(authStore.userInfo.buttons, permission);
 }
@@ -243,7 +427,17 @@ function showError(error: unknown) {
   window.$message?.error(t('mine.common.operationFailed'));
 }
 
-defineExpose({ deviceForm, creatableProductOptions, openCreate, openEdit, saveDevice });
+defineExpose({
+  deviceForm,
+  creatableProductOptions,
+  connectionForm,
+  openCreate,
+  openEdit,
+  saveDevice,
+  openConnectionConfig,
+  saveConnectionProfile,
+  runConnectionTest
+});
 </script>
 
 <template>
@@ -371,5 +565,153 @@ defineExpose({ deviceForm, creatableProductOptions, openCreate, openEdit, saveDe
         </NSpace>
       </template>
     </NModal>
+
+    <NDrawer v-model:show="connectionDrawerVisible" width="min(680px, 94vw)">
+      <NDrawerContent
+        :title="t('mine.devices.connection.title', { name: connectionDevice?.name || '' })"
+        closable
+        :native-scrollbar="false"
+      >
+        <NSpin :show="connectionLoading">
+          <NSpace vertical :size="16">
+            <NAlert type="info" :bordered="false">
+              {{ t('mine.devices.connection.boundary') }}
+            </NAlert>
+
+            <NCard size="small" :title="t('mine.devices.connection.configuration')">
+              <NForm label-placement="top">
+                <NGrid responsive="screen" cols="1 s:2" :x-gap="16">
+                  <NGi :span="2">
+                    <NFormItem :label="t('mine.devices.connection.field.mode')">
+                      <NSelect
+                        v-model:value="connectionForm.connectionMode"
+                        :disabled="!can('device:connection:update')"
+                        :options="connectionModeOptions"
+                      />
+                    </NFormItem>
+                  </NGi>
+                  <NGi>
+                    <NFormItem :label="t('mine.devices.connection.field.host')">
+                      <NInput
+                        v-model:value="connectionForm.host"
+                        :disabled="!can('device:connection:update')"
+                        :placeholder="t('mine.devices.connection.placeholder.host')"
+                      />
+                    </NFormItem>
+                  </NGi>
+                  <NGi>
+                    <NFormItem :label="t('mine.devices.connection.field.port')">
+                      <NInputNumber
+                        v-model:value="connectionForm.port"
+                        :disabled="!can('device:connection:update')"
+                        :min="1"
+                        :max="65535"
+                        class="w-full"
+                      />
+                    </NFormItem>
+                  </NGi>
+                  <NGi>
+                    <NFormItem :label="t('mine.devices.connection.field.tls')">
+                      <NSwitch
+                        v-model:value="connectionForm.tlsEnabled"
+                        :disabled="!can('device:connection:update')"
+                      />
+                    </NFormItem>
+                  </NGi>
+                  <NGi>
+                    <NFormItem :label="t('mine.devices.connection.field.tlsServerName')">
+                      <NInput
+                        v-model:value="connectionForm.tlsServerName"
+                        :disabled="!connectionForm.tlsEnabled || !can('device:connection:update')"
+                        :placeholder="t('mine.devices.connection.placeholder.tlsServerName')"
+                      />
+                    </NFormItem>
+                  </NGi>
+                  <NGi>
+                    <NFormItem :label="t('mine.devices.connection.field.timeout')">
+                      <NInputNumber
+                        v-model:value="connectionForm.connectTimeoutMillis"
+                        :disabled="!can('device:connection:update')"
+                        :min="250"
+                        :max="30000"
+                        class="w-full"
+                      />
+                    </NFormItem>
+                  </NGi>
+                  <NGi>
+                    <NFormItem :label="t('mine.devices.connection.field.keepAlive')">
+                      <NInputNumber
+                        v-model:value="connectionForm.keepAliveSeconds"
+                        :disabled="!can('device:connection:update')"
+                        :min="0"
+                        :max="86400"
+                        class="w-full"
+                      />
+                    </NFormItem>
+                  </NGi>
+                  <NGi>
+                    <NFormItem :label="t('mine.devices.connection.field.offlineThreshold')">
+                      <NInputNumber
+                        v-model:value="connectionForm.offlineThresholdSeconds"
+                        :disabled="!can('device:connection:update')"
+                        :min="1"
+                        :max="604800"
+                        class="w-full"
+                      />
+                    </NFormItem>
+                  </NGi>
+                </NGrid>
+              </NForm>
+            </NCard>
+
+            <NCard size="small" :title="t('mine.devices.connection.diagnostics')">
+              <NEmpty
+                v-if="!connectionStages.length"
+                :description="t('mine.devices.connection.notTested')"
+              />
+              <NSpace v-else vertical :size="12">
+                <NAlert
+                  v-if="connectionTest?.message || connectionProfile?.lastTestMessage"
+                  :type="testStatusType(connectionTest?.status || connectionProfile?.lastTestStatus || '')"
+                  :bordered="false"
+                >
+                  {{ connectionMessage(connectionTest?.message || connectionProfile?.lastTestMessage) }}
+                </NAlert>
+                <NCard v-for="stage in connectionStages" :key="stage.stage" size="small">
+                  <NSpace justify="space-between" align="center">
+                    <span>{{ t(`mine.devices.connection.stage.${connectionKey(stage.stage)}`) }}</span>
+                    <NTag :type="testStatusType(stage.status)" :bordered="false" size="small">
+                      {{ t(`mine.devices.connection.testStatus.${stage.status.toLowerCase()}`) }}
+                    </NTag>
+                  </NSpace>
+                  <div class="mt-2 text-sm text-color-3">{{ connectionMessage(stage.message) }}</div>
+                </NCard>
+              </NSpace>
+            </NCard>
+          </NSpace>
+        </NSpin>
+
+        <template #footer>
+          <NSpace justify="end">
+            <NButton
+              v-if="can('device:connection:update')"
+              :loading="connectionSaving"
+              @click="saveConnectionProfile"
+            >
+              {{ t('mine.devices.connection.action.save') }}
+            </NButton>
+            <NButton
+              v-if="can('device:connection:test')"
+              type="primary"
+              :loading="connectionTesting"
+              :disabled="!connectionProfile || connectionDirty"
+              @click="runConnectionTest"
+            >
+              {{ t('mine.devices.connection.action.test') }}
+            </NButton>
+          </NSpace>
+        </template>
+      </NDrawerContent>
+    </NDrawer>
   </NSpace>
 </template>
