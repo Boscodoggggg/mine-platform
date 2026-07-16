@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import type { DataTableColumns, SelectOption } from 'naive-ui';
+import type { DataTableColumns, DataTableCreateRowProps, SelectOption } from 'naive-ui';
 import {
   NButton,
   NCard,
@@ -88,17 +88,35 @@ const typeColumns = computed<DataTableColumns<DictionaryType>>(() => [
   {
     title: t('mine.common.action'),
     key: 'actions',
-    width: 180,
+    width: 120,
     render: row =>
       h(NSpace, { size: 8 }, () => [
-        h(NButton, { text: true, type: 'primary', onClick: () => selectType(row) }, () =>
-          t('mine.dictionaries.action.items')
-        ),
         can('system:dictionary:update')
-          ? h(NButton, { text: true, onClick: () => openEditType(row) }, () => t('mine.common.edit'))
+          ? h(
+              NButton,
+              {
+                text: true,
+                onClick: event => {
+                  event.stopPropagation();
+                  openEditType(row);
+                }
+              },
+              () => t('mine.common.edit')
+            )
           : null,
         can('system:dictionary:delete') && !row.builtIn
-          ? h(NButton, { text: true, type: 'error', onClick: () => removeType(row) }, () => t('mine.common.delete'))
+          ? h(
+              NButton,
+              {
+                text: true,
+                type: 'error',
+                onClick: event => {
+                  event.stopPropagation();
+                  removeType(row);
+                }
+              },
+              () => t('mine.common.delete')
+            )
           : null
       ])
   }
@@ -163,6 +181,23 @@ async function selectType(type: DictionaryType) {
     showError(error);
   }
 }
+
+const typeRowProps: DataTableCreateRowProps<DictionaryType> = row => ({
+  'data-dictionary-type-id': row.id,
+  'aria-selected': selectedType.value?.id === row.id,
+  tabindex: 0,
+  class: [
+    'cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-primary',
+    selectedType.value?.id === row.id ? 'bg-primary bg-opacity-10' : ''
+  ],
+  onClick: () => selectType(row),
+  onKeydown: event => {
+    if (event.currentTarget !== event.target) return;
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    selectType(row);
+  }
+});
 
 function openCreateType() {
   editingTypeId.value = null;
@@ -312,36 +347,50 @@ function showError(error: unknown) {
       </template>
     </NPageHeader>
 
-    <NGrid responsive="screen" :cols="1" :m-cols="2" :x-gap="16" :y-gap="16">
-      <NGi>
-        <NCard :title="t('mine.dictionaries.typeList')" :bordered="false">
-          <NDataTable :columns="typeColumns" :data="types" :loading="loading" :row-key="row => row.id" />
-        </NCard>
-      </NGi>
-      <NGi>
-        <NCard :bordered="false">
-          <template #header>
-            <NSpace align="center">
-              <NText strong>{{ selectedType?.name || t('mine.dictionaries.selectType') }}</NText>
-              <NTag v-if="selectedType?.builtIn" size="small" :bordered="false" type="info">
-                {{ t('mine.dictionaries.builtIn') }}
-              </NTag>
+    <NCard data-dictionary-workspace :bordered="false">
+      <NGrid
+        data-dictionary-layout
+        data-cols="1 l:20"
+        responsive="screen"
+        cols="1 l:20"
+        :x-gap="24"
+        :y-gap="24"
+      >
+        <NGi data-dictionary-panel data-span="1 l:7" span="1 l:7" class="h-full">
+          <NSpace vertical :size="16" class="h-full">
+            <NText strong>{{ t('mine.dictionaries.typeList') }}</NText>
+            <NDataTable
+              :columns="typeColumns"
+              :data="types"
+              :loading="loading"
+              :row-key="row => row.id"
+              :row-props="typeRowProps"
+            />
+          </NSpace>
+        </NGi>
+        <NGi data-dictionary-panel data-span="1 l:13" span="1 l:13" class="h-full">
+          <NSpace vertical :size="16" class="h-full">
+            <NSpace align="center" justify="space-between">
+              <NSpace align="center">
+                <NText strong>{{ selectedType?.name || t('mine.dictionaries.selectType') }}</NText>
+                <NTag v-if="selectedType?.builtIn" size="small" :bordered="false" type="info">
+                  {{ t('mine.dictionaries.builtIn') }}
+                </NTag>
+              </NSpace>
+              <NButton
+                v-if="selectedType && can('system:dictionary:create')"
+                type="primary"
+                secondary
+                @click="openCreateItem"
+              >
+                {{ t('mine.dictionaries.action.createItem') }}
+              </NButton>
             </NSpace>
-          </template>
-          <template #header-extra>
-            <NButton
-              v-if="selectedType && can('system:dictionary:create')"
-              type="primary"
-              secondary
-              @click="openCreateItem"
-            >
-              {{ t('mine.dictionaries.action.createItem') }}
-            </NButton>
-          </template>
-          <NDataTable :columns="itemColumns" :data="items" :row-key="row => row.id" />
-        </NCard>
-      </NGi>
-    </NGrid>
+            <NDataTable :columns="itemColumns" :data="items" :row-key="row => row.id" />
+          </NSpace>
+        </NGi>
+      </NGrid>
+    </NCard>
 
     <NModal
       v-model:show="typeModalVisible"
