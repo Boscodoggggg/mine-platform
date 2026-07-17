@@ -1,6 +1,10 @@
 package com.bosco.mine.telemetry.strategy;
 
 import com.bosco.mine.messaging.strategy.StrategyRuntimeChangedPayload;
+import com.bosco.mine.telemetry.alarm.AlarmPolicyActivationReconciler;
+import com.bosco.mine.telemetry.alarm.outbox.AlarmOutboxEventObserver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -16,8 +20,12 @@ import java.util.UUID;
  */
 public class StrategyPolicyRepository {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(StrategyPolicyRepository.class);
+
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
+    private final AlarmPolicyActivationReconciler alarmReconciler;
+    private final AlarmOutboxEventObserver alarmOutboxEventObserver;
 
     /**
      * 创建策略持久镜像仓储。
@@ -25,9 +33,25 @@ public class StrategyPolicyRepository {
      * @param dataSource Telemetry 时序数据库连接池
      */
     public StrategyPolicyRepository(DataSource dataSource) {
+        this(dataSource, ignored -> { });
+    }
+
+    /**
+     * 创建可在快照事务提交后精确唤醒恢复事件的策略仓储。
+     *
+     * @param dataSource Telemetry 时序数据库连接池
+     * @param alarmOutboxEventObserver 已提交告警 Outbox 观察器
+     */
+    public StrategyPolicyRepository(
+            DataSource dataSource,
+            AlarmOutboxEventObserver alarmOutboxEventObserver
+    ) {
         Objects.requireNonNull(dataSource, "数据源不能为空");
         this.jdbcTemplate = new JdbcTemplate(dataSource);
         this.transactionTemplate = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        this.alarmReconciler = new AlarmPolicyActivationReconciler(dataSource);
+        this.alarmOutboxEventObserver = Objects.requireNonNull(
+                alarmOutboxEventObserver, "告警 Outbox 观察器不能为空");
     }
 
     /** 查询消息是否已经完成幂等处理。 */
@@ -82,7 +106,7 @@ public class StrategyPolicyRepository {
      */
     public void finalizeApply(UUID eventId, StrategyRuntimeChangedPayload payload) {
         String policyTable = policyTable(payload.strategyType());
-        transactionTemplate.executeWithoutResult(status -> {
+        List<UUID> outboxEventIds = transactionTemplate.execute(status -> {
             lockProductStrategy(payload.productId(), payload.strategyType());
             CurrentRevision current = currentRevision(payload.productId(), payload.strategyType());
             if (current != null && current.runtimeRevision() >= payload.runtimeRevision()) {
@@ -94,7 +118,7 @@ public class StrategyPolicyRepository {
                 }
                 recordInbox(eventId, payload.snapshotId());
                 discard(payload.snapshotId());
-                return;
+                return List.<UUID>of();
             }
             Integer stagedCount = jdbcTemplate.queryForObject("""
                     SELECT COUNT(*)
@@ -104,6 +128,11 @@ public class StrategyPolicyRepository {
             if (stagedCount == null || stagedCount != payload.itemCount()) {
                 throw new PermanentStrategySnapshotException("暂存策略条目数与事件声明不一致");
             }
+
+            List<UUID> alarmOutboxEventIds = "ALARM".equals(payload.strategyType())
+                    ? alarmReconciler.reconcile(
+                            payload.snapshotId(), payload.runtimeRevision())
+                    : List.of();
 
             jdbcTemplate.update("""
                     DELETE FROM %s policy
@@ -149,7 +178,20 @@ public class StrategyPolicyRepository {
                     payload.snapshotId(), payload.itemCount(), payload.contentHash());
             recordInbox(eventId, payload.snapshotId());
             discard(payload.snapshotId());
+            return alarmOutboxEventIds;
         });
+        if (outboxEventIds != null) {
+            outboxEventIds.forEach(this::observeAlarmOutbox);
+        }
+    }
+
+    private void observeAlarmOutbox(UUID eventId) {
+        try {
+            alarmOutboxEventObserver.observe(eventId);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("策略激活恢复事件精确唤醒失败，将由 Outbox 恢复扫描接管: eventId={}",
+                    eventId, exception);
+        }
     }
 
     private String policyTable(String strategyType) {

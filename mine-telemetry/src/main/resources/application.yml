@@ -54,6 +54,9 @@ mine:
         recovery-limit: ${MINE_TELEMETRY_OUTBOX_RECOVERY_LIMIT:500}
         retry-base-delay: ${MINE_TELEMETRY_OUTBOX_RETRY_BASE_DELAY:1s}
         retry-max-delay: ${MINE_TELEMETRY_OUTBOX_RETRY_MAX_DELAY:5m}
+        dispatch-concurrency: ${MINE_TELEMETRY_OUTBOX_DISPATCH_CONCURRENCY:4}
+        dispatch-queue-capacity: ${MINE_TELEMETRY_OUTBOX_DISPATCH_QUEUE_CAPACITY:1000}
+        recovery-interval: ${MINE_TELEMETRY_OUTBOX_RECOVERY_INTERVAL:10s}
     strategy-distribution:
       enabled: ${MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED:false}
       server-url: ${MINE_TELEMETRY_STRATEGY_SERVER_URL:http://mine-server:8080}

@@ -81,7 +81,9 @@ public record TelemetryRabbitProperties(
 
     /** @return 告警 Outbox 参数，未配置时使用安全默认值 */
     public Outbox resolvedOutbox() {
-        return outbox == null ? new Outbox(null, null, null, null, null, null) : outbox;
+        return outbox == null
+                ? new Outbox(null, null, null, null, null, null, null, null, null)
+                : outbox;
     }
 
     /**
@@ -102,6 +104,9 @@ public record TelemetryRabbitProperties(
      * @param recoveryLimit 单次启动或重连恢复上限
      * @param retryBaseDelay 指数退避基础间隔
      * @param retryMaxDelay 指数退避最大间隔
+     * @param dispatchConcurrency Outbox 发布最大并发数
+     * @param dispatchQueueCapacity Outbox 精确唤醒有界队列容量
+     * @param recoveryInterval 持久待发布事件周期恢复间隔
      */
     public record Outbox(
             String instanceId,
@@ -109,7 +114,10 @@ public record TelemetryRabbitProperties(
             Integer maxAttempts,
             Integer recoveryLimit,
             Duration retryBaseDelay,
-            Duration retryMaxDelay
+            Duration retryMaxDelay,
+            Integer dispatchConcurrency,
+            Integer dispatchQueueCapacity,
+            Duration recoveryInterval
     ) {
         /** @return 非空服务实例标识 */
         public String resolvedInstanceId() {
@@ -139,6 +147,21 @@ public record TelemetryRabbitProperties(
         /** @return 指数退避最大间隔 */
         public Duration resolvedRetryMaxDelay() {
             return retryMaxDelay == null ? Duration.ofMinutes(5) : retryMaxDelay;
+        }
+
+        /** @return Outbox 发布最大并发数 */
+        public int resolvedDispatchConcurrency() {
+            return dispatchConcurrency == null ? 4 : dispatchConcurrency;
+        }
+
+        /** @return Outbox 精确唤醒有界队列容量 */
+        public int resolvedDispatchQueueCapacity() {
+            return dispatchQueueCapacity == null ? 1_000 : dispatchQueueCapacity;
+        }
+
+        /** @return 持久待发布事件周期恢复间隔 */
+        public Duration resolvedRecoveryInterval() {
+            return recoveryInterval == null ? Duration.ofSeconds(10) : recoveryInterval;
         }
     }
 }

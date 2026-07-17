@@ -6,11 +6,14 @@ import com.bosco.mine.model.message.TelemetryPayload;
 import com.bosco.mine.model.message.UnifiedDeviceMessage;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.MessageKind;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
+import com.bosco.mine.telemetry.alarm.AlarmPolicy;
 import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
 import com.bosco.mine.telemetry.pipeline.TelemetrySample;
 import com.bosco.mine.telemetry.quality.DataQualityEvaluator;
 import com.bosco.mine.telemetry.quality.DataQualityPolicyRepository;
+import com.bosco.mine.telemetry.quality.DataQualityPolicy;
+import com.bosco.mine.telemetry.quality.QualityEvaluationCoverage;
 import com.bosco.mine.telemetry.quality.QualityEvidence;
 import com.bosco.mine.telemetry.quality.QualityRuleCode;
 import org.flywaydb.core.Flyway;
@@ -149,9 +152,11 @@ class TelemetryStorageIT {
     void 清空存储() throws Exception {
         connectionFactory.getConnection().serverCommands().flushDb();
         execute("""
-                TRUNCATE TABLE telemetry_quality_evidence, telemetry_inbox, telemetry_numeric,
+                TRUNCATE TABLE telemetry_outbox_event, telemetry_alarm_runtime_state,
+                               telemetry_quality_evidence, telemetry_inbox, telemetry_numeric,
                                telemetry_latest_numeric, telemetry_latest_state,
-                               telemetry_retired_boot, telemetry_data_quality_policy
+                               telemetry_retired_boot, telemetry_data_quality_policy,
+                               telemetry_alarm_policy
                 """);
         rabbitAdmin.purgeQueue(TEST_QUEUE, false);
     }
@@ -411,6 +416,206 @@ class TelemetryStorageIT {
     }
 
     @Test
+    void 告警状态与Outbox应在遥测事务内幂等触发且迟到帧不得推进() throws Exception {
+        AlarmPolicy policy = numericAlarmPolicy(0, 0, 60);
+        persistAlarmPolicy(policy);
+        TelemetrySample raised = sample(EVENT_ID, 7L, 96D, OCCURRED_AT);
+
+        TelemetryBatchWriter.WriteResult first = telemetryBatchWriter.write(
+                List.of(raised), List.of(), Map.of(DEVICE_ID, policy), Map.of());
+        TelemetryBatchWriter.WriteResult repeated = telemetryBatchWriter.write(
+                List.of(raised), List.of(), Map.of(DEVICE_ID, policy), Map.of());
+        TelemetrySample late = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e762"),
+                6L, 80D, OCCURRED_AT.minusSeconds(10));
+        TelemetryBatchWriter.WriteResult lateResult = telemetryBatchWriter.write(
+                List.of(late), List.of(), Map.of(DEVICE_ID, policy), Map.of());
+
+        assertThat(first.alarmOutboxEventIds()).hasSize(1);
+        assertThat(repeated.alarmOutboxEventIds()).isEmpty();
+        assertThat(lateResult.latestEventIds()).isEmpty();
+        assertThat(lateResult.alarmOutboxEventIds()).isEmpty();
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_alarm_runtime_state
+                 WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                   AND rule_key = 'engine-rpm-high' AND state = 'ACTIVE'
+                """)).isOne();
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_outbox_event
+                 WHERE event_type = 'alarm.raised' AND status = 'PENDING'
+                """)).isOne();
+    }
+
+    @Test
+    void 告警恢复应沿用同一周期并生成一次可靠恢复事件() throws Exception {
+        AlarmPolicy policy = numericAlarmPolicy(0, 0, 60);
+        persistAlarmPolicy(policy);
+        TelemetrySample raised = sample(EVENT_ID, 7L, 96D, OCCURRED_AT);
+        TelemetrySample recovered = sample(
+                UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e763"),
+                "boot-a", 8L, "engine.rpm", 89D, OCCURRED_AT.plusSeconds(1),
+                RECEIVED_AT.plusSeconds(1));
+
+        telemetryBatchWriter.write(
+                List.of(raised), List.of(), Map.of(DEVICE_ID, policy), Map.of());
+        TelemetryBatchWriter.WriteResult result = telemetryBatchWriter.write(
+                List.of(recovered), List.of(), Map.of(DEVICE_ID, policy), Map.of());
+
+        assertThat(result.alarmOutboxEventIds()).hasSize(1);
+        assertThat(queryLong("""
+                SELECT count(DISTINCT aggregate_id) FROM telemetry_outbox_event
+                 WHERE event_type IN ('alarm.raised', 'alarm.recovered')
+                """)).isOne();
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_alarm_runtime_state
+                 WHERE rule_key = 'engine-rpm-high' AND state = 'COOLDOWN'
+                """)).isOne();
+    }
+
+    @Test
+    void 未变规则跨快照继续活动周期时恢复事件必须保留触发快照身份() throws Exception {
+        AlarmPolicy original = numericAlarmPolicy(0, 0, 60);
+        persistAlarmPolicy(original);
+        telemetryBatchWriter.write(
+                List.of(sample(EVENT_ID, 7L, 96D, OCCURRED_AT)),
+                List.of(), Map.of(DEVICE_ID, original), Map.of());
+        AlarmPolicy current = new AlarmPolicy(
+                UUID.fromString("019f6e00-0000-7000-8000-000000000181"),
+                9L, "sha256:" + "c".repeat(64), original.rules());
+        execute("""
+                UPDATE telemetry_alarm_policy
+                   SET runtime_revision = 9,
+                       snapshot_id = '019f6e00-0000-7000-8000-000000000181',
+                       content_hash = 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+                 WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                """);
+        UUID activeEventId = UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e766");
+        telemetryBatchWriter.write(
+                List.of(sample(activeEventId, 8L, 97D, OCCURRED_AT.plusSeconds(1))),
+                List.of(), Map.of(DEVICE_ID, current), Map.of());
+        UUID recoveredEventId = UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e767");
+        telemetryBatchWriter.write(
+                List.of(sample(recoveredEventId, 9L, 89D, OCCURRED_AT.plusSeconds(2))),
+                List.of(), Map.of(DEVICE_ID, current), Map.of());
+
+        assertThat(queryString("""
+                SELECT payload ->> 'policySnapshotId'
+                  FROM telemetry_outbox_event
+                 WHERE event_type = 'alarm.recovered'
+                """)).isEqualTo(original.snapshotId().toString());
+        assertThat(queryString("""
+                SELECT policy_snapshot_id::TEXT
+                  FROM telemetry_alarm_runtime_state
+                 WHERE rule_key = 'engine-rpm-high'
+                """)).isEqualTo(original.snapshotId().toString());
+    }
+
+    @Test
+    void 历史约束失败时应同时回滚告警状态与Outbox() throws Exception {
+        execute("ALTER TABLE telemetry_numeric ADD CONSTRAINT ck_test_alarm_value CHECK (value_double <> 999)");
+        try {
+            AlarmPolicy policy = numericAlarmPolicy(0, 0, 60);
+            persistAlarmPolicy(policy);
+            TelemetrySample rejected = sample(EVENT_ID, 7L, 999D, OCCURRED_AT);
+
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> telemetryBatchWriter.write(
+                    List.of(rejected), List.of(), Map.of(DEVICE_ID, policy), Map.of()))
+                    .isInstanceOf(TelemetryBatchWriter.TelemetryStorageException.class);
+
+            assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isZero();
+            assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isZero();
+            assertThat(queryLong("SELECT count(*) FROM telemetry_alarm_runtime_state")).isZero();
+            assertThat(queryLong("SELECT count(*) FROM telemetry_outbox_event")).isZero();
+        } finally {
+            execute("ALTER TABLE telemetry_numeric DROP CONSTRAINT ck_test_alarm_value");
+        }
+    }
+
+    @Test
+    void 事务开始前已过期的告警策略不得重新创建旧状态() throws Exception {
+        AlarmPolicy stale = numericAlarmPolicy(0, 0, 60);
+        persistAlarmPolicy(stale);
+        execute("""
+                UPDATE telemetry_alarm_policy
+                   SET runtime_revision = 9,
+                       snapshot_id = '019f6e00-0000-7000-8000-000000000181',
+                       content_hash = 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+                 WHERE device_id = '019f63e2-071f-706a-bd12-4dad7150e75d'
+                """);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> telemetryBatchWriter.write(
+                List.of(sample(EVENT_ID, 7L, 96D, OCCURRED_AT)),
+                List.of(), Map.of(DEVICE_ID, stale), Map.of()))
+                .isInstanceOf(TelemetryBatchWriter.TelemetryStorageException.class)
+                .hasMessageContaining("遥测历史批写失败");
+
+        assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry_alarm_runtime_state")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry_outbox_event")).isZero();
+    }
+
+    @Test
+    void 事务开始前从无到有的告警策略必须拒绝旧的空策略视图() throws Exception {
+        AlarmPolicy current = numericAlarmPolicy(0, 0, 60);
+        persistAlarmPolicy(current);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> telemetryBatchWriter.write(
+                List.of(sample(EVENT_ID, 7L, 96D, OCCURRED_AT)),
+                List.of(), Map.of(), Map.of()))
+                .isInstanceOf(TelemetryBatchWriter.TelemetryStorageException.class)
+                .hasMessageContaining("遥测历史批写失败");
+
+        assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry_alarm_runtime_state")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry_outbox_event")).isZero();
+    }
+
+    @Test
+    void 质量告警只有对应检查确实执行时才允许恢复() throws Exception {
+        AlarmPolicy policy = qualityAlarmPolicy();
+        persistQualityAlarmPolicy(policy);
+        DataQualityPolicy exactPolicy = new DataQualityPolicy(
+                UUID.fromString("019f6e00-0000-7000-8000-000000000190"),
+                3L, "sha256:" + "d".repeat(64), null, null,
+                Set.of("engine.pressure"), Map.of(), Map.of());
+        QualityEvaluationCoverage exactCoverage = QualityEvaluationCoverage.from(
+                exactPolicy, List.of(sample(EVENT_ID, 7L, 96D, OCCURRED_AT)));
+        QualityEvidence missing = new QualityEvidence(
+                EVENT_ID, DEVICE_ID, "engine.pressure", QualityRuleCode.REQUIRED_MISSING,
+                Quality.BAD, null, null, exactPolicy.runtimeRevision(),
+                exactPolicy.snapshotId(), exactPolicy.contentHash());
+
+        telemetryBatchWriter.write(
+                List.of(sample(EVENT_ID, 7L, 96D, OCCURRED_AT)),
+                List.of(missing), Map.of(DEVICE_ID, policy), Map.of(EVENT_ID, exactCoverage));
+        UUID unknownEventId = UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e764");
+        telemetryBatchWriter.write(
+                List.of(sample(unknownEventId, 8L, 96D, OCCURRED_AT.plusSeconds(1))),
+                List.of(), Map.of(DEVICE_ID, policy), Map.of());
+
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_alarm_runtime_state
+                 WHERE rule_key = 'engine-pressure-required' AND state = 'ACTIVE'
+                """)).isOne();
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_outbox_event
+                 WHERE event_type = 'alarm.recovered'
+                """)).isZero();
+
+        UUID clearEventId = UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e765");
+        telemetryBatchWriter.write(
+                List.of(sample(clearEventId, 9L, 96D, OCCURRED_AT.plusSeconds(2))),
+                List.of(), Map.of(DEVICE_ID, policy), Map.of(clearEventId, exactCoverage));
+
+        assertThat(queryLong("""
+                SELECT count(*) FROM telemetry_outbox_event
+                 WHERE event_type = 'alarm.recovered'
+                """)).isOne();
+    }
+
+    @Test
     void 有效首帧应固定首次接收时间且后续报文只推进最后接收时间() throws Exception {
         Instant firstReceivedAt = Instant.parse("2026-07-15T03:00:02Z");
         Instant lateReceivedAt = Instant.parse("2026-07-15T02:59:02Z");
@@ -567,6 +772,85 @@ class TelemetryStorageIT {
         );
     }
 
+    private static AlarmPolicy numericAlarmPolicy(
+            int triggerSeconds,
+            int recoverSeconds,
+            int cooldownSeconds
+    ) {
+        return new AlarmPolicy(
+                UUID.fromString("019f6e00-0000-7000-8000-000000000180"),
+                8L,
+                "sha256:" + "b".repeat(64),
+                List.of(new AlarmPolicy.Rule(
+                        "engine-rpm-high", "发动机转速过高",
+                        AlarmPolicy.SourceType.NUMERIC,
+                        AlarmPolicy.Severity.CRITICAL,
+                        triggerSeconds, recoverSeconds, cooldownSeconds, true,
+                        "engine.rpm", AlarmPolicy.Operator.GT,
+                        new java.math.BigDecimal("95"),
+                        new java.math.BigDecimal("90"), null))
+        );
+    }
+
+    private static AlarmPolicy qualityAlarmPolicy() {
+        return new AlarmPolicy(
+                UUID.fromString("019f6e00-0000-7000-8000-000000000180"),
+                8L, "sha256:" + "b".repeat(64),
+                List.of(new AlarmPolicy.Rule(
+                        "engine-pressure-required", "发动机压力缺失",
+                        AlarmPolicy.SourceType.QUALITY, AlarmPolicy.Severity.WARNING,
+                        0, 0, 60, true, "engine.pressure",
+                        null, null, null, QualityRuleCode.REQUIRED_MISSING))
+        );
+    }
+
+    private static void persistAlarmPolicy(AlarmPolicy policy) throws Exception {
+        execute("""
+                INSERT INTO telemetry_alarm_policy (
+                    device_id, product_id, runtime_revision, snapshot_id,
+                    values_json, content_hash
+                ) VALUES (
+                    '019f63e2-071f-706a-bd12-4dad7150e75d',
+                    '019f6e00-0000-7000-8000-000000000171',
+                    %d,
+                    '%s',
+                    '{"rules":[{
+                      "key":"engine-rpm-high","name":"发动机转速过高",
+                      "sourceType":"NUMERIC","severity":"CRITICAL",
+                      "triggerDurationSeconds":0,"recoverDurationSeconds":0,
+                      "cooldownSeconds":60,"enabled":true,
+                      "propertyId":"engine.rpm","operator":"GT",
+                      "threshold":95,"recoverThreshold":90
+                    }]}'::JSONB,
+                    '%s'
+                )
+                """.formatted(
+                policy.runtimeRevision(), policy.snapshotId(), policy.contentHash()));
+    }
+
+    private static void persistQualityAlarmPolicy(AlarmPolicy policy) throws Exception {
+        execute("""
+                INSERT INTO telemetry_alarm_policy (
+                    device_id, product_id, runtime_revision, snapshot_id,
+                    values_json, content_hash
+                ) VALUES (
+                    '019f63e2-071f-706a-bd12-4dad7150e75d',
+                    '019f6e00-0000-7000-8000-000000000171',
+                    %d,
+                    '%s',
+                    '{"rules":[{
+                      "key":"engine-pressure-required","name":"发动机压力缺失",
+                      "sourceType":"QUALITY","severity":"WARNING",
+                      "triggerDurationSeconds":0,"recoverDurationSeconds":0,
+                      "cooldownSeconds":60,"enabled":true,
+                      "propertyId":"engine.pressure","qualityRuleCode":"REQUIRED_MISSING"
+                    }]}'::JSONB,
+                    '%s'
+                )
+                """.formatted(
+                policy.runtimeRevision(), policy.snapshotId(), policy.contentHash()));
+    }
+
     private static TelemetrySample sample(
             UUID eventId,
             Long sequence,
@@ -632,6 +916,15 @@ class TelemetryStorageIT {
              ResultSet resultSet = statement.executeQuery()) {
             resultSet.next();
             return resultSet.getTimestamp(1).toInstant();
+        }
+    }
+
+    private static String queryString(String sql) throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet resultSet = statement.executeQuery()) {
+            resultSet.next();
+            return resultSet.getString(1);
         }
     }
 

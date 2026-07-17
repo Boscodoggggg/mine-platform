@@ -17,7 +17,7 @@ import java.util.UUID;
 /**
  * 按遥测批次从 TimescaleDB 最后正确镜像读取设备告警策略。
  */
-public final class AlarmPolicyRepository {
+public final class AlarmPolicyRepository implements AlarmPolicySource {
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
     private static final int MAXIMUM_BATCH_SIZE = 1_000;
@@ -41,6 +41,7 @@ public final class AlarmPolicyRepository {
      * @param deviceIds 本批设备标识
      * @return 设备到类型安全告警策略的不可变映射
      */
+    @Override
     public Map<UUID, AlarmPolicy> findByDeviceIds(Collection<UUID> deviceIds) {
         Objects.requireNonNull(deviceIds, "告警策略读取设备集合不能为空");
         List<UUID> ids = deviceIds.stream()

@@ -1,8 +1,11 @@
 package com.bosco.mine.telemetry.storage;
 
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
+import com.bosco.mine.telemetry.alarm.AlarmPolicy;
+import com.bosco.mine.telemetry.alarm.AlarmRuntimeWriter;
 import com.bosco.mine.telemetry.pipeline.TelemetrySample;
 import com.bosco.mine.telemetry.quality.QualityEvidence;
+import com.bosco.mine.telemetry.quality.QualityEvaluationCoverage;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -75,6 +78,7 @@ public final class TelemetryBatchWriter {
 
     private final DataSource dataSource;
     private final DurableLatestWriter latestWriter;
+    private final AlarmRuntimeWriter alarmRuntimeWriter;
 
     /**
      * 创建遥测历史批写器。
@@ -84,6 +88,7 @@ public final class TelemetryBatchWriter {
     public TelemetryBatchWriter(DataSource dataSource) {
         this.dataSource = Objects.requireNonNull(dataSource, "数据源不能为空");
         this.latestWriter = new DurableLatestWriter();
+        this.alarmRuntimeWriter = new AlarmRuntimeWriter();
     }
 
     /**
@@ -107,23 +112,46 @@ public final class TelemetryBatchWriter {
             List<TelemetrySample> samples,
             List<QualityEvidence> qualityEvidence
     ) {
+        return write(samples, qualityEvidence, Map.of(), Map.of());
+    }
+
+    /**
+     * 将告警状态和 Outbox 与 Inbox、历史、质量证据放入同一事务。
+     *
+     * @param samples 待持久化的标准遥测点
+     * @param qualityEvidence 已由运行策略生成的结构化质量证据
+     * @param alarmPolicies 本批设备最后正确告警策略
+     * @param qualityEvaluationCoverage 本批事件实际执行到的质量规则与属性范围
+     * @return 包含已提交告警 Outbox 事件标识的批写结果
+     */
+    public WriteResult write(
+            List<TelemetrySample> samples,
+            List<QualityEvidence> qualityEvidence,
+            Map<UUID, AlarmPolicy> alarmPolicies,
+            Map<UUID, QualityEvaluationCoverage> qualityEvaluationCoverage
+    ) {
         Objects.requireNonNull(samples, "遥测点集合不能为空");
         Objects.requireNonNull(qualityEvidence, "质量证据集合不能为空");
+        Objects.requireNonNull(alarmPolicies, "告警策略映射不能为空");
+        Objects.requireNonNull(qualityEvaluationCoverage, "质量判定覆盖映射不能为空");
         if (samples.isEmpty()) {
             if (!qualityEvidence.isEmpty()) {
                 throw new IllegalArgumentException("没有遥测点时不能单独写入质量证据");
             }
             return new WriteResult(
-                    0, 0, Set.of(), Map.of(), List.of(), List.of(), Map.of());
+                    0, 0, Set.of(), Map.of(), List.of(), List.of(), Map.of(), List.of());
         }
         Map<UUID, List<TelemetrySample>> events = groupAndValidate(samples);
         Map<UUID, List<QualityEvidence>> evidenceByEvent = groupAndValidateEvidence(
                 events, qualityEvidence);
+        validateAlarmInputs(events, alarmPolicies, qualityEvaluationCoverage);
         try (Connection connection = dataSource.getConnection()) {
             boolean originalAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try {
-                WriteResult result = writeTransaction(connection, events, evidenceByEvent);
+                WriteResult result = writeTransaction(
+                        connection, events, evidenceByEvent,
+                        alarmPolicies, qualityEvaluationCoverage);
                 connection.commit();
                 return result;
             } catch (SQLException | RuntimeException exception) {
@@ -143,7 +171,9 @@ public final class TelemetryBatchWriter {
     private WriteResult writeTransaction(
             Connection connection,
             Map<UUID, List<TelemetrySample>> events,
-            Map<UUID, List<QualityEvidence>> evidenceByEvent) throws SQLException {
+            Map<UUID, List<QualityEvidence>> evidenceByEvent,
+            Map<UUID, AlarmPolicy> alarmPolicies,
+            Map<UUID, QualityEvaluationCoverage> qualityEvaluationCoverage) throws SQLException {
         int claimedEvents = 0;
         int writtenPoints = 0;
         Set<UUID> latestEventIds = new LinkedHashSet<>();
@@ -151,7 +181,12 @@ public final class TelemetryBatchWriter {
         Map<UUID, List<TelemetrySample>> latestSamples = new LinkedHashMap<>();
         List<SequenceGap> sequenceGaps = new ArrayList<>();
         List<QualityEvidence> persistedEvidence = new ArrayList<>();
+        List<UUID> alarmOutboxEventIds = new ArrayList<>();
         lockIngestionOrder(connection);
+        Set<UUID> eventDeviceIds = events.values().stream()
+                .map(samples -> samples.getFirst().deviceId())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        alarmRuntimeWriter.verifyCurrentPolicies(connection, eventDeviceIds, alarmPolicies);
         long latestIngestId = -1L;
         try (PreparedStatement claim = connection.prepareStatement(CLAIM_EVENT_SQL);
              PreparedStatement history = connection.prepareStatement(INSERT_HISTORY_SQL);
@@ -188,6 +223,17 @@ public final class TelemetryBatchWriter {
                     latestEventIds.add(first.eventId());
                     latestEventIngestIds.put(first.eventId(), ingestId);
                     latestSamples.put(first.eventId(), List.copyOf(eventSamples));
+                    AlarmPolicy alarmPolicy = alarmPolicies.get(first.deviceId());
+                    if (alarmPolicy != null) {
+                        alarmOutboxEventIds.addAll(alarmRuntimeWriter.apply(
+                                connection,
+                                eventSamples,
+                                evidenceByEvent.getOrDefault(first.eventId(), List.of()),
+                                alarmPolicy,
+                                qualityEvaluationCoverage.getOrDefault(
+                                        first.eventId(), QualityEvaluationCoverage.none())
+                        ));
+                    }
                 }
                 for (QualityEvidence evidence : evidenceByEvent.getOrDefault(
                         first.eventId(), List.of())) {
@@ -214,8 +260,32 @@ public final class TelemetryBatchWriter {
         }
         return new WriteResult(
                 claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds,
-                sequenceGaps, persistedEvidence, latestSamples
+                sequenceGaps, persistedEvidence, latestSamples, alarmOutboxEventIds
         );
+    }
+
+    private void validateAlarmInputs(
+            Map<UUID, List<TelemetrySample>> events,
+            Map<UUID, AlarmPolicy> alarmPolicies,
+            Map<UUID, QualityEvaluationCoverage> qualityEvaluationCoverage
+    ) {
+        Set<UUID> eventIds = events.keySet();
+        for (Map.Entry<UUID, AlarmPolicy> entry : alarmPolicies.entrySet()) {
+            UUID deviceId = Objects.requireNonNull(entry.getKey(), "告警策略设备标识不能为空");
+            Objects.requireNonNull(entry.getValue(), "告警策略不能为空");
+            boolean present = events.values().stream()
+                    .anyMatch(samples -> samples.getFirst().deviceId().equals(deviceId));
+            if (!present) {
+                throw new IllegalArgumentException("告警策略设备必须属于本批遥测事件");
+            }
+        }
+        for (Map.Entry<UUID, QualityEvaluationCoverage> entry
+                : qualityEvaluationCoverage.entrySet()) {
+            if (entry.getKey() == null || !eventIds.contains(entry.getKey())) {
+                throw new IllegalArgumentException("质量判定事件必须属于本批遥测事件");
+            }
+            Objects.requireNonNull(entry.getValue(), "质量判定覆盖范围不能为空");
+        }
     }
 
     private long findEventIngestId(Connection connection, UUID eventId) throws SQLException {
@@ -443,6 +513,7 @@ public final class TelemetryBatchWriter {
      * @param sequenceGaps 本批唯一事件确认的设备序列缺口
      * @param qualityEvidence 本事务新提交的属性级质量证据，幂等重投时为空
      * @param latestSamples 当前生效事件对应的已提交属性点，用于安全修复 Redis 和实时事件
+     * @param alarmOutboxEventIds 本事务新建且可精确唤醒发布的告警 Outbox 事件标识
      */
     public record WriteResult(
             int claimedEvents,
@@ -451,7 +522,8 @@ public final class TelemetryBatchWriter {
             Map<UUID, Long> latestEventIngestIds,
             List<SequenceGap> sequenceGaps,
             List<QualityEvidence> qualityEvidence,
-            Map<UUID, List<TelemetrySample>> latestSamples
+            Map<UUID, List<TelemetrySample>> latestSamples,
+            List<UUID> alarmOutboxEventIds
     ) {
 
         /**
@@ -470,7 +542,7 @@ public final class TelemetryBatchWriter {
         ) {
             this(
                     claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds,
-                    List.of(), List.of(), Map.of());
+                    List.of(), List.of(), Map.of(), List.of());
         }
 
         /**
@@ -491,7 +563,7 @@ public final class TelemetryBatchWriter {
         ) {
             this(
                     claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds,
-                    sequenceGaps, List.of(), Map.of());
+                    sequenceGaps, List.of(), Map.of(), List.of());
         }
 
         /**
@@ -514,7 +586,24 @@ public final class TelemetryBatchWriter {
         ) {
             this(
                     claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds,
-                    sequenceGaps, qualityEvidence, Map.of());
+                    sequenceGaps, qualityEvidence, Map.of(), List.of());
+        }
+
+        /**
+         * 创建包含已提交属性点但不包含告警事件的兼容批写结果。
+         */
+        public WriteResult(
+                int claimedEvents,
+                int writtenPoints,
+                Set<UUID> latestEventIds,
+                Map<UUID, Long> latestEventIngestIds,
+                List<SequenceGap> sequenceGaps,
+                List<QualityEvidence> qualityEvidence,
+                Map<UUID, List<TelemetrySample>> latestSamples
+        ) {
+            this(
+                    claimedEvents, writtenPoints, latestEventIds, latestEventIngestIds,
+                    sequenceGaps, qualityEvidence, latestSamples, List.of());
         }
 
         /**
@@ -536,6 +625,13 @@ public final class TelemetryBatchWriter {
             qualityEvidence = List.copyOf(Objects.requireNonNull(
                     qualityEvidence, "质量证据集合不能为空"
             ));
+            alarmOutboxEventIds = List.copyOf(Objects.requireNonNull(
+                    alarmOutboxEventIds, "告警 Outbox 事件标识不能为空"));
+            if (alarmOutboxEventIds.stream().anyMatch(Objects::isNull)
+                    || alarmOutboxEventIds.stream().distinct().count()
+                    != alarmOutboxEventIds.size()) {
+                throw new IllegalArgumentException("告警 Outbox 事件标识不能为空或重复");
+            }
             Map<UUID, List<TelemetrySample>> copiedSamples = new LinkedHashMap<>();
             Objects.requireNonNull(latestSamples, "已提交最新属性点不能为空")
                     .forEach((eventId, samples) -> copiedSamples.put(

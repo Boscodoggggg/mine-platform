@@ -3,8 +3,12 @@ package com.bosco.mine.telemetry.strategy;
 import com.bosco.mine.messaging.strategy.StrategyRuntimeChangedPayload;
 import com.bosco.mine.telemetry.alarm.AlarmPolicy;
 import com.bosco.mine.telemetry.alarm.AlarmPolicyRepository;
+import com.bosco.mine.model.message.UnifiedDeviceMessage.MessageKind;
+import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
+import com.bosco.mine.telemetry.pipeline.TelemetrySample;
 import com.bosco.mine.telemetry.quality.DataQualityPolicy;
 import com.bosco.mine.telemetry.quality.DataQualityPolicyRepository;
+import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -16,6 +20,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import javax.sql.DataSource;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,16 +54,20 @@ class StrategyPolicyRepositoryIT {
     private static DataQualityPolicyRepository policyReader;
     private static AlarmPolicyRepository alarmPolicyReader;
     private static JdbcTemplate jdbcTemplate;
+    private static TelemetryBatchWriter batchWriter;
+    private static final List<UUID> OBSERVED_OUTBOX_EVENTS =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
 
     @BeforeAll
     static void 初始化策略镜像数据库() {
         DataSource dataSource = new DriverManagerDataSource(
                 TIMESCALE.getJdbcUrl(), TIMESCALE.getUsername(), TIMESCALE.getPassword());
         Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
-        repository = new StrategyPolicyRepository(dataSource);
+        repository = new StrategyPolicyRepository(dataSource, OBSERVED_OUTBOX_EVENTS::add);
         policyReader = new DataQualityPolicyRepository(dataSource);
         alarmPolicyReader = new AlarmPolicyRepository(dataSource);
         jdbcTemplate = new JdbcTemplate(dataSource);
+        batchWriter = new TelemetryBatchWriter(dataSource);
     }
 
     @Test
@@ -148,6 +157,78 @@ class StrategyPolicyRepositoryIT {
                 """, Long.class, PRODUCT_ID)).isEqualTo(1L);
     }
 
+    @Test
+    void 告警规则删除禁用或语义变化时应在快照事务内恢复旧周期() {
+        int observedBefore = OBSERVED_OUTBOX_EVENTS.size();
+        UUID productId = UUID.randomUUID();
+        UUID removedDevice = UUID.randomUUID();
+        UUID disabledDevice = UUID.randomUUID();
+        UUID changedDevice = UUID.randomUUID();
+        UUID firstSnapshot = UUID.randomUUID();
+        repository.stage(firstSnapshot, List.of(
+                new StrategyPolicyRepository.StagedPolicy(
+                        removedDevice, numericAlarmValues(true, "95", "90"),
+                        "sha256:" + "5".repeat(64)),
+                new StrategyPolicyRepository.StagedPolicy(
+                        disabledDevice, numericAlarmValues(true, "95", "90"),
+                        "sha256:" + "6".repeat(64)),
+                new StrategyPolicyRepository.StagedPolicy(
+                        changedDevice, numericAlarmValues(true, "95", "90"),
+                        "sha256:" + "7".repeat(64))));
+        repository.finalizeApply(
+                UUID.fromString("019f6e00-0000-7000-8000-000000000021"),
+                new StrategyRuntimeChangedPayload(
+                        firstSnapshot, productId, "ALARM", 1, 3,
+                        "sha256:" + "e".repeat(64)));
+        Map<UUID, AlarmPolicy> policies = alarmPolicyReader.findByDeviceIds(
+                Set.of(removedDevice, disabledDevice, changedDevice));
+        batchWriter.write(List.of(
+                        alarmSample("019f6e00-0000-7000-8000-000000000031", removedDevice),
+                        alarmSample("019f6e00-0000-7000-8000-000000000032", disabledDevice),
+                        alarmSample("019f6e00-0000-7000-8000-000000000033", changedDevice)),
+                List.of(), policies, Map.of());
+
+        UUID secondSnapshot = UUID.randomUUID();
+        repository.stage(secondSnapshot, List.of(
+                new StrategyPolicyRepository.StagedPolicy(
+                        removedDevice, "{}", "sha256:" + "8".repeat(64)),
+                new StrategyPolicyRepository.StagedPolicy(
+                        disabledDevice, numericAlarmValues(false, "95", "90"),
+                        "sha256:" + "9".repeat(64)),
+                new StrategyPolicyRepository.StagedPolicy(
+                        changedDevice, numericAlarmValues(true, "100", "92"),
+                        "sha256:" + "a".repeat(64))));
+        repository.finalizeApply(
+                UUID.fromString("019f6e00-0000-7000-8000-000000000022"),
+                new StrategyRuntimeChangedPayload(
+                        secondSnapshot, productId, "ALARM", 2, 3,
+                        "sha256:" + "f".repeat(64)));
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM telemetry_alarm_runtime_state
+                 WHERE device_id IN (?, ?, ?)
+                """, Long.class, removedDevice, disabledDevice, changedDevice)).isZero();
+        Map<String, Long> reasons = jdbcTemplate.query("""
+                SELECT payload ->> 'recoveryReason' AS reason, count(*) AS amount
+                  FROM telemetry_outbox_event
+                 WHERE event_type = 'alarm.recovered'
+                   AND payload ->> 'deviceId' IN (?, ?, ?)
+                 GROUP BY payload ->> 'recoveryReason'
+                """, resultSet -> {
+                    Map<String, Long> values = new java.util.LinkedHashMap<>();
+                    while (resultSet.next()) {
+                        values.put(resultSet.getString("reason"), resultSet.getLong("amount"));
+                    }
+                    return values;
+                }, removedDevice.toString(), disabledDevice.toString(), changedDevice.toString());
+        assertThat(reasons).containsOnly(
+                Map.entry("RULE_REMOVED", 1L),
+                Map.entry("RULE_DISABLED", 1L),
+                Map.entry("RULE_CHANGED", 1L));
+        assertThat(OBSERVED_OUTBOX_EVENTS.subList(
+                observedBefore, OBSERVED_OUTBOX_EVENTS.size())).hasSize(3);
+    }
+
     private StrategyRuntimeChangedPayload payload(
             UUID snapshotId,
             long revision,
@@ -173,5 +254,31 @@ class StrategyPolicyRepositoryIT {
                   "qualityRuleCode":"REQUIRED_MISSING"
                 }]}
                 """;
+    }
+
+    private String numericAlarmValues(boolean enabled, String threshold, String recoverThreshold) {
+        return """
+                {"rules":[{
+                  "key":"engine-rpm-high",
+                  "name":"发动机转速过高",
+                  "sourceType":"NUMERIC",
+                  "severity":"CRITICAL",
+                  "triggerDurationSeconds":0,
+                  "recoverDurationSeconds":0,
+                  "cooldownSeconds":60,
+                  "enabled":%s,
+                  "propertyId":"engine.rpm",
+                  "operator":"GT",
+                  "threshold":%s,
+                  "recoverThreshold":%s
+                }]}
+                """.formatted(enabled, threshold, recoverThreshold);
+    }
+
+    private TelemetrySample alarmSample(String eventId, UUID deviceId) {
+        Instant at = Instant.parse("2026-07-17T04:00:00Z");
+        return new TelemetrySample(
+                UUID.fromString(eventId), deviceId, "haul-truck", "engine.rpm", 96D,
+                Quality.GOOD, "boot-a", 1L, MessageKind.TELEMETRY, at, at, at);
     }
 }

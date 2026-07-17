@@ -2,6 +2,7 @@ package com.bosco.mine.telemetry.bootstrap;
 
 import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.telemetry.alarm.AlarmPolicyRepository;
+import com.bosco.mine.telemetry.alarm.outbox.AlarmOutboxEventObserver;
 import com.bosco.mine.telemetry.alarm.outbox.RabbitAlarmOutboxPublisher;
 import com.bosco.mine.telemetry.alarm.outbox.TelemetryOutboxRecovery;
 import com.bosco.mine.telemetry.alarm.outbox.TelemetryOutboxRelay;
@@ -38,8 +39,10 @@ import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Clock;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 装配遥测服务的 RabbitMQ 批消费者、Redis 最新值仓储和 TimescaleDB 历史批写器。
@@ -81,6 +84,8 @@ public class TelemetryStorageConfiguration {
      * @param qualityPolicyRepository 数据质量策略批量读取仓储
      * @param qualityEvaluator 属性级数据质量判定器
      * @param qualityEvidenceMetrics 已提交质量证据指标观察器
+     * @param alarmPolicyRepository 告警策略批量读取仓储
+     * @param alarmOutboxEventObserver 已提交告警 Outbox 精确唤醒器
      * @return 批消息处理器
      */
     @Bean
@@ -91,7 +96,9 @@ public class TelemetryStorageConfiguration {
             TelemetrySequenceGapObserver sequenceGapObserver,
             DataQualityPolicyRepository qualityPolicyRepository,
             DataQualityEvaluator qualityEvaluator,
-            QualityEvidenceMetrics qualityEvidenceMetrics) {
+            QualityEvidenceMetrics qualityEvidenceMetrics,
+            AlarmPolicyRepository alarmPolicyRepository,
+            AlarmOutboxEventObserver alarmOutboxEventObserver) {
         return new NormalizedTelemetryConsumer(
                 latestValues,
                 batchWriter,
@@ -99,7 +106,9 @@ public class TelemetryStorageConfiguration {
                 sequenceGapObserver,
                 qualityPolicyRepository,
                 qualityEvaluator,
-                qualityEvidenceMetrics
+                qualityEvidenceMetrics,
+                alarmPolicyRepository,
+                alarmOutboxEventObserver
         );
     }
 
@@ -186,10 +195,22 @@ public class TelemetryStorageConfiguration {
         return scheduler;
     }
 
-    /** 创建虚拟线程执行器，避免 publisher confirm 阻塞遥测消费线程。 */
+    /** 创建限制并发和排队容量的 Outbox 发布执行器，避免告警风暴耗尽下游资源。 */
     @Bean(name = "telemetryOutboxExecutor", destroyMethod = "close")
-    public ExecutorService telemetryOutboxExecutor() {
-        return Executors.newVirtualThreadPerTaskExecutor();
+    public ExecutorService telemetryOutboxExecutor(TelemetryRabbitProperties properties) {
+        TelemetryRabbitProperties.Outbox outbox = properties.resolvedOutbox();
+        int concurrency = positive(
+                outbox.resolvedDispatchConcurrency(), "outbox.dispatchConcurrency");
+        int queueCapacity = positive(
+                outbox.resolvedDispatchQueueCapacity(), "outbox.dispatchQueueCapacity");
+        return new ThreadPoolExecutor(
+                concurrency,
+                concurrency,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(queueCapacity),
+                Thread.ofPlatform().name("telemetry-outbox-dispatch-", 0).factory(),
+                new ThreadPoolExecutor.AbortPolicy());
     }
 
     /** 创建只调度一个已知告警事件标识的进程内重试器。 */
@@ -225,14 +246,30 @@ public class TelemetryStorageConfiguration {
         );
     }
 
+    /** 创建事务提交后使用虚拟线程精确发布告警 Outbox 的观察器。 */
+    @Bean
+    public AlarmOutboxEventObserver alarmOutboxEventObserver(
+            TelemetryOutboxRelay relay,
+            @Qualifier("telemetryOutboxExecutor") ExecutorService executor
+    ) {
+        return eventId -> executor.execute(() -> relay.publishById(eventId));
+    }
+
     /** 创建应用启动和 RabbitMQ 重连后的有界恢复协调器。 */
     @Bean
     public TelemetryOutboxRecovery telemetryOutboxRecovery(
             TelemetryOutboxRelay relay,
             CachingConnectionFactory telemetryConnectionFactory,
-            @Qualifier("telemetryOutboxExecutor") ExecutorService executor
+            @Qualifier("telemetryOutboxExecutor") ExecutorService executor,
+            @Qualifier("telemetryOutboxTaskScheduler") ThreadPoolTaskScheduler scheduler,
+            TelemetryRabbitProperties properties
     ) {
-        return new TelemetryOutboxRecovery(relay, telemetryConnectionFactory, executor);
+        return new TelemetryOutboxRecovery(
+                relay,
+                telemetryConnectionFactory,
+                executor,
+                scheduler,
+                properties.resolvedOutbox().resolvedRecoveryInterval());
     }
 
     /**
@@ -299,8 +336,11 @@ public class TelemetryStorageConfiguration {
     @Bean
     @ConditionalOnProperty(
             prefix = "mine.telemetry.strategy-distribution", name = "enabled", havingValue = "true")
-    public StrategyPolicyRepository strategyPolicyRepository(DataSource dataSource) {
-        return new StrategyPolicyRepository(dataSource);
+    public StrategyPolicyRepository strategyPolicyRepository(
+            DataSource dataSource,
+            AlarmOutboxEventObserver alarmOutboxEventObserver
+    ) {
+        return new StrategyPolicyRepository(dataSource, alarmOutboxEventObserver);
     }
 
     /** 创建使用服务令牌拉取不可变快照的控制面客户端。 */
