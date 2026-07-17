@@ -461,6 +461,18 @@ class DatabaseMigrationIT {
                 )
                   AND NOT tgisinternal
                 """, Long.class)).isEqualTo(3L);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname IN (
+                    'ck_dev_strategy_version_type',
+                    'ck_dev_strategy_release_type'
+                )
+                ORDER BY conname
+                """, String.class))
+                .hasSize(2)
+                .allMatch(definition -> definition.contains("ONLINE_STATUS")
+                        && definition.contains("DATA_QUALITY"));
     }
 
     @Test

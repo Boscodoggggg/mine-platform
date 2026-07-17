@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.model.strategy.EffectiveStrategyResolver;
 import com.bosco.mine.model.strategy.OnlineStatusStrategyDefinition;
 import com.bosco.mine.model.strategy.ScopedStrategyFragment;
@@ -359,7 +360,7 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
                 mapper.findCurrentFragmentsForDevices(
                         device.productId(), normalizedType, List.of(deviceId));
         EffectiveStrategyResolver.Resolution resolution = resolver.resolve(
-                records.stream().map(this::toFragment).toList());
+                records.stream().map(record -> toFragment(record, normalizedType)).toList());
         return new EffectiveStrategyView(
                 deviceId, device.productId(), normalizedType, resolution.valid(),
                 resolution.values(), resolution.sources(), resolution.conflicts(), resolution.contentHash()
@@ -461,7 +462,7 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
                     : mapper.findCurrentFragmentsForDevices(productId, strategyType, batch)) {
                 StrategyScopeType scopeType = StrategyScopeType.valueOf(record.scopeType());
                 if (scopeType != target.scopeType() || !record.scopeId().equals(target.scopeId())) {
-                    byDevice.get(record.deviceId()).add(toFragment(record));
+                    byDevice.get(record.deviceId()).add(toFragment(record, strategyType));
                 }
             }
             for (UUID deviceId : batch) {
@@ -481,6 +482,9 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
                                 deviceId, conflict.field(), conflict.groupPriority(), conflict.groupIds()
                         ));
                     }
+                }
+                if (resolution.valid()) {
+                    validateEffectiveValues(strategyType, deviceId, resolution.values());
                 }
             }
         }
@@ -539,12 +543,28 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
     }
 
     private ScopedStrategyFragment toFragment(
-            StrategyConfigurationMapper.StrategyFragmentRecord record
+            StrategyConfigurationMapper.StrategyFragmentRecord record,
+            String strategyType
     ) {
         return new ScopedStrategyFragment(
                 record.releaseId(), StrategyScopeType.valueOf(record.scopeType()), record.scopeId(),
-                record.groupPriority(), readMap(record.valuesJson())
+                record.groupPriority(), validateValues(strategyType, readMap(record.valuesJson()))
         );
+    }
+
+    private void validateEffectiveValues(
+            String strategyType,
+            UUID deviceId,
+            Map<String, Object> values
+    ) {
+        try {
+            definition(strategyType).validate(values);
+        } catch (StrategyValidationException exception) {
+            throw new MineException(DEFINITION_INVALID, Map.of(
+                    "deviceId", deviceId,
+                    "violations", exception.violations()
+            ));
+        }
     }
 
     private String contentHash(UUID productId, Map<String, Object> values, UUID releaseId) {
@@ -565,6 +585,9 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
         String normalizedType = normalizeType(strategyType);
         if (OnlineStatusStrategyDefinition.TYPE.equals(normalizedType)) {
             return new OnlineStatusStrategyDefinition();
+        }
+        if (DataQualityStrategyDefinition.TYPE.equals(normalizedType)) {
+            return new DataQualityStrategyDefinition();
         }
         throw new MineException(DEFINITION_INVALID, Map.of(
                 "violations", List.of(new StrategyValidationException.Violation(

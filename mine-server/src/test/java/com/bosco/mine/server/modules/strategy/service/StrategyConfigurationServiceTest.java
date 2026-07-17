@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +79,36 @@ class StrategyConfigurationServiceTest {
         verify(auditService).recordSuccess(
                 eq("DEVICE_STRATEGY"), eq("CREATE_STRATEGY_DRAFT"), eq("device:strategy:edit"),
                 eq("STRATEGY_VERSION"), eq(created.id()), any(), any()
+        );
+    }
+
+    @Test
+    void 应创建经过白名单规范化的数据质量策略草稿() {
+        when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
+        when(mapper.nextVersionNumber(productId, "DATA_QUALITY")).thenReturn(1L);
+
+        StrategyConfigurationService.StrategyVersionView created = service.createDraft(
+                new StrategyConfigurationService.CreateDraftCommand(
+                        productId,
+                        "data_quality",
+                        Map.of(
+                                "staleAfterSeconds", 300L,
+                                "required.engine.rpm", true,
+                                "minimum.engine.rpm", 10.5D
+                        ),
+                        "矿卡转速质量规则"
+                )
+        );
+
+        assertThat(created.strategyType()).isEqualTo("DATA_QUALITY");
+        assertThat(created.values())
+                .containsEntry("staleAfterSeconds", 300)
+                .containsEntry("required.engine.rpm", true)
+                .containsEntry("minimum.engine.rpm", new BigDecimal("10.5"));
+        verify(mapper).insertVersion(
+                eq(created.id()), eq(productId), eq("DATA_QUALITY"), eq(1L),
+                eq("{\"minimum.engine.rpm\":10.5,\"required.engine.rpm\":true,\"staleAfterSeconds\":300}"),
+                eq("矿卡转速质量规则"), eq(null)
         );
     }
 
@@ -211,6 +242,41 @@ class StrategyConfigurationServiceTest {
                 List.of(deviceId),
                 EffectiveStrategyCacheInvalidator.InvalidationReason.PUBLISH
         );
+    }
+
+    @Test
+    void 继承后的数据质量下限大于上限时必须阻止发布() {
+        UUID groupId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        StrategyConfigurationMapper.StrategyVersionRecord draft = dataQualityVersion(
+                "DRAFT", "{\"minimum.engine.rpm\":200}", 0
+        );
+        when(mapper.findReleaseByIdempotency(null, "quality-publish-001"))
+                .thenReturn(Optional.empty());
+        when(mapper.findVersionById(versionId)).thenReturn(Optional.of(draft));
+        when(mapper.findVersionForUpdate(versionId)).thenReturn(Optional.of(draft));
+        when(scopeMapper.findGroupByIdForUpdate(groupId))
+                .thenReturn(Optional.of(group(groupId, 800)));
+        when(scopeMapper.findActiveMemberIds(groupId)).thenReturn(List.of(deviceId));
+        when(mapper.findCurrentFragmentsForDevices(
+                productId, "DATA_QUALITY", List.of(deviceId)
+        )).thenReturn(List.of(new StrategyConfigurationMapper.StrategyFragmentRecord(
+                deviceId, UUID.randomUUID(), "PRODUCT", productId, null,
+                "{\"maximum.engine.rpm\":100}"
+        )));
+
+        assertThatThrownBy(() -> service.publish(
+                new StrategyConfigurationService.PublishCommand(
+                        versionId, StrategyScopeType.GROUP, groupId,
+                        "提高转速下限", "quality-publish-001"
+                )
+        )).isInstanceOfSatisfying(MineException.class, exception -> {
+            assertThat(exception.errorCode().code()).isEqualTo("STRATEGY-422-004");
+            assertThat(exception.details()).containsEntry("deviceId", deviceId)
+                    .containsKey("violations");
+        });
+
+        verify(mapper, never()).publishVersion(any(), any(), anyLong(), any());
     }
 
     @Test
@@ -375,6 +441,28 @@ class StrategyConfigurationServiceTest {
                 "{\"offlineThresholdSeconds\":" + threshold + "}",
                 "PUBLISHED".equals(status) ? "sha256:" + "0".repeat(64) : null,
                 "在线状态规则",
+                "PUBLISHED".equals(status) ? now : null,
+                now,
+                now,
+                version
+        );
+    }
+
+    private StrategyConfigurationMapper.StrategyVersionRecord dataQualityVersion(
+            String status,
+            String valuesJson,
+            long version
+    ) {
+        Instant now = Instant.parse("2026-07-16T00:00:00Z");
+        return new StrategyConfigurationMapper.StrategyVersionRecord(
+                versionId,
+                productId,
+                "DATA_QUALITY",
+                1,
+                status,
+                valuesJson,
+                "PUBLISHED".equals(status) ? "sha256:" + "0".repeat(64) : null,
+                "数据质量规则",
                 "PUBLISHED".equals(status) ? now : null,
                 now,
                 now,

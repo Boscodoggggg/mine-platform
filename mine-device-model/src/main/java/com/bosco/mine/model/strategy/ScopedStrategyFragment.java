@@ -26,7 +26,7 @@ public record ScopedStrategyFragment(
 ) {
 
     private static final int MAX_FIELDS = 256;
-    private static final Pattern FIELD_NAME = Pattern.compile("^[A-Za-z][A-Za-z0-9._-]{0,127}$");
+    private static final Pattern FIELD_NAME = Pattern.compile("^[A-Za-z][A-Za-z0-9._-]{0,159}$");
 
     /**
      * 冻结并校验作用域片段，避免解析期间被调用方修改。

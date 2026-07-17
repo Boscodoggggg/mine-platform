@@ -19,6 +19,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -119,6 +120,56 @@ class StrategyConfigurationIT {
                 firstDraft.id().toString(), firstRelease.id().toString(),
                 secondDraft.id().toString(), compatibleDraft.id().toString(), secondRelease.id().toString()
         )).isEqualTo(5L);
+    }
+
+    @Test
+    void 数据质量策略应持久发布并阻止继承后的矛盾范围() {
+        Fixture fixture = createFixture(800, 900);
+        StrategyConfigurationService.StrategyVersionView productDraft =
+                strategyService.createDraft(new StrategyConfigurationService.CreateDraftCommand(
+                        fixture.productId(),
+                        "DATA_QUALITY",
+                        Map.of(
+                                "staleAfterSeconds", 300,
+                                "maximum.engine.rpm", new BigDecimal("100")
+                        ),
+                        "矿卡产品质量上限"
+                ));
+        StrategyConfigurationService.StrategyReleaseView productRelease = strategyService.publish(
+                new StrategyConfigurationService.PublishCommand(
+                        productDraft.id(), StrategyScopeType.PRODUCT, fixture.productId(),
+                        "发布产品质量基线", "quality-product-release"
+                )
+        );
+        StrategyConfigurationService.StrategyVersionView groupDraft =
+                strategyService.createDraft(new StrategyConfigurationService.CreateDraftCommand(
+                        fixture.productId(),
+                        "DATA_QUALITY",
+                        Map.of("minimum.engine.rpm", new BigDecimal("200")),
+                        "运输组质量下限"
+                ));
+
+        assertThatThrownBy(() -> strategyService.publish(
+                new StrategyConfigurationService.PublishCommand(
+                        groupDraft.id(), StrategyScopeType.GROUP, fixture.firstGroupId(),
+                        "发布运输组质量覆盖", "quality-group-release"
+                )
+        )).isInstanceOfSatisfying(MineException.class, exception -> {
+            assertThat(exception.errorCode().code()).isEqualTo("STRATEGY-422-004");
+            assertThat(exception.details()).containsEntry("deviceId", fixture.deviceId());
+        });
+
+        StrategyConfigurationService.EffectiveStrategyView effective = strategyService.findEffective(
+                fixture.deviceId(), "DATA_QUALITY"
+        );
+        assertThat(productRelease.strategyType()).isEqualTo("DATA_QUALITY");
+        assertThat(effective.values())
+                .containsEntry("staleAfterSeconds", 300)
+                .containsEntry("maximum.engine.rpm", new BigDecimal("1E+2"));
+        assertThat(releaseCount(fixture.productId())).isOne();
+        assertThat(strategyMapper.findVersionById(groupDraft.id())).get()
+                .extracting(StrategyConfigurationMapper.StrategyVersionRecord::status)
+                .isEqualTo("DRAFT");
     }
 
     @Test
