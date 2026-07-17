@@ -4,6 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
 import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.model.strategy.EffectiveStrategyResolver;
 import com.bosco.mine.model.strategy.OnlineStatusStrategyDefinition;
@@ -600,6 +601,9 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
         }
         if (DataQualityStrategyDefinition.TYPE.equals(normalizedType)) {
             return new DataQualityStrategyDefinition();
+        }
+        if (AlarmStrategyDefinition.TYPE.equals(normalizedType)) {
+            return new AlarmStrategyDefinition();
         }
         throw new MineException(DEFINITION_INVALID, Map.of(
                 "violations", List.of(new StrategyValidationException.Violation(

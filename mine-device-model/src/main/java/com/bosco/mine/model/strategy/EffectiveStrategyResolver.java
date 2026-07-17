@@ -1,6 +1,5 @@
 package com.bosco.mine.model.strategy;
 
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -18,8 +17,8 @@ import java.util.UUID;
 /**
  * 按产品、设备组和单设备优先级确定性计算有效策略。
  *
- * <p>解析器只处理已经通过具体策略定义校验的标量字段。同优先级设备组对同一字段给出
- * 不同值时返回冲突，调用方不得消费部分合并结果。</p>
+ * <p>解析器只处理已经通过具体策略定义校验的受控 JSON 值。同优先级设备组对同一字段给出
+ * 不同值时返回冲突，调用方不得消费部分合并结果。结构化值作为完整字段覆盖，不做深层合并。</p>
  */
 public final class EffectiveStrategyResolver {
 
@@ -76,10 +75,11 @@ public final class EffectiveStrategyResolver {
                 && currentSource != null
                 && currentSource.scopeType() == StrategyScopeType.GROUP
                 && Objects.equals(currentSource.groupPriority(), fragment.groupPriority())
-                && scalarKey(values.get(field)).equals(scalarKey(value))) {
+                && StrategyValueNormalizer.canonicalKey(values.get(field)).equals(
+                        StrategyValueNormalizer.canonicalKey(value))) {
             return;
         }
-        values.put(field, value);
+        values.put(field, StrategyValueNormalizer.normalize(value));
         sources.put(field, new ValueSource(
                 fragment.scopeType(), fragment.scopeId(), fragment.releaseId(), fragment.groupPriority()
         ));
@@ -96,7 +96,8 @@ public final class EffectiveStrategyResolver {
         List<Conflict> conflicts = new ArrayList<>();
         candidates.forEach((priority, fields) -> fields.forEach((field, contributors) -> {
             long distinctValues = contributors.stream()
-                    .map(fragment -> scalarKey(fragment.values().get(field)))
+                    .map(fragment -> StrategyValueNormalizer.canonicalKey(
+                            fragment.values().get(field)))
                     .distinct()
                     .limit(2)
                     .count();
@@ -135,26 +136,14 @@ public final class EffectiveStrategyResolver {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             values.forEach((field, value) -> digest.update(
-                    (field.length() + ":" + field + "=" + scalarKey(value) + "\n")
+                    (field.length() + ":" + field + "="
+                            + StrategyValueNormalizer.canonicalKey(value) + "\n")
                             .getBytes(StandardCharsets.UTF_8)
             ));
             return "sha256:" + HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("当前 JRE 不支持 SHA-256", exception);
         }
-    }
-
-    private static String scalarKey(Object value) {
-        if (value == null) return "null";
-        if (value instanceof String text) return "string:" + text.length() + ":" + text;
-        if (value instanceof Boolean bool) return "boolean:" + bool;
-        if (value instanceof Integer integer) return "integer:" + integer;
-        if (value instanceof Long number) return "long:" + number;
-        if (value instanceof BigDecimal decimal) {
-            BigDecimal normalized = decimal.signum() == 0 ? BigDecimal.ZERO : decimal.stripTrailingZeros();
-            return "decimal:" + normalized.toPlainString();
-        }
-        throw new IllegalArgumentException("策略字段值只能使用受支持的标量类型");
     }
 
     /**

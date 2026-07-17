@@ -1097,7 +1097,7 @@ export interface components {
             version: number;
         };
         /** @enum {string} */
-        StrategyType: "ONLINE_STATUS" | "DATA_QUALITY";
+        StrategyType: "ONLINE_STATUS" | "DATA_QUALITY" | "ALARM";
         /** @enum {string} */
         StrategyScopeType: "PRODUCT" | "GROUP" | "DEVICE";
         /** @enum {string} */
@@ -1114,7 +1114,44 @@ export interface components {
         } & {
             [key: string]: boolean | number;
         };
-        StrategyValues: components["schemas"]["OnlineStatusStrategyValues"] | components["schemas"]["DataQualityStrategyValues"];
+        AlarmNumericRule: {
+            key: string;
+            name: string;
+            /** @enum {string} */
+            sourceType: "NUMERIC";
+            /** @enum {string} */
+            severity: "INFO" | "WARNING" | "CRITICAL";
+            triggerDurationSeconds: number;
+            recoverDurationSeconds: number;
+            cooldownSeconds: number;
+            /** @default true */
+            enabled: boolean;
+            propertyId: string;
+            /** @enum {string} */
+            operator: "GT" | "GTE" | "LT" | "LTE";
+            threshold: number;
+            recoverThreshold: number;
+        };
+        AlarmQualityRule: {
+            key: string;
+            name: string;
+            /** @enum {string} */
+            sourceType: "QUALITY";
+            /** @enum {string} */
+            severity: "INFO" | "WARNING" | "CRITICAL";
+            triggerDurationSeconds: number;
+            recoverDurationSeconds: number;
+            cooldownSeconds: number;
+            /** @default true */
+            enabled: boolean;
+            propertyId?: string;
+            /** @enum {string} */
+            qualityRuleCode: "FUTURE_TIMESTAMP" | "STALE_TIMESTAMP" | "REQUIRED_MISSING" | "BELOW_MINIMUM" | "ABOVE_MAXIMUM";
+        };
+        AlarmStrategyValues: {
+            rules: (components["schemas"]["AlarmNumericRule"] | components["schemas"]["AlarmQualityRule"])[];
+        };
+        StrategyValues: components["schemas"]["OnlineStatusStrategyValues"] | components["schemas"]["DataQualityStrategyValues"] | components["schemas"]["AlarmStrategyValues"];
         StrategyVersion: {
             /** Format: uuid */
             id: string;

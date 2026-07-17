@@ -474,7 +474,8 @@ class DatabaseMigrationIT {
                 """, String.class))
                 .hasSize(2)
                 .allMatch(definition -> definition.contains("ONLINE_STATUS")
-                        && definition.contains("DATA_QUALITY"));
+                        && definition.contains("DATA_QUALITY")
+                        && definition.contains("ALARM"));
     }
 
     @Test
@@ -521,6 +522,11 @@ class DatabaseMigrationIT {
                 "PUBLISH", "ROLLBACK", "MEMBERSHIP", "PRIORITY",
                 "GROUP_ARCHIVE", "DEVICE_CREATE", "DEVICE_ARCHIVE"
         );
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_dev_strategy_runtime_snapshot_type'
+                """, String.class)).contains("DATA_QUALITY", "ALARM");
     }
 
     @Test

@@ -6,7 +6,7 @@
 
 **Architecture:** `ALARM.rules` 以原子集合参与三级有效值解析；控制面通过既有版本化策略快照分发到 Telemetry 最后正确镜像，Telemetry 在遥测事务内推进告警状态并写 Outbox，Server 通过 Inbox 幂等落库并提供确认/关闭 API，Web 提供策略编辑器与告警中心。
 
-**Tech Stack:** Java 25、Spring Boot 4、PostgreSQL/TimescaleDB、RabbitMQ quorum queue、MyBatis/JdbcTemplate、Vue 3、TypeScript、Naive UI、UnoCSS、Vitest、Playwright、Testcontainers。
+**Tech Stack:** Java 21、Spring Boot 4、PostgreSQL/TimescaleDB、RabbitMQ quorum queue、MyBatis/JdbcTemplate、Vue 3、TypeScript、Naive UI、UnoCSS、Vitest、Playwright、Testcontainers。
 
 ---
 

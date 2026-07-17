@@ -116,6 +116,42 @@ class StrategyConfigurationServiceTest {
     }
 
     @Test
+    void 应创建整组覆盖且经过白名单规范化的告警策略草稿() {
+        when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
+        when(mapper.nextVersionNumber(productId, "ALARM")).thenReturn(1L);
+        Map<String, Object> rule = new java.util.LinkedHashMap<>();
+        rule.put("key", "engine-temperature-high");
+        rule.put("name", "发动机高温");
+        rule.put("sourceType", "numeric");
+        rule.put("severity", "critical");
+        rule.put("triggerDurationSeconds", 30L);
+        rule.put("recoverDurationSeconds", 60);
+        rule.put("cooldownSeconds", 300);
+        rule.put("propertyId", "engine.temperature");
+        rule.put("operator", "gt");
+        rule.put("threshold", 95.0D);
+        rule.put("recoverThreshold", 90L);
+
+        StrategyConfigurationService.StrategyVersionView created = service.createDraft(
+                new StrategyConfigurationService.CreateDraftCommand(
+                        productId,
+                        "alarm",
+                        Map.of("rules", List.of(rule)),
+                        "矿卡发动机告警规则"
+                )
+        );
+
+        assertThat(created.strategyType()).isEqualTo("ALARM");
+        assertThat(created.values()).containsOnlyKeys("rules");
+        assertThat(created.values().get("rules").toString())
+                .contains("engine-temperature-high", "NUMERIC", "CRITICAL", "9E+1");
+        verify(mapper).insertVersion(
+                eq(created.id()), eq(productId), eq("ALARM"), eq(1L),
+                any(), eq("矿卡发动机告警规则"), eq(null)
+        );
+    }
+
+    @Test
     void 任意字段和非整数值必须被类型注册表拒绝() {
         when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
 

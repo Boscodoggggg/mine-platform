@@ -1805,7 +1805,7 @@ components:
         version: { type: integer, format: int64, minimum: 0 }
     StrategyType:
       type: string
-      enum: [ONLINE_STATUS, DATA_QUALITY]
+      enum: [ONLINE_STATUS, DATA_QUALITY, ALARM]
     StrategyScopeType:
       type: string
       enum: [PRODUCT, GROUP, DEVICE]
@@ -1852,10 +1852,92 @@ components:
           minimum: -1000000000000000
           maximum: 1000000000000000
           description: 指定数值属性的质量上限。
+    AlarmNumericRule:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - name
+        - sourceType
+        - severity
+        - triggerDurationSeconds
+        - recoverDurationSeconds
+        - cooldownSeconds
+        - propertyId
+        - operator
+        - threshold
+        - recoverThreshold
+      properties:
+        key: { type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,63}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        sourceType: { type: string, enum: [NUMERIC] }
+        severity: { type: string, enum: [INFO, WARNING, CRITICAL] }
+        triggerDurationSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        recoverDurationSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        cooldownSeconds: { type: integer, minimum: 0, maximum: 604800 }
+        enabled: { type: boolean, default: true }
+        propertyId:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'
+        operator: { type: string, enum: [GT, GTE, LT, LTE] }
+        threshold:
+          type: number
+          minimum: -1000000000000000
+          maximum: 1000000000000000
+        recoverThreshold:
+          type: number
+          minimum: -1000000000000000
+          maximum: 1000000000000000
+    AlarmQualityRule:
+      type: object
+      additionalProperties: false
+      required:
+        - key
+        - name
+        - sourceType
+        - severity
+        - triggerDurationSeconds
+        - recoverDurationSeconds
+        - cooldownSeconds
+        - qualityRuleCode
+      properties:
+        key: { type: string, pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,63}$' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        sourceType: { type: string, enum: [QUALITY] }
+        severity: { type: string, enum: [INFO, WARNING, CRITICAL] }
+        triggerDurationSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        recoverDurationSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        cooldownSeconds: { type: integer, minimum: 0, maximum: 604800 }
+        enabled: { type: boolean, default: true }
+        propertyId:
+          type: string
+          pattern: '^[A-Za-z][A-Za-z0-9_.-]{0,127}$'
+        qualityRuleCode:
+          type: string
+          enum:
+            - FUTURE_TIMESTAMP
+            - STALE_TIMESTAMP
+            - REQUIRED_MISSING
+            - BELOW_MINIMUM
+            - ABOVE_MAXIMUM
+    AlarmStrategyValues:
+      type: object
+      additionalProperties: false
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/AlarmNumericRule'
+              - $ref: '#/components/schemas/AlarmQualityRule'
     StrategyValues:
       oneOf:
         - $ref: '#/components/schemas/OnlineStatusStrategyValues'
         - $ref: '#/components/schemas/DataQualityStrategyValues'
+        - $ref: '#/components/schemas/AlarmStrategyValues'
     StrategyVersion:
       type: object
       required:

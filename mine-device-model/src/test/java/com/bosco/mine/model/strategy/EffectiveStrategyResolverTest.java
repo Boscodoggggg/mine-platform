@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 校验产品、设备组和单设备策略能够确定性合并并阻止同优先级冲突。
@@ -116,6 +117,70 @@ class EffectiveStrategyResolverTest {
         assertThat(forward.values()).isEqualTo(reversed.values());
         assertThat(forward.sources()).isEqualTo(reversed.sources());
         assertThat(forward.contentHash()).isEqualTo(reversed.contentHash());
+    }
+
+    @Test
+    void 结构化规则集合应作为单个字段被下级整体覆盖() {
+        List<Map<String, Object>> productRules = List.of(Map.of(
+                "key", "temperature-high",
+                "threshold", new BigDecimal("95.0")
+        ));
+        List<Map<String, Object>> deviceRules = List.of(Map.of(
+                "key", "pressure-low",
+                "threshold", new BigDecimal("0.4")
+        ));
+
+        var result = resolver.resolve(List.of(
+                fragment(StrategyScopeType.PRODUCT, PRODUCT_ID, null, Map.of("rules", productRules)),
+                fragment(StrategyScopeType.DEVICE, DEVICE_ID, null, Map.of("rules", deviceRules))
+        ));
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.values()).containsEntry("rules", deviceRules);
+        assertThat(result.sources().get("rules").scopeType()).isEqualTo(StrategyScopeType.DEVICE);
+    }
+
+    @Test
+    void 等价结构化值应具有稳定哈希且同级不冲突() {
+        Map<String, Object> firstRule = new LinkedHashMap<>();
+        firstRule.put("threshold", new BigDecimal("95.00"));
+        firstRule.put("key", "temperature-high");
+        Map<String, Object> secondRule = new LinkedHashMap<>();
+        secondRule.put("key", "temperature-high");
+        secondRule.put("threshold", new BigDecimal("95"));
+
+        var samePriority = resolver.resolve(List.of(
+                fragment(StrategyScopeType.GROUP, GROUP_A, 50, Map.of("rules", List.of(firstRule))),
+                fragment(StrategyScopeType.GROUP, GROUP_B, 50, Map.of("rules", List.of(secondRule)))
+        ));
+        var reordered = resolver.resolve(List.of(
+                fragment(StrategyScopeType.GROUP, GROUP_B, 50, Map.of("rules", List.of(secondRule))),
+                fragment(StrategyScopeType.GROUP, GROUP_A, 50, Map.of("rules", List.of(firstRule)))
+        ));
+
+        assertThat(samePriority.valid()).isTrue();
+        assertThat(samePriority.contentHash()).isEqualTo(reordered.contentHash());
+        assertThat(samePriority.sources().get("rules").scopeId()).isEqualTo(GROUP_A);
+    }
+
+    @Test
+    void 应冻结结构化结果并拒绝不受支持的对象() {
+        Map<String, Object> mutableRule = new LinkedHashMap<>();
+        mutableRule.put("key", "temperature-high");
+        List<Map<String, Object>> mutableRules = new java.util.ArrayList<>();
+        mutableRules.add(mutableRule);
+
+        var result = resolver.resolve(List.of(fragment(
+                StrategyScopeType.PRODUCT, PRODUCT_ID, null, Map.of("rules", mutableRules))));
+        mutableRule.put("key", "changed");
+        mutableRules.clear();
+
+        assertThat(result.values().get("rules")).isEqualTo(List.of(Map.of(
+                "key", "temperature-high")));
+        assertThatThrownBy(() -> resolver.resolve(List.of(fragment(
+                StrategyScopeType.PRODUCT, PRODUCT_ID, null, Map.of("rules", new Object())))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("策略字段值");
     }
 
     private ScopedStrategyFragment fragment(

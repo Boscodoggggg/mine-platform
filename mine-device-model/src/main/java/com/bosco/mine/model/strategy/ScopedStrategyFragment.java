@@ -1,6 +1,5 @@
 package com.bosco.mine.model.strategy;
 
-import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -51,19 +50,8 @@ public record ScopedStrategyFragment(
             if (field == null || !FIELD_NAME.matcher(field).matches()) {
                 throw new IllegalArgumentException("策略字段名称不合法");
             }
-            copied.put(field, normalizeScalar(value));
+            copied.put(field, StrategyValueNormalizer.normalize(value));
         });
         values = Collections.unmodifiableMap(copied);
-    }
-
-    private static Object normalizeScalar(Object value) {
-        if (value == null || value instanceof String || value instanceof Boolean
-                || value instanceof Integer || value instanceof Long) {
-            return value;
-        }
-        if (value instanceof BigDecimal decimal) {
-            return decimal.signum() == 0 ? BigDecimal.ZERO : decimal.stripTrailingZeros();
-        }
-        throw new IllegalArgumentException("策略字段值只能使用受支持的标量类型");
     }
 }
