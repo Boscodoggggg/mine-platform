@@ -36,6 +36,7 @@ public final class RetentionExecutionRepository implements RetentionExecutor.Sto
     public <T> Optional<T> withLock(RetentionExecutor.LockedWork<T> work) {
         Objects.requireNonNull(work, "数据保留锁内工作不能为空");
         try (Connection connection = dataSource.getConnection()) {
+            enableAutoCommit(connection);
             if (!queryBoolean(connection, LOCK_SQL)) {
                 return Optional.empty();
             }
@@ -49,6 +50,12 @@ public final class RetentionExecutionRepository implements RetentionExecutor.Sto
             }
         } catch (SQLException exception) {
             throw new RetentionStorageException("无法访问数据保留时序数据库", exception);
+        }
+    }
+
+    private void enableAutoCommit(Connection connection) throws SQLException {
+        if (!connection.getAutoCommit()) {
+            connection.setAutoCommit(true);
         }
     }
 
@@ -128,56 +135,99 @@ public final class RetentionExecutionRepository implements RetentionExecutor.Sto
 
         /** {@inheritDoc} */
         @Override
-        public int deleteRawTelemetryBatch(int limit) {
-            return update("""
-                    WITH expired AS MATERIALIZED (
-                        SELECT numeric.time, numeric.event_id, numeric.property_id
-                          FROM telemetry_numeric numeric
-                          JOIN telemetry_retention_policy policy
-                            ON policy.device_id = numeric.device_id
-                         WHERE policy.enabled
-                           AND numeric.time < CURRENT_TIMESTAMP
-                               - make_interval(days => policy.raw_telemetry_days)
-                           AND numeric.received_at < CURRENT_TIMESTAMP
-                               - make_interval(days => policy.raw_telemetry_days)
-                         ORDER BY numeric.time, numeric.event_id, numeric.property_id
-                         LIMIT ?
-                    )
-                    DELETE FROM telemetry_numeric numeric
-                    USING expired
-                     WHERE numeric.time = expired.time
-                       AND numeric.event_id = expired.event_id
-                       AND numeric.property_id = expired.property_id
-                    """, statement -> statement.setInt(1, limit));
+        public int deleteRawTelemetryBatch(
+                UUID executionId,
+                int limit,
+                long rawRowsDeleted,
+                long qualityRowsDeleted,
+                int batchCount
+        ) {
+            return inBatchTransaction(() -> {
+                int deleted = update("""
+                        WITH expired AS MATERIALIZED (
+                            SELECT numeric.time, numeric.event_id, numeric.property_id
+                              FROM telemetry_numeric numeric
+                              JOIN telemetry_retention_policy policy
+                                ON policy.device_id = numeric.device_id
+                             WHERE policy.enabled
+                               AND numeric.time < CURRENT_TIMESTAMP - make_interval(days => (
+                                   SELECT MIN(global_policy.raw_telemetry_days)
+                                     FROM telemetry_retention_policy global_policy
+                                    WHERE global_policy.enabled
+                               ))
+                               AND numeric.time < CURRENT_TIMESTAMP
+                                   - make_interval(days => policy.raw_telemetry_days)
+                               AND numeric.received_at < CURRENT_TIMESTAMP
+                                   - make_interval(days => policy.raw_telemetry_days)
+                             ORDER BY numeric.time, numeric.event_id, numeric.property_id
+                             LIMIT ?
+                        )
+                        DELETE FROM telemetry_numeric numeric
+                        USING expired
+                         WHERE numeric.time = expired.time
+                           AND numeric.event_id = expired.event_id
+                           AND numeric.property_id = expired.property_id
+                        """, statement -> statement.setInt(1, limit));
+                if (deleted > 0) {
+                    checkpointExecution(
+                            executionId,
+                            Math.addExact(rawRowsDeleted, deleted),
+                            qualityRowsDeleted,
+                            Math.incrementExact(batchCount)
+                    );
+                }
+                return deleted;
+            });
         }
 
         /** {@inheritDoc} */
         @Override
-        public int deleteQualityEvidenceBatch(int limit) {
-            return update("""
-                    WITH expired AS MATERIALIZED (
-                        SELECT evidence.event_id, evidence.property_id, evidence.rule_code
-                          FROM telemetry_quality_evidence evidence
-                          JOIN telemetry_retention_policy policy
-                            ON policy.device_id = evidence.device_id
-                         WHERE policy.enabled
-                           AND evidence.created_at < CURRENT_TIMESTAMP
-                               - make_interval(days => policy.quality_evidence_days)
-                         ORDER BY evidence.created_at, evidence.event_id,
-                                  evidence.property_id, evidence.rule_code
-                         LIMIT ?
-                    )
-                    DELETE FROM telemetry_quality_evidence evidence
-                    USING expired
-                     WHERE evidence.event_id = expired.event_id
-                       AND evidence.property_id = expired.property_id
-                       AND evidence.rule_code = expired.rule_code
-                    """, statement -> statement.setInt(1, limit));
+        public int deleteQualityEvidenceBatch(
+                UUID executionId,
+                int limit,
+                long rawRowsDeleted,
+                long qualityRowsDeleted,
+                int batchCount
+        ) {
+            return inBatchTransaction(() -> {
+                int deleted = update("""
+                        WITH expired AS MATERIALIZED (
+                            SELECT evidence.event_id, evidence.property_id, evidence.rule_code
+                              FROM telemetry_quality_evidence evidence
+                              JOIN telemetry_retention_policy policy
+                                ON policy.device_id = evidence.device_id
+                             WHERE policy.enabled
+                               AND evidence.created_at < CURRENT_TIMESTAMP
+                                   - make_interval(days => (
+                                       SELECT MIN(global_policy.quality_evidence_days)
+                                         FROM telemetry_retention_policy global_policy
+                                        WHERE global_policy.enabled
+                                   ))
+                               AND evidence.created_at < CURRENT_TIMESTAMP
+                                   - make_interval(days => policy.quality_evidence_days)
+                             ORDER BY evidence.created_at, evidence.event_id,
+                                      evidence.property_id, evidence.rule_code
+                             LIMIT ?
+                        )
+                        DELETE FROM telemetry_quality_evidence evidence
+                        USING expired
+                         WHERE evidence.event_id = expired.event_id
+                           AND evidence.property_id = expired.property_id
+                           AND evidence.rule_code = expired.rule_code
+                        """, statement -> statement.setInt(1, limit));
+                if (deleted > 0) {
+                    checkpointExecution(
+                            executionId,
+                            rawRowsDeleted,
+                            Math.addExact(qualityRowsDeleted, deleted),
+                            Math.incrementExact(batchCount)
+                    );
+                }
+                return deleted;
+            });
         }
 
-        /** {@inheritDoc} */
-        @Override
-        public void checkpointExecution(
+        private void checkpointExecution(
                 UUID executionId,
                 long rawRowsDeleted,
                 long qualityRowsDeleted,
@@ -197,6 +247,35 @@ public final class RetentionExecutionRepository implements RetentionExecutor.Sto
                 statement.setObject(4, executionId);
             });
             requireSingleUpdate(updated, "记录数据保留执行进度");
+        }
+
+        private int inBatchTransaction(BatchWork work) {
+            try {
+                connection.setAutoCommit(false);
+                int result = work.execute();
+                connection.commit();
+                connection.setAutoCommit(true);
+                return result;
+            } catch (SQLException exception) {
+                rollbackAndRestore(exception);
+                throw storageFailure("无法提交数据保留原子批次", exception);
+            } catch (RuntimeException exception) {
+                rollbackAndRestore(exception);
+                throw exception;
+            }
+        }
+
+        private void rollbackAndRestore(Throwable failure) {
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            try {
+                connection.setAutoCommit(true);
+            } catch (SQLException restoreFailure) {
+                failure.addSuppressed(restoreFailure);
+            }
         }
 
         /** {@inheritDoc} */
@@ -258,6 +337,13 @@ public final class RetentionExecutionRepository implements RetentionExecutor.Sto
     private interface StatementBinder {
         /** 绑定预编译语句参数。 */
         void bind(PreparedStatement statement) throws SQLException;
+    }
+
+    /** 单个原子删除批次的数据库工作。 */
+    @FunctionalInterface
+    private interface BatchWork {
+        /** 执行删除与进度写入并返回删除行数。 */
+        int execute();
     }
 
     /** 数据保留数据库访问失败。 */

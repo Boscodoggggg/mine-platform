@@ -42,6 +42,9 @@ CREATE INDEX idx_telemetry_retention_execution_running
     ON telemetry_retention_execution (started_at, execution_id)
     WHERE status = 'RUNNING';
 
+CREATE INDEX idx_tn_retention_device_time
+    ON telemetry_numeric (device_id, time, event_id, property_id);
+
 CREATE OR REPLACE FUNCTION protect_telemetry_retention_execution()
 RETURNS TRIGGER
 LANGUAGE plpgsql

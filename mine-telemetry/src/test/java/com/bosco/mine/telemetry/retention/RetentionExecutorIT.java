@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -14,6 +15,7 @@ import org.testcontainers.utility.DockerImageName;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +46,7 @@ class RetentionExecutorIT {
     private static final UUID DISABLED_DEVICE_ID = uuid(603);
     private static final UUID UNMANAGED_DEVICE_ID = uuid(604);
     private static final UUID STALE_EXECUTION_ID = uuid(605);
+    private static final UUID ROLLBACK_DEVICE_ID = uuid(606);
     private static DataSource dataSource;
     private static JdbcTemplate jdbcTemplate;
     private static RetentionExecutor executor;
@@ -71,6 +74,8 @@ class RetentionExecutorIT {
         insertRaw(uuid(612), ENABLED_DEVICE_ID, 2, "10 days");
         insertRaw(uuid(613), DISABLED_DEVICE_ID, 3, "100 days");
         insertRaw(uuid(614), UNMANAGED_DEVICE_ID, 4, "100 days");
+        insertRaw(uuid(615), ENABLED_DEVICE_ID, 5, "100 days", "10 days");
+        insertRaw(uuid(616), ENABLED_DEVICE_ID, 6, "10 days", "100 days");
         insertInbox(uuid(611), ENABLED_DEVICE_ID, 1);
         insertQuality(uuid(621), ENABLED_DEVICE_ID, "200 days");
         insertQuality(uuid(622), ENABLED_DEVICE_ID, "100 days");
@@ -95,7 +100,7 @@ class RetentionExecutorIT {
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM telemetry_numeric
                  WHERE device_id = ?
-                """, Long.class, ENABLED_DEVICE_ID)).isOne();
+                """, Long.class, ENABLED_DEVICE_ID)).isEqualTo(3L);
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM telemetry_numeric
                  WHERE device_id IN (?, ?)
@@ -139,6 +144,13 @@ class RetentionExecutorIT {
                 first.executionId()))
                 .isInstanceOf(DataAccessException.class)
                 .hasMessageContaining("数据保留执行事实禁止删除");
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+                UPDATE telemetry_retention_execution
+                   SET raw_rows_deleted = raw_rows_deleted + 1
+                 WHERE execution_id = ?
+                """, first.executionId()))
+                .isInstanceOf(DataAccessException.class)
+                .hasMessageContaining("数据保留终态事实禁止修改");
     }
 
     @Test
@@ -156,6 +168,58 @@ class RetentionExecutorIT {
             assertThat(result.executionId()).isNull();
             unlock.execute();
         }
+    }
+
+    @Test
+    void 非默认自动提交连接仍应持久化执行终态() {
+        DataSource manualCommitDataSource = new DelegatingDataSource(dataSource) {
+            @Override
+            public Connection getConnection() throws SQLException {
+                Connection connection = super.getConnection();
+                connection.setAutoCommit(false);
+                return connection;
+            }
+        };
+        RetentionExecutor manualCommitExecutor = new RetentionExecutor(
+                new RetentionExecutionRepository(manualCommitDataSource),
+                "telemetry-manual-commit-it", 10, 1, Duration.ofHours(2));
+
+        RetentionExecutor.RunResult result = manualCommitExecutor.runOnce();
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT status FROM telemetry_retention_execution
+                 WHERE execution_id = ?
+                """, String.class, result.executionId())).isEqualTo(result.status().name());
+    }
+
+    @Test
+    void 进度写入失败时应回滚同批原始遥测删除() {
+        UUID executionId = uuid(607);
+        UUID eventId = uuid(617);
+        insertPolicy(ROLLBACK_DEVICE_ID, true);
+        insertRaw(eventId, ROLLBACK_DEVICE_ID, 7, "100 days");
+        RetentionExecutionRepository repository = new RetentionExecutionRepository(dataSource);
+
+        assertThatThrownBy(() -> repository.withLock(session -> {
+            session.startExecution(executionId, "telemetry-rollback-it", 1);
+            jdbcTemplate.update("""
+                    UPDATE telemetry_retention_execution
+                       SET status = 'FAILED', completed_at = CURRENT_TIMESTAMP,
+                           last_error = '测试进度写入失败'
+                     WHERE execution_id = ?
+                    """, executionId);
+            session.deleteRawTelemetryBatch(executionId, 10, 0, 0, 0);
+            return true;
+        })).isInstanceOf(RuntimeException.class);
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM telemetry_numeric WHERE event_id = ?",
+                Long.class, eventId)).isOne();
+        jdbcTemplate.update(
+                "DELETE FROM telemetry_numeric WHERE event_id = ?", eventId);
+        jdbcTemplate.update(
+                "DELETE FROM telemetry_retention_policy WHERE device_id = ?",
+                ROLLBACK_DEVICE_ID);
     }
 
     private static void insertPolicy(UUID deviceId, boolean enabled) {
@@ -176,6 +240,16 @@ class RetentionExecutorIT {
     }
 
     private static void insertRaw(UUID eventId, UUID deviceId, long ingestId, String age) {
+        insertRaw(eventId, deviceId, ingestId, age, age);
+    }
+
+    private static void insertRaw(
+            UUID eventId,
+            UUID deviceId,
+            long ingestId,
+            String timeAge,
+            String receivedAge
+    ) {
         jdbcTemplate.update("""
                 INSERT INTO telemetry_numeric (
                     time, occurred_at, device_id, product_key, property_id, value_double,
@@ -186,7 +260,7 @@ class RetentionExecutorIT {
                     ?, 'haul-truck', 'engine.rpm', 1200, 0, ?,
                     CURRENT_TIMESTAMP - CAST(? AS INTERVAL), ?
                 )
-                """, age, age, deviceId, eventId, age, ingestId);
+                """, timeAge, timeAge, deviceId, eventId, receivedAge, ingestId);
     }
 
     private static void insertInbox(UUID eventId, UUID deviceId, long ingestId) {

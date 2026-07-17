@@ -13,6 +13,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -201,6 +202,31 @@ class StrategyPolicyRepositoryIT {
     }
 
     @Test
+    void 数据保留镜像应在数据库层拒绝缺字段和错误类型() {
+        assertThatThrownBy(() -> insertRetentionPolicyJson(
+                UUID.randomUUID(),
+                """
+                {"policy":{
+                  "enabled":true,
+                  "retentionClass":"STANDARD",
+                  "rawTelemetryDays":90
+                }}
+                """))
+                .isInstanceOf(DataAccessException.class);
+        assertThatThrownBy(() -> insertRetentionPolicyJson(
+                UUID.randomUUID(),
+                """
+                {"policy":{
+                  "enabled":"true",
+                  "retentionClass":"STANDARD",
+                  "rawTelemetryDays":90,
+                  "qualityEvidenceDays":180
+                }}
+                """))
+                .isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
     void 告警规则删除禁用或语义变化时应在快照事务内恢复旧周期() {
         int observedBefore = OBSERVED_OUTBOX_EVENTS.size();
         UUID productId = UUID.randomUUID();
@@ -270,6 +296,16 @@ class StrategyPolicyRepositoryIT {
                 Map.entry("RULE_CHANGED", 1L));
         assertThat(OBSERVED_OUTBOX_EVENTS.subList(
                 observedBefore, OBSERVED_OUTBOX_EVENTS.size())).hasSize(3);
+    }
+
+    private void insertRetentionPolicyJson(UUID deviceId, String valuesJson) {
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_retention_policy (
+                    device_id, product_id, runtime_revision, snapshot_id,
+                    values_json, content_hash
+                ) VALUES (?, ?, 1, ?, CAST(? AS JSONB), ?)
+                """, deviceId, PRODUCT_ID, UUID.randomUUID(), valuesJson,
+                "sha256:" + "f".repeat(64));
     }
 
     private StrategyRuntimeChangedPayload payload(

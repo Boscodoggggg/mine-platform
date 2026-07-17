@@ -88,6 +88,19 @@ class RetentionStrategyDefinitionTest {
     }
 
     @Test
+    void 应拒绝数值恰为整数的浮点载体() {
+        assertThatThrownBy(() -> definition.validate(values(
+                true, "STANDARD", 90.0D, 180)))
+                .isInstanceOf(StrategyValidationException.class);
+        assertThatThrownBy(() -> definition.validate(values(
+                true, "STANDARD", 90.0F, 180)))
+                .isInstanceOf(StrategyValidationException.class);
+        assertThatThrownBy(() -> definition.validate(values(
+                true, "STANDARD", new BigDecimal("90.0"), 180)))
+                .isInstanceOf(StrategyValidationException.class);
+    }
+
+    @Test
     void 应拒绝空策略非对象非法布尔值和未知等级() {
         assertThat(catchThrowableOfType(
                 StrategyValidationException.class,

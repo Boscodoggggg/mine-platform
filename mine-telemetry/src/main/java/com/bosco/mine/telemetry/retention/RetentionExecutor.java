@@ -66,9 +66,9 @@ public final class RetentionExecutor {
         if (maxCycles < 1 || maxCycles > MAX_CYCLES) {
             throw new IllegalArgumentException("数据保留单轮周期必须在 1 到 1000 之间");
         }
-        if (staleExecutionTimeout == null || staleExecutionTimeout.isZero()
-                || staleExecutionTimeout.isNegative()) {
-            throw new IllegalArgumentException("数据保留失联超时必须大于零");
+        if (staleExecutionTimeout == null
+                || staleExecutionTimeout.compareTo(Duration.ofSeconds(1)) < 0) {
+            throw new IllegalArgumentException("数据保留失联超时必须至少一秒");
         }
         this.batchSize = batchSize;
         this.maxCycles = maxCycles;
@@ -105,20 +105,20 @@ public final class RetentionExecutor {
             boolean moreQuality = false;
             for (int cycle = 0; cycle < maxCycles; cycle++) {
                 int rawDeleted = requireBatchCount(
-                        session.deleteRawTelemetryBatch(batchSize));
-                rawRowsDeleted += rawDeleted;
+                        session.deleteRawTelemetryBatch(
+                                executionId, batchSize, rawRowsDeleted,
+                                qualityRowsDeleted, batchCount));
+                rawRowsDeleted = Math.addExact(rawRowsDeleted, rawDeleted);
                 if (rawDeleted > 0) {
-                    batchCount++;
-                    session.checkpointExecution(
-                            executionId, rawRowsDeleted, qualityRowsDeleted, batchCount);
+                    batchCount = Math.incrementExact(batchCount);
                 }
                 int qualityDeleted = requireBatchCount(
-                        session.deleteQualityEvidenceBatch(batchSize));
-                qualityRowsDeleted += qualityDeleted;
+                        session.deleteQualityEvidenceBatch(
+                                executionId, batchSize, rawRowsDeleted,
+                                qualityRowsDeleted, batchCount));
+                qualityRowsDeleted = Math.addExact(qualityRowsDeleted, qualityDeleted);
                 if (qualityDeleted > 0) {
-                    batchCount++;
-                    session.checkpointExecution(
-                            executionId, rawRowsDeleted, qualityRowsDeleted, batchCount);
+                    batchCount = Math.incrementExact(batchCount);
                 }
                 moreRaw = rawDeleted == batchSize;
                 moreQuality = qualityDeleted == batchSize;
@@ -154,7 +154,7 @@ public final class RetentionExecutor {
     private String safeError(Throwable throwable) {
         Throwable current = throwable;
         while (current.getCause() != null) current = current.getCause();
-        String message = current.getMessage() == null
+        String message = current.getMessage() == null || current.getMessage().isBlank()
                 ? current.getClass().getSimpleName() : current.getMessage();
         String singleLine = message.replaceAll("[\\r\\n\\t]+", " ");
         String redacted = SECRET.matcher(singleLine).replaceAll("$1=[REDACTED]");
@@ -236,15 +236,19 @@ public final class RetentionExecutor {
         /** 创建一条运行中执行事实。 */
         void startExecution(UUID executionId, String instanceId, int enabledPolicyCount);
 
-        /** 删除一批超过最短留存期的原始数值遥测。 */
-        int deleteRawTelemetryBatch(int limit);
-
-        /** 删除一批超过最短留存期的质量证据。 */
-        int deleteQualityEvidenceBatch(int limit);
-
-        /** 持久化已经提交的单轮删除进度，避免后续批次失败时丢失计数。 */
-        void checkpointExecution(
+        /** 在同一事务中删除一批原始数值遥测并持久化提交后的累计进度。 */
+        int deleteRawTelemetryBatch(
                 UUID executionId,
+                int limit,
+                long rawRowsDeleted,
+                long qualityRowsDeleted,
+                int batchCount
+        );
+
+        /** 在同一事务中删除一批质量证据并持久化提交后的累计进度。 */
+        int deleteQualityEvidenceBatch(
+                UUID executionId,
+                int limit,
                 long rawRowsDeleted,
                 long qualityRowsDeleted,
                 int batchCount

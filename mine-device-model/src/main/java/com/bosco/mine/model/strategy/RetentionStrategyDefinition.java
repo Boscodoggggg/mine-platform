@@ -182,12 +182,8 @@ public final class RetentionStrategyDefinition implements StrategyDefinition {
             if (value instanceof Integer number) return number;
             if (value instanceof Long number) return Math.toIntExact(number);
             if (value instanceof BigInteger number) return number.intValueExact();
-            if (value instanceof BigDecimal number) return number.intValueExact();
-            if (value instanceof Float number && Float.isFinite(number)) {
-                return BigDecimal.valueOf(number.doubleValue()).intValueExact();
-            }
-            if (value instanceof Double number && Double.isFinite(number)) {
-                return BigDecimal.valueOf(number).intValueExact();
+            if (value instanceof BigDecimal number && number.scale() == 0) {
+                return number.intValueExact();
             }
             return null;
         } catch (ArithmeticException exception) {

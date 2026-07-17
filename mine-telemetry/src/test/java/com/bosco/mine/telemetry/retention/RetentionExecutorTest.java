@@ -9,6 +9,7 @@ import java.util.Queue;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 校验数据保留执行器的锁竞争、有界批次、终态和失败脱敏编排。
@@ -109,6 +110,30 @@ class RetentionExecutorTest {
         assertThat(session.checkpointCalls).isOne();
     }
 
+    @Test
+    void 空白异常消息应回退为异常类型名称() {
+        FakeSession session = new FakeSession();
+        session.policyCount = 1;
+        session.failure = new IllegalStateException(" \n\t");
+        RetentionExecutor executor = executor(new FakeStore(true, session), 100, 3);
+
+        RetentionExecutor.RunResult result = executor.runOnce();
+
+        assertThat(result.status()).isEqualTo(RetentionExecutor.RunStatus.FAILED);
+        assertThat(result.errorSummary()).isEqualTo("IllegalStateException");
+    }
+
+    @Test
+    void 失联超时不足一秒时应在构造阶段拒绝() {
+        assertThatThrownBy(() -> new RetentionExecutor(
+                new FakeStore(true, new FakeSession()),
+                "telemetry-a",
+                100,
+                3,
+                Duration.ofMillis(500)
+        )).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private RetentionExecutor executor(
             RetentionExecutor.Store store,
             int batchSize,
@@ -170,25 +195,31 @@ class RetentionExecutorTest {
         }
 
         @Override
-        public int deleteRawTelemetryBatch(int limit) {
-            if (failure != null) throw failure;
-            return rawDeletes.isEmpty() ? 0 : rawDeletes.remove();
-        }
-
-        @Override
-        public int deleteQualityEvidenceBatch(int limit) {
-            if (evidenceFailure != null) throw evidenceFailure;
-            return evidenceDeletes.isEmpty() ? 0 : evidenceDeletes.remove();
-        }
-
-        @Override
-        public void checkpointExecution(
+        public int deleteRawTelemetryBatch(
                 UUID executionId,
+                int limit,
                 long rawRowsDeleted,
                 long qualityRowsDeleted,
                 int batchCount
         ) {
-            checkpointCalls++;
+            if (failure != null) throw failure;
+            int deleted = rawDeletes.isEmpty() ? 0 : rawDeletes.remove();
+            if (deleted > 0) checkpointCalls++;
+            return deleted;
+        }
+
+        @Override
+        public int deleteQualityEvidenceBatch(
+                UUID executionId,
+                int limit,
+                long rawRowsDeleted,
+                long qualityRowsDeleted,
+                int batchCount
+        ) {
+            if (evidenceFailure != null) throw evidenceFailure;
+            int deleted = evidenceDeletes.isEmpty() ? 0 : evidenceDeletes.remove();
+            if (deleted > 0) checkpointCalls++;
+            return deleted;
         }
 
         @Override

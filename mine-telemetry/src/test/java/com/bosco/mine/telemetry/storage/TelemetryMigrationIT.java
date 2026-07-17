@@ -172,6 +172,13 @@ class TelemetryMigrationIT {
                   AND tablename = 'telemetry_outbox_event'
                 ORDER BY indexname
                 """)).contains("idx_telemetry_outbox_event_unfinished_status");
+        assertThat(queryStrings("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'telemetry_numeric'
+                ORDER BY indexname
+                """)).contains("idx_tn_retention_device_time");
 
         assertThat(queryStrings("""
                 SELECT current_boot_id || ':' || highest_sequence

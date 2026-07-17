@@ -28,16 +28,31 @@ CREATE TABLE telemetry_retention_policy (
     CONSTRAINT ck_telemetry_retention_policy_revision CHECK (runtime_revision > 0),
     CONSTRAINT ck_telemetry_retention_policy_values CHECK (
         jsonb_typeof(values_json) = 'object'
-        AND values_json <> '{}'::JSONB
+        AND values_json ? 'policy'
+        AND values_json - 'policy' = '{}'::JSONB
         AND jsonb_typeof(values_json -> 'policy') = 'object'
+        AND (values_json -> 'policy') ?& ARRAY[
+            'enabled', 'retentionClass', 'rawTelemetryDays', 'qualityEvidenceDays'
+        ]
+        AND (values_json -> 'policy') - ARRAY[
+            'enabled', 'retentionClass', 'rawTelemetryDays', 'qualityEvidenceDays'
+        ] = '{}'::JSONB
+        AND jsonb_typeof(values_json -> 'policy' -> 'enabled') = 'boolean'
+        AND jsonb_typeof(values_json -> 'policy' -> 'retentionClass') = 'string'
+        AND jsonb_typeof(values_json -> 'policy' -> 'rawTelemetryDays') = 'number'
+        AND jsonb_typeof(values_json -> 'policy' -> 'qualityEvidenceDays') = 'number'
     ),
     CONSTRAINT ck_telemetry_retention_policy_hash
         CHECK (content_hash ~ '^sha256:[0-9a-f]{64}$'),
+    CONSTRAINT ck_telemetry_retention_policy_enabled CHECK (enabled IS NOT NULL),
     CONSTRAINT ck_telemetry_retention_policy_class CHECK (
-        retention_class IN ('SHORT', 'STANDARD', 'LONG', 'ARCHIVE')
+        retention_class IS NOT NULL
+        AND retention_class IN ('SHORT', 'STANDARD', 'LONG', 'ARCHIVE')
     ),
     CONSTRAINT ck_telemetry_retention_policy_days CHECK (
-        raw_telemetry_days BETWEEN 7 AND 3650
+        raw_telemetry_days IS NOT NULL
+        AND quality_evidence_days IS NOT NULL
+        AND raw_telemetry_days BETWEEN 7 AND 3650
         AND quality_evidence_days BETWEEN raw_telemetry_days AND 3650
         AND (
             (retention_class = 'SHORT' AND raw_telemetry_days BETWEEN 7 AND 30)
