@@ -12,6 +12,7 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const profileDialog = $("#profileDialog");
 const credentialDialog = $("#credentialDialog");
 const form = $("#profileForm");
+let wizardStep = 1;
 
 const templates = {
   MQTT: `{
@@ -204,6 +205,59 @@ function emptyActivity(title, text) {
   return `<div class="empty-state"><div><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><strong>${title}</strong><p>${text}</p></div></div>`;
 }
 
+function setWizardStep(step) {
+  wizardStep = Math.max(1, Math.min(4, step));
+  $$('[data-wizard-step]', form).forEach(section => {
+    section.hidden = Number(section.dataset.wizardStep) !== wizardStep;
+  });
+  $$('[data-step-indicator]', form).forEach(indicator => {
+    const indicatorStep = Number(indicator.dataset.stepIndicator);
+    indicator.classList.toggle("active", indicatorStep === wizardStep);
+    indicator.classList.toggle("completed", indicatorStep < wizardStep);
+  });
+  $("#wizardPreviousButton").hidden = wizardStep === 1;
+  $("#wizardNextButton").hidden = wizardStep === 4;
+  $("#wizardSubmitButton").hidden = wizardStep !== 4;
+  $("#wizardNextButton").textContent = wizardStep === 3 ? "查看并确认" : "下一步";
+  $("#wizardStepHint").textContent = `第 ${wizardStep} 步，共 4 步`;
+  if (wizardStep === 4) renderWizardSummary();
+  $(".dialog-body", form).scrollTop = 0;
+}
+
+function validateWizardStep() {
+  const section = $(`[data-wizard-step="${wizardStep}"]`, form);
+  const requiredFields = $$('input[required], select[required], textarea[required]', section)
+    .filter(field => !field.closest("[hidden]"));
+  for (const field of requiredFields) {
+    if (!field.checkValidity()) {
+      field.reportValidity();
+      return false;
+    }
+  }
+  return true;
+}
+
+function renderWizardSummary() {
+  const mode = form.elements.transportMode.value;
+  const modeText = {
+    MQTT: "MQTT：模拟器主动连接平台 Broker",
+    TCP_CLIENT: "TCP：模拟器主动连接平台端口",
+    TCP_SERVER: "TCP：模拟器监听端口，等待平台连接"
+  }[mode];
+  const identity = form.elements.deviceCode.value || form.elements.clientId.value || "尚未填写设备编码";
+  const reportTarget = mode === "MQTT"
+    ? (form.elements.publishTopic.value || "尚未填写发布 Topic")
+    : `${form.elements.host.value}:${form.elements.port.value}`;
+  $("#wizardSummary").innerHTML = `
+    <dl>
+      <div><dt>设备名称</dt><dd>${escapeHtml(form.elements.name.value)}</dd></div>
+      <div><dt>设备标识</dt><dd>${escapeHtml(identity)}</dd></div>
+      <div><dt>连接方式</dt><dd>${escapeHtml(modeText)}</dd></div>
+      <div><dt>${mode === "MQTT" ? "上报 Topic" : "连接端点"}</dt><dd>${escapeHtml(reportTarget)}</dd></div>
+      <div><dt>发送计划</dt><dd>每 ${escapeHtml(formatInterval(Number(form.elements.intervalMillis.value)))}发送一帧 ${escapeHtml(form.elements.payloadFormat.value)} 报文</dd></div>
+    </dl>`;
+}
+
 function viewFromHash() {
   return location.hash === "#logs" || location.hash === "#activity" ? "logs" : "devices";
 }
@@ -230,6 +284,7 @@ function navigateToView(view) {
 function openProfile(profile = null) {
   form.reset();
   $("#formTitle").textContent = profile ? "编辑模拟设备" : "添加模拟设备";
+  $("#wizardSubmitButton").textContent = profile ? "保存修改" : "创建设备";
   $("#profileId").value = profile?.id || crypto.randomUUID();
   if (profile) {
     for (const [key, value] of Object.entries(profile)) {
@@ -247,9 +302,12 @@ function openProfile(profile = null) {
     form.elements.payloadFormat.value = "JSON";
     form.elements.payloadTemplate.value = templates.MQTT;
   }
+  const selectedMode = form.elements.transportMode.value || "MQTT";
+  $$('[name="connectionScenario"]', form).forEach(option => option.checked = option.value === selectedMode);
   updateTransportFields(false);
+  setWizardStep(1);
   profileDialog.showModal();
-  setTimeout(() => form.elements.name.focus(), 50);
+  setTimeout(() => $('[name="connectionScenario"]:checked', form).focus(), 50);
 }
 
 function updateTransportFields(resetDefaults = true) {
@@ -325,6 +383,14 @@ $("#refreshButton").addEventListener("click", async event => {
   toast("状态已刷新");
 });
 $("#transportMode").addEventListener("change", () => updateTransportFields(true));
+$$('[name="connectionScenario"]', form).forEach(option => option.addEventListener("change", event => {
+  form.elements.transportMode.value = event.currentTarget.value;
+  form.elements.transportMode.dispatchEvent(new Event("change"));
+}));
+$("#wizardPreviousButton").addEventListener("click", () => setWizardStep(wizardStep - 1));
+$("#wizardNextButton").addEventListener("click", () => {
+  if (validateWizardStep()) setWizardStep(wizardStep + 1);
+});
 $("#logDeviceSelect").addEventListener("change", event => {
   state.selectedId = event.currentTarget.value || null;
   renderDevices();

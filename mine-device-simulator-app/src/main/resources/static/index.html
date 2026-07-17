@@ -102,43 +102,58 @@
   <dialog class="drawer" id="profileDialog">
     <form id="profileForm">
       <div class="dialog-header">
-        <div><p class="eyebrow">DEVICE PROFILE</p><h2 id="formTitle">添加模拟设备</h2></div>
+        <div><p class="eyebrow">DEVICE ONBOARDING</p><h2 id="formTitle">添加模拟设备</h2><p class="dialog-subtitle">跟着步骤填写，不需要提前理解所有协议参数。</p></div>
         <button class="icon-button" data-close="profileDialog" type="button" aria-label="关闭配置窗口">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
         </button>
       </div>
+      <ol class="wizard-progress" aria-label="添加设备步骤">
+        <li class="active" data-step-indicator="1"><span>1</span><small>接入方式</small></li>
+        <li data-step-indicator="2"><span>2</span><small>设备信息</small></li>
+        <li data-step-indicator="3"><span>3</span><small>连接与上报</small></li>
+        <li data-step-indicator="4"><span>4</span><small>确认创建</small></li>
+      </ol>
       <div class="dialog-body">
         <input id="profileId" name="id" type="hidden">
-        <fieldset>
-          <legend><span>01</span> 基础信息</legend>
+        <input id="transportMode" name="transportMode" type="hidden" value="MQTT">
+
+        <section class="wizard-step" data-wizard-step="1">
+          <div class="step-heading"><p class="eyebrow">STEP 01</p><h3>你的平台提供了哪种接入方式？</h3><p>不知道怎么选时，优先使用 MQTT；它是物联网设备最常见的接入方式。</p></div>
+          <div class="scenario-grid">
+            <label class="scenario-option recommended">
+              <input name="connectionScenario" type="radio" value="MQTT" checked>
+              <span class="scenario-copy"><strong>验证 MQTT 设备接入</strong><small>平台提供 Broker 地址、账号和 Topic，模拟器主动连接平台。</small><em>推荐新手</em></span>
+            </label>
+            <label class="scenario-option">
+              <input name="connectionScenario" type="radio" value="TCP_CLIENT">
+              <span class="scenario-copy"><strong>验证 TCP 设备接入</strong><small>平台先开放 TCP 端口，模拟器像真实终端一样主动连接。</small></span>
+            </label>
+            <label class="scenario-option">
+              <input name="connectionScenario" type="radio" value="TCP_SERVER">
+              <span class="scenario-copy"><strong>等待平台连接模拟器</strong><small>模拟器监听本机端口，由平台主动发起连接。</small><em class="advanced">进阶</em></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="wizard-step" data-wizard-step="2" hidden>
+          <div class="step-heading"><p class="eyebrow">STEP 02</p><h3>这台模拟设备是谁？</h3><p>先填写容易识别的名称。产品标识和设备编码应与平台中的设备档案一致。</p></div>
           <div class="form-grid">
             <label class="wide">设备名称<input name="name" required maxlength="80" placeholder="例如：东采区 01 号矿卡"></label>
-            <label><span class="field-label">传输模式<button class="help-tooltip" type="button" data-tooltip="决定模拟器主动连接平台，还是监听端口等待平台接入。切换后会自动替换推荐参数和报文模板。" aria-label="帮助：传输模式决定连接方向，切换后自动替换推荐参数">?</button></span>
-              <select name="transportMode" id="transportMode">
-                <option value="MQTT">MQTT 客户端</option>
-                <option value="TCP_CLIENT">TCP 客户端</option>
-                <option value="TCP_SERVER">TCP 服务端</option>
-              </select>
-            </label>
-            <label class="checkbox-label mqtt-field"><input name="tlsEnabled" type="checkbox"><span class="field-label">启用 TLS / MQTTS<button class="help-tooltip" type="button" data-tooltip="启用后使用加密连接。证书由 JVM trustStore 校验，不支持跳过证书验证。" aria-label="帮助：启用加密连接并校验证书">?</button></span></label>
+            <label>产品标识<input name="productKey" placeholder="例如：haul-truck"></label>
+            <label>设备编码<input name="deviceCode" placeholder="例如：truck-001"></label>
           </div>
-        </fieldset>
-        <fieldset>
-          <legend><span>02</span> 连接参数</legend>
+        </section>
+
+        <section class="wizard-step" data-wizard-step="3" hidden>
+          <div class="step-heading"><p class="eyebrow">STEP 03</p><h3>连接平台并发送什么数据？</h3><p>地址、端口、账号和 Topic 通常由平台提供；示例报文可以直接修改后使用。</p></div>
           <p class="field-help" id="transportHelp">模拟器作为 MQTT 客户端，主动连接平台 Broker。</p>
           <div class="form-grid">
             <label class="wide"><span class="field-label"><span id="endpointHostLabel">Broker 地址</span><button class="help-tooltip" id="endpointHostHelp" type="button" data-tooltip="平台 MQTT Broker 的主机名或 IP，例如 127.0.0.1。" aria-label="帮助：填写平台 MQTT Broker 的主机名或 IP">?</button></span><input name="host" required value="127.0.0.1" placeholder="例如：127.0.0.1"></label>
             <label><span class="field-label"><span id="endpointPortLabel">Broker 端口</span><button class="help-tooltip" id="endpointPortHelp" type="button" data-tooltip="由平台 Broker 提供，常用端口为 1883；启用 MQTTS 时通常使用 8883。" aria-label="帮助：填写平台 Broker 提供的连接端口">?</button></span><input name="port" required type="number" min="1" max="65535" value="1883"></label>
+            <label class="checkbox-label mqtt-field"><input name="tlsEnabled" type="checkbox"><span class="field-label">启用 TLS / MQTTS<button class="help-tooltip" type="button" data-tooltip="启用后使用加密连接。证书由 JVM trustStore 校验，不支持跳过证书验证。" aria-label="帮助：启用加密连接并校验证书">?</button></span></label>
             <label class="mqtt-field"><span class="field-label">Client ID<button class="help-tooltip" type="button" data-tooltip="MQTT 连接的唯一客户端标识，同一 Broker 上不能与在线客户端重复。" aria-label="帮助：填写 MQTT 唯一客户端标识">?</button></span><input name="clientId" placeholder="例如：sim-truck-001"></label>
             <label class="mqtt-field"><span class="field-label">用户名<button class="help-tooltip" type="button" data-tooltip="平台分配的 MQTT 认证用户名；Broker 未启用认证时可以留空。" aria-label="帮助：填写平台分配的 MQTT 用户名，可留空">?</button></span><input name="username" placeholder="例如：truck-001"></label>
             <label class="mqtt-field wide"><span class="field-label">发布 Topic<button class="help-tooltip" type="button" data-tooltip="设备向平台上报数据的主题，需与平台订阅规则一致，可使用 productKey 和 clientId 占位符。" aria-label="帮助：填写与平台订阅规则一致的发布主题">?</button></span><input name="publishTopic" placeholder="mine/v1/{productKey}/{clientId}/up/telemetry"></label>
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend><span>03</span> 设备标识与报文</legend>
-          <div class="form-grid">
-            <label>产品标识<input name="productKey" placeholder="haul-truck"></label>
-            <label>设备编码<input name="deviceCode" placeholder="truck-001"></label>
             <label>报文格式
               <select name="payloadFormat"><option value="JSON">JSON / UTF-8</option><option value="HEX">HEX 字节串</option></select>
             </label>
@@ -149,11 +164,21 @@
               <small>变量：${sequence} · ${timestamp} · ${epochMillis} · ${productKey} · ${deviceCode} · ${clientId}</small>
             </label>
           </div>
-        </fieldset>
+        </section>
+
+        <section class="wizard-step" data-wizard-step="4" hidden>
+          <div class="step-heading"><p class="eyebrow">STEP 04</p><h3>确认后创建设备</h3><p>这里不会立即连接平台。创建完成后，在设备卡片中点击“启动任务”即可开始测试。</p></div>
+          <div class="wizard-summary" id="wizardSummary" aria-live="polite"></div>
+          <div class="next-action-note"><strong>创建后的下一步</strong><span>返回设备列表 → 点击“启动任务” → 前往“运行日志”查看连接和上报结果。</span></div>
+        </section>
       </div>
-      <div class="dialog-footer">
+      <div class="dialog-footer wizard-footer">
+        <button class="button secondary" id="wizardPreviousButton" type="button" hidden>上一步</button>
+        <span class="wizard-step-hint" id="wizardStepHint">第 1 步，共 4 步</span>
+        <span class="footer-spacer"></span>
         <button class="button secondary" data-close="profileDialog" type="button">取消</button>
-        <button class="button primary" type="submit">保存设备配置</button>
+        <button class="button primary" id="wizardNextButton" type="button">下一步</button>
+        <button class="button primary" id="wizardSubmitButton" type="submit" hidden>创建设备</button>
       </div>
     </form>
   </dialog>

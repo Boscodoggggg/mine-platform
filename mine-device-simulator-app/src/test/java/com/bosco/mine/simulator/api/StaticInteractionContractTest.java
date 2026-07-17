@@ -81,6 +81,34 @@ class StaticInteractionContractTest {
                 "[hidden] { display: none !important; }");
     }
 
+    @Test
+    void 添加设备应提供面向新手的四步向导() throws Exception {
+        String html = resource("/static/index.html");
+        String script = resource("/static/app.js");
+        String styles = resource("/static/styles.css");
+
+        assertThat(html).contains(
+                "data-wizard-step=\"1\"",
+                "data-wizard-step=\"2\"",
+                "data-wizard-step=\"3\"",
+                "data-wizard-step=\"4\"",
+                "value=\"MQTT\" checked",
+                "value=\"TCP_CLIENT\"",
+                "value=\"TCP_SERVER\"",
+                "id=\"wizardPreviousButton\"",
+                "id=\"wizardNextButton\"",
+                "id=\"wizardSummary\"");
+        assertThat(script).contains(
+                "function setWizardStep",
+                "function validateWizardStep",
+                "function renderWizardSummary",
+                "[name=\"connectionScenario\"]");
+        assertThat(styles).contains(
+                ".wizard-progress",
+                ".scenario-option",
+                ".wizard-step");
+    }
+
     private String resource(String path) throws IOException {
         try (InputStream input = getClass().getResourceAsStream(path)) {
             if (input == null) {
