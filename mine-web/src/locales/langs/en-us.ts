@@ -64,6 +64,8 @@ const local: App.I18n.Schema = {
       models: 'Thing Models & Protocols',
       strategies: 'Strategy Workbench',
       monitor: 'Device Monitoring',
+      governance: 'Data Governance',
+      retention: 'Data Retention',
       command: 'Command Management',
       commandCenter: 'Command Center',
       alarms: 'Alarm Management',
@@ -937,6 +939,11 @@ const local: App.I18n.Schema = {
           above_maximum: 'Above Thing Model Maximum'
         }
       }
+    },
+    retentionGovernance: {
+      title: 'Data Retention',
+      subtitle:
+        'Manage data lifecycle by product, group, or device; preview deletion impact before release and inspect runtime execution facts.'
     },
     models: {
       title: 'Thing Models and Protocol Mapping',

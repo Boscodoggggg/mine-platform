@@ -64,6 +64,8 @@ const local: App.I18n.Schema = {
       models: '物模型与协议',
       strategies: '策略工作台',
       monitor: '设备监控',
+      governance: '数据治理',
+      retention: '数据保留',
       command: '命令管理',
       commandCenter: '命令中心',
       alarms: '告警管理',
@@ -872,6 +874,10 @@ const local: App.I18n.Schema = {
           above_maximum: '高于物模型上限'
         }
       }
+    },
+    retentionGovernance: {
+      title: '数据保留',
+      subtitle: '按产品、设备组或单设备管理数据生命周期，发布前预览删除影响并核对运行执行事实。'
     },
     models: {
       title: '物模型与协议映射',

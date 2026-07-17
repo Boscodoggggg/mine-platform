@@ -144,7 +144,70 @@ describe('RoleManagementPage', () => {
     expect(document.body.querySelector('[data-permission-summary]')?.textContent).toContain('1 项');
     expect(document.body.querySelector('[data-permission-tree-scroll]')?.classList).toContain('max-h-60vh');
     expect(tree.props('defaultExpandAll')).not.toBe(true);
+    expect(tree.props('cascade')).toBe(false);
     expect(treeData[0]).not.toHaveProperty('children');
+  });
+
+  it('父菜单只读授权回显后再次保存不得级联写入子权限', async () => {
+    const readOnlyRole = { ...role, menuIds: ['strategy-view'] };
+    api.getMenuTree.mockResolvedValue([
+      {
+        id: 'strategy-view',
+        parentId: null,
+        name: '策略工作台',
+        type: 'MENU',
+        path: '/device/strategies',
+        componentKey: 'device-strategy-workbench',
+        permission: 'device:strategy:view',
+        icon: null,
+        sortOrder: 1,
+        visible: true,
+        status: 'ENABLED',
+        children: [
+          {
+            id: 'strategy-edit',
+            parentId: 'strategy-view',
+            name: '编辑策略',
+            type: 'BUTTON',
+            path: null,
+            componentKey: null,
+            permission: 'device:strategy:edit',
+            icon: null,
+            sortOrder: 1,
+            visible: false,
+            status: 'ENABLED',
+            children: []
+          },
+          {
+            id: 'strategy-publish',
+            parentId: 'strategy-view',
+            name: '发布策略',
+            type: 'BUTTON',
+            path: null,
+            componentKey: null,
+            permission: 'device:strategy:publish',
+            icon: null,
+            sortOrder: 2,
+            visible: false,
+            status: 'ENABLED',
+            children: []
+          }
+        ]
+      }
+    ]);
+    const wrapper = mountPage(['system:role:assign-menu']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      openPermissions: (target: typeof role) => Promise<void>;
+      savePermissions: () => Promise<void>;
+    };
+
+    await page.openPermissions(readOnlyRole);
+    await flushPromises();
+    expect(wrapper.findComponent(NTree).props('cascade')).toBe(false);
+    await page.savePermissions();
+
+    expect(api.replaceRoleMenus).toHaveBeenCalledWith('role-1', ['strategy-view']);
   });
 
   it('删除占用角色时应展示服务端冲突和链路号', async () => {

@@ -51,6 +51,13 @@ class MenuManagementServiceTest {
     }
 
     @Test
+    void 在线菜单维护应提供数据保留治理组件选项() {
+        assertThat(service.findComponentOptions())
+                .extracting(MenuManagementService.ComponentOption::key)
+                .contains("retention-governance");
+    }
+
+    @Test
     void 应禁止删除核心菜单节点() {
         UUID menuId = UUID.randomUUID();
         when(mapper.findMenuById(menuId)).thenReturn(Optional.of(menu(

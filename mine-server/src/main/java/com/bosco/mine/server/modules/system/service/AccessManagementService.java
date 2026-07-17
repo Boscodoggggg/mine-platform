@@ -14,8 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.LinkedHashSet;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -45,6 +45,15 @@ public class AccessManagementService {
             new ErrorCode("SYSTEM-409-002", "角色编码已存在");
     private static final ErrorCode MENU_NOT_FOUND =
             new ErrorCode("SYSTEM-404-003", "菜单或权限节点不存在或未启用");
+    /** 数据保留治理入口标识。 */
+    private static final UUID RETENTION_GOVERNANCE_MENU_ID =
+            UUID.fromString("019b0000-0000-7000-8000-000000000510");
+    /** 数据保留页面正常读取产品、设备和策略上下文所需的授权节点。 */
+    private static final List<UUID> RETENTION_GOVERNANCE_DEPENDENCIES = List.of(
+            UUID.fromString("019b0000-0000-7000-8000-000000000210"),
+            UUID.fromString("019b0000-0000-7000-8000-000000000220"),
+            UUID.fromString("019b0000-0000-7000-8000-00000000024b")
+    );
 
     private final AccessManagementMapper mapper;
     private final PasswordEncoder passwordEncoder;
@@ -389,7 +398,7 @@ public class AccessManagementService {
     public void replaceRoleMenus(UUID roleId, List<UUID> menuIds) {
         requireRole(roleId);
         List<UUID> previousMenuIds = mapper.findMenuIdsByRoleId(roleId);
-        List<UUID> uniqueMenuIds = List.copyOf(new LinkedHashSet<>(menuIds));
+        List<UUID> uniqueMenuIds = expandMenuDependencies(menuIds);
         if (!uniqueMenuIds.isEmpty()
                 && mapper.countEnabledMenuIds(uniqueMenuIds) != uniqueMenuIds.size()) {
             throw new MineException(MENU_NOT_FOUND, Map.of());
@@ -411,6 +420,20 @@ public class AccessManagementService {
                 Map.of("menuIds", previousMenuIds),
                 Map.of("menuIds", uniqueMenuIds)
         );
+    }
+
+    /**
+     * 展开治理入口所需的最小读取授权，避免角色获得可见但不可用的菜单。
+     *
+     * @param menuIds 管理员选择的授权节点
+     * @return 去重并补齐依赖后的授权节点
+     */
+    private List<UUID> expandMenuDependencies(List<UUID> menuIds) {
+        LinkedHashSet<UUID> expanded = new LinkedHashSet<>(menuIds);
+        if (expanded.contains(RETENTION_GOVERNANCE_MENU_ID)) {
+            expanded.addAll(RETENTION_GOVERNANCE_DEPENDENCIES);
+        }
+        return List.copyOf(expanded);
     }
 
     /**

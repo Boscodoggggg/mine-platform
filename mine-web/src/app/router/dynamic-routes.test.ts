@@ -200,6 +200,41 @@ describe('buildDynamicNavigation', () => {
     ]);
   });
 
+  it('数据治理菜单应命中保留页面并固定为RETENTION策略', () => {
+    const governanceNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'governance-directory',
+        name: '数据治理',
+        path: '/governance',
+        i18nKey: 'mine.menu.governance',
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'retention-governance',
+            name: '数据保留',
+            path: '/governance/retention',
+            componentKey: 'retention-governance',
+            permission: 'governance:retention:view',
+            i18nKey: 'mine.menu.retention',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(governanceNodes);
+    setLocale('zh-CN');
+
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.path).toBe('/governance/retention');
+    expect(result.routes[0]?.children?.[0]?.props).toEqual({ fixedStrategyType: 'RETENTION' });
+    expect(result.menus[0]?.label).toBe('Data Governance');
+    expect(result.menus[0]?.children?.[0]?.label).toBe('Data Retention');
+  });
+
   it('告警中心组件键应命中本地白名单并生成国际化导航', () => {
     const alarmDirectory: NavigationMenuNode = {
       ...nodes[0],

@@ -376,6 +376,8 @@ declare namespace App {
           | 'models'
           | 'strategies'
           | 'monitor'
+          | 'governance'
+          | 'retention'
           | 'command'
           | 'commandCenter'
           | 'alarms'
@@ -981,6 +983,10 @@ declare namespace App {
             qualitySummary: string;
             executionStatus: Record<'running' | 'succeeded' | 'partial' | 'failed', string>;
           };
+        };
+        retentionGovernance: {
+          title: string;
+          subtitle: string;
         };
         models: {
           title: string;

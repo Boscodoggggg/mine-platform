@@ -8,10 +8,13 @@ test('策略管理员应先预览删除影响再确认发布保留策略', async
     await dialog.accept();
   });
 
-  await page.goto('/device/strategies');
-  await page.locator('[data-field="strategy-type"]').click();
-  await page.getByText('数据保留策略', { exact: true }).last().click();
+  await page.goto('/home');
+  await page.getByRole('menuitem', { name: '数据治理' }).click();
+  await page.getByRole('menuitem', { name: '数据保留' }).click();
 
+  await expect(page).toHaveURL(/\/governance\/retention$/);
+  await expect(page.locator('[data-page-title="retention-governance"]')).toHaveText('数据保留');
+  await expect(page.locator('[data-field="strategy-type"]')).toHaveCount(0);
   await expect(page.getByText('安全保留预设', { exact: true })).toBeVisible();
   await expect(page.getByText(/原始遥测 800 行/)).toBeVisible();
   await page.locator('[data-action="preview-retention"]').click();
@@ -63,7 +66,14 @@ async function mockRetentionWorkbench(page: import('@playwright/test').Page) {
     route.fulfill({
       json: {
         roles: ['STRATEGY_ADMIN'],
-        permissions: ['device:product:view', 'device:device:view', 'device:strategy:view', 'device:strategy:edit', 'device:strategy:publish'],
+        permissions: [
+          'device:product:view',
+          'device:device:view',
+          'device:strategy:view',
+          'device:strategy:edit',
+          'device:strategy:publish',
+          'governance:retention:view'
+        ],
         menus: [
           {
             id: 'device-root',
@@ -92,8 +102,49 @@ async function mockRetentionWorkbench(page: import('@playwright/test').Page) {
                 children: []
               }
             ]
+          },
+          {
+            id: 'governance-root',
+            parentId: null,
+            name: '数据治理',
+            type: 'DIRECTORY',
+            path: '/governance',
+            componentKey: null,
+            permission: null,
+            icon: 'mdi:database-cog-outline',
+            sortOrder: 175,
+            visible: true,
+            i18nKey: 'mine.menu.governance',
+            children: [
+              {
+                id: 'retention-menu',
+                parentId: 'governance-root',
+                name: '数据保留',
+                type: 'MENU',
+                path: '/governance/retention',
+                componentKey: 'retention-governance',
+                permission: 'governance:retention:view',
+                icon: 'mdi:database-clock-outline',
+                sortOrder: 10,
+                visible: true,
+                i18nKey: 'mine.menu.retention',
+                children: []
+              }
+            ]
           }
         ]
+      }
+    })
+  );
+  await page.route('**/api/v1/dashboard/operations', route =>
+    route.fulfill({
+      json: {
+        generatedAt: '2026-07-17T02:30:00Z',
+        dataStatus: 'AVAILABLE',
+        freshnessSeconds: 60,
+        devices: { enabled: 1, reporting: 1, stale: 0, neverReported: 0 },
+        telemetry: { todayMessages: 128, latestReceivedAt: '2026-07-17T02:29:58Z', hourly: [] },
+        attentionDevices: []
       }
     })
   );

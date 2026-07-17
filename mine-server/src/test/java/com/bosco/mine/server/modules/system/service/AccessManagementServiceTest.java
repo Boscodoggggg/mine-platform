@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -259,6 +260,35 @@ class AccessManagementServiceTest {
         assertThatThrownBy(() -> service.replaceRoleMenus(roleId, List.of(unknownMenuId)))
                 .isInstanceOfSatisfying(MineException.class, exception ->
                         assertThat(exception.errorCode().code()).isEqualTo("SYSTEM-404-003"));
+    }
+
+    @Test
+    void 数据保留入口授权应原子补齐读取依赖并随整套授权撤销() {
+        UUID roleId = UUID.randomUUID();
+        UUID retentionMenuId = UUID.fromString("019b0000-0000-7000-8000-000000000510");
+        List<UUID> expectedMenuIds = List.of(
+                retentionMenuId,
+                UUID.fromString("019b0000-0000-7000-8000-000000000210"),
+                UUID.fromString("019b0000-0000-7000-8000-000000000220"),
+                UUID.fromString("019b0000-0000-7000-8000-00000000024b")
+        );
+        when(mapper.findManagedRoleById(roleId)).thenReturn(Optional.of(role(roleId, 0)));
+        when(mapper.countEnabledMenuIds(expectedMenuIds)).thenReturn(4L);
+
+        service.replaceRoleMenus(roleId, List.of(retentionMenuId));
+
+        expectedMenuIds.forEach(menuId -> verify(mapper).insertRoleMenu(
+                any(UUID.class),
+                org.mockito.ArgumentMatchers.eq(roleId),
+                org.mockito.ArgumentMatchers.eq(menuId),
+                any()
+        ));
+
+        clearInvocations(mapper, auditService);
+        service.replaceRoleMenus(roleId, List.of());
+
+        verify(mapper).deleteRoleMenus(roleId);
+        verify(mapper, never()).insertRoleMenu(any(), any(), any(), any());
     }
 
     @Test

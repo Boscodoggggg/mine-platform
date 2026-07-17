@@ -13,6 +13,11 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -218,6 +223,7 @@ class DatabaseMigrationIT {
                 "device-monitor",
                 "device-product-list",
                 "device-strategy-workbench",
+                "retention-governance",
                 "system-dictionary-list",
                 "system-menu-list",
                 "system-operations-monitor",
@@ -307,6 +313,12 @@ class DatabaseMigrationIT {
                 "alarm:event:close",
                 "alarm:event:view"
         );
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE permission LIKE 'governance:%'
+                ORDER BY permission
+                """, String.class)).containsExactly("governance:retention:view");
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu child
@@ -354,6 +366,24 @@ class DatabaseMigrationIT {
                 WHERE visible = TRUE
                   AND path IN ('/command', '/command/center')
                 """, Long.class)).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT parent.name AS directory_name,
+                       parent.path AS directory_path,
+                       parent.i18n_key AS directory_i18n_key,
+                       retention.path,
+                       retention.permission,
+                       retention.visible,
+                       retention.i18n_key
+                FROM sys_menu retention
+                JOIN sys_menu parent ON parent.id = retention.parent_id
+                WHERE retention.component_key = 'retention-governance'
+                """)).containsEntry("directory_name", "数据治理")
+                .containsEntry("directory_path", "/governance")
+                .containsEntry("directory_i18n_key", "mine.menu.governance")
+                .containsEntry("path", "/governance/retention")
+                .containsEntry("permission", "governance:retention:view")
+                .containsEntry("visible", true)
+                .containsEntry("i18n_key", "mine.menu.retention");
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu
@@ -733,6 +763,73 @@ class DatabaseMigrationIT {
     @Test
     void 重复执行迁移时不应修改数据库结构() {
         assertThat(flyway.migrate().migrationsExecuted).isZero();
+    }
+
+    @Test
+    void 从二十七版升级时既有策略查看角色应自动获得数据保留导航() throws Exception {
+        String schema = "retention_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        UUID roleId = UUID.randomUUID();
+        try {
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .target("27")
+                    .load()
+                    .migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                statement.execute("""
+                        INSERT INTO sys_role (id, code, name)
+                        VALUES ('%s', 'RETENTION_UPGRADE_TEST', '保留策略升级测试角色')
+                        """.formatted(roleId));
+                statement.execute("""
+                        INSERT INTO sys_role_menu (id, role_id, menu_id)
+                        VALUES ('%s', '%s', '019b0000-0000-7000-8000-00000000024b')
+                        """.formatted(UUID.randomUUID(), roleId));
+            }
+
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate();
+
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                try (ResultSet result = statement.executeQuery("""
+                        SELECT role_menu.id, role_menu.menu_id, menu.permission
+                        FROM sys_role_menu role_menu
+                        JOIN sys_menu menu ON menu.id = role_menu.menu_id
+                        WHERE role_menu.role_id = '%s'
+                        ORDER BY menu.permission
+                        """.formatted(roleId))) {
+                    List<String> permissions = new ArrayList<>();
+                    while (result.next()) {
+                        UUID menuId = UUID.fromString(result.getString("menu_id"));
+                        if (!menuId.equals(UUID.fromString("019b0000-0000-7000-8000-00000000024b"))) {
+                            assertThat(UUID.fromString(result.getString("id")).version()).isEqualTo(7);
+                        }
+                        permissions.add(result.getString("permission"));
+                    }
+                    assertThat(permissions).containsExactly(
+                            "device:device:view",
+                            "device:product:view",
+                            "device:strategy:view",
+                            "governance:retention:view"
+                    );
+                }
+            }
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        }
     }
 
     private List<String> constraintColumns(String constraintName) {

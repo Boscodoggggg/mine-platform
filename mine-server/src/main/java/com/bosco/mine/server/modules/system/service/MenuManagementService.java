@@ -46,6 +46,7 @@ public class MenuManagementService {
             new ComponentOption("device-device-list", "设备管理"),
             new ComponentOption("device-model-management", "物模型与协议"),
             new ComponentOption("device-monitor", "设备实时监控"),
+            new ComponentOption("retention-governance", "数据保留"),
             new ComponentOption("command-center", "命令中心"),
             new ComponentOption("system-user-list", "用户管理"),
             new ComponentOption("system-role-list", "角色管理"),

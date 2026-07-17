@@ -410,7 +410,7 @@ defineExpose({
             v-model:checked-keys="checkedMenuIds"
             v-model:expanded-keys="expandedMenuIds"
             block-line
-            cascade
+            :cascade="false"
             checkable
             :data="menuTree"
           />

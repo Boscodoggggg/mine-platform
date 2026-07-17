@@ -25,6 +25,7 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'device-device-list': () => import('@/modules/device/pages/device-list/DeviceListPage.vue'),
   'device-model-management': () => import('@/modules/device/pages/model-management/DeviceModelManagementPage.vue'),
   'device-strategy-workbench': () => import('@/modules/device/pages/strategy/StrategyWorkbenchPage.vue'),
+  'retention-governance': () => import('@/modules/device/pages/strategy/StrategyWorkbenchPage.vue'),
   'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
   'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue'),
   'alarm-center': () => import('@/modules/alarm/pages/alarm-center/AlarmCenterPage.vue')
@@ -45,6 +46,8 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/device/models': 'mine.menu.models',
   '/device/strategies': 'mine.menu.strategies',
   '/device/monitor': 'mine.menu.monitor',
+  '/governance': 'mine.menu.governance',
+  '/governance/retention': 'mine.menu.retention',
   '/command': 'mine.menu.command',
   '/command/center': 'mine.menu.commandCenter',
   '/alarm': 'mine.menu.alarms',
@@ -61,6 +64,7 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'device-device-list': 'mine.menu.devices',
   'device-model-management': 'mine.menu.models',
   'device-strategy-workbench': 'mine.menu.strategies',
+  'retention-governance': 'mine.menu.retention',
   'device-monitor': 'mine.menu.monitor',
   'command-center': 'mine.menu.commandCenter',
   'alarm-center': 'mine.menu.alarmCenter'
@@ -108,6 +112,7 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
           path: '',
           name: routeName,
           component: component || fallbackView,
+          props: componentKey === 'retention-governance' ? { fixedStrategyType: 'RETENTION' } : undefined,
           meta: {
             title: node.name,
             i18nKey,

@@ -502,11 +502,48 @@ describe('StrategyWorkbenchPage', () => {
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不可恢复'));
     expect(strategyApi.publishStrategy).toHaveBeenCalled();
   });
+
+  it('专属入口应固定加载数据保留策略并隐藏通用策略类型选择器', async () => {
+    const wrapper = mountPage(['device:strategy:view'], { fixedStrategyType: 'RETENTION' });
+    await flushPromises();
+
+    expect(strategyApi.listStrategyVersions).toHaveBeenLastCalledWith({
+      productId: 'product-1',
+      strategyType: 'RETENTION',
+      limit: 50
+    });
+    expect(strategyApi.listRetentionExecutions).toHaveBeenCalledWith(20);
+    expect(wrapper.find('[data-field="strategy-type"]').exists()).toBe(false);
+    expect(wrapper.get('[data-page-title="retention-governance"]').text()).toBe('数据保留');
+    expect(wrapper.findComponent(RetentionPolicyEditor).exists()).toBe(true);
+  });
+
+  it('专属入口没有活动产品时仍应加载全局执行事实', async () => {
+    deviceApi.getProducts.mockResolvedValue({ items: [], page: 1, size: 100, total: 0 });
+
+    const wrapper = mountPage(['device:strategy:view'], { fixedStrategyType: 'RETENTION' });
+    await flushPromises();
+
+    expect(strategyApi.listRetentionExecutions).toHaveBeenCalledWith(20);
+    expect(strategyApi.listStrategyVersions).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('800');
+  });
+
+  it('专属入口产品查询失败时仍应加载全局执行事实', async () => {
+    deviceApi.getProducts.mockRejectedValue(new Error('product service unavailable'));
+
+    const wrapper = mountPage(['device:strategy:view'], { fixedStrategyType: 'RETENTION' });
+    await flushPromises();
+
+    expect(strategyApi.listRetentionExecutions).toHaveBeenCalledWith(20);
+    expect(wrapper.text()).toContain('800');
+  });
 });
 
-function mountPage(permissions: string[]) {
+function mountPage(permissions: string[], props: { fixedStrategyType?: 'RETENTION' } = {}) {
   authState.userInfo.buttons = permissions;
   return mount(StrategyWorkbenchPage, {
+    props,
     global: { plugins: [i18n], stubs: { teleport: true } }
   });
 }

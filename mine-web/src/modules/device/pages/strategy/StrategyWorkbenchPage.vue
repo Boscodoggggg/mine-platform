@@ -81,6 +81,10 @@ interface QualityRuleForm {
   maximum: number | null;
 }
 
+const props = defineProps<{
+  fixedStrategyType?: StrategyType;
+}>();
+
 const { locale, t } = useI18n();
 const authStore = useAuthStore();
 const loading = ref(false);
@@ -97,7 +101,7 @@ const devices = ref<Device[]>([]);
 const groups = ref<DeviceGroup[]>([]);
 const versions = ref<StrategyVersion[]>([]);
 const releases = ref<StrategyRelease[]>([]);
-const strategyType = ref<StrategyType>('ONLINE_STATUS');
+const strategyType = ref<StrategyType>(props.fixedStrategyType || 'ONLINE_STATUS');
 const productId = ref<string | null>(null);
 const selectedGroupId = ref<string | null>(null);
 const selectedDeviceId = ref<string | null>(null);
@@ -166,6 +170,12 @@ const versionOptions = computed<SelectOption[]>(() =>
   }))
 );
 const policyName = computed(() => t(`mine.strategy.type.${strategyType.value.toLowerCase()}`));
+const pageTitle = computed(() =>
+  props.fixedStrategyType === 'RETENTION' ? t('mine.retentionGovernance.title') : t('mine.strategy.title')
+);
+const pageSubtitle = computed(() =>
+  props.fixedStrategyType === 'RETENTION' ? t('mine.retentionGovernance.subtitle') : t('mine.strategy.subtitle')
+);
 const productionHelp = computed(() =>
   t(
     `mine.strategy.productionHelp.${strategyType.value === 'DATA_QUALITY' ? 'quality' : strategyType.value === 'ALARM' ? 'alarm' : strategyType.value === 'RETENTION' ? 'retention' : 'online'}`
@@ -211,7 +221,13 @@ watch(
   { deep: true }
 );
 
-onMounted(loadProducts);
+onMounted(loadInitialData);
+
+async function loadInitialData() {
+  const jobs: Promise<unknown>[] = [loadProducts()];
+  if (isRetention.value) jobs.push(loadRetentionExecutions());
+  await Promise.allSettled(jobs);
+}
 
 async function loadProducts() {
   loading.value = true;
@@ -939,7 +955,15 @@ function createIdempotencyKey(prefix: string) {
 <template>
   <div>
     <NFlex vertical :size="16">
-      <NPageHeader :title="t('mine.strategy.title')" :subtitle="t('mine.strategy.subtitle')">
+      <NPageHeader :subtitle="pageSubtitle">
+        <template #title>
+          <NText
+            strong
+            :data-page-title="props.fixedStrategyType === 'RETENTION' ? 'retention-governance' : 'strategy-workbench'"
+          >
+            {{ pageTitle }}
+          </NText>
+        </template>
         <template #extra>
           <NTag type="primary" :bordered="false" round>{{ policyName }}</NTag>
         </template>
@@ -960,7 +984,7 @@ function createIdempotencyKey(prefix: string) {
             <NFlex vertical :size="16">
               <NCard :title="t('mine.strategy.section.context')" :bordered="false" size="small">
                 <NForm label-placement="top">
-                  <NFormItem :label="t('mine.strategy.field.strategyType')">
+                  <NFormItem v-if="!props.fixedStrategyType" :label="t('mine.strategy.field.strategyType')">
                     <NSelect
                       v-model:value="strategyType"
                       data-field="strategy-type"
