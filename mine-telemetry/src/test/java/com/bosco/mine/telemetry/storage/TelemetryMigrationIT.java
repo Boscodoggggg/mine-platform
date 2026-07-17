@@ -130,6 +130,7 @@ class TelemetryMigrationIT {
                     'telemetry_strategy_runtime_revision',
                     'telemetry_data_quality_policy',
                     'telemetry_alarm_policy',
+                    'telemetry_retention_policy',
                     'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence',
                     'telemetry_alarm_runtime_state',
@@ -137,7 +138,7 @@ class TelemetryMigrationIT {
                 ]) AS table_name
                 ORDER BY table_name
                 """))
-                .hasSize(8)
+                .hasSize(9)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(queryStrings("""
                 SELECT COALESCE(col_description(table_class.oid, attribute.attnum), '')
@@ -148,9 +149,10 @@ class TelemetryMigrationIT {
                   AND table_class.relname IN (
                     'telemetry_strategy_snapshot_stage',
                     'telemetry_strategy_runtime_revision',
-                    'telemetry_data_quality_policy',
-                    'telemetry_alarm_policy',
-                    'telemetry_strategy_event_inbox',
+                      'telemetry_data_quality_policy',
+                      'telemetry_alarm_policy',
+                      'telemetry_retention_policy',
+                      'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence',
                     'telemetry_alarm_runtime_state',
                     'telemetry_outbox_event'
@@ -159,7 +161,7 @@ class TelemetryMigrationIT {
                   AND NOT attribute.attisdropped
                 ORDER BY table_class.relname, attribute.attnum
                 """))
-                .hasSize(79)
+                .hasSize(90)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(queryStrings("""
                 SELECT indexname
@@ -257,6 +259,7 @@ class TelemetryMigrationIT {
                     'telemetry_strategy_runtime_revision',
                     'telemetry_data_quality_policy',
                     'telemetry_alarm_policy',
+                    'telemetry_retention_policy',
                     'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence',
                     'telemetry_alarm_runtime_state',
@@ -270,6 +273,7 @@ class TelemetryMigrationIT {
                         "telemetry_data_quality_policy",
                         "telemetry_outbox_event",
                         "telemetry_quality_evidence",
+                        "telemetry_retention_policy",
                         "telemetry_strategy_event_inbox",
                         "telemetry_strategy_runtime_revision",
                         "telemetry_strategy_snapshot_stage"

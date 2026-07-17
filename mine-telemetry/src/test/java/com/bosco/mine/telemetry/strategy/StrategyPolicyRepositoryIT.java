@@ -50,6 +50,7 @@ class StrategyPolicyRepositoryIT {
     private static final UUID FIRST_DEVICE_ID = UUID.randomUUID();
     private static final UUID SECOND_DEVICE_ID = UUID.randomUUID();
     private static final UUID ALARM_DEVICE_ID = UUID.randomUUID();
+    private static final UUID RETENTION_DEVICE_ID = UUID.randomUUID();
     private static StrategyPolicyRepository repository;
     private static DataQualityPolicyRepository policyReader;
     private static AlarmPolicyRepository alarmPolicyReader;
@@ -155,6 +156,48 @@ class StrategyPolicyRepositoryIT {
                 SELECT runtime_revision FROM telemetry_strategy_runtime_revision
                  WHERE product_id = ? AND strategy_type = 'ALARM'
                 """, Long.class, PRODUCT_ID)).isEqualTo(1L);
+    }
+
+    @Test
+    void 数据保留应原子写入类型化最后正确镜像并支持显式删除() {
+        UUID firstSnapshotId = UUID.randomUUID();
+        UUID firstEventId = UUID.randomUUID();
+        repository.stage(firstSnapshotId, List.of(new StrategyPolicyRepository.StagedPolicy(
+                RETENTION_DEVICE_ID, retentionValues(true, "STANDARD", 90, 180),
+                "sha256:" + "b".repeat(64))));
+        StrategyRuntimeChangedPayload first = new StrategyRuntimeChangedPayload(
+                firstSnapshotId, PRODUCT_ID, "RETENTION", 1, 1,
+                "sha256:" + "c".repeat(64));
+
+        repository.finalizeApply(firstEventId, first);
+
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT enabled, retention_class, raw_telemetry_days,
+                       quality_evidence_days, runtime_revision
+                  FROM telemetry_retention_policy
+                 WHERE device_id = ?
+                """, RETENTION_DEVICE_ID)).containsAllEntriesOf(Map.of(
+                "enabled", true,
+                "retention_class", "STANDARD",
+                "raw_telemetry_days", 90,
+                "quality_evidence_days", 180,
+                "runtime_revision", 1L
+        ));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT runtime_revision FROM telemetry_strategy_runtime_revision
+                 WHERE product_id = ? AND strategy_type = 'RETENTION'
+                """, Long.class, PRODUCT_ID)).isEqualTo(1L);
+
+        UUID secondSnapshotId = UUID.randomUUID();
+        repository.stage(secondSnapshotId, List.of(new StrategyPolicyRepository.StagedPolicy(
+                RETENTION_DEVICE_ID, "{}", "sha256:" + "d".repeat(64))));
+        repository.finalizeApply(UUID.randomUUID(), new StrategyRuntimeChangedPayload(
+                secondSnapshotId, PRODUCT_ID, "RETENTION", 2, 1,
+                "sha256:" + "e".repeat(64)));
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM telemetry_retention_policy WHERE device_id = ?",
+                Long.class, RETENTION_DEVICE_ID)).isZero();
     }
 
     @Test
@@ -273,6 +316,22 @@ class StrategyPolicyRepositoryIT {
                   "recoverThreshold":%s
                 }]}
                 """.formatted(enabled, threshold, recoverThreshold);
+    }
+
+    private String retentionValues(
+            boolean enabled,
+            String retentionClass,
+            int rawDays,
+            int evidenceDays
+    ) {
+        return """
+                {"policy":{
+                  "enabled":%s,
+                  "retentionClass":"%s",
+                  "rawTelemetryDays":%d,
+                  "qualityEvidenceDays":%d
+                }}
+                """.formatted(enabled, retentionClass, rawDays, evidenceDays);
     }
 
     private TelemetrySample alarmSample(String eventId, UUID deviceId) {

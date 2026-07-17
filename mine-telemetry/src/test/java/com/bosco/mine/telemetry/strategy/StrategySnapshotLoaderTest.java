@@ -133,6 +133,40 @@ class StrategySnapshotLoaderTest {
     }
 
     @Test
+    void 应使用数据保留类型注册表独立校验原子策略快照() throws Exception {
+        StrategyPolicyRepository repository = mock(StrategyPolicyRepository.class);
+        StrategySnapshotSource source = mock(StrategySnapshotSource.class);
+        Map<String, Object> values = Map.of("policy", Map.of(
+                "enabled", true,
+                "retentionClass", "standard",
+                "rawTelemetryDays", 90L,
+                "qualityEvidenceDays", 180
+        ));
+        String itemHash = StrategySnapshotIntegrity.policyHash(
+                "RETENTION", FIRST_DEVICE_ID, values);
+        String snapshotHash = snapshotHash(FIRST_DEVICE_ID, itemHash);
+        StrategyRuntimeChangedPayload payload = new StrategyRuntimeChangedPayload(
+                SNAPSHOT_ID, PRODUCT_ID, "RETENTION", 4, 1, snapshotHash);
+        when(source.fetch(SNAPSHOT_ID, null, 100)).thenReturn(new
+                StrategySnapshotSource.SnapshotPage(
+                SNAPSHOT_ID, PRODUCT_ID, "RETENTION", 4, 1, snapshotHash,
+                List.of(new StrategySnapshotSource.SnapshotItem(
+                        FIRST_DEVICE_ID, values, itemHash)), null));
+
+        new StrategySnapshotLoader(repository, source, 100).apply(EVENT_ID, payload);
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<StrategyPolicyRepository.StagedPolicy>> policies =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(repository).stage(org.mockito.ArgumentMatchers.eq(SNAPSHOT_ID), policies.capture());
+        assertThat(policies.getValue()).singleElement().satisfies(policy ->
+                assertThat(policy.valuesJson())
+                        .contains("\"retentionClass\":\"STANDARD\"")
+                        .contains("\"rawTelemetryDays\":90"));
+        verify(repository).finalizeApply(EVENT_ID, payload);
+    }
+
+    @Test
     void 未注册运行类型应在访问控制面前永久拒绝() {
         StrategyPolicyRepository repository = mock(StrategyPolicyRepository.class);
         StrategySnapshotSource source = mock(StrategySnapshotSource.class);

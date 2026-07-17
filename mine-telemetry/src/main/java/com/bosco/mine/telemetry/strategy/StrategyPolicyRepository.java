@@ -198,6 +198,7 @@ public class StrategyPolicyRepository {
         return switch (strategyType) {
             case "DATA_QUALITY" -> "telemetry_data_quality_policy";
             case "ALARM" -> "telemetry_alarm_policy";
+            case "RETENTION" -> "telemetry_retention_policy";
             default -> throw new PermanentStrategySnapshotException("不支持该策略镜像类型");
         };
     }
