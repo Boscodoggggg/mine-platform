@@ -167,6 +167,43 @@ class StrategySnapshotLoaderTest {
     }
 
     @Test
+    void 应使用聚合类型注册表独立校验固定桶策略快照() throws Exception {
+        StrategyPolicyRepository repository = mock(StrategyPolicyRepository.class);
+        StrategySnapshotSource source = mock(StrategySnapshotSource.class);
+        Map<String, Object> values = Map.of("policy", Map.of(
+                "enabled", true,
+                "correctionWindowSeconds", 7_200L,
+                "rules", List.of(
+                        Map.of("propertyId", "speed", "bucketSeconds", 300L),
+                        Map.of("propertyId", "payload", "bucketSeconds", 3_600)
+                )
+        ));
+        String itemHash = StrategySnapshotIntegrity.policyHash(
+                "AGGREGATION", FIRST_DEVICE_ID, values);
+        String snapshotHash = snapshotHash(FIRST_DEVICE_ID, itemHash);
+        StrategyRuntimeChangedPayload payload = new StrategyRuntimeChangedPayload(
+                SNAPSHOT_ID, PRODUCT_ID, "AGGREGATION", 5, 1, snapshotHash);
+        when(source.fetch(SNAPSHOT_ID, null, 100)).thenReturn(new
+                StrategySnapshotSource.SnapshotPage(
+                SNAPSHOT_ID, PRODUCT_ID, "AGGREGATION", 5, 1, snapshotHash,
+                List.of(new StrategySnapshotSource.SnapshotItem(
+                        FIRST_DEVICE_ID, values, itemHash)), null));
+
+        new StrategySnapshotLoader(repository, source, 100).apply(EVENT_ID, payload);
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<StrategyPolicyRepository.StagedPolicy>> policies =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(repository).stage(org.mockito.ArgumentMatchers.eq(SNAPSHOT_ID), policies.capture());
+        assertThat(policies.getValue()).singleElement().satisfies(policy ->
+                assertThat(policy.valuesJson())
+                        .contains("\"correctionWindowSeconds\":7200")
+                        .contains("\"propertyId\":\"payload\"")
+                        .contains("\"propertyId\":\"speed\""));
+        verify(repository).finalizeApply(EVENT_ID, payload);
+    }
+
+    @Test
     void 未注册运行类型应在访问控制面前永久拒绝() {
         StrategyPolicyRepository repository = mock(StrategyPolicyRepository.class);
         StrategySnapshotSource source = mock(StrategySnapshotSource.class);

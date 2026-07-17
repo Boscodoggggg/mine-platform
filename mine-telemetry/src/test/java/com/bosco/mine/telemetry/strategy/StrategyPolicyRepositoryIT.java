@@ -1,6 +1,8 @@
 package com.bosco.mine.telemetry.strategy;
 
 import com.bosco.mine.messaging.strategy.StrategyRuntimeChangedPayload;
+import com.bosco.mine.telemetry.aggregation.AggregationPolicy;
+import com.bosco.mine.telemetry.aggregation.AggregationPolicyRepository;
 import com.bosco.mine.telemetry.alarm.AlarmPolicy;
 import com.bosco.mine.telemetry.alarm.AlarmPolicyRepository;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.MessageKind;
@@ -52,9 +54,11 @@ class StrategyPolicyRepositoryIT {
     private static final UUID SECOND_DEVICE_ID = UUID.randomUUID();
     private static final UUID ALARM_DEVICE_ID = UUID.randomUUID();
     private static final UUID RETENTION_DEVICE_ID = UUID.randomUUID();
+    private static final UUID AGGREGATION_DEVICE_ID = UUID.randomUUID();
     private static StrategyPolicyRepository repository;
     private static DataQualityPolicyRepository policyReader;
     private static AlarmPolicyRepository alarmPolicyReader;
+    private static AggregationPolicyRepository aggregationPolicyReader;
     private static JdbcTemplate jdbcTemplate;
     private static TelemetryBatchWriter batchWriter;
     private static final List<UUID> OBSERVED_OUTBOX_EVENTS =
@@ -68,6 +72,7 @@ class StrategyPolicyRepositoryIT {
         repository = new StrategyPolicyRepository(dataSource, OBSERVED_OUTBOX_EVENTS::add);
         policyReader = new DataQualityPolicyRepository(dataSource);
         alarmPolicyReader = new AlarmPolicyRepository(dataSource);
+        aggregationPolicyReader = new AggregationPolicyRepository(dataSource);
         jdbcTemplate = new JdbcTemplate(dataSource);
         batchWriter = new TelemetryBatchWriter(dataSource);
     }
@@ -227,6 +232,67 @@ class StrategyPolicyRepositoryIT {
     }
 
     @Test
+    void 聚合策略应原子写入类型化最后正确镜像并支持显式删除() {
+        UUID firstSnapshotId = UUID.randomUUID();
+        repository.stage(firstSnapshotId, List.of(new StrategyPolicyRepository.StagedPolicy(
+                AGGREGATION_DEVICE_ID, aggregationValues(true, 7_200),
+                "sha256:" + "1".repeat(64))));
+        repository.finalizeApply(UUID.randomUUID(), new StrategyRuntimeChangedPayload(
+                firstSnapshotId, PRODUCT_ID, "AGGREGATION", 1, 1,
+                "sha256:" + "2".repeat(64)));
+
+        Map<UUID, AggregationPolicy> policies = aggregationPolicyReader.findByDeviceIds(
+                Set.of(AGGREGATION_DEVICE_ID, SECOND_DEVICE_ID));
+        assertThat(policies).containsOnlyKeys(AGGREGATION_DEVICE_ID);
+        assertThat(policies.get(AGGREGATION_DEVICE_ID)).satisfies(policy -> {
+            assertThat(policy.enabled()).isTrue();
+            assertThat(policy.correctionWindowSeconds()).isEqualTo(7_200);
+            assertThat(policy.runtimeRevision()).isEqualTo(1);
+            assertThat(policy.rules()).containsExactly(
+                    new AggregationPolicy.Rule("payload", 3_600),
+                    new AggregationPolicy.Rule("speed", 300));
+        });
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT runtime_revision FROM telemetry_strategy_runtime_revision
+                 WHERE product_id = ? AND strategy_type = 'AGGREGATION'
+                """, Long.class, PRODUCT_ID)).isEqualTo(1L);
+
+        UUID secondSnapshotId = UUID.randomUUID();
+        repository.stage(secondSnapshotId, List.of(new StrategyPolicyRepository.StagedPolicy(
+                AGGREGATION_DEVICE_ID, "{}", "sha256:" + "3".repeat(64))));
+        repository.finalizeApply(UUID.randomUUID(), new StrategyRuntimeChangedPayload(
+                secondSnapshotId, PRODUCT_ID, "AGGREGATION", 2, 1,
+                "sha256:" + "4".repeat(64)));
+
+        assertThat(aggregationPolicyReader.findByDeviceIds(Set.of(AGGREGATION_DEVICE_ID)))
+                .isEmpty();
+    }
+
+    @Test
+    void 聚合镜像应在数据库层拒绝非法桶和未知字段() {
+        assertThatThrownBy(() -> insertAggregationPolicyJson(
+                UUID.randomUUID(),
+                """
+                {"policy":{
+                  "enabled":true,
+                  "correctionWindowSeconds":7200,
+                  "rules":[{"propertyId":"speed","bucketSeconds":120}]
+                }}
+                """))
+                .isInstanceOf(DataAccessException.class);
+        assertThatThrownBy(() -> insertAggregationPolicyJson(
+                UUID.randomUUID(),
+                """
+                {"policy":{
+                  "enabled":true,
+                  "correctionWindowSeconds":7200,
+                  "rules":[{"propertyId":"speed","bucketSeconds":300,"sql":"DROP"}]
+                }}
+                """))
+                .isInstanceOf(DataAccessException.class);
+    }
+
+    @Test
     void 告警规则删除禁用或语义变化时应在快照事务内恢复旧周期() {
         int observedBefore = OBSERVED_OUTBOX_EVENTS.size();
         UUID productId = UUID.randomUUID();
@@ -308,6 +374,16 @@ class StrategyPolicyRepositoryIT {
                 "sha256:" + "f".repeat(64));
     }
 
+    private void insertAggregationPolicyJson(UUID deviceId, String valuesJson) {
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_aggregation_policy (
+                    device_id, product_id, runtime_revision, snapshot_id,
+                    values_json, content_hash
+                ) VALUES (?, ?, 1, ?, CAST(? AS JSONB), ?)
+                """, deviceId, PRODUCT_ID, UUID.randomUUID(), valuesJson,
+                "sha256:" + "f".repeat(64));
+    }
+
     private StrategyRuntimeChangedPayload payload(
             UUID snapshotId,
             long revision,
@@ -368,6 +444,19 @@ class StrategyPolicyRepositoryIT {
                   "qualityEvidenceDays":%d
                 }}
                 """.formatted(enabled, retentionClass, rawDays, evidenceDays);
+    }
+
+    private String aggregationValues(boolean enabled, int correctionWindowSeconds) {
+        return """
+                {"policy":{
+                  "enabled":%s,
+                  "correctionWindowSeconds":%d,
+                  "rules":[
+                    {"propertyId":"payload","bucketSeconds":3600},
+                    {"propertyId":"speed","bucketSeconds":300}
+                  ]
+                }}
+                """.formatted(enabled, correctionWindowSeconds);
     }
 
     private TelemetrySample alarmSample(String eventId, UUID deviceId) {

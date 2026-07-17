@@ -1,6 +1,7 @@
 package com.bosco.mine.telemetry.strategy;
 
 import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
+import com.bosco.mine.model.strategy.AggregationStrategyDefinition;
 import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.model.strategy.EffectiveStrategyResolver;
 import com.bosco.mine.model.strategy.RetentionStrategyDefinition;
@@ -26,7 +27,8 @@ public final class StrategySnapshotIntegrity {
     private static final Map<String, StrategyDefinition> DEFINITIONS = Map.of(
             DataQualityStrategyDefinition.TYPE, new DataQualityStrategyDefinition(),
             AlarmStrategyDefinition.TYPE, new AlarmStrategyDefinition(),
-            RetentionStrategyDefinition.TYPE, new RetentionStrategyDefinition()
+            RetentionStrategyDefinition.TYPE, new RetentionStrategyDefinition(),
+            AggregationStrategyDefinition.TYPE, new AggregationStrategyDefinition()
     );
     private static final EffectiveStrategyResolver RESOLVER = new EffectiveStrategyResolver();
 
