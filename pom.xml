@@ -36,6 +36,7 @@
         <module>mine-gateway</module>
         <module>mine-telemetry</module>
         <module>mine-server</module>
+        <module>mine-device-simulator-app</module>
         <module>examples/device-simulator</module>
     </modules>
 

@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="独立运行的矿山设备 MQTT 与 TCP 模拟工具">
+  <title>矿山设备模拟台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="矿山设备模拟台首页">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path d="M5 24 13 8l4 8 3-5 7 13H5Z"/><path d="M9 24h14"/></svg>
+        </span>
+        <span><strong>矿山设备</strong><small>SIMULATOR</small></span>
+      </a>
+      <nav aria-label="主导航">
+        <a class="nav-item active" href="#devices">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h2M15 10h2M15 14h2"/></svg>
+          设备模拟
+        </a>
+        <a class="nav-item" href="#activity">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
+          运行日志
+        </a>
+      </nav>
+      <div class="sidebar-note">
+        <span class="pulse-dot"></span>
+        <div><strong>本地独立运行</strong><small id="versionText">正在读取版本…</small></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">DEVICE LAB / 设备实验台</p>
+          <h1>矿山设备模拟台</h1>
+          <p class="subtitle">在本机配置虚拟设备，连接平台并验证 MQTT、TCP 上报链路。</p>
+        </div>
+        <button class="button primary" id="addDeviceButton" type="button">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          添加模拟设备
+        </button>
+      </header>
+
+      <section class="metrics" aria-label="运行概览">
+        <article class="metric-card">
+          <span class="metric-icon warm"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M15 10h2"/></svg></span>
+          <div><span>设备配置</span><strong id="deviceCount">0</strong><small>台虚拟设备</small></div>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon green"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7"/></svg></span>
+          <div><span>在线连接</span><strong id="onlineCount">0</strong><small>条链路就绪</small></div>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon blue"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 5-5v3h5a4 4 0 0 1 4 4v3M19 12l-5 5v-3H9a4 4 0 0 1-4-4V7"/></svg></span>
+          <div><span>累计发送</span><strong id="sentCount">0</strong><small>帧模拟报文</small></div>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon red"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg></span>
+          <div><span>发送失败</span><strong id="failedCount">0</strong><small>次需要关注</small></div>
+        </article>
+      </section>
+
+      <div class="workspace">
+        <section class="panel device-panel" id="devices">
+          <div class="panel-header">
+            <div><h2>模拟设备</h2><p>配置保存在本机 YAML，认证密码仅在启动时临时使用。</p></div>
+            <div class="filter-group" role="group" aria-label="设备状态筛选">
+              <button class="filter active" data-filter="ALL" type="button">全部</button>
+              <button class="filter" data-filter="CONNECTED" type="button">在线</button>
+              <button class="filter" data-filter="DISCONNECTED" type="button">离线</button>
+            </div>
+          </div>
+          <div class="device-grid" id="deviceGrid" aria-live="polite"></div>
+        </section>
+
+        <aside class="panel activity-panel" id="activity">
+          <div class="panel-header compact">
+            <div><h2>实时活动</h2><p id="activityHint">选择一台设备查看日志</p></div>
+            <button class="icon-button" id="refreshButton" type="button" aria-label="刷新状态">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.5 9A7 7 0 0 0 6 7M5.5 15A7 7 0 0 0 18 17"/></svg>
+            </button>
+          </div>
+          <div class="activity-list" id="activityList"></div>
+        </aside>
+      </div>
+
+      <footer class="footer">
+        <span id="profilePath">配置文件：读取中…</span>
+        <span>管理页面仅限本机回环访问，设备协议端口可单独配置</span>
+      </footer>
+    </main>
+  </div>
+
+  <dialog class="drawer" id="profileDialog">
+    <form id="profileForm">
+      <div class="dialog-header">
+        <div><p class="eyebrow">DEVICE PROFILE</p><h2 id="formTitle">添加模拟设备</h2></div>
+        <button class="icon-button" data-close="profileDialog" type="button" aria-label="关闭配置窗口">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div class="dialog-body">
+        <input id="profileId" name="id" type="hidden">
+        <fieldset>
+          <legend><span>01</span> 基础信息</legend>
+          <div class="form-grid">
+            <label class="wide">设备名称<input name="name" required maxlength="80" placeholder="例如：东采区 01 号矿卡"></label>
+            <label>传输模式
+              <select name="transportMode" id="transportMode">
+                <option value="MQTT">MQTT 客户端</option>
+                <option value="TCP_CLIENT">TCP 客户端</option>
+                <option value="TCP_SERVER">TCP 服务端</option>
+              </select>
+            </label>
+            <label class="checkbox-label"><input name="tlsEnabled" type="checkbox"><span>启用 TLS / MQTTS</span></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend><span>02</span> 连接参数</legend>
+          <p class="field-help" id="transportHelp">模拟器作为 MQTT 客户端，主动连接平台 Broker。</p>
+          <div class="form-grid">
+            <label class="wide">主机或监听地址<input name="host" required value="127.0.0.1" placeholder="127.0.0.1"></label>
+            <label>端口<input name="port" required type="number" min="1" max="65535" value="1883"></label>
+            <label class="mqtt-field">Client ID<input name="clientId" placeholder="sim-truck-001"></label>
+            <label class="mqtt-field">用户名<input name="username" placeholder="设备用户名"></label>
+            <label class="mqtt-field wide">发布 Topic<input name="publishTopic" placeholder="mine/v1/{productKey}/{clientId}/up/telemetry"></label>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend><span>03</span> 设备标识与报文</legend>
+          <div class="form-grid">
+            <label>产品标识<input name="productKey" placeholder="haul-truck"></label>
+            <label>设备编码<input name="deviceCode" placeholder="truck-001"></label>
+            <label>报文格式
+              <select name="payloadFormat"><option value="JSON">JSON / UTF-8</option><option value="HEX">HEX 字节串</option></select>
+            </label>
+            <label>发送间隔（毫秒）<input name="intervalMillis" required type="number" min="100" value="5000"></label>
+            <label class="mqtt-field">MQTT QoS<select name="qos"><option value="0">0 — 最多一次</option><option value="1" selected>1 — 至少一次</option><option value="2">2 — 恰好一次</option></select></label>
+            <label class="wide template-label">报文模板
+              <textarea name="payloadTemplate" required rows="8" spellcheck="false"></textarea>
+              <small>变量：${sequence} · ${timestamp} · ${epochMillis} · ${productKey} · ${deviceCode} · ${clientId}</small>
+            </label>
+          </div>
+        </fieldset>
+      </div>
+      <div class="dialog-footer">
+        <button class="button secondary" data-close="profileDialog" type="button">取消</button>
+        <button class="button primary" type="submit">保存设备配置</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="credential-dialog" id="credentialDialog">
+    <form id="credentialForm">
+      <div class="credential-icon"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2"/></svg></div>
+      <h2>启动 MQTT 设备</h2>
+      <p>密码只在本次连接中使用，不会写入 YAML 或浏览器存储。</p>
+      <input id="credentialProfileId" type="hidden">
+      <label>设备密码<input id="devicePassword" type="password" autocomplete="current-password" placeholder="可留空"></label>
+      <div class="dialog-footer simple">
+        <button class="button secondary" data-close="credentialDialog" type="button">取消</button>
+        <button class="button primary" type="submit">连接并启动</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

@@ -25,6 +25,7 @@ mine-platform 是面向单矿区私有化部署的智慧矿山数据采集与设
 | `mine-gateway` | Netty、MQTT 设备接入和命令下发 |
 | `mine-telemetry` | 遥测处理、告警计算和时序入库 |
 | `mine-server` | 矿山业务、系统管理和管理 API |
+| [`mine-device-simulator-app`](mine-device-simulator-app/README.md) | 独立单 JAR 矿山设备模拟台，提供 MQTT、TCP 和内置管理页面 |
 | `examples/device-simulator` | 可重复 MQTT 遥测、弱网与命令回复模拟器 |
 
 ## 开发命令
@@ -44,6 +45,8 @@ bash scripts/verify.sh
 GitHub Actions 会并行执行同样的后端、前端、部署配置和 SBOM 检查；失败时保留测试报告。Dependabot 每周检查 Maven、pnpm、Compose 镜像与 Actions 依赖，但版本升级仍需通过完整质量门禁和现场回归。
 
 完整设计、架构决策和分阶段实施计划见 [docs/README.md](docs/README.md)。
+
+需要在本机通过页面配置虚拟设备并联调平台时，使用独立的 [矿山设备模拟台](mine-device-simulator-app/README.md)。
 
 单机一体化环境的构建、配置、启动和验收步骤见 [deploy/README.md](deploy/README.md)。
 

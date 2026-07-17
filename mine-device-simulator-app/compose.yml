@@ -1,0 +1,33 @@
+name: mine-device-simulator
+
+services:
+  simulator:
+    build:
+      context: .
+    image: mine-device-simulator:local
+    container_name: mine-device-simulator
+    restart: unless-stopped
+    init: true
+    read_only: true
+    environment:
+      TZ: Asia/Shanghai
+      MINE_SIMULATOR_BIND_ADDRESS: 0.0.0.0
+      MINE_SIMULATOR_ALLOW_NON_LOOPBACK: "true"
+      MINE_SIMULATOR_PROFILE_FILE: /data/profiles.yaml
+    ports:
+      - "127.0.0.1:18090:18090"
+    volumes:
+      - simulator-data:/data
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/18090; printf \"GET /api/system HTTP/1.0\\r\\n\\r\\n\" >&3; grep -q \"200\" <&3'"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  simulator-data:
