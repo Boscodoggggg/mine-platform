@@ -8,7 +8,9 @@ import {
   createStrategyDraft,
   getEffectiveStrategy,
   listDeviceGroups,
+  listRetentionExecutions,
   listStrategyReleases,
+  previewRetentionImpact,
   publishStrategy,
   replaceDeviceGroupMembers,
   rollbackStrategyRelease
@@ -78,5 +80,28 @@ describe('strategy api', () => {
       '/strategy-releases?productId=product-1&strategyType=ONLINE_STATUS&limit=30'
     );
     expect(client.request).toHaveBeenNthCalledWith(3, '/devices/device%2F1/effective-strategies/ONLINE_STATUS');
+  });
+
+  it('应原样提交保留影响预览并限制最近执行事实数量', () => {
+    const body = {
+      productId: 'product-1',
+      scopeType: 'GROUP' as const,
+      scopeId: 'group-1',
+      policy: {
+        enabled: true,
+        retentionClass: 'STANDARD' as const,
+        rawTelemetryDays: 90,
+        qualityEvidenceDays: 180
+      }
+    };
+
+    previewRetentionImpact(body);
+    listRetentionExecutions(20);
+
+    expect(client.request).toHaveBeenNthCalledWith(1, '/retention-previews', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, '/retention-executions?limit=20');
   });
 });

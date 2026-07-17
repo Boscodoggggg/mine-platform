@@ -174,4 +174,47 @@ describe('EffectiveStrategyPanel', () => {
     expect(wrapper.text()).toContain('冷却 300 秒');
     expect(wrapper.text()).toContain('alarm-release-5');
   });
+
+  it('应整体展示最终保留策略及其单一发布来源', () => {
+    setLocale('zh-CN');
+    const wrapper = mount(EffectiveStrategyPanel, {
+      props: {
+        deviceName: '北区运输车 01',
+        loading: false,
+        effective: {
+          deviceId: 'device-1',
+          productId: 'product-1',
+          strategyType: 'RETENTION',
+          valid: true,
+          values: {
+            policy: {
+              enabled: true,
+              retentionClass: 'STANDARD',
+              rawTelemetryDays: 90,
+              qualityEvidenceDays: 180
+            }
+          },
+          sources: {
+            policy: {
+              scopeType: 'PRODUCT',
+              scopeId: 'product-1',
+              releaseId: 'retention-release-2',
+              groupPriority: null
+            }
+          },
+          conflicts: [],
+          contentHash: `sha256:${'e'.repeat(64)}`
+        }
+      },
+      global: { plugins: [i18n] }
+    });
+
+    expect(wrapper.text()).toContain('数据保留策略');
+    expect(wrapper.text()).toContain('标准');
+    expect(wrapper.text()).toContain('原始遥测 90 天');
+    expect(wrapper.text()).toContain('质量证据 180 天');
+    expect(wrapper.text()).toContain('产品默认');
+    expect(wrapper.text()).toContain('retention-release-2');
+    expect(wrapper.text()).not.toContain('[object Object]');
+  });
 });

@@ -685,7 +685,8 @@ const local: App.I18n.Schema = {
       type: {
         online_status: 'Online Status Policy',
         data_quality: 'Data Quality Policy',
-        alarm: 'Alarm Policy'
+        alarm: 'Alarm Policy',
+        retention: 'Data Retention Policy'
       },
       productionHelp: {
         online:
@@ -693,7 +694,9 @@ const local: App.I18n.Schema = {
         quality:
           'A release immediately changes telemetry quality evaluation and evidence. Verify time windows, property constraints, final sources, and provide an auditable business reason.',
         alarm:
-          'An alarm release participates in real-time telemetry evaluation. Review scope, severity, durations, recovery hysteresis, and cooldown to prevent chatter or missed alarms.'
+          'An alarm release participates in real-time telemetry evaluation. Review scope, severity, durations, recovery hysteresis, and cooldown to prevent chatter or missed alarms.',
+        retention:
+          'A retention release lets the runtime delete expired data on schedule. Preview the current scope and verify the observation time and eligible rows first.'
       },
       section: {
         context: 'Configuration Context',
@@ -704,7 +707,9 @@ const local: App.I18n.Schema = {
         history: 'Immutable Release History',
         effective: 'Final Effective Device Policy',
         qualityRules: 'Property Quality Rules',
-        alarmRules: 'Dual-source Alarm Rules'
+        alarmRules: 'Dual-source Alarm Rules',
+        retentionImpact: 'Deletion Impact Preview',
+        retentionExecutions: 'Recent Execution Facts'
       },
       field: {
         strategyType: 'Policy Type',
@@ -742,7 +747,15 @@ const local: App.I18n.Schema = {
         alarmThreshold: 'Trigger Threshold',
         recoverThreshold: 'Recovery Threshold',
         qualityRuleCode: 'Quality Rule',
-        optionalPropertyId: 'Thing Model Property (Optional)'
+        optionalPropertyId: 'Thing Model Property (Optional)',
+        retentionPolicy: 'Data Retention Policy',
+        retentionEnabled: 'Execution Status',
+        rawTelemetryDays: 'Raw Telemetry Retention',
+        qualityEvidenceDays: 'Quality Evidence Retention',
+        observedAt: 'Database Observation Time',
+        affectedDevices: 'Affected Devices',
+        earliestEligibleAt: 'Earliest Eligible Data',
+        runtimeInstance: 'Runtime Instance'
       },
       action: {
         newGroup: 'New Group',
@@ -762,7 +775,8 @@ const local: App.I18n.Schema = {
         removeAlarmRule: 'Remove Rule',
         copyAlarmRule: 'Copy',
         moveAlarmRuleUp: 'Move Up',
-        moveAlarmRuleDown: 'Move Down'
+        moveAlarmRuleDown: 'Move Down',
+        previewRetention: 'Refresh Impact Preview'
       },
       status: {
         draft: 'Draft',
@@ -796,7 +810,9 @@ const local: App.I18n.Schema = {
         effective: 'Select a device to inspect its final effective policy',
         members: 'This group has no members',
         qualityRules: 'No property rules yet. Configure at least one time window or property rule.',
-        alarmRules: 'No alarm rules yet. An alarm policy requires at least one rule.'
+        alarmRules: 'No alarm rules yet. An alarm policy requires at least one rule.',
+        retentionPreview: 'No impact preview exists for the current policy and scope.',
+        retentionExecutions: 'The runtime has not reported any retention execution facts.'
       },
       placeholder: {
         enter: 'Enter {field}',
@@ -821,7 +837,10 @@ const local: App.I18n.Schema = {
         alarmIdentity: 'A rule key is invalid or duplicated, or its name is empty',
         alarmDuration: 'Durations must be integers; trigger and recovery cap at 86400 seconds and cooldown at 604800 seconds',
         alarmHysteresis:
-          'A threshold is out of range, has more than 12 decimal places, or does not form valid recovery hysteresis'
+          'A threshold is out of range, has more than 12 decimal places, or does not form valid recovery hysteresis',
+        retentionEvidence: 'Quality evidence cannot expire before raw telemetry and cannot exceed 3650 days',
+        retentionPolicy: 'Retention days must be integers within the class range and quality evidence cannot be shorter than raw telemetry',
+        retentionPreview: 'Preview the current scope before releasing a data retention policy'
       },
       message: {
         groupCreated: 'Device group created',
@@ -831,12 +850,14 @@ const local: App.I18n.Schema = {
         draftCreated: 'Policy draft created',
         draftUpdated: 'Policy draft saved',
         published: 'Policy released and taking effect',
-        rolledBack: 'A new rollback release was created'
+        rolledBack: 'A new rollback release was created',
+        retentionPreviewLoaded: 'Impact preview updated at the current database observation time'
       },
       confirm: {
         archiveGroup:
           'Archive this device group? Current memberships will end while release history remains immutable.',
-        rollback: 'Create a new rollback release from this historical release?'
+        rollback: 'Create a new rollback release from this historical release?',
+        retentionPublish: 'Preview observed at {observedAt}. Expired data will be permanently deleted and cannot be recovered. Continue?'
       },
       error: {
         title: 'Policy Operation Failed',
@@ -867,6 +888,7 @@ const local: App.I18n.Schema = {
       },
       text: {
         seconds: 'seconds',
+        days: 'days',
         enabled: 'Enabled',
         disabled: 'Disabled',
         version: 'Version v{version}',
@@ -875,7 +897,25 @@ const local: App.I18n.Schema = {
         priority: 'Priority {priority}',
         onlineSummary: 'Offline after {seconds} seconds',
         qualitySummary: '{count} property rules',
-        alarmSummary: '{count} alarm rules'
+        alarmSummary: '{count} alarm rules',
+        retentionSummary: '{retentionClass} · Raw {rawDays} days · Quality {qualityDays} days',
+        affectedDeviceCount: '{count} devices',
+        eligibleRows: '{count} eligible rows',
+        eligibleRowsAtLeast: '{count}+ eligible rows',
+        deletedRows: 'Raw {raw} rows · Quality {quality} rows',
+        noEligibleTime: 'No eligible data'
+      },
+      retention: {
+        presetTitle: 'Safe Retention Presets',
+        presetHelp: 'A preset atomically replaces the class and both retention windows. You can fine-tune within the class boundary.',
+        class: { short: 'Short', standard: 'Standard', long: 'Long', archive: 'Archive' },
+        classRange: 'This class allows raw telemetry retention from {minimum} to {maximum} days.',
+        pauseHelp: 'Disabling only pauses future deletion runs and preserves policy history.',
+        irreversibleRisk: 'Expired data will be permanently deleted in batches. Deletion cannot be reversed; review the impact preview before release.',
+        pausedRisk: 'Future deletion is paused, but data already deleted will not be restored.',
+        rawSummary: 'Raw telemetry {days} days',
+        qualitySummary: 'Quality evidence {days} days',
+        executionStatus: { running: 'Running', succeeded: 'Succeeded', partial: 'Partial', failed: 'Failed' }
       },
       qualityField: {
         required: 'Required · {property}',

@@ -780,8 +780,8 @@ declare namespace App {
         strategy: {
           title: string;
           subtitle: string;
-          type: Record<'online_status' | 'data_quality' | 'alarm', string>;
-          productionHelp: Record<'online' | 'quality' | 'alarm', string>;
+          type: Record<'online_status' | 'data_quality' | 'alarm' | 'retention', string>;
+          productionHelp: Record<'online' | 'quality' | 'alarm' | 'retention', string>;
           section: Record<
             | 'context'
             | 'groups'
@@ -791,7 +791,9 @@ declare namespace App {
             | 'history'
             | 'effective'
             | 'qualityRules'
-            | 'alarmRules',
+            | 'alarmRules'
+            | 'retentionImpact'
+            | 'retentionExecutions',
             string
           >;
           field: Record<
@@ -830,7 +832,15 @@ declare namespace App {
             | 'alarmThreshold'
             | 'recoverThreshold'
             | 'qualityRuleCode'
-            | 'optionalPropertyId',
+            | 'optionalPropertyId'
+            | 'retentionPolicy'
+            | 'retentionEnabled'
+            | 'rawTelemetryDays'
+            | 'qualityEvidenceDays'
+            | 'observedAt'
+            | 'affectedDevices'
+            | 'earliestEligibleAt'
+            | 'runtimeInstance',
             string
           >;
           action: Record<
@@ -851,7 +861,8 @@ declare namespace App {
             | 'removeAlarmRule'
             | 'copyAlarmRule'
             | 'moveAlarmRuleUp'
-            | 'moveAlarmRuleDown',
+            | 'moveAlarmRuleDown'
+            | 'previewRetention',
             string
           >;
           status: Record<
@@ -869,7 +880,9 @@ declare namespace App {
             | 'effective'
             | 'members'
             | 'qualityRules'
-            | 'alarmRules',
+            | 'alarmRules'
+            | 'retentionPreview'
+            | 'retentionExecutions',
             string
           >;
           placeholder: Record<
@@ -890,7 +903,10 @@ declare namespace App {
             | 'alarmRuleCount'
             | 'alarmIdentity'
             | 'alarmDuration'
-            | 'alarmHysteresis',
+            | 'alarmHysteresis'
+            | 'retentionEvidence'
+            | 'retentionPolicy'
+            | 'retentionPreview',
             string
           >;
           message: Record<
@@ -901,10 +917,11 @@ declare namespace App {
             | 'draftCreated'
             | 'draftUpdated'
             | 'published'
-            | 'rolledBack',
+            | 'rolledBack'
+            | 'retentionPreviewLoaded',
             string
           >;
-          confirm: Record<'archiveGroup' | 'rollback', string>;
+          confirm: Record<'archiveGroup' | 'rollback' | 'retentionPublish', string>;
           error: Record<'title' | 'conflictTitle' | 'invalidTitle' | 'code' | 'details', string>;
           help: Record<
             | 'groupPriority'
@@ -921,6 +938,7 @@ declare namespace App {
           >;
           text: Record<
             | 'seconds'
+            | 'days'
             | 'enabled'
             | 'disabled'
             | 'version'
@@ -929,7 +947,13 @@ declare namespace App {
             | 'priority'
             | 'onlineSummary'
             | 'qualitySummary'
-            | 'alarmSummary',
+            | 'alarmSummary'
+            | 'retentionSummary'
+            | 'affectedDeviceCount'
+            | 'eligibleRows'
+            | 'eligibleRowsAtLeast'
+            | 'deletedRows'
+            | 'noEligibleTime',
             string
           >;
           qualityField: Record<'required' | 'minimum' | 'maximum', string>;
@@ -944,6 +968,18 @@ declare namespace App {
               'future_timestamp' | 'stale_timestamp' | 'required_missing' | 'below_minimum' | 'above_maximum',
               string
             >;
+          };
+          retention: {
+            presetTitle: string;
+            presetHelp: string;
+            class: Record<'short' | 'standard' | 'long' | 'archive', string>;
+            classRange: string;
+            pauseHelp: string;
+            irreversibleRisk: string;
+            pausedRisk: string;
+            rawSummary: string;
+            qualitySummary: string;
+            executionStatus: Record<'running' | 'succeeded' | 'partial' | 'failed', string>;
           };
         };
         models: {

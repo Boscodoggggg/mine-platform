@@ -15,8 +15,7 @@ import {
   NTag,
   NText
 } from 'naive-ui';
-import type { EffectiveStrategy } from '@/modules/device/api/strategy';
-import type { AlarmRule } from '@/modules/device/api/strategy';
+import type { AlarmRule, EffectiveStrategy, RetentionPolicy } from '@/modules/device/api/strategy';
 
 interface StrategyProblem {
   code: string;
@@ -61,6 +60,7 @@ function fieldLabel(field: string) {
   if (field === 'staleAfterSeconds') return t('mine.strategy.field.staleAfterSeconds');
   if (field === 'futureToleranceSeconds') return t('mine.strategy.field.futureToleranceSeconds');
   if (field === 'rules') return t('mine.strategy.section.alarmRules');
+  if (field === 'policy') return t('mine.strategy.field.retentionPolicy');
   const match = /^(required|minimum|maximum)\.(.+)$/.exec(field);
   if (!match?.[1] || !match[2]) return field;
   return t(`mine.strategy.qualityField.${match[1]}`, { property: match[2] });
@@ -70,6 +70,9 @@ function displayValue(field: string, value: unknown) {
   if (field === 'rules' && Array.isArray(value)) {
     return t('mine.strategy.text.alarmSummary', { count: value.length });
   }
+  if (field === 'policy' && retentionPolicy(value)) {
+    return t(`mine.strategy.retention.class.${retentionPolicy(value)?.retentionClass.toLowerCase()}`);
+  }
   if (typeof value === 'boolean') {
     return value ? t('mine.strategy.text.enabled') : t('mine.strategy.text.disabled');
   }
@@ -77,6 +80,20 @@ function displayValue(field: string, value: unknown) {
     return `${value} ${t('mine.strategy.text.seconds')}`;
   }
   return String(value);
+}
+
+function retentionPolicy(value: unknown): RetentionPolicy | null {
+  if (!value || typeof value !== 'object') return null;
+  const policy = value as Partial<RetentionPolicy>;
+  if (
+    typeof policy.enabled !== 'boolean' ||
+    !['SHORT', 'STANDARD', 'LONG', 'ARCHIVE'].includes(policy.retentionClass || '') ||
+    typeof policy.rawTelemetryDays !== 'number' ||
+    typeof policy.qualityEvidenceDays !== 'number'
+  ) {
+    return null;
+  }
+  return policy as RetentionPolicy;
 }
 
 function alarmRules(value: unknown): AlarmRule[] {
@@ -215,6 +232,29 @@ function formatValue(value: unknown): string {
                   </NFlex>
                 </NListItem>
               </NList>
+              <NFlex v-if="retentionPolicy(entry.value)" vertical :size="3">
+                <NText>
+                  {{
+                    t('mine.strategy.retention.rawSummary', {
+                      days: retentionPolicy(entry.value)?.rawTelemetryDays
+                    })
+                  }}
+                </NText>
+                <NText>
+                  {{
+                    t('mine.strategy.retention.qualitySummary', {
+                      days: retentionPolicy(entry.value)?.qualityEvidenceDays
+                    })
+                  }}
+                </NText>
+                <NTag :type="retentionPolicy(entry.value)?.enabled ? 'success' : 'default'" :bordered="false">
+                  {{
+                    retentionPolicy(entry.value)?.enabled
+                      ? t('mine.strategy.text.enabled')
+                      : t('mine.strategy.text.disabled')
+                  }}
+                </NTag>
+              </NFlex>
               <NDescriptions v-if="entry.source" :column="1" label-placement="left" bordered size="small">
                 <NDescriptionsItem :label="t('mine.strategy.field.source')">
                   <NFlex align="center" :wrap="true">

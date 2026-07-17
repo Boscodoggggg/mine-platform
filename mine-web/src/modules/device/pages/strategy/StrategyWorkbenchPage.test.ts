@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { i18n, setLocale } from '@/locales';
 import AlarmRuleEditor from '@/modules/device/components/strategy/AlarmRuleEditor.vue';
+import RetentionPolicyEditor from '@/modules/device/components/strategy/RetentionPolicyEditor.vue';
 import StrategyWorkbenchPage from './StrategyWorkbenchPage.vue';
 
 const deviceApi = vi.hoisted(() => ({
@@ -17,8 +18,10 @@ const strategyApi = vi.hoisted(() => ({
   getEffectiveStrategy: vi.fn(),
   listDeviceGroupMembers: vi.fn(),
   listDeviceGroups: vi.fn(),
+  listRetentionExecutions: vi.fn(),
   listStrategyReleases: vi.fn(),
   listStrategyVersions: vi.fn(),
+  previewRetentionImpact: vi.fn(),
   publishStrategy: vi.fn(),
   replaceDeviceGroupMembers: vi.fn(),
   rollbackStrategyRelease: vi.fn(),
@@ -131,6 +134,21 @@ const alarmDraft = {
   },
   description: '运输车关键温度告警'
 };
+const retentionDraft = {
+  ...draft,
+  id: 'retention-version-2',
+  strategyType: 'RETENTION' as const,
+  versionNumber: 2,
+  values: {
+    policy: {
+      enabled: true,
+      retentionClass: 'STANDARD' as const,
+      rawTelemetryDays: 90,
+      qualityEvidenceDays: 180
+    }
+  },
+  description: '运输车标准保留基线'
+};
 const release = {
   id: 'release-8',
   productId: 'product-1',
@@ -169,6 +187,39 @@ const qualityEffective = {
     Object.keys(qualityDraft.values).map(field => [field, effective.sources.offlineThresholdSeconds])
   )
 };
+const retentionEffective = {
+  ...effective,
+  strategyType: 'RETENTION' as const,
+  values: retentionDraft.values,
+  sources: { policy: effective.sources.offlineThresholdSeconds }
+};
+const retentionPreview = {
+  observedAt: '2026-07-17T02:30:00Z',
+  affectedDeviceCount: 1001,
+  policy: retentionDraft.values.policy,
+  rawTelemetry: {
+    eligibleRows: 1_000_000,
+    earliestEligibleAt: '2025-01-01T00:00:00Z',
+    atLeast: true
+  },
+  qualityEvidence: {
+    eligibleRows: 420,
+    earliestEligibleAt: '2025-02-01T00:00:00Z',
+    atLeast: false
+  }
+};
+const retentionExecution = {
+  executionId: '00000000-0000-0000-0000-000000000101',
+  instanceId: 'telemetry-1',
+  status: 'SUCCEEDED' as const,
+  policyCount: 3,
+  rawRowsDeleted: 800,
+  qualityRowsDeleted: 120,
+  batchCount: 4,
+  startedAt: '2026-07-17T02:00:00Z',
+  completedAt: '2026-07-17T02:00:03Z',
+  lastError: null
+};
 
 describe('StrategyWorkbenchPage', () => {
   beforeEach(() => {
@@ -194,14 +245,30 @@ describe('StrategyWorkbenchPage', () => {
     });
     strategyApi.listDeviceGroupMembers.mockResolvedValue([{ ...device, effectiveFrom: '2026-07-16T01:00:00Z' }]);
     strategyApi.listStrategyVersions.mockImplementation(({ strategyType }: { strategyType: string }) =>
-      Promise.resolve(strategyType === 'DATA_QUALITY' ? [qualityDraft] : strategyType === 'ALARM' ? [alarmDraft] : [draft])
+      Promise.resolve(
+        strategyType === 'DATA_QUALITY'
+          ? [qualityDraft]
+          : strategyType === 'ALARM'
+            ? [alarmDraft]
+            : strategyType === 'RETENTION'
+              ? [retentionDraft]
+              : [draft]
+      )
     );
     strategyApi.listStrategyReleases.mockImplementation(({ strategyType }: { strategyType: string }) =>
       Promise.resolve(strategyType === 'DATA_QUALITY' ? [] : [release])
     );
     strategyApi.getEffectiveStrategy.mockImplementation((_deviceId: string, strategyType: string) =>
-      Promise.resolve(strategyType === 'DATA_QUALITY' ? qualityEffective : effective)
+      Promise.resolve(
+        strategyType === 'DATA_QUALITY'
+          ? qualityEffective
+          : strategyType === 'RETENTION'
+            ? retentionEffective
+            : effective
+      )
     );
+    strategyApi.previewRetentionImpact.mockResolvedValue(retentionPreview);
+    strategyApi.listRetentionExecutions.mockResolvedValue([retentionExecution]);
     strategyApi.publishStrategy.mockResolvedValue(release);
     strategyApi.createStrategyDraft.mockResolvedValue(draft);
     strategyApi.updateStrategyDraft.mockResolvedValue(draft);
@@ -375,6 +442,65 @@ describe('StrategyWorkbenchPage', () => {
     await flushPromises();
     expect(strategyApi.updateStrategyDraft).not.toHaveBeenCalled();
     expect(window.$message?.warning).toHaveBeenCalledWith(expect.stringContaining('12 位小数'));
+  });
+
+  it('应以原子 policy 保存保留草稿并展示数据库预览与最近执行事实', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit', 'device:strategy:publish']);
+    await flushPromises();
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+
+    selector?.vm.$emit('update:value', 'RETENTION');
+    await flushPromises();
+
+    expect(wrapper.findComponent(RetentionPolicyEditor).exists()).toBe(true);
+    expect(strategyApi.listRetentionExecutions).toHaveBeenCalledWith(20);
+    expect(wrapper.text()).toContain('800');
+    await wrapper.get('[data-action="preview-retention"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.previewRetentionImpact).toHaveBeenCalledWith({
+      productId: 'product-1',
+      scopeType: 'PRODUCT',
+      scopeId: 'product-1',
+      policy: retentionDraft.values.policy
+    });
+    expect(wrapper.text()).toContain('2026-07-17');
+    expect(wrapper.text()).toContain('1,000,000+');
+    expect(wrapper.text()).toContain('1,001');
+
+    await wrapper.get('[data-action="save-draft"]').trigger('click');
+    await flushPromises();
+    expect(strategyApi.updateStrategyDraft).toHaveBeenCalledWith('retention-version-2', {
+      values: { policy: retentionDraft.values.policy },
+      description: '运输车标准保留基线',
+      version: 1
+    });
+  });
+
+  it('保留策略发布前应要求当前预览并确认统计时点与不可逆风险', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:publish']);
+    await flushPromises();
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+    selector?.vm.$emit('update:value', 'RETENTION');
+    await flushPromises();
+    await wrapper.get('[data-field="publish-reason"] textarea').setValue('按标准周期清理历史遥测');
+
+    await wrapper.get('[data-action="publish-strategy"]').trigger('click');
+    expect(strategyApi.publishStrategy).not.toHaveBeenCalled();
+    expect(window.$message?.warning).toHaveBeenCalledWith(expect.stringContaining('影响预览'));
+
+    await wrapper.get('[data-action="preview-retention"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-action="publish-strategy"]').trigger('click');
+    await flushPromises();
+
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('2026-07-17'));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不可恢复'));
+    expect(strategyApi.publishStrategy).toHaveBeenCalled();
   });
 });
 

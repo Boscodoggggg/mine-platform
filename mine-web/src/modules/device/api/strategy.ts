@@ -22,6 +22,11 @@ export type AlarmNumericRule = components['schemas']['AlarmNumericRule'];
 export type AlarmQualityRule = components['schemas']['AlarmQualityRule'];
 export type AlarmRule = AlarmNumericRule | AlarmQualityRule;
 export type AlarmStrategyValues = components['schemas']['AlarmStrategyValues'];
+export type RetentionClass = components['schemas']['RetentionClass'];
+export type RetentionPolicy = components['schemas']['RetentionPolicy'];
+export type RetentionPreviewRequest = components['schemas']['RetentionPreviewRequest'];
+export type RetentionPreview = components['schemas']['RetentionPreview'];
+export type RetentionExecution = components['schemas']['RetentionExecution'];
 
 export interface DeviceGroupQuery {
   productId: string;
@@ -133,6 +138,19 @@ export function getEffectiveStrategy(deviceId: string, strategyType: StrategyTyp
   return request<EffectiveStrategy>(
     `/devices/${encodeURIComponent(deviceId)}/effective-strategies/${encodeURIComponent(strategyType)}`
   );
+}
+
+/** 基于数据库一致性统计时点预览保留策略的影响范围。 */
+export function previewRetentionImpact(body: RetentionPreviewRequest) {
+  return request<RetentionPreview>('/retention-previews', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+}
+
+/** 查询遥测运行面最近的数据保留执行事实。 */
+export function listRetentionExecutions(limit = 20) {
+  return request<RetentionExecution[]>(`/retention-executions?${queryString({ limit })}`);
 }
 
 function queryString(query: object) {

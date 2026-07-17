@@ -637,13 +637,15 @@ const local: App.I18n.Schema = {
     strategy: {
       title: '策略工作台',
       subtitle: '管理产品、设备组和单设备三级策略，发布前验证范围，发布后解释每台设备的最终有效值。',
-      type: { online_status: '在线状态策略', data_quality: '数据质量策略', alarm: '告警策略' },
+      type: { online_status: '在线状态策略', data_quality: '数据质量策略', alarm: '告警策略', retention: '数据保留策略' },
       productionHelp: {
         online: '策略发布会立即影响设备在线状态判定。请先核对目标范围、最终阈值和冲突证据，并填写可审计的业务原因。',
         quality:
           '策略发布会立即影响遥测质量判定和质量证据。请先核对时间窗口、属性约束、最终来源，并填写可审计的业务原因。',
         alarm:
-          '告警策略发布后会参与实时遥测判定。请复核目标范围、严重度、持续时间、恢复迟滞和冷却窗口，避免抖动或漏报。'
+          '告警策略发布后会参与实时遥测判定。请复核目标范围、严重度、持续时间、恢复迟滞和冷却窗口，避免抖动或漏报。',
+        retention:
+          '保留策略发布后会由运行面按计划删除到期数据。请先取得当前范围的影响预览，核对统计时点和候选数量。'
       },
       section: {
         context: '配置上下文',
@@ -654,7 +656,9 @@ const local: App.I18n.Schema = {
         history: '不可变发布历史',
         effective: '设备最终有效策略',
         qualityRules: '属性质量规则',
-        alarmRules: '双来源告警规则'
+        alarmRules: '双来源告警规则',
+        retentionImpact: '删除影响预览',
+        retentionExecutions: '最近执行事实'
       },
       field: {
         strategyType: '策略类型',
@@ -692,7 +696,15 @@ const local: App.I18n.Schema = {
         alarmThreshold: '触发阈值',
         recoverThreshold: '恢复阈值',
         qualityRuleCode: '质量规则',
-        optionalPropertyId: '物模型属性（可选）'
+        optionalPropertyId: '物模型属性（可选）',
+        retentionPolicy: '数据保留策略',
+        retentionEnabled: '执行状态',
+        rawTelemetryDays: '原始数值遥测保留时间',
+        qualityEvidenceDays: '质量证据保留时间',
+        observedAt: '数据库统计时点',
+        affectedDevices: '受影响设备',
+        earliestEligibleAt: '最早候选数据',
+        runtimeInstance: '运行实例'
       },
       action: {
         newGroup: '新建设备组',
@@ -712,7 +724,8 @@ const local: App.I18n.Schema = {
         removeAlarmRule: '移除规则',
         copyAlarmRule: '复制',
         moveAlarmRuleUp: '上移',
-        moveAlarmRuleDown: '下移'
+        moveAlarmRuleDown: '下移',
+        previewRetention: '刷新影响预览'
       },
       status: {
         draft: '草稿',
@@ -742,7 +755,9 @@ const local: App.I18n.Schema = {
         effective: '选择设备后查看最终有效策略',
         members: '该设备组暂无成员',
         qualityRules: '尚未添加属性规则；至少配置一个时间窗口或属性规则。',
-        alarmRules: '尚未添加告警规则；告警策略至少需要一条规则。'
+        alarmRules: '尚未添加告警规则；告警策略至少需要一条规则。',
+        retentionPreview: '尚未取得当前策略与范围的影响预览。',
+        retentionExecutions: '运行面尚无保留任务执行事实。'
       },
       placeholder: {
         enter: '请输入{field}',
@@ -766,7 +781,10 @@ const local: App.I18n.Schema = {
         alarmRuleCount: '告警规则数量必须在 1 至 100 条之间',
         alarmIdentity: '规则编码格式不正确、存在重复项，或规则名称为空',
         alarmDuration: '持续时间必须为有效整数；触发和恢复不超过 86400 秒，冷却不超过 604800 秒',
-        alarmHysteresis: '触发或恢复阈值超出范围、精度超过 12 位小数，或没有形成合法迟滞区间'
+        alarmHysteresis: '触发或恢复阈值超出范围、精度超过 12 位小数，或没有形成合法迟滞区间',
+        retentionEvidence: '质量证据保留时间不能短于原始遥测，且不得超过 3650 天',
+        retentionPolicy: '保留时间必须为等级边界内的整数，质量证据不得短于原始遥测',
+        retentionPreview: '发布数据保留策略前，请先取得当前范围的影响预览'
       },
       message: {
         groupCreated: '设备组已创建',
@@ -776,11 +794,13 @@ const local: App.I18n.Schema = {
         draftCreated: '策略草稿已创建',
         draftUpdated: '策略草稿已保存',
         published: '策略已发布并开始生效',
-        rolledBack: '已创建新的回滚发布'
+        rolledBack: '已创建新的回滚发布',
+        retentionPreviewLoaded: '影响预览已按数据库当前时点更新'
       },
       confirm: {
         archiveGroup: '确认归档此设备组？当前成员关系将结束，历史发布事实仍会保留。',
-        rollback: '确认基于此历史发布创建新的回滚发布？'
+        rollback: '确认基于此历史发布创建新的回滚发布？',
+        retentionPublish: '预览统计时点：{observedAt}。发布后到期数据会被永久删除且不可恢复，确认继续？'
       },
       error: {
         title: '策略操作失败',
@@ -803,6 +823,7 @@ const local: App.I18n.Schema = {
       },
       text: {
         seconds: '秒',
+        days: '天',
         enabled: '启用',
         disabled: '停用',
         version: '版本 v{version}',
@@ -811,7 +832,25 @@ const local: App.I18n.Schema = {
         priority: '优先级 {priority}',
         onlineSummary: '离线阈值 {seconds} 秒',
         qualitySummary: '{count} 个属性规则',
-        alarmSummary: '{count} 条告警规则'
+        alarmSummary: '{count} 条告警规则',
+        retentionSummary: '{retentionClass} · 原始遥测 {rawDays} 天 · 质量证据 {qualityDays} 天',
+        affectedDeviceCount: '{count} 台设备',
+        eligibleRows: '{count} 行候选数据',
+        eligibleRowsAtLeast: '{count}+ 行候选数据',
+        deletedRows: '原始遥测 {raw} 行 · 质量证据 {quality} 行',
+        noEligibleTime: '无候选数据'
+      },
+      retention: {
+        presetTitle: '安全保留预设',
+        presetHelp: '选择预设会整体替换保留等级和两类数据的保留时间，仍可在等级边界内微调。',
+        class: { short: '短期', standard: '标准', long: '长期', archive: '归档' },
+        classRange: '当前等级允许原始遥测保留 {minimum} 至 {maximum} 天。',
+        pauseHelp: '停用后仅暂停后续删除任务，不改变策略历史。',
+        irreversibleRisk: '启用后，到期数据会被批量永久删除；删除不可恢复，发布前必须核对影响预览。',
+        pausedRisk: '当前策略已暂停后续删除，但不会恢复已经删除的数据。',
+        rawSummary: '原始遥测 {days} 天',
+        qualitySummary: '质量证据 {days} 天',
+        executionStatus: { running: '执行中', succeeded: '成功', partial: '部分完成', failed: '失败' }
       },
       qualityField: {
         required: '必填 · {property}',

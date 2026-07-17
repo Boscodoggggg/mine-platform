@@ -1084,6 +1084,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/retention-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 预览拟发布数据保留策略的不可逆影响
+         * @description 使用数据库当前时间和 TimescaleDB 只读连接，按目标作用域分批统计原始数值遥测与
+         *     质量证据达到删除年龄的行数。统计达到一百万行时返回封顶值并将 atLeast 置为 true。
+         *     预览不是删除承诺，从统计时点到策略激活期间数据仍会变化。
+         */
+        post: operations["previewRetentionImpact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/retention-executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询最近数据保留执行事实
+         * @description 直接读取 Telemetry 不可删除的执行事实，不向业务数据库复制运行状态。
+         */
+        get: operations["listRetentionExecutions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{deviceId}/effective-strategies/{strategyType}": {
         parameters: {
             query?: never;
@@ -1176,7 +1218,7 @@ export interface components {
             version: number;
         };
         /** @enum {string} */
-        StrategyType: "ONLINE_STATUS" | "DATA_QUALITY" | "ALARM";
+        StrategyType: "ONLINE_STATUS" | "DATA_QUALITY" | "ALARM" | "RETENTION";
         /** @enum {string} */
         StrategyScopeType: "PRODUCT" | "GROUP" | "DEVICE";
         /** @enum {string} */
@@ -1232,7 +1274,75 @@ export interface components {
         AlarmStrategyValues: {
             rules: (components["schemas"]["AlarmNumericRule"] | components["schemas"]["AlarmQualityRule"])[];
         };
-        StrategyValues: components["schemas"]["OnlineStatusStrategyValues"] | components["schemas"]["DataQualityStrategyValues"] | components["schemas"]["AlarmStrategyValues"];
+        /** @enum {string} */
+        RetentionClass: "SHORT" | "STANDARD" | "LONG" | "ARCHIVE";
+        RetentionPolicy: {
+            /** @description false 时安全暂停后续删除，但不会恢复已经删除的数据。 */
+            enabled: boolean;
+            retentionClass: components["schemas"]["RetentionClass"];
+            /** @description 还必须符合所选保留等级的天数区间。 */
+            rawTelemetryDays: number;
+            /** @description 不得短于原始数值遥测保留天数。 */
+            qualityEvidenceDays: number;
+        };
+        RetentionStrategyValues: {
+            policy: components["schemas"]["RetentionPolicy"];
+        };
+        StrategyValues: components["schemas"]["OnlineStatusStrategyValues"] | components["schemas"]["DataQualityStrategyValues"] | components["schemas"]["AlarmStrategyValues"] | components["schemas"]["RetentionStrategyValues"];
+        RetentionPreviewRequest: {
+            /** Format: uuid */
+            productId: string;
+            scopeType: components["schemas"]["StrategyScopeType"];
+            /**
+             * Format: uuid
+             * @description 必须是同产品的活动产品、活动设备组或未归档设备。
+             */
+            scopeId: string;
+            policy: components["schemas"]["RetentionPolicy"];
+        };
+        RetentionDatasetImpact: {
+            /**
+             * Format: int64
+             * @description 达到删除年龄的候选行数，可能是统计上限。
+             */
+            eligibleRows: number;
+            /** Format: date-time */
+            earliestEligibleAt?: string | null;
+            /** @description true 表示实际候选数量大于 eligibleRows。 */
+            atLeast: boolean;
+        };
+        RetentionPreview: {
+            /**
+             * Format: date-time
+             * @description TimescaleDB 只读事务使用的数据库统计时点。
+             */
+            observedAt: string;
+            /** Format: int64 */
+            affectedDeviceCount: number;
+            policy: components["schemas"]["RetentionPolicy"];
+            rawTelemetry: components["schemas"]["RetentionDatasetImpact"];
+            qualityEvidence: components["schemas"]["RetentionDatasetImpact"];
+        };
+        /** @enum {string} */
+        RetentionExecutionStatus: "RUNNING" | "SUCCEEDED" | "PARTIAL" | "FAILED";
+        RetentionExecution: {
+            /** Format: uuid */
+            executionId: string;
+            instanceId: string;
+            status: components["schemas"]["RetentionExecutionStatus"];
+            policyCount: number;
+            /** Format: int64 */
+            rawRowsDeleted: number;
+            /** Format: int64 */
+            qualityRowsDeleted: number;
+            batchCount: number;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** @description Telemetry 写入的脱敏截断失败摘要。 */
+            lastError?: string | null;
+        };
         StrategyVersion: {
             /** Format: uuid */
             id: string;
@@ -2319,6 +2429,15 @@ export interface components {
         };
         /** @description 等待同一属性的共享回源超过 2 秒或时序库查询超时，错误码 TELEMETRY-503-001。 */
         TelemetryBusy: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 遥测只读连接未启用或 TimescaleDB 查询失败，错误码 RETENTION-503-001。 */
+        RetentionRuntimeUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -4500,6 +4619,61 @@ export interface operations {
             404: components["responses"]["StrategyNotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    previewRetentionImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description 带数据库统计时点和封顶标记的影响预览。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            503: components["responses"]["RetentionRuntimeUnavailable"];
+        };
+    };
+    listRetentionExecutions: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按数据库开始时间倒序排列的最近执行事实。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionExecution"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["RetentionRuntimeUnavailable"];
         };
     };
     getEffectiveDeviceStrategy: {

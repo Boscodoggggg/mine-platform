@@ -9,6 +9,8 @@ import {
   NCheckbox,
   NCollapse,
   NCollapseItem,
+  NDescriptions,
+  NDescriptionsItem,
   NDivider,
   NEmpty,
   NFlex,
@@ -37,8 +39,10 @@ import {
   getEffectiveStrategy,
   listDeviceGroupMembers,
   listDeviceGroups,
+  listRetentionExecutions,
   listStrategyReleases,
   listStrategyVersions,
+  previewRetentionImpact,
   publishStrategy,
   replaceDeviceGroupMembers,
   rollbackStrategyRelease,
@@ -49,6 +53,9 @@ import type {
   AlarmRule,
   DeviceGroup,
   EffectiveStrategy,
+  RetentionExecution,
+  RetentionPolicy,
+  RetentionPreview,
   StrategyRelease,
   StrategyScopeType,
   StrategyType,
@@ -57,6 +64,7 @@ import type {
 import { useAuthStore } from '@/store/modules/auth';
 import AlarmRuleEditor from '@/modules/device/components/strategy/AlarmRuleEditor.vue';
 import EffectiveStrategyPanel from '@/modules/device/components/strategy/EffectiveStrategyPanel.vue';
+import RetentionPolicyEditor from '@/modules/device/components/strategy/RetentionPolicyEditor.vue';
 
 interface StrategyProblem {
   code: string;
@@ -73,7 +81,7 @@ interface QualityRuleForm {
   maximum: number | null;
 }
 
-const { t } = useI18n();
+const { locale, t } = useI18n();
 const authStore = useAuthStore();
 const loading = ref(false);
 const savingGroup = ref(false);
@@ -82,6 +90,8 @@ const savingDraft = ref(false);
 const publishing = ref(false);
 const rollingBackId = ref<string | null>(null);
 const effectiveLoading = ref(false);
+const retentionPreviewLoading = ref(false);
+const retentionExecutionsLoading = ref(false);
 const products = ref<Product[]>([]);
 const devices = ref<Device[]>([]);
 const groups = ref<DeviceGroup[]>([]);
@@ -94,6 +104,10 @@ const selectedDeviceId = ref<string | null>(null);
 const selectedVersionId = ref<string | null>(null);
 const memberIds = ref<string[]>([]);
 const effective = ref<EffectiveStrategy | null>(null);
+const retentionPreview = ref<RetentionPreview | null>(null);
+const retentionExecutions = ref<RetentionExecution[]>([]);
+const retentionProblem = ref<StrategyProblem | null>(null);
+const retentionPolicyValid = ref(true);
 const operationProblem = ref<StrategyProblem | null>(null);
 const groupMode = ref<'create' | 'edit'>('create');
 const draftMode = ref<'create' | 'edit'>('create');
@@ -112,6 +126,12 @@ const draftForm = reactive({
   futureToleranceSeconds: 5 as number | null,
   qualityRules: [] as QualityRuleForm[],
   alarmRules: [] as AlarmRule[],
+  retentionPolicy: {
+    enabled: true,
+    retentionClass: 'STANDARD',
+    rawTelemetryDays: 90,
+    qualityEvidenceDays: 180
+  } as RetentionPolicy,
   description: ''
 });
 const publishForm = reactive({
@@ -134,7 +154,7 @@ const deviceOptions = computed<SelectOption[]>(() =>
 );
 const memberOptions = computed<SelectOption[]>(() => deviceOptions.value);
 const strategyTypeOptions = computed<SelectOption[]>(() =>
-  (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM'] as StrategyType[]).map(value => ({
+  (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM', 'RETENTION'] as StrategyType[]).map(value => ({
     label: t(`mine.strategy.type.${value.toLowerCase()}`),
     value
   }))
@@ -148,11 +168,12 @@ const versionOptions = computed<SelectOption[]>(() =>
 const policyName = computed(() => t(`mine.strategy.type.${strategyType.value.toLowerCase()}`));
 const productionHelp = computed(() =>
   t(
-    `mine.strategy.productionHelp.${strategyType.value === 'DATA_QUALITY' ? 'quality' : strategyType.value === 'ALARM' ? 'alarm' : 'online'}`
+    `mine.strategy.productionHelp.${strategyType.value === 'DATA_QUALITY' ? 'quality' : strategyType.value === 'ALARM' ? 'alarm' : strategyType.value === 'RETENTION' ? 'retention' : 'online'}`
   )
 );
 const isDataQuality = computed(() => strategyType.value === 'DATA_QUALITY');
 const isAlarm = computed(() => strategyType.value === 'ALARM');
+const isRetention = computed(() => strategyType.value === 'RETENTION');
 const scopeOptions = computed<SelectOption[]>(() =>
   (['PRODUCT', 'GROUP', 'DEVICE'] as StrategyScopeType[]).map(value => ({
     label: scopeLabel(value),
@@ -174,6 +195,20 @@ watch(
   () => {
     publishIdempotencyKey.value = null;
   }
+);
+
+watch(
+  () => [
+    strategyType.value,
+    selectedVersionId.value,
+    publishForm.scopeType,
+    publishScopeId.value,
+    draftForm.retentionPolicy
+  ],
+  () => {
+    retentionPreview.value = null;
+  },
+  { deep: true }
 );
 
 onMounted(loadProducts);
@@ -209,7 +244,9 @@ async function onStrategyTypeChanged() {
   effective.value = null;
   operationProblem.value = null;
   resetDraftForm();
-  await Promise.all([loadStrategyData(), loadEffective()]);
+  const jobs: Promise<unknown>[] = [loadStrategyData(), loadEffective()];
+  if (isRetention.value) jobs.push(loadRetentionExecutions());
+  await Promise.all(jobs);
 }
 
 async function loadProductContext() {
@@ -415,6 +452,10 @@ function syncDraftForm() {
     draftForm.alarmRules = alarmRulesFrom(version.values);
     return;
   }
+  if (version.strategyType === 'RETENTION') {
+    draftForm.retentionPolicy = retentionPolicyFrom(version.values);
+    return;
+  }
   draftForm.staleAfterSeconds = numericValue(version.values, 'staleAfterSeconds');
   draftForm.futureToleranceSeconds = numericValue(version.values, 'futureToleranceSeconds');
   draftForm.qualityRules = qualityRulesFrom(version.values);
@@ -459,6 +500,20 @@ async function runPublish() {
   }
   if (!publishScopeId.value) return window.$message?.warning(t('mine.strategy.validation.scope'));
   if (publishForm.reason.trim().length < 4) return window.$message?.warning(t('mine.strategy.validation.reason'));
+  if (isRetention.value) {
+    if (!retentionPreview.value) {
+      return window.$message?.warning(t('mine.strategy.validation.retentionPreview'));
+    }
+    if (
+      !window.confirm(
+        t('mine.strategy.confirm.retentionPublish', {
+          observedAt: retentionPreview.value.observedAt
+        })
+      )
+    ) {
+      return;
+    }
+  }
   publishing.value = true;
   operationProblem.value = null;
   publishIdempotencyKey.value ||= createIdempotencyKey('publish');
@@ -476,6 +531,7 @@ async function runPublish() {
     publishForm.reason = '';
     window.$message?.success(t('mine.strategy.message.published'));
     await Promise.all([loadStrategyData(), loadEffective()]);
+    if (isRetention.value) await loadRetentionExecutions();
   } catch (error) {
     captureProblem(error);
   } finally {
@@ -505,6 +561,43 @@ async function runRollback(release: StrategyRelease) {
   }
 }
 
+async function loadRetentionPreview() {
+  if (!productId.value || !publishScopeId.value) {
+    return window.$message?.warning(t('mine.strategy.validation.scope'));
+  }
+  const values = strategyValues();
+  if (!values || !('policy' in values) || !isRetentionPolicy(values.policy)) return;
+  retentionPreviewLoading.value = true;
+  retentionProblem.value = null;
+  retentionPreview.value = null;
+  try {
+    retentionPreview.value = await previewRetentionImpact({
+      productId: productId.value,
+      scopeType: publishForm.scopeType,
+      scopeId: publishScopeId.value,
+      policy: values.policy
+    });
+    window.$message?.success(t('mine.strategy.message.retentionPreviewLoaded'));
+  } catch (error) {
+    captureRetentionProblem(error);
+  } finally {
+    retentionPreviewLoading.value = false;
+  }
+}
+
+async function loadRetentionExecutions() {
+  retentionExecutionsLoading.value = true;
+  retentionProblem.value = null;
+  try {
+    retentionExecutions.value = await listRetentionExecutions(20);
+  } catch (error) {
+    retentionExecutions.value = [];
+    captureRetentionProblem(error);
+  } finally {
+    retentionExecutionsLoading.value = false;
+  }
+}
+
 function resetGroupForm() {
   Object.assign(groupForm, {
     groupKey: '',
@@ -521,6 +614,12 @@ function resetDraftForm() {
     futureToleranceSeconds: 5,
     qualityRules: [],
     alarmRules: [],
+    retentionPolicy: {
+      enabled: true,
+      retentionClass: 'STANDARD',
+      rawTelemetryDays: 90,
+      qualityEvidenceDays: 180
+    },
     description: ''
   });
 }
@@ -546,6 +645,13 @@ function strategyValues(): StrategyVersion['values'] | null {
       return null;
     }
     return { offlineThresholdSeconds: draftForm.threshold };
+  }
+  if (isRetention.value) {
+    if (!retentionPolicyValid.value || !isRetentionPolicyValid(draftForm.retentionPolicy)) {
+      window.$message?.warning(t('mine.strategy.validation.retentionPolicy'));
+      return null;
+    }
+    return { policy: { ...draftForm.retentionPolicy } };
   }
   if (isAlarm.value) return alarmStrategyValues();
   const values: Record<string, boolean | number> = {};
@@ -654,6 +760,45 @@ function alarmRulesFrom(values: StrategyVersion['values']): AlarmRule[] {
   return values.rules.map(rule => ({ ...rule }));
 }
 
+function retentionPolicyFrom(values: StrategyVersion['values']): RetentionPolicy {
+  if ('policy' in values && isRetentionPolicy(values.policy)) return { ...values.policy };
+  return {
+    enabled: true,
+    retentionClass: 'STANDARD',
+    rawTelemetryDays: 90,
+    qualityEvidenceDays: 180
+  };
+}
+
+function isRetentionPolicy(value: unknown): value is RetentionPolicy {
+  if (!value || typeof value !== 'object') return false;
+  const policy = value as Partial<RetentionPolicy>;
+  return Boolean(
+    typeof policy.enabled === 'boolean' &&
+      ['SHORT', 'STANDARD', 'LONG', 'ARCHIVE'].includes(policy.retentionClass || '') &&
+      typeof policy.rawTelemetryDays === 'number' &&
+      typeof policy.qualityEvidenceDays === 'number'
+  );
+}
+
+function isRetentionPolicyValid(policy: RetentionPolicy) {
+  const ranges = {
+    SHORT: [7, 30],
+    STANDARD: [31, 180],
+    LONG: [181, 730],
+    ARCHIVE: [731, 3650]
+  } as const;
+  const [minimum, maximum] = ranges[policy.retentionClass];
+  return (
+    Number.isInteger(policy.rawTelemetryDays) &&
+    policy.rawTelemetryDays >= minimum &&
+    policy.rawTelemetryDays <= maximum &&
+    Number.isInteger(policy.qualityEvidenceDays) &&
+    policy.qualityEvidenceDays >= policy.rawTelemetryDays &&
+    policy.qualityEvidenceDays <= 3650
+  );
+}
+
 function decimalScale(value: number) {
   const [coefficient = '', exponentText = '0'] = value.toString().toLowerCase().split('e');
   const fractionLength = coefficient.split('.')[1]?.length || 0;
@@ -690,6 +835,13 @@ function numericValue(values: StrategyVersion['values'], field: string) {
 function strategySummary(values: StrategyVersion['values']) {
   if ('rules' in values && Array.isArray(values.rules)) {
     return t('mine.strategy.text.alarmSummary', { count: values.rules.length });
+  }
+  if ('policy' in values && isRetentionPolicy(values.policy)) {
+    return t('mine.strategy.text.retentionSummary', {
+      retentionClass: t(`mine.strategy.retention.class.${values.policy.retentionClass.toLowerCase()}`),
+      rawDays: values.policy.rawTelemetryDays,
+      qualityDays: values.policy.qualityEvidenceDays
+    });
   }
   const threshold = numericValue(values, 'offlineThresholdSeconds');
   if (threshold !== null) {
@@ -737,6 +889,45 @@ function captureProblem(error: unknown) {
     message: t('mine.common.operationFailed')
   };
   window.$message?.error(t('mine.common.operationFailed'));
+}
+
+function captureRetentionProblem(error: unknown) {
+  if (error instanceof ApiError) {
+    retentionProblem.value = {
+      code: error.code,
+      message: error.message,
+      traceId: error.traceId,
+      details: error.details
+    };
+    window.$message?.error(error.message);
+    return;
+  }
+  retentionProblem.value = {
+    code: 'SYS-UNKNOWN-001',
+    message: t('mine.common.operationFailed')
+  };
+  window.$message?.error(t('mine.common.operationFailed'));
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat(locale.value).format(value);
+}
+
+function eligibleRowsText(impact: RetentionPreview['rawTelemetry']) {
+  return t(impact.atLeast ? 'mine.strategy.text.eligibleRowsAtLeast' : 'mine.strategy.text.eligibleRows', {
+    count: formatNumber(impact.eligibleRows)
+  });
+}
+
+function executionStatusLabel(status: RetentionExecution['status']) {
+  return t(`mine.strategy.retention.executionStatus.${status.toLowerCase()}`);
+}
+
+function executionStatusType(status: RetentionExecution['status']) {
+  if (status === 'SUCCEEDED') return 'success' as const;
+  if (status === 'FAILED') return 'error' as const;
+  if (status === 'PARTIAL') return 'warning' as const;
+  return 'info' as const;
 }
 
 function createIdempotencyKey(prefix: string) {
@@ -995,7 +1186,12 @@ function createIdempotencyKey(prefix: string) {
                       @update:value="syncDraftForm"
                     />
                   </NFormItem>
-                  <NGrid v-if="!isDataQuality && !isAlarm" responsive="screen" cols="1 s:2" :x-gap="12">
+                  <NGrid
+                    v-if="!isDataQuality && !isAlarm && !isRetention"
+                    responsive="screen"
+                    cols="1 s:2"
+                    :x-gap="12"
+                  >
                     <NGi>
                       <NFormItem :label="t('mine.strategy.field.threshold')">
                         <NInputNumber
@@ -1026,6 +1222,23 @@ function createIdempotencyKey(prefix: string) {
                       </NFormItem>
                     </NGi>
                   </NGrid>
+                  <template v-else-if="isRetention">
+                    <RetentionPolicyEditor
+                      v-model="draftForm.retentionPolicy"
+                      :readonly="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                      @validity-change="retentionPolicyValid = $event"
+                    />
+                    <NFormItem :label="t('mine.strategy.field.status')">
+                      <NTag
+                        v-if="selectedVersion"
+                        :type="selectedVersion.status === 'DRAFT' ? 'warning' : 'success'"
+                        :bordered="false"
+                      >
+                        {{ statusLabel(selectedVersion.status) }}
+                      </NTag>
+                      <NText v-else depth="3">{{ t('mine.strategy.status.draft') }}</NText>
+                    </NFormItem>
+                  </template>
                   <template v-else-if="isAlarm">
                     <NAlert type="info" :bordered="false">{{ t('mine.strategy.help.alarmTemplate') }}</NAlert>
                     <AlarmRuleEditor
@@ -1225,6 +1438,78 @@ function createIdempotencyKey(prefix: string) {
                     />
                   </NFormItem>
                   <NAlert type="info" :bordered="false">{{ t('mine.strategy.help.scope') }}</NAlert>
+                  <NFlex v-if="isRetention" vertical :size="12">
+                    <NFlex justify="space-between" align="center" :wrap="true">
+                      <NFlex vertical :size="2">
+                        <NText strong>{{ t('mine.strategy.section.retentionImpact') }}</NText>
+                        <NText depth="3">{{ t('mine.strategy.retention.irreversibleRisk') }}</NText>
+                      </NFlex>
+                      <NButton
+                        secondary
+                        type="primary"
+                        :loading="retentionPreviewLoading"
+                        data-action="preview-retention"
+                        @click="loadRetentionPreview"
+                      >
+                        {{ t('mine.strategy.action.previewRetention') }}
+                      </NButton>
+                    </NFlex>
+                    <NAlert
+                      v-if="retentionProblem"
+                      :title="t('mine.strategy.error.title')"
+                      type="error"
+                      :bordered="false"
+                    >
+                      <NFlex vertical :size="3">
+                        <NText>{{ retentionProblem.message }}</NText>
+                        <NText code>{{ t('mine.strategy.error.code', { code: retentionProblem.code }) }}</NText>
+                        <NText v-if="retentionProblem.traceId" depth="3">
+                          {{ t('mine.common.traceId', { traceId: retentionProblem.traceId }) }}
+                        </NText>
+                      </NFlex>
+                    </NAlert>
+                    <template v-if="retentionPreview">
+                      <NDescriptions :column="1" label-placement="left" bordered size="small">
+                        <NDescriptionsItem :label="t('mine.strategy.field.observedAt')">
+                          <NText code>{{ retentionPreview.observedAt }}</NText>
+                        </NDescriptionsItem>
+                        <NDescriptionsItem :label="t('mine.strategy.field.affectedDevices')">
+                          {{
+                            t('mine.strategy.text.affectedDeviceCount', {
+                              count: formatNumber(retentionPreview.affectedDeviceCount)
+                            })
+                          }}
+                        </NDescriptionsItem>
+                      </NDescriptions>
+                      <NList bordered>
+                        <NListItem>
+                          <NFlex vertical :size="3">
+                            <NText strong>{{ t('mine.strategy.field.rawTelemetryDays') }}</NText>
+                            <NText>{{ eligibleRowsText(retentionPreview.rawTelemetry) }}</NText>
+                            <NText depth="3">
+                              {{
+                                retentionPreview.rawTelemetry.earliestEligibleAt ||
+                                  t('mine.strategy.text.noEligibleTime')
+                              }}
+                            </NText>
+                          </NFlex>
+                        </NListItem>
+                        <NListItem>
+                          <NFlex vertical :size="3">
+                            <NText strong>{{ t('mine.strategy.field.qualityEvidenceDays') }}</NText>
+                            <NText>{{ eligibleRowsText(retentionPreview.qualityEvidence) }}</NText>
+                            <NText depth="3">
+                              {{
+                                retentionPreview.qualityEvidence.earliestEligibleAt ||
+                                  t('mine.strategy.text.noEligibleTime')
+                              }}
+                            </NText>
+                          </NFlex>
+                        </NListItem>
+                      </NList>
+                    </template>
+                    <NEmpty v-else :description="t('mine.strategy.empty.retentionPreview')" />
+                  </NFlex>
                   <NFormItem :label="t('mine.strategy.field.reason')">
                     <NInput
                       v-model:value="publishForm.reason"
@@ -1244,6 +1529,54 @@ function createIdempotencyKey(prefix: string) {
                     </NButton>
                   </NFlex>
                 </NForm>
+              </NCard>
+
+              <NCard
+                v-if="isRetention"
+                :title="t('mine.strategy.section.retentionExecutions')"
+                :bordered="false"
+                size="small"
+              >
+                <template #header-extra>
+                  <NButton
+                    quaternary
+                    type="primary"
+                    size="small"
+                    :loading="retentionExecutionsLoading"
+                    @click="loadRetentionExecutions"
+                  >
+                    {{ t('mine.strategy.action.refresh') }}
+                  </NButton>
+                </template>
+                <NSpin :show="retentionExecutionsLoading">
+                  <NList v-if="retentionExecutions.length" hoverable>
+                    <NListItem v-for="execution in retentionExecutions" :key="execution.executionId">
+                      <NFlex vertical :size="5" class="w-full">
+                        <NFlex justify="space-between" align="center" :wrap="true">
+                          <NText code>{{ execution.startedAt }}</NText>
+                          <NTag :type="executionStatusType(execution.status)" :bordered="false" size="small">
+                            {{ executionStatusLabel(execution.status) }}
+                          </NTag>
+                        </NFlex>
+                        <NText>
+                          {{
+                            t('mine.strategy.text.deletedRows', {
+                              raw: formatNumber(execution.rawRowsDeleted),
+                              quality: formatNumber(execution.qualityRowsDeleted)
+                            })
+                          }}
+                        </NText>
+                        <NText depth="3">
+                          {{ t('mine.strategy.field.runtimeInstance') }} · {{ execution.instanceId }}
+                        </NText>
+                        <NAlert v-if="execution.lastError" type="error" :bordered="false">
+                          {{ execution.lastError }}
+                        </NAlert>
+                      </NFlex>
+                    </NListItem>
+                  </NList>
+                  <NEmpty v-else :description="t('mine.strategy.empty.retentionExecutions')" />
+                </NSpin>
               </NCard>
 
               <NCard :title="t('mine.strategy.section.history')" :bordered="false" size="small">
