@@ -152,6 +152,37 @@ class StrategyConfigurationServiceTest {
     }
 
     @Test
+    void 应创建原子覆盖且经过白名单规范化的数据保留策略草稿() {
+        when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
+        when(mapper.nextVersionNumber(productId, "RETENTION")).thenReturn(1L);
+
+        StrategyConfigurationService.StrategyVersionView created = service.createDraft(
+                new StrategyConfigurationService.CreateDraftCommand(
+                        productId,
+                        "retention",
+                        Map.of("policy", Map.of(
+                                "enabled", true,
+                                "retentionClass", "standard",
+                                "rawTelemetryDays", 90L,
+                                "qualityEvidenceDays", 180
+                        )),
+                        "矿卡标准保留规则"
+                )
+        );
+
+        assertThat(created.strategyType()).isEqualTo("RETENTION");
+        assertThat(created.values()).containsOnlyKeys("policy");
+        assertThat(created.values().get("policy").toString())
+                .contains("STANDARD", "rawTelemetryDays=90", "qualityEvidenceDays=180");
+        verify(mapper).insertVersion(
+                eq(created.id()), eq(productId), eq("RETENTION"), eq(1L),
+                eq("{\"policy\":{\"enabled\":true,\"qualityEvidenceDays\":180,"
+                        + "\"rawTelemetryDays\":90,\"retentionClass\":\"STANDARD\"}}"),
+                eq("矿卡标准保留规则"), eq(null)
+        );
+    }
+
+    @Test
     void 任意字段和非整数值必须被类型注册表拒绝() {
         when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
 

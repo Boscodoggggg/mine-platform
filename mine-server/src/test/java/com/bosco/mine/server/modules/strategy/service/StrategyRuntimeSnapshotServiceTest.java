@@ -163,6 +163,45 @@ class StrategyRuntimeSnapshotServiceTest {
     }
 
     @Test
+    void 保留策略对象应按作用域整体覆盖并写入独立运行修订() {
+        UUID productReleaseId = UUID.randomUUID();
+        UUID deviceReleaseId = UUID.randomUUID();
+        when(snapshotMapper.hasRelease(productId, "RETENTION")).thenReturn(true);
+        when(snapshotMapper.nextRuntimeRevision(productId, "RETENTION")).thenReturn(4L);
+        when(configurationMapper.findCurrentFragmentsForDevices(
+                productId, "RETENTION", List.of(firstDeviceId)
+        )).thenReturn(List.of(
+                new StrategyConfigurationMapper.StrategyFragmentRecord(
+                        firstDeviceId, productReleaseId, "PRODUCT", productId, null,
+                        retentionValues("STANDARD", 90, 180)
+                ),
+                new StrategyConfigurationMapper.StrategyFragmentRecord(
+                        firstDeviceId, deviceReleaseId, "DEVICE", firstDeviceId, null,
+                        retentionValues("LONG", 365, 730)
+                )
+        ));
+
+        StrategyRuntimeSnapshotService.SnapshotView snapshot = service.captureDelta(
+                productId,
+                "RETENTION",
+                List.of(firstDeviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.PUBLISH
+        ).orElseThrow();
+
+        assertThat(snapshot.strategyType()).isEqualTo("RETENTION");
+        assertThat(snapshot.runtimeRevision()).isEqualTo(4);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<StrategyRuntimeSnapshotMapper.SnapshotItemWrite>> items =
+                ArgumentCaptor.forClass(List.class);
+        verify(snapshotMapper).insertItems(items.capture());
+        assertThat(items.getValue()).singleElement().satisfies(item ->
+                assertThat(item.valuesJson())
+                        .contains("\"retentionClass\":\"LONG\"")
+                        .contains("\"rawTelemetryDays\":365")
+                        .doesNotContain("STANDARD"));
+    }
+
+    @Test
     void 未发布数据质量策略或非运行消费类型不得制造空事件() {
         when(snapshotMapper.hasRelease(productId, "DATA_QUALITY")).thenReturn(false);
 
@@ -236,5 +275,16 @@ class StrategyRuntimeSnapshotServiceTest {
                   "qualityRuleCode":"STALE_TIMESTAMP"
                 }]}
                 """.formatted(key, name);
+    }
+
+    private String retentionValues(String retentionClass, int rawDays, int evidenceDays) {
+        return """
+                {"policy":{
+                  "enabled":true,
+                  "retentionClass":"%s",
+                  "rawTelemetryDays":%d,
+                  "qualityEvidenceDays":%d
+                }}
+                """.formatted(retentionClass, rawDays, evidenceDays);
     }
 }

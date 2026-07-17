@@ -585,7 +585,8 @@ class DatabaseMigrationIT {
                 .hasSize(2)
                 .allMatch(definition -> definition.contains("ONLINE_STATUS")
                         && definition.contains("DATA_QUALITY")
-                        && definition.contains("ALARM"));
+                        && definition.contains("ALARM")
+                        && definition.contains("RETENTION"));
     }
 
     @Test
@@ -636,7 +637,7 @@ class DatabaseMigrationIT {
                 SELECT pg_get_constraintdef(oid)
                 FROM pg_constraint
                 WHERE conname = 'ck_dev_strategy_runtime_snapshot_type'
-                """, String.class)).contains("DATA_QUALITY", "ALARM");
+                """, String.class)).contains("DATA_QUALITY", "ALARM", "RETENTION");
     }
 
     @Test
