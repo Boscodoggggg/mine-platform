@@ -1,6 +1,7 @@
 package com.bosco.mine.server.bootstrap.websocket;
 
 import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
+import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.socket.TextMessage;
@@ -195,15 +196,19 @@ public final class RealtimeSessionRegistry {
                 continue;
             }
             Map<String, Double> filtered = new LinkedHashMap<>();
+            Map<String, Quality> filteredQualities = new LinkedHashMap<>();
             properties.forEach(propertyId -> {
                 Double value = event.values().get(propertyId);
                 if (value != null) {
                     filtered.put(propertyId, value);
+                    filteredQualities.put(propertyId, event.qualities().get(propertyId));
                 }
             });
             if (filtered.isEmpty()) {
                 continue;
             }
+            Quality filteredQuality = filteredQualities.values().stream()
+                    .reduce(Quality.GOOD, this::worse);
             try {
                 send(state.session.getId(), Map.ofEntries(
                         Map.entry("type", "DATA"),
@@ -213,14 +218,28 @@ public final class RealtimeSessionRegistry {
                         Map.entry("sourceSequence", event.sourceSequence()),
                         Map.entry("occurredAt", event.occurredAt()),
                         Map.entry("receivedAt", event.receivedAt()),
-                        Map.entry("quality", event.quality()),
-                        Map.entry("values", Map.copyOf(filtered))
+                        Map.entry("quality", filteredQuality),
+                        Map.entry("values", Map.copyOf(filtered)),
+                        Map.entry("qualities", Map.copyOf(filteredQualities))
                 ));
             } catch (RealtimeTransportException exception) {
                 LOGGER.warn("实时连接发送失败并移除会话，sessionId={}", state.session.getId());
                 remove(state.session.getId());
             }
         }
+    }
+
+    private Quality worse(Quality left, Quality right) {
+        if (left == Quality.BAD || right == Quality.BAD) {
+            return Quality.BAD;
+        }
+        if (left == Quality.TIME_UNTRUSTED || right == Quality.TIME_UNTRUSTED) {
+            return Quality.TIME_UNTRUSTED;
+        }
+        if (left == Quality.UNCERTAIN || right == Quality.UNCERTAIN) {
+            return Quality.UNCERTAIN;
+        }
+        return Quality.GOOD;
     }
 
     /**

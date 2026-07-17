@@ -7,6 +7,12 @@ import com.bosco.mine.model.message.UnifiedDeviceMessage.MessageKind;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
 import com.bosco.mine.telemetry.pipeline.TelemetrySample;
+import com.bosco.mine.telemetry.quality.DataQualityEvaluation;
+import com.bosco.mine.telemetry.quality.DataQualityEvaluator;
+import com.bosco.mine.telemetry.quality.DataQualityPolicy;
+import com.bosco.mine.telemetry.quality.DataQualityPolicySource;
+import com.bosco.mine.telemetry.quality.QualityEvidence;
+import com.bosco.mine.telemetry.quality.QualityEvidenceObserver;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
 import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
@@ -19,7 +25,6 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +45,9 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
     private final TelemetryBatchWriter batchWriter;
     private final RealtimePublisher realtimePublisher;
     private final TelemetrySequenceGapObserver sequenceGapObserver;
+    private final DataQualityPolicySource qualityPolicySource;
+    private final DataQualityEvaluator qualityEvaluator;
+    private final QualityEvidenceObserver qualityEvidenceObserver;
     private final JsonMapper jsonMapper;
 
     /**
@@ -69,12 +77,48 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
             TelemetryBatchWriter batchWriter,
             RealtimePublisher realtimePublisher,
             TelemetrySequenceGapObserver sequenceGapObserver) {
+        this(
+                latestValues,
+                batchWriter,
+                realtimePublisher,
+                sequenceGapObserver,
+                ignored -> Map.of(),
+                new DataQualityEvaluator(),
+                ignored -> { }
+        );
+    }
+
+    /**
+     * 创建执行最后正确策略并观察已提交质量证据的标准化遥测批消费者。
+     *
+     * @param latestValues Redis 实时最新值仓储
+     * @param batchWriter TimescaleDB 事务批写器
+     * @param realtimePublisher 持久化完成后的实时事件发布器
+     * @param sequenceGapObserver 设备序列缺口观察器
+     * @param qualityPolicySource 数据质量策略批量读取边界
+     * @param qualityEvaluator 属性级数据质量判定器
+     * @param qualityEvidenceObserver 已提交质量证据观察器
+     */
+    public NormalizedTelemetryConsumer(
+            LatestValueRepository latestValues,
+            TelemetryBatchWriter batchWriter,
+            RealtimePublisher realtimePublisher,
+            TelemetrySequenceGapObserver sequenceGapObserver,
+            DataQualityPolicySource qualityPolicySource,
+            DataQualityEvaluator qualityEvaluator,
+            QualityEvidenceObserver qualityEvidenceObserver) {
         this.latestValues = Objects.requireNonNull(latestValues, "最新值仓储不能为空");
         this.batchWriter = Objects.requireNonNull(batchWriter, "历史批写器不能为空");
         this.realtimePublisher = Objects.requireNonNull(realtimePublisher, "实时事件发布器不能为空");
         this.sequenceGapObserver = Objects.requireNonNull(
                 sequenceGapObserver, "序列缺口观察器不能为空"
         );
+        this.qualityPolicySource = Objects.requireNonNull(
+                qualityPolicySource, "数据质量策略源不能为空");
+        this.qualityEvaluator = Objects.requireNonNull(
+                qualityEvaluator, "数据质量判定器不能为空");
+        this.qualityEvidenceObserver = Objects.requireNonNull(
+                qualityEvidenceObserver, "质量证据观察器不能为空");
         this.jsonMapper = JsonMapper.builder().findAndAddModules().build();
     }
 
@@ -88,7 +132,8 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
     public void onMessageBatch(List<Message> messages, Channel channel) {
         Objects.requireNonNull(messages, "消息批次不能为空");
         Objects.requireNonNull(channel, "RabbitMQ 通道不能为空");
-        List<PendingMessage> pending = decodeValidMessages(messages, channel);
+        List<DecodedMessage> decoded = decodeValidMessages(messages, channel);
+        List<PendingMessage> pending = evaluateValidMessages(decoded, channel);
         if (pending.isEmpty()) {
             return;
         }
@@ -96,20 +141,25 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
         List<TelemetrySample> samples = pending.stream()
                 .flatMap(item -> item.samples().stream())
                 .toList();
+        List<QualityEvidence> evidence = pending.stream()
+                .flatMap(item -> item.evidence().stream())
+                .toList();
         try {
-            TelemetryBatchWriter.WriteResult result = batchWriter.write(samples);
+            TelemetryBatchWriter.WriteResult result = batchWriter.write(samples, evidence);
             observeSequenceGaps(result.sequenceGaps());
+            observeQualityEvidence(result.qualityEvidence());
             pending.stream()
                     .filter(item -> result.latestEventIds().contains(
                             item.samples().getFirst().eventId()
                     ))
-                    .forEach(item -> latestValues.updateEventIfNewer(item.samples()));
+                    .forEach(item -> latestValues.updateEventIfNewer(
+                            latestSamples(result, item)));
             pending.stream()
                     .filter(item -> result.latestEventIds().contains(
                             item.samples().getFirst().eventId()
                     ))
                     .map(item -> realtimeEvent(
-                            item.samples(),
+                            latestSamples(result, item),
                             result.latestEventIngestIds().get(
                                     item.samples().getFirst().eventId()
                             )
@@ -121,6 +171,14 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
             return;
         }
         pending.forEach(item -> ack(item.message(), channel));
+    }
+
+    private List<TelemetrySample> latestSamples(
+            TelemetryBatchWriter.WriteResult result,
+            PendingMessage pending
+    ) {
+        UUID eventId = pending.samples().getFirst().eventId();
+        return result.latestSamples().getOrDefault(eventId, pending.samples());
     }
 
     private void observeSequenceGaps(List<TelemetryBatchWriter.SequenceGap> sequenceGaps) {
@@ -136,14 +194,71 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
         }
     }
 
-    private List<PendingMessage> decodeValidMessages(List<Message> messages, Channel channel) {
-        List<PendingMessage> pending = new ArrayList<>(messages.size());
+    private void observeQualityEvidence(List<QualityEvidence> evidence) {
+        for (QualityEvidence item : evidence) {
+            try {
+                qualityEvidenceObserver.observe(item);
+            } catch (RuntimeException exception) {
+                LOGGER.warn(
+                        "数据质量命中指标记录失败，不阻塞已持久化事件: eventId={}, rule={}",
+                        item.eventId(), item.ruleCode(), exception
+                );
+            }
+        }
+    }
+
+    private List<DecodedMessage> decodeValidMessages(List<Message> messages, Channel channel) {
+        List<DecodedMessage> pending = new ArrayList<>(messages.size());
         for (Message message : messages) {
             try {
-                pending.add(new PendingMessage(message, decode(message)));
+                DecodedTelemetry telemetry = decode(message);
+                pending.add(new DecodedMessage(
+                        message, telemetry.eventId(), telemetry.deviceId(), telemetry.payload()));
             } catch (InvalidTelemetryMessageException exception) {
                 LOGGER.warn("拒绝不可重试的标准化遥测: {}", exception.getMessage());
                 reject(message, channel);
+            }
+        }
+        return List.copyOf(pending);
+    }
+
+    private List<PendingMessage> evaluateValidMessages(
+            List<DecodedMessage> decoded,
+            Channel channel
+    ) {
+        if (decoded.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, DataQualityPolicy> policies;
+        try {
+            policies = qualityPolicySource.findByDeviceIds(
+                    decoded.stream().map(DecodedMessage::deviceId).toList());
+        } catch (RuntimeException exception) {
+            LOGGER.error("本地数据质量策略暂时无法读取，{} 条消息将重新投递", decoded.size(), exception);
+            decoded.forEach(item -> nack(item.message(), channel));
+            return List.of();
+        }
+        List<PendingMessage> pending = new ArrayList<>(decoded.size());
+        for (DecodedMessage item : decoded) {
+            try {
+                DataQualityPolicy policy = policies.get(item.deviceId());
+                DataQualityEvaluation evaluation = policy == null
+                        ? qualityEvaluator.evaluate(
+                                item.eventId(), item.deviceId(), item.payload())
+                        : qualityEvaluator.evaluate(
+                                item.eventId(), item.deviceId(), item.payload(), policy);
+                if (evaluation.samples().isEmpty()) {
+                    throw new InvalidTelemetryMessageException("遥测消息不包含数值属性");
+                }
+                pending.add(new PendingMessage(item.message(), evaluation));
+            } catch (IllegalArgumentException exception) {
+                InvalidTelemetryMessageException invalid =
+                        exception instanceof InvalidTelemetryMessageException candidate
+                                ? candidate
+                                : new InvalidTelemetryMessageException(
+                                        "标准化遥测无法生成安全质量结果", exception);
+                LOGGER.warn("拒绝不可重试的标准化遥测: {}", invalid.getMessage());
+                reject(item.message(), channel);
             }
         }
         return List.copyOf(pending);
@@ -155,21 +270,41 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
         }
         TelemetrySample first = samples.getFirst();
         Map<String, Double> values = new LinkedHashMap<>();
-        samples.forEach(sample -> values.put(sample.propertyId(), sample.value()));
+        Map<String, Quality> qualities = new LinkedHashMap<>();
+        Quality aggregateQuality = Quality.GOOD;
+        for (TelemetrySample sample : samples) {
+            values.put(sample.propertyId(), sample.value());
+            qualities.put(sample.propertyId(), sample.quality());
+            aggregateQuality = worse(aggregateQuality, sample.quality());
+        }
         return new RealtimeTelemetryEvent(
                 first.eventId(),
                 first.deviceId(),
                 ingestId,
                 first.occurredAt(),
                 first.receivedAt(),
-                first.quality(),
+                aggregateQuality,
                 first.bootId(),
                 first.sequence(),
-                values
+                values,
+                qualities
         );
     }
 
-    private List<TelemetrySample> decode(Message message) {
+    private Quality worse(Quality left, Quality right) {
+        if (left == Quality.BAD || right == Quality.BAD) {
+            return Quality.BAD;
+        }
+        if (left == Quality.TIME_UNTRUSTED || right == Quality.TIME_UNTRUSTED) {
+            return Quality.TIME_UNTRUSTED;
+        }
+        if (left == Quality.UNCERTAIN || right == Quality.UNCERTAIN) {
+            return Quality.UNCERTAIN;
+        }
+        return Quality.GOOD;
+    }
+
+    private DecodedTelemetry decode(Message message) {
         try {
             MessageEnvelope<UnifiedDeviceMessage> envelope = jsonMapper.readValue(
                     message.getBody(), ENVELOPE_TYPE
@@ -177,30 +312,11 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
             validate(envelope);
             UnifiedDeviceMessage payload = envelope.payload();
             UUID deviceId = UUID.fromString(payload.deviceId());
-            Instant effectiveAt = payload.quality() == Quality.TIME_UNTRUSTED
-                    ? payload.receivedAt()
-                    : payload.occurredAt();
-            List<TelemetrySample> samples = payload.properties().values().entrySet().stream()
-                    .filter(entry -> entry.getValue() instanceof Number)
-                    .map(entry -> new TelemetrySample(
-                            envelope.eventId(),
-                            deviceId,
-                            payload.productKey(),
-                            entry.getKey(),
-                            ((Number) entry.getValue()).doubleValue(),
-                            payload.quality(),
-                            payload.bootId(),
-                            payload.sequence(),
-                            payload.messageType(),
-                            payload.occurredAt(),
-                            payload.receivedAt(),
-                            effectiveAt
-                    ))
-                    .toList();
-            if (samples.isEmpty()) {
+            if (payload.properties().values().values().stream()
+                    .noneMatch(Number.class::isInstance)) {
                 throw new InvalidTelemetryMessageException("遥测消息不包含数值属性");
             }
-            return samples;
+            return new DecodedTelemetry(envelope.eventId(), deviceId, payload);
         } catch (JacksonException | IllegalArgumentException | NullPointerException exception) {
             if (exception instanceof InvalidTelemetryMessageException invalid) {
                 throw invalid;
@@ -295,6 +411,28 @@ public final class NormalizedTelemetryConsumer implements ChannelAwareBatchMessa
         void publish(RealtimeTelemetryEvent event);
     }
 
-    private record PendingMessage(Message message, List<TelemetrySample> samples) {
+    private record DecodedTelemetry(
+            UUID eventId,
+            UUID deviceId,
+            UnifiedDeviceMessage payload
+    ) {
+    }
+
+    private record DecodedMessage(
+            Message message,
+            UUID eventId,
+            UUID deviceId,
+            UnifiedDeviceMessage payload
+    ) {
+    }
+
+    private record PendingMessage(Message message, DataQualityEvaluation evaluation) {
+        private List<TelemetrySample> samples() {
+            return evaluation.samples();
+        }
+
+        private List<QualityEvidence> evidence() {
+            return evaluation.evidence();
+        }
     }
 }

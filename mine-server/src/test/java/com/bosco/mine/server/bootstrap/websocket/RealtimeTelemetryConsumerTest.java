@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -50,6 +51,36 @@ class RealtimeTelemetryConsumerTest {
 
         verify(channel).basicReject(52L, false);
         verify(registry, org.mockito.Mockito.never()).publish(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void 旧版事件缺少属性级质量时应沿用整帧质量() throws Exception {
+        RealtimeSessionRegistry registry = mock(RealtimeSessionRegistry.class);
+        Channel channel = mock(Channel.class);
+        RealtimeTelemetryConsumer consumer = new RealtimeTelemetryConsumer(registry);
+        String legacyJson = """
+                {
+                  "eventId":"0198aef6-2e80-7000-8000-000000000301",
+                  "deviceId":"0198aef6-2e80-7000-8000-000000000101",
+                  "sourceSequence":42,
+                  "occurredAt":"2026-07-15T02:00:00Z",
+                  "receivedAt":"2026-07-15T02:00:01Z",
+                  "quality":"UNCERTAIN",
+                  "bootId":"boot-a",
+                  "deviceSequence":8,
+                  "values":{"speed":13.5}
+                }
+                """;
+        Message message = new Message(legacyJson.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        message.getMessageProperties().setDeliveryTag(53L);
+
+        consumer.onMessage(message, channel);
+
+        var event = org.mockito.ArgumentCaptor.forClass(RealtimeTelemetryEvent.class);
+        verify(registry).publish(event.capture());
+        assertThat(event.getValue().qualities())
+                .containsExactly(Map.entry("speed", Quality.UNCERTAIN));
+        verify(channel).basicAck(53L, false);
     }
 
     private RealtimeTelemetryEvent event() {

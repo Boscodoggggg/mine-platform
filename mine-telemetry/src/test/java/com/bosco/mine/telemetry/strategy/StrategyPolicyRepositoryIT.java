@@ -1,6 +1,8 @@
 package com.bosco.mine.telemetry.strategy;
 
 import com.bosco.mine.messaging.strategy.StrategyRuntimeChangedPayload;
+import com.bosco.mine.telemetry.quality.DataQualityPolicy;
+import com.bosco.mine.telemetry.quality.DataQualityPolicyRepository;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -13,6 +15,8 @@ import org.testcontainers.utility.DockerImageName;
 
 import javax.sql.DataSource;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +43,7 @@ class StrategyPolicyRepositoryIT {
     private static final UUID FIRST_DEVICE_ID = UUID.randomUUID();
     private static final UUID SECOND_DEVICE_ID = UUID.randomUUID();
     private static StrategyPolicyRepository repository;
+    private static DataQualityPolicyRepository policyReader;
     private static JdbcTemplate jdbcTemplate;
 
     @BeforeAll
@@ -47,6 +52,7 @@ class StrategyPolicyRepositoryIT {
                 TIMESCALE.getJdbcUrl(), TIMESCALE.getUsername(), TIMESCALE.getPassword());
         Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
         repository = new StrategyPolicyRepository(dataSource);
+        policyReader = new DataQualityPolicyRepository(dataSource);
         jdbcTemplate = new JdbcTemplate(dataSource);
     }
 
@@ -67,6 +73,12 @@ class StrategyPolicyRepositoryIT {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT values_json ->> 'staleAfterSeconds' FROM telemetry_data_quality_policy WHERE device_id = ?",
                 String.class, FIRST_DEVICE_ID)).isEqualTo("60");
+        Map<UUID, DataQualityPolicy> firstPolicies = policyReader.findByDeviceIds(Set.of(
+                FIRST_DEVICE_ID, SECOND_DEVICE_ID
+        ));
+        assertThat(firstPolicies).containsOnlyKeys(FIRST_DEVICE_ID);
+        assertThat(firstPolicies.get(FIRST_DEVICE_ID).staleAfterSeconds()).isEqualTo(60);
+        assertThat(firstPolicies.get(FIRST_DEVICE_ID).runtimeRevision()).isEqualTo(1L);
 
         UUID secondSnapshotId = UUID.randomUUID();
         UUID secondEventId = UUID.fromString("019f6e00-0000-7000-8000-000000000012");
@@ -92,6 +104,10 @@ class StrategyPolicyRepositoryIT {
                 SELECT runtime_revision FROM telemetry_strategy_runtime_revision
                  WHERE product_id = ? AND strategy_type = 'DATA_QUALITY'
                 """, Long.class, PRODUCT_ID)).isEqualTo(2L);
+        assertThat(policyReader.findByDeviceIds(Set.of(FIRST_DEVICE_ID, SECOND_DEVICE_ID)))
+                .containsOnlyKeys(SECOND_DEVICE_ID)
+                .extractingByKey(SECOND_DEVICE_ID)
+                .satisfies(policy -> assertThat(policy.futureToleranceSeconds()).isEqualTo(5));
 
         UUID conflictingEventId = UUID.fromString("019f6e00-0000-7000-8000-000000000013");
         StrategyRuntimeChangedPayload conflict = payload(

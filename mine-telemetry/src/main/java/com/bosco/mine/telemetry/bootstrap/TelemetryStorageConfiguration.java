@@ -5,6 +5,9 @@ import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapMetrics;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapObserver;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
+import com.bosco.mine.telemetry.quality.DataQualityEvaluator;
+import com.bosco.mine.telemetry.quality.DataQualityPolicyRepository;
+import com.bosco.mine.telemetry.quality.QualityEvidenceMetrics;
 import com.bosco.mine.telemetry.realtime.ConfirmedRealtimePublisher;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
 import com.bosco.mine.telemetry.strategy.HttpStrategySnapshotSource;
@@ -63,6 +66,9 @@ public class TelemetryStorageConfiguration {
      * @param batchWriter  TimescaleDB 历史批写器
      * @param realtimePublisher 实时遥测发布器
      * @param sequenceGapObserver 设备序列缺口观察器
+     * @param qualityPolicyRepository 数据质量策略批量读取仓储
+     * @param qualityEvaluator 属性级数据质量判定器
+     * @param qualityEvidenceMetrics 已提交质量证据指标观察器
      * @return 批消息处理器
      */
     @Bean
@@ -70,9 +76,18 @@ public class TelemetryStorageConfiguration {
             LatestValueRepository latestValues,
             TelemetryBatchWriter batchWriter,
             ConfirmedRealtimePublisher realtimePublisher,
-            TelemetrySequenceGapObserver sequenceGapObserver) {
+            TelemetrySequenceGapObserver sequenceGapObserver,
+            DataQualityPolicyRepository qualityPolicyRepository,
+            DataQualityEvaluator qualityEvaluator,
+            QualityEvidenceMetrics qualityEvidenceMetrics) {
         return new NormalizedTelemetryConsumer(
-                latestValues, batchWriter, realtimePublisher, sequenceGapObserver
+                latestValues,
+                batchWriter,
+                realtimePublisher,
+                sequenceGapObserver,
+                qualityPolicyRepository,
+                qualityEvaluator,
+                qualityEvidenceMetrics
         );
     }
 
@@ -87,6 +102,24 @@ public class TelemetryStorageConfiguration {
             MeterRegistry meterRegistry
     ) {
         return new TelemetrySequenceGapMetrics(meterRegistry);
+    }
+
+    /** 创建按批次读取最后正确数据质量策略的本地仓储。 */
+    @Bean
+    public DataQualityPolicyRepository dataQualityPolicyRepository(DataSource dataSource) {
+        return new DataQualityPolicyRepository(dataSource);
+    }
+
+    /** 创建无状态属性级数据质量判定器。 */
+    @Bean
+    public DataQualityEvaluator dataQualityEvaluator() {
+        return new DataQualityEvaluator();
+    }
+
+    /** 创建只含规则和结果低基数标签的质量命中指标。 */
+    @Bean
+    public QualityEvidenceMetrics qualityEvidenceMetrics(MeterRegistry meterRegistry) {
+        return new QualityEvidenceMetrics(meterRegistry);
     }
 
     /**

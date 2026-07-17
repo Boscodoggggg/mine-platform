@@ -9,6 +9,10 @@ import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
 import com.bosco.mine.telemetry.pipeline.TelemetrySample;
+import com.bosco.mine.telemetry.quality.DataQualityEvaluator;
+import com.bosco.mine.telemetry.quality.DataQualityPolicyRepository;
+import com.bosco.mine.telemetry.quality.QualityEvidence;
+import com.bosco.mine.telemetry.quality.QualityRuleCode;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -145,8 +149,9 @@ class TelemetryStorageIT {
     void 清空存储() throws Exception {
         connectionFactory.getConnection().serverCommands().flushDb();
         execute("""
-                TRUNCATE TABLE telemetry_inbox, telemetry_numeric, telemetry_latest_numeric,
-                               telemetry_latest_state, telemetry_retired_boot
+                TRUNCATE TABLE telemetry_quality_evidence, telemetry_inbox, telemetry_numeric,
+                               telemetry_latest_numeric, telemetry_latest_state,
+                               telemetry_retired_boot, telemetry_data_quality_policy
                 """);
         rabbitAdmin.purgeQueue(TEST_QUEUE, false);
     }
@@ -337,9 +342,19 @@ class TelemetryStorageIT {
     void 历史批写应以事件和可靠业务键幂等且同一事件允许多个属性() throws Exception {
         TelemetrySample rpm = sample(EVENT_ID, 7L, "engine.rpm", 1280D, OCCURRED_AT);
         TelemetrySample temperature = sample(EVENT_ID, 7L, "engine.temperature", 83.5D, OCCURRED_AT);
+        QualityEvidence evidence = evidence(
+                EVENT_ID, "engine.temperature", QualityRuleCode.ABOVE_MAXIMUM
+        );
 
-        TelemetryBatchWriter.WriteResult first = telemetryBatchWriter.write(List.of(rpm, temperature));
-        TelemetryBatchWriter.WriteResult repeated = telemetryBatchWriter.write(List.of(rpm, temperature));
+        TelemetryBatchWriter.WriteResult first = telemetryBatchWriter.write(
+                List.of(rpm, temperature), List.of(evidence));
+        TelemetrySample retryWithChangedPolicy = new TelemetrySample(
+                rpm.eventId(), rpm.deviceId(), rpm.productKey(), rpm.propertyId(), rpm.value(),
+                Quality.BAD, rpm.bootId(), rpm.sequence(), rpm.messageType(), rpm.occurredAt(),
+                rpm.receivedAt(), rpm.receivedAt()
+        );
+        TelemetryBatchWriter.WriteResult repeated = telemetryBatchWriter.write(
+                List.of(retryWithChangedPolicy, temperature), List.of(evidence));
         TelemetrySample sameBusinessKey = sample(
                 UUID.fromString("019f63e2-071f-706a-bd12-4dad7150e764"),
                 7L,
@@ -353,15 +368,24 @@ class TelemetryStorageIT {
         assertThat(first.writtenPoints()).isEqualTo(2);
         assertThat(first.latestEventIds()).containsExactly(EVENT_ID);
         assertThat(first.latestEventIngestIds().get(EVENT_ID)).isPositive();
+        assertThat(first.latestSamples().get(EVENT_ID))
+                .extracting(TelemetrySample::quality)
+                .containsOnly(Quality.GOOD);
+        assertThat(first.qualityEvidence()).containsExactly(evidence);
         assertThat(repeated.claimedEvents()).isZero();
         assertThat(repeated.writtenPoints()).isZero();
         assertThat(repeated.latestEventIds()).containsExactly(EVENT_ID);
         assertThat(repeated.latestEventIngestIds())
                 .containsEntry(EVENT_ID, first.latestEventIngestIds().get(EVENT_ID));
+        assertThat(repeated.latestSamples().get(EVENT_ID))
+                .extracting(TelemetrySample::quality)
+                .containsOnly(Quality.GOOD);
+        assertThat(repeated.qualityEvidence()).isEmpty();
         assertThat(businessRepeated.latestEventIds()).isEmpty();
         assertThat(businessRepeated.latestEventIngestIds()).isEmpty();
         assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isEqualTo(1L);
         assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isEqualTo(2L);
+        assertThat(queryLong("SELECT count(*) FROM telemetry_quality_evidence")).isOne();
     }
 
     @Test
@@ -370,13 +394,17 @@ class TelemetryStorageIT {
         try {
             TelemetrySample valid = sample(EVENT_ID, 7L, "engine.rpm", 1280D, OCCURRED_AT);
             TelemetrySample rejected = sample(EVENT_ID, 7L, "engine.temperature", 999D, OCCURRED_AT);
+            QualityEvidence evidence = evidence(
+                    EVENT_ID, "engine.temperature", QualityRuleCode.ABOVE_MAXIMUM
+            );
 
             org.assertj.core.api.Assertions.assertThatThrownBy(
-                    () -> telemetryBatchWriter.write(List.of(valid, rejected))
+                    () -> telemetryBatchWriter.write(List.of(valid, rejected), List.of(evidence))
             ).isInstanceOf(TelemetryBatchWriter.TelemetryStorageException.class);
 
             assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isZero();
             assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isZero();
+            assertThat(queryLong("SELECT count(*) FROM telemetry_quality_evidence")).isZero();
         } finally {
             execute("ALTER TABLE telemetry_numeric DROP CONSTRAINT ck_test_value");
         }
@@ -441,10 +469,27 @@ class TelemetryStorageIT {
 
     @Test
     void 真实RabbitMQ批监听器应在Redis和数据库成功后消费消息() throws Exception {
+        execute("""
+                INSERT INTO telemetry_data_quality_policy (
+                    device_id, product_id, runtime_revision, snapshot_id,
+                    values_json, content_hash
+                ) VALUES (
+                    '019f63e2-071f-706a-bd12-4dad7150e75d',
+                    '019f6e00-0000-7000-8000-000000000171',
+                    7,
+                    '019f6e00-0000-7000-8000-000000000172',
+                    '{"minimum.engine.rpm": 1300}'::JSONB,
+                    'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+                )
+                """);
         NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
                 latestValueRepository,
                 telemetryBatchWriter,
-                event -> { }
+                event -> { },
+                ignored -> { },
+                new DataQualityPolicyRepository(dataSource),
+                new DataQualityEvaluator(),
+                ignored -> { }
         );
         SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(
                 rabbitConsumerConnectionFactory
@@ -468,7 +513,25 @@ class TelemetryStorageIT {
             await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
                 assertThat(queryLong("SELECT count(*) FROM telemetry_inbox")).isEqualTo(1L);
                 assertThat(queryLong("SELECT count(*) FROM telemetry_numeric")).isEqualTo(2L);
+                assertThat(queryLong("""
+                        SELECT count(*) FROM telemetry_quality_evidence
+                        WHERE rule_code = 'BELOW_MINIMUM'
+                          AND property_id = 'engine.rpm'
+                        """)).isOne();
+                assertThat(queryLong("""
+                        SELECT quality FROM telemetry_numeric
+                        WHERE property_id = 'engine.rpm'
+                        """)).isEqualTo(2L);
+                assertThat(queryLong("""
+                        SELECT quality FROM telemetry_numeric
+                        WHERE property_id = 'engine.temperature'
+                        """)).isZero();
                 assertThat(latestValueRepository.find(DEVICE_ID, "engine.rpm")).isPresent();
+                assertThat(latestValueRepository.find(DEVICE_ID, "engine.rpm").orElseThrow().quality())
+                        .isEqualTo(Quality.BAD);
+                assertThat(latestValueRepository.find(
+                        DEVICE_ID, "engine.temperature").orElseThrow().quality())
+                        .isEqualTo(Quality.GOOD);
                 assertThat(rabbitAdmin.getQueueInfo(TEST_QUEUE).getMessageCount()).isZero();
             });
         } finally {
@@ -483,6 +546,25 @@ class TelemetryStorageIT {
             double value,
             Instant effectiveAt) {
         return sample(eventId, sequence, "engine.rpm", value, effectiveAt);
+    }
+
+    private static QualityEvidence evidence(
+            UUID eventId,
+            String propertyId,
+            QualityRuleCode ruleCode
+    ) {
+        return new QualityEvidence(
+                eventId,
+                DEVICE_ID,
+                propertyId,
+                ruleCode,
+                Quality.BAD,
+                java.math.BigDecimal.valueOf(83.5D),
+                java.math.BigDecimal.valueOf(80D),
+                7L,
+                UUID.fromString("019f6e00-0000-7000-8000-000000000120"),
+                "sha256:" + "a".repeat(64)
+        );
     }
 
     private static TelemetrySample sample(

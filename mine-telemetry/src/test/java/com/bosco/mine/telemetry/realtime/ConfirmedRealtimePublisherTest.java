@@ -41,10 +41,11 @@ class ConfirmedRealtimePublisherTest {
                 42L,
                 Instant.parse("2026-07-15T02:00:00Z"),
                 Instant.parse("2026-07-15T02:00:01Z"),
-                Quality.GOOD,
+                Quality.UNCERTAIN,
                 "boot-a",
                 8L,
-                Map.of("speed", 13.5D)
+                Map.of("speed", 13.5D),
+                Map.of("speed", Quality.UNCERTAIN)
         );
 
         publisher.publish(event);
@@ -64,5 +65,6 @@ class ConfirmedRealtimePublisherTest {
                 .readTree(message.getValue().getBody());
         assertThat(json.get("sourceSequence").asLong()).isEqualTo(42L);
         assertThat(json.get("values").get("speed").asDouble()).isEqualTo(13.5D);
+        assertThat(json.get("qualities").get("speed").asString()).isEqualTo("UNCERTAIN");
     }
 }

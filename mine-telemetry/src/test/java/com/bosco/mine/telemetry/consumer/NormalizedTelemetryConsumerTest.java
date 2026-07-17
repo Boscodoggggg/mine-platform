@@ -9,6 +9,12 @@ import com.bosco.mine.model.message.UnifiedDeviceMessage.MessageKind;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
 import com.bosco.mine.telemetry.pipeline.TelemetrySample;
+import com.bosco.mine.telemetry.quality.DataQualityEvaluator;
+import com.bosco.mine.telemetry.quality.DataQualityPolicy;
+import com.bosco.mine.telemetry.quality.DataQualityPolicySource;
+import com.bosco.mine.telemetry.quality.QualityEvidence;
+import com.bosco.mine.telemetry.quality.QualityEvidenceObserver;
+import com.bosco.mine.telemetry.quality.QualityRuleCode;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
 import com.rabbitmq.client.Channel;
 import org.junit.jupiter.api.Test;
@@ -50,7 +56,7 @@ class NormalizedTelemetryConsumerTest {
         TelemetrySequenceGapObserver gapObserver = mock(TelemetrySequenceGapObserver.class);
         Channel channel = mock(Channel.class);
         when(latestValues.updateEventIfNewer(any())).thenReturn(true);
-        when(batchWriter.write(any())).thenReturn(
+        when(batchWriter.write(any(), any())).thenReturn(
                 new TelemetryBatchWriter.WriteResult(
                         1, 2, Set.of(EVENT_ID), Map.of(EVENT_ID, 41L),
                         List.of(new TelemetryBatchWriter.SequenceGap(
@@ -69,7 +75,7 @@ class NormalizedTelemetryConsumerTest {
         InOrder order = inOrder(
                 latestValues, batchWriter, realtimePublisher, gapObserver, channel
         );
-        order.verify(batchWriter).write(samples.capture());
+        order.verify(batchWriter).write(samples.capture(), any());
         order.verify(gapObserver).observe(any());
         order.verify(latestValues).updateEventIfNewer(any());
         ArgumentCaptor<RealtimeTelemetryEvent> realtimeEvent =
@@ -89,7 +95,7 @@ class NormalizedTelemetryConsumerTest {
         TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
         Channel channel = mock(Channel.class);
         doThrow(new TelemetryBatchWriter.TelemetryStorageException("测试失败", new RuntimeException()))
-                .when(batchWriter).write(any());
+                .when(batchWriter).write(any(), any());
         NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
                 latestValues, batchWriter, event -> { }
         );
@@ -114,7 +120,7 @@ class NormalizedTelemetryConsumerTest {
         consumer.onMessageBatch(List.of(invalid), channel);
 
         verify(channel).basicReject(19L, false);
-        verify(batchWriter, org.mockito.Mockito.never()).write(any());
+        verify(batchWriter, org.mockito.Mockito.never()).write(any(), any());
     }
 
     @Test
@@ -125,7 +131,7 @@ class NormalizedTelemetryConsumerTest {
                 mock(NormalizedTelemetryConsumer.RealtimePublisher.class);
         Channel channel = mock(Channel.class);
         when(latestValues.updateEventIfNewer(any())).thenReturn(true);
-        when(batchWriter.write(any())).thenReturn(new TelemetryBatchWriter.WriteResult(
+        when(batchWriter.write(any(), any())).thenReturn(new TelemetryBatchWriter.WriteResult(
                 1, 2, Set.of(EVENT_ID), Map.of(EVENT_ID, 42L)
         ));
         doThrow(new IllegalStateException("Broker confirm 失败"))
@@ -137,7 +143,7 @@ class NormalizedTelemetryConsumerTest {
         consumer.onMessageBatch(List.of(message(20L)), channel);
 
         InOrder order = inOrder(batchWriter, latestValues, realtimePublisher, channel);
-        order.verify(batchWriter).write(any());
+        order.verify(batchWriter).write(any(), any());
         order.verify(latestValues).updateEventIfNewer(any());
         order.verify(realtimePublisher).publish(any());
         order.verify(channel).basicNack(20L, false, true);
@@ -156,7 +162,7 @@ class NormalizedTelemetryConsumerTest {
                 EVENT_ID, DEVICE_ID, "boot-a", 3L, 7L, 3L
         );
         when(latestValues.updateEventIfNewer(any())).thenReturn(true);
-        when(batchWriter.write(any())).thenReturn(new TelemetryBatchWriter.WriteResult(
+        when(batchWriter.write(any(), any())).thenReturn(new TelemetryBatchWriter.WriteResult(
                 1, 2, Set.of(EVENT_ID), Map.of(EVENT_ID, 43L), List.of(gap)
         ));
         doThrow(new IllegalStateException("测试指标异常")).when(gapObserver).observe(gap);
@@ -171,6 +177,96 @@ class NormalizedTelemetryConsumerTest {
         verify(realtimePublisher).publish(any());
         verify(channel).basicAck(21L, false);
         verify(channel, org.mockito.Mockito.never()).basicNack(21L, false, true);
+    }
+
+    @Test
+    void 应批量读取策略并持久化属性级质量且只统计已提交证据() throws Exception {
+        LatestValueRepository latestValues = mock(LatestValueRepository.class);
+        TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
+        NormalizedTelemetryConsumer.RealtimePublisher realtimePublisher =
+                mock(NormalizedTelemetryConsumer.RealtimePublisher.class);
+        TelemetrySequenceGapObserver gapObserver = mock(TelemetrySequenceGapObserver.class);
+        DataQualityPolicySource policySource = mock(DataQualityPolicySource.class);
+        QualityEvidenceObserver qualityObserver = mock(QualityEvidenceObserver.class);
+        Channel channel = mock(Channel.class);
+        DataQualityPolicy policy = DataQualityPolicy.from(
+                UUID.fromString("019f6e00-0000-7000-8000-000000000140"),
+                7L,
+                "sha256:" + "a".repeat(64),
+                Map.of("minimum.engine.rpm", 1300)
+        );
+        when(policySource.findByDeviceIds(any())).thenReturn(Map.of(DEVICE_ID, policy));
+        when(batchWriter.write(any(), any())).thenAnswer(invocation ->
+                new TelemetryBatchWriter.WriteResult(
+                        1,
+                        2,
+                        Set.of(EVENT_ID),
+                        Map.of(EVENT_ID, 44L),
+                        List.of(),
+                        invocation.getArgument(1)
+                ));
+        when(latestValues.updateEventIfNewer(any())).thenReturn(true);
+        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
+                latestValues,
+                batchWriter,
+                realtimePublisher,
+                gapObserver,
+                policySource,
+                new DataQualityEvaluator(),
+                qualityObserver
+        );
+
+        consumer.onMessageBatch(List.of(message(22L)), channel);
+
+        ArgumentCaptor<List<TelemetrySample>> samples = ArgumentCaptor.forClass(List.class);
+        ArgumentCaptor<List<QualityEvidence>> evidence = ArgumentCaptor.forClass(List.class);
+        verify(batchWriter).write(samples.capture(), evidence.capture());
+        assertThat(samples.getValue())
+                .filteredOn(sample -> sample.propertyId().equals("engine.rpm"))
+                .singleElement()
+                .satisfies(sample -> assertThat(sample.quality()).isEqualTo(Quality.BAD));
+        assertThat(samples.getValue())
+                .filteredOn(sample -> sample.propertyId().equals("engine.temperature"))
+                .singleElement()
+                .satisfies(sample -> assertThat(sample.quality()).isEqualTo(Quality.GOOD));
+        assertThat(evidence.getValue()).singleElement().satisfies(item -> {
+            assertThat(item.ruleCode()).isEqualTo(QualityRuleCode.BELOW_MINIMUM);
+            assertThat(item.propertyId()).isEqualTo("engine.rpm");
+        });
+        verify(qualityObserver).observe(evidence.getValue().getFirst());
+        ArgumentCaptor<RealtimeTelemetryEvent> realtime =
+                ArgumentCaptor.forClass(RealtimeTelemetryEvent.class);
+        verify(realtimePublisher).publish(realtime.capture());
+        assertThat(realtime.getValue().quality()).isEqualTo(Quality.BAD);
+        assertThat(realtime.getValue().qualities())
+                .containsEntry("engine.rpm", Quality.BAD)
+                .containsEntry("engine.temperature", Quality.GOOD);
+        verify(channel).basicAck(22L, false);
+    }
+
+    @Test
+    void 本地策略镜像暂时不可读时应重新投递且不得写入遥测() throws Exception {
+        LatestValueRepository latestValues = mock(LatestValueRepository.class);
+        TelemetryBatchWriter batchWriter = mock(TelemetryBatchWriter.class);
+        DataQualityPolicySource policySource = mock(DataQualityPolicySource.class);
+        Channel channel = mock(Channel.class);
+        when(policySource.findByDeviceIds(any()))
+                .thenThrow(new IllegalStateException("测试策略镜像不可用"));
+        NormalizedTelemetryConsumer consumer = new NormalizedTelemetryConsumer(
+                latestValues,
+                batchWriter,
+                event -> { },
+                ignored -> { },
+                policySource,
+                new DataQualityEvaluator(),
+                ignored -> { }
+        );
+
+        consumer.onMessageBatch(List.of(message(23L)), channel);
+
+        verify(channel).basicNack(23L, false, true);
+        verify(batchWriter, org.mockito.Mockito.never()).write(any(), any());
+        verify(latestValues, org.mockito.Mockito.never()).updateEventIfNewer(any());
     }
 
     private Message message(long deliveryTag) throws Exception {

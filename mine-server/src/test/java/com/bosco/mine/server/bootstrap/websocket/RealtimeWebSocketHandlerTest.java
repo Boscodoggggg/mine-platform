@@ -205,10 +205,11 @@ class RealtimeWebSocketHandlerTest {
                 42L,
                 Instant.parse("2026-07-15T02:00:00Z"),
                 Instant.parse("2026-07-15T02:00:01Z"),
-                Quality.GOOD,
+                Quality.BAD,
                 "boot-a",
                 8L,
-                Map.of("speed", 13.5D, "rpm", 1800D)
+                Map.of("speed", 13.5D, "rpm", 1800D),
+                Map.of("speed", Quality.GOOD, "rpm", Quality.BAD)
         ));
 
         assertThat(session.messages()).hasSize(1);
@@ -218,6 +219,10 @@ class RealtimeWebSocketHandlerTest {
         assertThat(data.get("values").size()).isEqualTo(1);
         assertThat(data.get("values").get("speed").asDouble()).isEqualTo(13.5D);
         assertThat(data.get("values").get("rpm")).isNull();
+        assertThat(data.get("qualities").size()).isEqualTo(1);
+        assertThat(data.get("qualities").get("speed").asString()).isEqualTo("GOOD");
+        assertThat(data.get("qualities").get("rpm")).isNull();
+        assertThat(data.get("quality").asString()).isEqualTo("GOOD");
         assertThat(snapshotCalls).hasValue(1);
 
         registry.publish(new RealtimeTelemetryEvent(
