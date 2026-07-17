@@ -83,6 +83,7 @@ const local: App.I18n.Schema = {
       saved: 'Saved',
       yes: 'Yes',
       no: 'No',
+      fieldHelp: 'View help for “{field}”',
       requestFailed: 'The request could not be processed. Please try again later.',
       traceId: 'Trace ID: {traceId}',
       operationFailed: 'The operation failed. Please try again later.',
@@ -462,6 +463,18 @@ const local: App.I18n.Schema = {
         semantic: 'Theme Semantic',
         sort: 'Sort Order',
         default: 'Set as Default'
+      },
+      help: {
+        code: 'Business APIs and pages use this code to load the dictionary. It must start with a lowercase letter, contain 3–64 lowercase letters, numbers, or underscores, and cannot be changed after creation.',
+        name: 'Identifies this dictionary in administration pages. It can follow the terminology used by the business.',
+        status: 'Disabled values are no longer offered by business forms. Existing stored values are not rewritten.',
+        description: 'Documents the scope and maintenance rules for administrators. It does not affect business logic.',
+        value: 'Stable business value submitted by APIs and stored in data. It cannot be changed after creation.',
+        labelZh: 'Name shown in the Chinese interface. Keep it concise and consistent with business terminology.',
+        labelEn: 'Preferred name in the English interface. The Chinese label is used when this is blank.',
+        semantic: 'Controls the semantic theme color of labels. It does not change the value or business status.',
+        sort: 'Items are ordered from the smallest number upward. Leave gaps of 10 for later insertions.',
+        default: 'Each dictionary type can have only one default item. Setting this item as default clears the previous default; each business form still decides whether to select it automatically.'
       },
       semantic: {
         default: 'Default',

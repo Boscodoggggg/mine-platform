@@ -396,6 +396,7 @@ declare namespace App {
           saved: string;
           yes: string;
           no: string;
+          fieldHelp: string;
           requestFailed: string;
           traceId: string;
           operationFailed: string;
@@ -621,6 +622,19 @@ declare namespace App {
           action: Record<'createType' | 'createItem' | 'items', string>;
           modal: Record<'createType' | 'editType' | 'createItem' | 'editItem', string>;
           field: Record<
+            | 'code'
+            | 'name'
+            | 'status'
+            | 'description'
+            | 'value'
+            | 'labelZh'
+            | 'labelEn'
+            | 'semantic'
+            | 'sort'
+            | 'default',
+            string
+          >;
+          help: Record<
             | 'code'
             | 'name'
             | 'status'

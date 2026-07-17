@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, ref, watch } from 'vue';
+import { computed, h, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { DataTableColumns, DataTableRowKey, SelectOption } from 'naive-ui';
 import {
@@ -30,6 +30,7 @@ import {
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
+import FormFieldLabel from '@/components/common/form-field-label.vue';
 import SvgIcon from '@/components/custom/svg-icon.vue';
 import MenuIconSelect from '@/modules/system/components/MenuIconSelect.vue';
 import {
@@ -296,39 +297,6 @@ const buttonColumns = computed<DataTableColumns<ManagedMenuNode>>(() => [
       ])
   }
 ]);
-
-const MenuFieldLabel = defineComponent({
-  name: 'MenuFieldLabel',
-  props: {
-    labelKey: { type: String, required: true },
-    helpKey: { type: String, required: true }
-  },
-  setup(props) {
-    return () =>
-      h(NSpace, { align: 'center', size: 4 }, () => [
-        h('span', t(props.labelKey as App.I18n.I18nKey)),
-        h(
-          NTooltip,
-          { placement: 'top', trigger: 'hover' },
-          {
-            trigger: () =>
-              h(
-                NButton,
-                {
-                  text: true,
-                  circle: true,
-                  size: 'tiny',
-                  'aria-label': t('mine.menus.help.label'),
-                  'data-field-help': props.helpKey
-                },
-                () => h('span', { 'aria-hidden': 'true' }, '?')
-              ),
-            default: () => t(props.helpKey as App.I18n.I18nKey)
-          }
-        )
-      ]);
-  }
-});
 
 let loadSequence = 0;
 
@@ -821,7 +789,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.type" help-key="mine.menus.help.type" />
+                <FormFieldLabel label-key="mine.menus.field.type" help-key="mine.menus.help.type" />
               </template>
               <NSelect
                 v-model:value="form.type"
@@ -833,7 +801,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.name" help-key="mine.menus.help.name" />
+                <FormFieldLabel label-key="mine.menus.field.name" help-key="mine.menus.help.name" />
               </template>
               <NInput
                 v-model:value="form.name"
@@ -844,7 +812,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.parent" help-key="mine.menus.help.parent" />
+                <FormFieldLabel label-key="mine.menus.field.parent" help-key="mine.menus.help.parent" />
               </template>
               <NSelect
                 v-model:value="form.parentId"
@@ -857,7 +825,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.sort" help-key="mine.menus.help.sort" />
+                <FormFieldLabel label-key="mine.menus.field.sort" help-key="mine.menus.help.sort" />
               </template>
               <NInputNumber
                 v-model:value="form.sortOrder"
@@ -869,7 +837,7 @@ function showError(error: unknown) {
           <NGi v-if="form.type === 'MENU'">
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.path" help-key="mine.menus.help.path" />
+                <FormFieldLabel label-key="mine.menus.field.path" help-key="mine.menus.help.path" />
               </template>
               <NInput
                 v-model:value="form.path"
@@ -880,7 +848,7 @@ function showError(error: unknown) {
           <NGi v-if="form.type === 'MENU'">
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.component" help-key="mine.menus.help.component" />
+                <FormFieldLabel label-key="mine.menus.field.component" help-key="mine.menus.help.component" />
               </template>
               <NSelect
                 v-model:value="form.componentKey"
@@ -893,7 +861,7 @@ function showError(error: unknown) {
           <NGi v-if="form.type === 'MENU'">
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.permission" help-key="mine.menus.help.permission" />
+                <FormFieldLabel label-key="mine.menus.field.permission" help-key="mine.menus.help.permission" />
               </template>
               <NInput
                 v-model:value="form.permission"
@@ -904,7 +872,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.iconType" help-key="mine.menus.help.iconType" />
+                <FormFieldLabel label-key="mine.menus.field.iconType" help-key="mine.menus.help.iconType" />
               </template>
               <NRadioGroup
                 data-menu-icon-type
@@ -921,7 +889,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.icon" help-key="mine.menus.help.icon" />
+                <FormFieldLabel label-key="mine.menus.field.icon" help-key="mine.menus.help.icon" />
               </template>
               <MenuIconSelect v-model:value="selectedMenuIcon" :type="menuIconType" />
             </NFormItem>
@@ -929,7 +897,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.i18nKey" help-key="mine.menus.help.i18nKey" />
+                <FormFieldLabel label-key="mine.menus.field.i18nKey" help-key="mine.menus.help.i18nKey" />
               </template>
               <NInput
                 v-model:value="form.i18nKey"
@@ -940,7 +908,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.status" help-key="mine.menus.help.status" />
+                <FormFieldLabel label-key="mine.menus.field.status" help-key="mine.menus.help.status" />
               </template>
               <NSelect
                 v-model:value="form.status"
@@ -952,7 +920,7 @@ function showError(error: unknown) {
           <NGi>
             <NFormItem data-menu-field>
               <template #label>
-                <MenuFieldLabel label-key="mine.menus.field.visible" help-key="mine.menus.help.visible" />
+                <FormFieldLabel label-key="mine.menus.field.visible" help-key="mine.menus.help.visible" />
               </template>
               <NSwitch v-model:value="form.visible" />
             </NFormItem>
@@ -980,7 +948,7 @@ function showError(error: unknown) {
               <NGi>
                 <NFormItem data-button-field>
                   <template #label>
-                    <MenuFieldLabel label-key="mine.menus.field.name" help-key="mine.menus.help.buttonName" />
+                    <FormFieldLabel label-key="mine.menus.field.name" help-key="mine.menus.help.buttonName" />
                   </template>
                   <NInput
                     v-model:value="buttonForm.name"
@@ -991,7 +959,7 @@ function showError(error: unknown) {
               <NGi>
                 <NFormItem data-button-field>
                   <template #label>
-                    <MenuFieldLabel
+                    <FormFieldLabel
                       label-key="mine.menus.field.permission"
                       help-key="mine.menus.help.buttonPermission"
                     />
@@ -1005,7 +973,7 @@ function showError(error: unknown) {
               <NGi>
                 <NFormItem data-button-field>
                   <template #label>
-                    <MenuFieldLabel label-key="mine.menus.field.sort" help-key="mine.menus.help.sort" />
+                    <FormFieldLabel label-key="mine.menus.field.sort" help-key="mine.menus.help.sort" />
                   </template>
                   <NInputNumber
                     v-model:value="buttonForm.sortOrder"
@@ -1017,7 +985,7 @@ function showError(error: unknown) {
               <NGi>
                 <NFormItem data-button-field>
                   <template #label>
-                    <MenuFieldLabel label-key="mine.menus.field.status" help-key="mine.menus.help.status" />
+                    <FormFieldLabel label-key="mine.menus.field.status" help-key="mine.menus.help.status" />
                   </template>
                   <NSelect
                     v-model:value="buttonForm.status"

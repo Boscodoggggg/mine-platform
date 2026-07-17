@@ -22,6 +22,7 @@ import {
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
+import FormFieldLabel from '@/components/common/form-field-label.vue';
 import {
   createDictionaryItem,
   createDictionaryType,
@@ -392,27 +393,42 @@ function showError(error: unknown) {
       :style="{ width: 'min(560px, 92vw)' }"
     >
       <NForm label-placement="top">
-        <NFormItem :label="t('mine.dictionaries.field.code')">
+        <NFormItem data-dictionary-type-field>
+          <template #label>
+            <FormFieldLabel label-key="mine.dictionaries.field.code" help-key="mine.dictionaries.help.code" />
+          </template>
           <NInput
             v-model:value="typeForm.code"
             :disabled="Boolean(editingTypeId)"
             :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.code') })"
           />
         </NFormItem>
-        <NFormItem :label="t('mine.dictionaries.field.name')">
+        <NFormItem data-dictionary-type-field>
+          <template #label>
+            <FormFieldLabel label-key="mine.dictionaries.field.name" help-key="mine.dictionaries.help.name" />
+          </template>
           <NInput
             v-model:value="typeForm.name"
             :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.name') })"
           />
         </NFormItem>
-        <NFormItem :label="t('mine.dictionaries.field.status')">
+        <NFormItem data-dictionary-type-field>
+          <template #label>
+            <FormFieldLabel label-key="mine.dictionaries.field.status" help-key="mine.dictionaries.help.status" />
+          </template>
           <NSelect
             v-model:value="typeForm.status"
             :options="statusOptions"
             :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.dictionaries.field.status') })"
           />
         </NFormItem>
-        <NFormItem :label="t('mine.dictionaries.field.description')">
+        <NFormItem data-dictionary-type-field>
+          <template #label>
+            <FormFieldLabel
+              label-key="mine.dictionaries.field.description"
+              help-key="mine.dictionaries.help.description"
+            />
+          </template>
           <NInput
             v-model:value="typeForm.description"
             type="textarea"
@@ -437,7 +453,10 @@ function showError(error: unknown) {
       <NForm label-placement="top">
         <NGrid :cols="2" :x-gap="16">
           <NGi>
-            <NFormItem :label="t('mine.dictionaries.field.value')">
+            <NFormItem data-dictionary-item-field>
+              <template #label>
+                <FormFieldLabel label-key="mine.dictionaries.field.value" help-key="mine.dictionaries.help.value" />
+              </template>
               <NInput
                 v-model:value="itemForm.value"
                 :disabled="Boolean(editingItemId)"
@@ -446,7 +465,13 @@ function showError(error: unknown) {
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.dictionaries.field.labelZh')">
+            <NFormItem data-dictionary-item-field>
+              <template #label>
+                <FormFieldLabel
+                  label-key="mine.dictionaries.field.labelZh"
+                  help-key="mine.dictionaries.help.labelZh"
+                />
+              </template>
               <NInput
                 v-model:value="itemForm.labelZh"
                 :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.labelZh') })"
@@ -454,7 +479,13 @@ function showError(error: unknown) {
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.dictionaries.field.labelEn')">
+            <NFormItem data-dictionary-item-field>
+              <template #label>
+                <FormFieldLabel
+                  label-key="mine.dictionaries.field.labelEn"
+                  help-key="mine.dictionaries.help.labelEn"
+                />
+              </template>
               <NInput
                 v-model:value="itemForm.labelEn"
                 :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.labelEn') })"
@@ -462,7 +493,13 @@ function showError(error: unknown) {
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.dictionaries.field.semantic')">
+            <NFormItem data-dictionary-item-field>
+              <template #label>
+                <FormFieldLabel
+                  label-key="mine.dictionaries.field.semantic"
+                  help-key="mine.dictionaries.help.semantic"
+                />
+              </template>
               <NSelect
                 v-model:value="itemForm.semanticType"
                 :options="semanticOptions"
@@ -471,7 +508,10 @@ function showError(error: unknown) {
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.dictionaries.field.sort')">
+            <NFormItem data-dictionary-item-field>
+              <template #label>
+                <FormFieldLabel label-key="mine.dictionaries.field.sort" help-key="mine.dictionaries.help.sort" />
+              </template>
               <NInputNumber
                 v-model:value="itemForm.sortOrder"
                 :min="0"
@@ -480,7 +520,10 @@ function showError(error: unknown) {
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.dictionaries.field.status')">
+            <NFormItem data-dictionary-item-field>
+              <template #label>
+                <FormFieldLabel label-key="mine.dictionaries.field.status" help-key="mine.dictionaries.help.status" />
+              </template>
               <NSelect
                 v-model:value="itemForm.status"
                 :options="statusOptions"
@@ -489,7 +532,13 @@ function showError(error: unknown) {
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.dictionaries.field.default')">
+            <NFormItem data-dictionary-item-field>
+              <template #label>
+                <FormFieldLabel
+                  label-key="mine.dictionaries.field.default"
+                  help-key="mine.dictionaries.help.default"
+                />
+              </template>
               <NSwitch v-model:value="itemForm.defaultItem" />
             </NFormItem>
           </NGi>

@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { NButton } from 'naive-ui';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, setLocale } from '@/locales';
 import DictionaryManagementPage from './DictionaryManagementPage.vue';
@@ -94,6 +95,45 @@ describe('DictionaryManagementPage', () => {
 
     expect(wrapper.get('[data-dictionary-type-id="type-1"]').attributes('aria-selected')).toBe('true');
     expect(api.getDictionaryItems).not.toHaveBeenCalledWith('type-2');
+  });
+
+  it('字典类型和字典项的每个字段都应提供用途说明', async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    await wrapper.findAllComponents(NButton).find(button => button.text() === '新增字典类型')?.trigger('click');
+    await flushPromises();
+    const typeFields = document.body.querySelectorAll('[data-dictionary-type-field]');
+
+    expect(typeFields).toHaveLength(4);
+    expect([...typeFields].map(field => field.querySelector('[data-field-help]')?.getAttribute('data-field-help'))).toEqual([
+      'mine.dictionaries.help.code',
+      'mine.dictionaries.help.name',
+      'mine.dictionaries.help.status',
+      'mine.dictionaries.help.description'
+    ]);
+
+    const codeHelpButton = typeFields[0].querySelector<HTMLButtonElement>('[data-field-help]');
+    expect(codeHelpButton?.getAttribute('aria-label')).toContain('稳定编码');
+    expect(codeHelpButton?.getAttribute('aria-describedby')).toBeTruthy();
+    codeHelpButton?.focus();
+    await flushPromises();
+    expect(document.body.textContent).toContain('必须以小写字母开头');
+
+    await wrapper.findAllComponents(NButton).find(button => button.text() === '新增数据项')?.trigger('click');
+    await flushPromises();
+    const itemFields = document.body.querySelectorAll('[data-dictionary-item-field]');
+
+    expect(itemFields).toHaveLength(7);
+    expect([...itemFields].map(field => field.querySelector('[data-field-help]')?.getAttribute('data-field-help'))).toEqual([
+      'mine.dictionaries.help.value',
+      'mine.dictionaries.help.labelZh',
+      'mine.dictionaries.help.labelEn',
+      'mine.dictionaries.help.semantic',
+      'mine.dictionaries.help.sort',
+      'mine.dictionaries.help.status',
+      'mine.dictionaries.help.default'
+    ]);
   });
 });
 
