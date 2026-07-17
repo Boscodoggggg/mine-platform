@@ -167,6 +167,36 @@ class StrategyConfigurationIT {
                 .containsEntry("staleAfterSeconds", 300)
                 .containsEntry("maximum.engine.rpm", new BigDecimal("1E+2"));
         assertThat(releaseCount(fixture.productId())).isOne();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM dev_strategy_runtime_snapshot
+                 WHERE product_id = ?
+                   AND strategy_type = 'DATA_QUALITY'
+                   AND runtime_revision = 1
+                   AND change_reason = 'PUBLISH'
+                   AND item_count = 1
+                """, Long.class, fixture.productId())).isOne();
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT item.values_json ->> 'staleAfterSeconds' AS stale_after,
+                       item.values_json ->> 'maximum.engine.rpm' AS maximum_rpm
+                  FROM dev_strategy_runtime_snapshot_item item
+                  JOIN dev_strategy_runtime_snapshot snapshot ON snapshot.id = item.snapshot_id
+                 WHERE snapshot.product_id = ?
+                   AND item.device_id = ?
+                """, fixture.productId(), fixture.deviceId()))
+                .containsEntry("stale_after", "300")
+                .containsEntry("maximum_rpm", "100");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM sys_outbox_event event
+                  JOIN dev_strategy_runtime_snapshot snapshot
+                    ON snapshot.id = event.aggregate_id
+                 WHERE snapshot.product_id = ?
+                   AND event.aggregate_type = 'STRATEGY_RUNTIME_SNAPSHOT'
+                   AND event.event_type = 'strategy.runtime.changed'
+                   AND event.payload ->> 'strategyType' = 'DATA_QUALITY'
+                   AND event.payload ->> 'itemCount' = '1'
+                """, Long.class, fixture.productId())).isOne();
         assertThat(strategyMapper.findVersionById(groupDraft.id())).get()
                 .extracting(StrategyConfigurationMapper.StrategyVersionRecord::status)
                 .isEqualTo("DRAFT");

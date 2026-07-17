@@ -37,6 +37,7 @@ class StrategyConfigurationServiceTest {
     private StrategyScopeMapper scopeMapper;
     private OperationAuditService auditService;
     private EffectiveStrategyCacheInvalidator cacheInvalidator;
+    private StrategyRuntimeSnapshotService runtimeSnapshotService;
     private StrategyConfigurationService service;
 
     @BeforeEach
@@ -45,12 +46,14 @@ class StrategyConfigurationServiceTest {
         scopeMapper = mock(StrategyScopeMapper.class);
         auditService = mock(OperationAuditService.class);
         cacheInvalidator = mock(EffectiveStrategyCacheInvalidator.class);
+        runtimeSnapshotService = mock(StrategyRuntimeSnapshotService.class);
         service = new StrategyConfigurationService(
                 mapper,
                 scopeMapper,
                 auditService,
                 JsonMapper.builder().findAndAddModules().build(),
-                cacheInvalidator
+                cacheInvalidator,
+                runtimeSnapshotService
         );
     }
 
@@ -242,6 +245,10 @@ class StrategyConfigurationServiceTest {
                 List.of(deviceId),
                 EffectiveStrategyCacheInvalidator.InvalidationReason.PUBLISH
         );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "ONLINE_STATUS", List.of(deviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.PUBLISH
+        );
     }
 
     @Test
@@ -398,6 +405,10 @@ class StrategyConfigurationServiceTest {
                 "ONLINE_STATUS",
                 List.of(deviceId),
                 EffectiveStrategyCacheInvalidator.InvalidationReason.ROLLBACK
+        );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "ONLINE_STATUS", List.of(deviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.ROLLBACK
         );
     }
 

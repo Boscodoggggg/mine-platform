@@ -9,6 +9,7 @@ import com.bosco.mine.server.modules.device.dto.ProductResponse;
 import com.bosco.mine.server.modules.device.model.Device;
 import com.bosco.mine.server.modules.device.model.Product;
 import com.bosco.mine.server.modules.device.repository.DeviceMapper;
+import com.bosco.mine.server.modules.strategy.service.StrategyRuntimeSnapshotService;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class DeviceCommandService {
 
     private final DeviceMapper mapper;
     private final OperationAuditService auditService;
+    private final StrategyRuntimeSnapshotService runtimeSnapshotService;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -48,10 +50,16 @@ public class DeviceCommandService {
      *
      * @param mapper       设备数据访问接口
      * @param auditService 操作审计服务
+     * @param runtimeSnapshotService 运行策略增量快照服务
      */
-    public DeviceCommandService(DeviceMapper mapper, OperationAuditService auditService) {
+    public DeviceCommandService(
+            DeviceMapper mapper,
+            OperationAuditService auditService,
+            StrategyRuntimeSnapshotService runtimeSnapshotService
+    ) {
         this.mapper = mapper;
         this.auditService = auditService;
+        this.runtimeSnapshotService = runtimeSnapshotService;
     }
 
     /**
@@ -164,6 +172,7 @@ public class DeviceCommandService {
             String name,
             String status
     ) {
+        mapper.lockProduct(productId);
         Product product = mapper.findProductById(productId)
                 .orElseThrow(() -> new MineException(PRODUCT_NOT_FOUND, Map.of("productId", productId)));
         if (!"ACTIVE".equals(product.status())) {
@@ -188,6 +197,10 @@ public class DeviceCommandService {
         }
         DeviceResponse created = deviceById(deviceId);
         audit("CREATE_DEVICE", "device:device:create", "DEVICE", deviceId, Map.of(), deviceSummary(created));
+        runtimeSnapshotService.captureDelta(
+                productId, "DATA_QUALITY", java.util.List.of(deviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.DEVICE_CREATE
+        );
         return created;
     }
 
@@ -228,12 +241,17 @@ public class DeviceCommandService {
     @Transactional
     public void archiveDevice(UUID deviceId, long version) {
         DeviceResponse before = deviceById(deviceId);
+        mapper.lockProduct(before.productId());
         if (mapper.archiveDevice(deviceId, version, currentOperatorId()) == 0) {
             throw new MineException(VERSION_CONFLICT, Map.of("deviceId", deviceId));
         }
         DeviceResponse archived = deviceById(deviceId);
         audit("ARCHIVE_DEVICE", "device:device:archive", "DEVICE", deviceId,
                 deviceSummary(before), deviceSummary(archived));
+        runtimeSnapshotService.captureDelta(
+                before.productId(), "DATA_QUALITY", java.util.List.of(deviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.DEVICE_ARCHIVE
+        );
     }
 
     private ProductResponse productById(UUID productId) {

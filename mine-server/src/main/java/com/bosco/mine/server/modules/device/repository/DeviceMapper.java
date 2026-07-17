@@ -20,6 +20,15 @@ import java.util.UUID;
 public interface DeviceMapper {
 
     /**
+     * 锁定产品行，统一设备生命周期和策略发布的并发加锁顺序。
+     *
+     * @param productId 产品标识
+     * @return 被锁定的产品标识
+     */
+    @Select("SELECT id FROM dev_product WHERE id = #{productId} FOR UPDATE")
+    UUID lockProduct(@Param("productId") UUID productId);
+
+    /**
      * 新增产品。
      *
      * @param id         产品标识

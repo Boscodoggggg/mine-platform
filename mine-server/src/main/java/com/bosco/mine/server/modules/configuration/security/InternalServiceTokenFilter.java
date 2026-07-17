@@ -18,7 +18,8 @@ public final class InternalServiceTokenFilter extends OncePerRequestFilter {
 
     /** 运行节点发送服务令牌使用的请求头。 */
     public static final String TOKEN_HEADER = "X-Mine-Service-Token";
-    private static final String INTERNAL_PREFIX = "/internal/v1/config-releases/";
+    private static final String CONFIGURATION_PREFIX = "/internal/v1/config-releases/";
+    private static final String STRATEGY_PREFIX = "/internal/v1/strategy-runtime-snapshots/";
 
     private final ConfigurationDistributionProperties properties;
 
@@ -33,7 +34,8 @@ public final class InternalServiceTokenFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith(INTERNAL_PREFIX);
+        String uri = request.getRequestURI();
+        return !uri.startsWith(CONFIGURATION_PREFIX) && !uri.startsWith(STRATEGY_PREFIX);
     }
 
     @Override

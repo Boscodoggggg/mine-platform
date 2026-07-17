@@ -62,6 +62,7 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
     private final OperationAuditService auditService;
     private final ObjectMapper objectMapper;
     private final EffectiveStrategyCacheInvalidator cacheInvalidator;
+    private final StrategyRuntimeSnapshotService runtimeSnapshotService;
     private final EffectiveStrategyResolver resolver = new EffectiveStrategyResolver();
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
@@ -73,19 +74,22 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
      * @param auditService   操作审计服务
      * @param objectMapper   JSON 序列化器
      * @param cacheInvalidator 有效策略缓存失效器
+     * @param runtimeSnapshotService 运行策略增量快照服务
      */
     public StrategyConfigurationService(
             StrategyConfigurationMapper mapper,
             StrategyScopeMapper scopeMapper,
             OperationAuditService auditService,
             ObjectMapper objectMapper,
-            EffectiveStrategyCacheInvalidator cacheInvalidator
+            EffectiveStrategyCacheInvalidator cacheInvalidator,
+            StrategyRuntimeSnapshotService runtimeSnapshotService
     ) {
         this.mapper = mapper;
         this.scopeMapper = scopeMapper;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
         this.cacheInvalidator = cacheInvalidator;
+        this.runtimeSnapshotService = runtimeSnapshotService;
     }
 
     /**
@@ -245,6 +249,10 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
                 "PUBLISH", null, reason, idempotencyKey,
                 contentHash, operatorId, releaseId
         );
+        runtimeSnapshotService.captureDelta(
+                version.productId(), version.strategyType(), affectedDeviceIds,
+                StrategyRuntimeSnapshotService.ChangeReason.PUBLISH
+        );
         cacheInvalidator.invalidateAfterCommit(
                 version.strategyType(), affectedDeviceIds,
                 EffectiveStrategyCacheInvalidator.InvalidationReason.PUBLISH
@@ -296,6 +304,10 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
                 historical.productId(), historical.strategyVersionId(), historical.strategyType(), target,
                 "ROLLBACK", historicalReleaseId, normalizedReason, normalizedIdempotencyKey,
                 historical.contentHash(), operatorId, releaseId
+        );
+        runtimeSnapshotService.captureDelta(
+                historical.productId(), historical.strategyType(), affectedDeviceIds,
+                StrategyRuntimeSnapshotService.ChangeReason.ROLLBACK
         );
         cacheInvalidator.invalidateAfterCommit(
                 historical.strategyType(), affectedDeviceIds,

@@ -60,6 +60,24 @@ class InternalServiceTokenFilterTest {
         verify(chain, never()).doFilter(request, response);
     }
 
+    @Test
+    void 同一服务令牌必须保护策略运行快照接口() throws Exception {
+        Path tokenFile = tempDir.resolve("configuration-token");
+        String token = "configuration-token-with-at-least-32-bytes";
+        Files.writeString(tokenFile, token);
+        InternalServiceTokenFilter filter = new InternalServiceTokenFilter(
+                new ConfigurationDistributionProperties(true, tokenFile));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/internal/v1/strategy-runtime-snapshots/snapshot-id");
+        request.addHeader(InternalServiceTokenFilter.TOKEN_HEADER, token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        verify(chain).doFilter(request, response);
+    }
+
     private MockHttpServletRequest request() {
         return new MockHttpServletRequest("GET", "/internal/v1/config-releases/release-id");
     }

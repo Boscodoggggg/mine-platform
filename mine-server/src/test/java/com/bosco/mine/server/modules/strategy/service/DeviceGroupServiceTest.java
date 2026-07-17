@@ -35,6 +35,7 @@ class DeviceGroupServiceTest {
     private OperationAuditService auditService;
     private StrategyConflictGuard conflictGuard;
     private EffectiveStrategyCacheInvalidator cacheInvalidator;
+    private StrategyRuntimeSnapshotService runtimeSnapshotService;
     private DeviceGroupService service;
 
     @BeforeEach
@@ -43,7 +44,9 @@ class DeviceGroupServiceTest {
         auditService = mock(OperationAuditService.class);
         conflictGuard = mock(StrategyConflictGuard.class);
         cacheInvalidator = mock(EffectiveStrategyCacheInvalidator.class);
-        service = new DeviceGroupService(mapper, auditService, conflictGuard, cacheInvalidator);
+        runtimeSnapshotService = mock(StrategyRuntimeSnapshotService.class);
+        service = new DeviceGroupService(
+                mapper, auditService, conflictGuard, cacheInvalidator, runtimeSnapshotService);
     }
 
     @Test
@@ -170,6 +173,10 @@ class DeviceGroupServiceTest {
                 List.of(addedDeviceId, removedDeviceId),
                 EffectiveStrategyCacheInvalidator.InvalidationReason.MEMBERSHIP
         );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "DATA_QUALITY", List.of(addedDeviceId, removedDeviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
+        );
     }
 
     @Test
@@ -219,6 +226,10 @@ class DeviceGroupServiceTest {
                 "ONLINE_STATUS",
                 List.of(memberId),
                 EffectiveStrategyCacheInvalidator.InvalidationReason.ARCHIVE
+        );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "DATA_QUALITY", List.of(memberId),
+                StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
         );
     }
 

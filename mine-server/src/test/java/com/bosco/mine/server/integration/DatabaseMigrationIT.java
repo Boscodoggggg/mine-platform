@@ -52,6 +52,8 @@ class DatabaseMigrationIT {
             "dev_device_group_membership",
             "dev_strategy_version",
             "dev_strategy_release",
+            "dev_strategy_runtime_snapshot",
+            "dev_strategy_runtime_snapshot_item",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -473,6 +475,52 @@ class DatabaseMigrationIT {
                 .hasSize(2)
                 .allMatch(definition -> definition.contains("ONLINE_STATUS")
                         && definition.contains("DATA_QUALITY"));
+    }
+
+    @Test
+    void 策略运行快照必须具备单调修订不可变约束和完整中文注释() {
+        assertThat(constraintColumns("uk_dev_strategy_runtime_snapshot_revision"))
+                .containsExactly("product_id", "strategy_type", "runtime_revision");
+        assertThat(constraintColumns("pk_dev_strategy_runtime_snapshot_item"))
+                .containsExactly("snapshot_id", "device_id");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN (
+                    'dev_strategy_runtime_snapshot'::regclass,
+                    'dev_strategy_runtime_snapshot_item'::regclass
+                )
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'dev_strategy_runtime_snapshot',
+                    'dev_strategy_runtime_snapshot_item'
+                )
+                """, String.class))
+                .hasSize(2)
+                .allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_trigger
+                WHERE tgname IN (
+                    'trg_dev_strategy_runtime_snapshot_immutable',
+                    'trg_dev_strategy_runtime_snapshot_item_immutable'
+                )
+                  AND NOT tgisinternal
+                """, Long.class)).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_dev_strategy_runtime_snapshot_reason'
+                """, String.class)).contains(
+                "PUBLISH", "ROLLBACK", "MEMBERSHIP", "PRIORITY",
+                "GROUP_ARCHIVE", "DEVICE_CREATE", "DEVICE_ARCHIVE"
+        );
     }
 
     @Test

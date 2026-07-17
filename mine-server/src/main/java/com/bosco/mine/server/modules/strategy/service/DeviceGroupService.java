@@ -45,6 +45,7 @@ public class DeviceGroupService {
     private final OperationAuditService auditService;
     private final StrategyConflictGuard conflictGuard;
     private final EffectiveStrategyCacheInvalidator cacheInvalidator;
+    private final StrategyRuntimeSnapshotService runtimeSnapshotService;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -54,17 +55,20 @@ public class DeviceGroupService {
      * @param auditService  操作审计服务
      * @param conflictGuard 策略冲突门禁
      * @param cacheInvalidator 有效策略缓存失效器
+     * @param runtimeSnapshotService 运行策略增量快照服务
      */
     public DeviceGroupService(
             StrategyScopeMapper mapper,
             OperationAuditService auditService,
             StrategyConflictGuard conflictGuard,
-            EffectiveStrategyCacheInvalidator cacheInvalidator
+            EffectiveStrategyCacheInvalidator cacheInvalidator,
+            StrategyRuntimeSnapshotService runtimeSnapshotService
     ) {
         this.mapper = mapper;
         this.auditService = auditService;
         this.conflictGuard = conflictGuard;
         this.cacheInvalidator = cacheInvalidator;
+        this.runtimeSnapshotService = runtimeSnapshotService;
     }
 
     /**
@@ -193,6 +197,10 @@ public class DeviceGroupService {
                 "DEVICE_GROUP", groupId, summary(before), summary(updated)
         );
         if (locked.priority() != command.priority()) {
+            runtimeSnapshotService.captureDelta(
+                    locked.productId(), "DATA_QUALITY", affectedDeviceIds,
+                    StrategyRuntimeSnapshotService.ChangeReason.PRIORITY
+            );
             cacheInvalidator.invalidateAfterCommit(
                     "ONLINE_STATUS", affectedDeviceIds,
                     EffectiveStrategyCacheInvalidator.InvalidationReason.PRIORITY
@@ -270,6 +278,10 @@ public class DeviceGroupService {
         List<UUID> affectedDeviceIds = new ArrayList<>(added.size() + removed.size());
         affectedDeviceIds.addAll(added);
         affectedDeviceIds.addAll(removed);
+        runtimeSnapshotService.captureDelta(
+                group.productId(), "DATA_QUALITY", affectedDeviceIds,
+                StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
+        );
         cacheInvalidator.invalidateAfterCommit(
                 "ONLINE_STATUS", affectedDeviceIds,
                 EffectiveStrategyCacheInvalidator.InvalidationReason.MEMBERSHIP
@@ -300,6 +312,10 @@ public class DeviceGroupService {
         auditService.recordSuccess(
                 "DEVICE_STRATEGY", "ARCHIVE_DEVICE_GROUP", "device:group:edit",
                 "DEVICE_GROUP", groupId, summary(before), Map.of("status", "ARCHIVED")
+        );
+        runtimeSnapshotService.captureDelta(
+                initial.productId(), "DATA_QUALITY", affectedDeviceIds,
+                StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
         );
         cacheInvalidator.invalidateAfterCommit(
                 "ONLINE_STATUS", affectedDeviceIds,
