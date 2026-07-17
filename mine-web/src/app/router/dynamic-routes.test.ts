@@ -200,7 +200,7 @@ describe('buildDynamicNavigation', () => {
     ]);
   });
 
-  it('数据治理菜单应命中保留页面并固定为RETENTION策略', () => {
+  it('数据治理菜单应命中保留和聚合页面并固定保留策略类型', () => {
     const governanceNodes: NavigationMenuNode[] = [
       {
         ...nodes[0],
@@ -218,6 +218,16 @@ describe('buildDynamicNavigation', () => {
             permission: 'governance:retention:view',
             i18nKey: 'mine.menu.retention',
             children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'aggregation-governance',
+            name: '数值聚合',
+            path: '/governance/aggregation',
+            componentKey: 'aggregation-governance',
+            permission: 'governance:aggregation:view',
+            i18nKey: 'mine.menu.aggregation',
+            children: []
           }
         ]
       }
@@ -228,11 +238,16 @@ describe('buildDynamicNavigation', () => {
     setLocale('zh-CN');
 
     expect(result.unknownComponentKeys).toEqual([]);
-    expect(result.routes).toHaveLength(1);
-    expect(result.routes[0]?.path).toBe('/governance/retention');
-    expect(result.routes[0]?.children?.[0]?.props).toEqual({ fixedStrategyType: 'RETENTION' });
+    expect(result.routes).toHaveLength(2);
+    const retentionRoute = result.routes.find(route => route.path === '/governance/retention');
+    expect(retentionRoute?.children?.[0]?.props).toEqual({ fixedStrategyType: 'RETENTION' });
+    expect(result.routes.some(route => route.path === '/governance/aggregation')).toBe(true);
     expect(result.menus[0]?.label).toBe('Data Governance');
-    expect(result.menus[0]?.children?.[0]?.label).toBe('Data Retention');
+    expect(result.menus[0]?.children?.map(child => child.label).sort()).toEqual([
+      'Data Retention',
+      'Numeric Aggregation'
+    ]);
+    expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
   });
 
   it('告警中心组件键应命中本地白名单并生成国际化导航', () => {

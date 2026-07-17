@@ -66,6 +66,7 @@ const local: App.I18n.Schema = {
       monitor: 'Device Monitoring',
       governance: 'Data Governance',
       retention: 'Data Retention',
+      aggregation: 'Numeric Aggregation',
       command: 'Command Management',
       commandCenter: 'Command Center',
       alarms: 'Alarm Management',
@@ -406,7 +407,8 @@ const local: App.I18n.Schema = {
         path: 'Frontend route starting with /, for example /system/menus. It must be unique across the platform.',
         component: 'Choose from the frontend compile-time component registry. Arbitrary file paths are not allowed.',
         permission: 'Must match backend Sa-Token annotations and frontend action checks, such as system:menu:view.',
-        iconType: 'Use Iconify for general navigation or a bundled SVG local icon. Switching type clears the selection.',
+        iconType:
+          'Use Iconify for general navigation or a bundled SVG local icon. Switching type clears the selection.',
         icon: 'Choose the navigation icon from the library. Button nodes usually need no icon; blank values use the fallback.',
         i18nKey: 'Stable key present in both locale files, such as mine.menu.menus. The node name is used when blank.',
         status:
@@ -481,7 +483,8 @@ const local: App.I18n.Schema = {
         labelEn: 'Preferred name in the English interface. The Chinese label is used when this is blank.',
         semantic: 'Controls the semantic theme color of labels. It does not change the value or business status.',
         sort: 'Items are ordered from the smallest number upward. Leave gaps of 10 for later insertions.',
-        default: 'Each dictionary type can have only one default item. Setting this item as default clears the previous default; each business form still decides whether to select it automatically.'
+        default:
+          'Each dictionary type can have only one default item. Setting this item as default clears the previous default; each business form still decides whether to select it automatically.'
       },
       semantic: {
         default: 'Default',
@@ -688,7 +691,8 @@ const local: App.I18n.Schema = {
         online_status: 'Online Status Policy',
         data_quality: 'Data Quality Policy',
         alarm: 'Alarm Policy',
-        retention: 'Data Retention Policy'
+        retention: 'Data Retention Policy',
+        aggregation: 'Numeric Aggregation Policy'
       },
       productionHelp: {
         online:
@@ -698,7 +702,9 @@ const local: App.I18n.Schema = {
         alarm:
           'An alarm release participates in real-time telemetry evaluation. Review scope, severity, durations, recovery hysteresis, and cooldown to prevent chatter or missed alarms.',
         retention:
-          'A retention release lets the runtime delete expired data on schedule. Preview the current scope and verify the observation time and eligible rows first.'
+          'A retention release lets the runtime delete expired data on schedule. Preview the current scope and verify the observation time and eligible rows first.',
+        aggregation:
+          'An aggregation release materializes long-lived numeric buckets. Verify fixed bucket widths, the late-correction window, and final scope before release.'
       },
       section: {
         context: 'Configuration Context',
@@ -710,6 +716,7 @@ const local: App.I18n.Schema = {
         effective: 'Final Effective Device Policy',
         qualityRules: 'Property Quality Rules',
         alarmRules: 'Dual-source Alarm Rules',
+        aggregationRules: 'Long-lived Aggregation Rules',
         retentionImpact: 'Deletion Impact Preview',
         retentionRollbackImpact: 'Rollback Deletion Impact',
         retentionExecutions: 'Recent Execution Facts'
@@ -752,6 +759,10 @@ const local: App.I18n.Schema = {
         qualityRuleCode: 'Quality Rule',
         optionalPropertyId: 'Thing Model Property (Optional)',
         retentionPolicy: 'Data Retention Policy',
+        aggregationPolicy: 'Numeric Aggregation Policy',
+        aggregationEnabled: 'Materialization Status',
+        correctionWindowSeconds: 'Late-correction Window',
+        bucketSeconds: 'Fixed Bucket Width',
         retentionEnabled: 'Execution Status',
         rawTelemetryDays: 'Raw Telemetry Retention',
         qualityEvidenceDays: 'Quality Evidence Retention',
@@ -783,7 +794,9 @@ const local: App.I18n.Schema = {
         moveAlarmRuleDown: 'Move Down',
         previewRetention: 'Refresh Impact Preview',
         previewRetentionRollback: 'Preview Rollback Impact',
-        confirmRetentionRollback: 'Confirm Rollback'
+        confirmRetentionRollback: 'Confirm Rollback',
+        addAggregationRule: 'Add Aggregation Rule',
+        removeAggregationRule: 'Remove Rule'
       },
       status: {
         draft: 'Draft',
@@ -819,7 +832,8 @@ const local: App.I18n.Schema = {
         qualityRules: 'No property rules yet. Configure at least one time window or property rule.',
         alarmRules: 'No alarm rules yet. An alarm policy requires at least one rule.',
         retentionPreview: 'No impact preview exists for the current policy and scope.',
-        retentionExecutions: 'The runtime has not reported any retention execution facts.'
+        retentionExecutions: 'The runtime has not reported any retention execution facts.',
+        aggregationRules: 'Configure at least one property and fixed bucket-width rule.'
       },
       placeholder: {
         enter: 'Enter {field}',
@@ -842,13 +856,18 @@ const local: App.I18n.Schema = {
         qualityRequired: 'Configure at least one time window or property quality rule',
         alarmRuleCount: 'Configure between 1 and 100 alarm rules',
         alarmIdentity: 'A rule key is invalid or duplicated, or its name is empty',
-        alarmDuration: 'Durations must be integers; trigger and recovery cap at 86400 seconds and cooldown at 604800 seconds',
+        alarmDuration:
+          'Durations must be integers; trigger and recovery cap at 86400 seconds and cooldown at 604800 seconds',
         alarmHysteresis:
           'A threshold is out of range, has more than 12 decimal places, or does not form valid recovery hysteresis',
         retentionEvidence: 'Quality evidence cannot expire before raw telemetry and cannot exceed 3650 days',
-        retentionPolicy: 'Retention days must be integers within the class range and quality evidence cannot be shorter than raw telemetry',
+        retentionPolicy:
+          'Retention days must be integers within the class range and quality evidence cannot be shorter than raw telemetry',
         retentionPreview: 'Preview the current scope before releasing a data retention policy',
-        retentionSaveFirst: 'Save the modified retention draft before previewing or releasing it'
+        retentionSaveFirst: 'Save the modified retention draft before previewing or releasing it',
+        aggregationCorrection: 'The correction window must be at least twice the largest bucket: {minimum} seconds',
+        aggregationDuplicate: 'A property and bucket-width pair cannot be duplicated',
+        aggregationPolicy: 'Configure 1 to 100 unique rules with a valid correction window and fixed bucket width'
       },
       message: {
         groupCreated: 'Device group created',
@@ -866,8 +885,10 @@ const local: App.I18n.Schema = {
         archiveGroup:
           'Archive this device group? Current memberships will end while release history remains immutable.',
         rollback: 'Create a new rollback release from this historical release?',
-        retentionPublish: 'Preview observed at {observedAt}. Expired data will be permanently deleted and cannot be recovered. Continue?',
-        retentionRollback: 'Observed at {observedAt}: {target} targets, {affected} final changes, {enabled} with deletion enabled; {raw} raw rows and {quality} quality rows are eligible. Expired data will be permanently deleted and cannot be recovered. Continue?'
+        retentionPublish:
+          'Preview observed at {observedAt}. Expired data will be permanently deleted and cannot be recovered. Continue?',
+        retentionRollback:
+          'Observed at {observedAt}: {target} targets, {affected} final changes, {enabled} with deletion enabled; {raw} raw rows and {quality} quality rows are eligible. Expired data will be permanently deleted and cannot be recovered. Continue?'
       },
       error: {
         title: 'Policy Operation Failed',
@@ -909,6 +930,7 @@ const local: App.I18n.Schema = {
         qualitySummary: '{count} property rules',
         alarmSummary: '{count} alarm rules',
         retentionSummary: '{retentionClass} · Raw {rawDays} days · Quality {qualityDays} days',
+        aggregationSummary: '{count} aggregation rules · Correct for {correction} seconds',
         affectedDeviceCount: '{count} devices',
         eligibleRows: '{count} eligible rows',
         eligibleRowsAtLeast: '{count}+ eligible rows',
@@ -923,15 +945,35 @@ const local: App.I18n.Schema = {
         groupChangeConfirm:
           '{action} changes an active data-retention policy. Observed at {observedAt}: {target} targets, {affected} final changes, {enabled} remain deletion-enabled; {raw} raw rows and {quality} quality rows are eligible. Deleted expired data cannot be recovered. Continue?',
         presetTitle: 'Safe Retention Presets',
-        presetHelp: 'A preset atomically replaces the class and both retention windows. You can fine-tune within the class boundary.',
+        presetHelp:
+          'A preset atomically replaces the class and both retention windows. You can fine-tune within the class boundary.',
         class: { short: 'Short', standard: 'Standard', long: 'Long', archive: 'Archive' },
         classRange: 'This class allows raw telemetry retention from {minimum} to {maximum} days.',
         pauseHelp: 'Disabling only pauses future deletion runs and preserves policy history.',
-        irreversibleRisk: 'Expired data will be permanently deleted in batches. Deletion cannot be reversed; review the impact preview before release.',
+        irreversibleRisk:
+          'Expired data will be permanently deleted in batches. Deletion cannot be reversed; review the impact preview before release.',
         pausedRisk: 'Future deletion is paused, but data already deleted will not be restored.',
         rawSummary: 'Raw telemetry {days} days',
         qualitySummary: 'Quality evidence {days} days',
         executionStatus: { running: 'Running', succeeded: 'Succeeded', partial: 'Partial', failed: 'Failed' }
+      },
+      aggregation: {
+        queryBoundary:
+          'Complete cold buckets past the correction window use long-lived rollups; hot data and boundary buckets continue to use raw telemetry.',
+        enabledHelp:
+          'Disabling stops future materialization without deleting existing rollups or restoring cleaned raw data.',
+        correctionHelp:
+          'Late rows inside the window are included when a bucket first closes; older rows require explicit recomputation.',
+        correctionSummary: 'Late-correction window: {seconds} seconds',
+        ruleCount: '{count} rules. A narrower scope atomically replaces the parent rule set.',
+        bucket: {
+          '60': '1 minute',
+          '300': '5 minutes',
+          '900': '15 minutes',
+          '3600': '1 hour',
+          '21600': '6 hours',
+          '86400': '1 day'
+        }
       },
       qualityField: {
         required: 'Required · {property}',
@@ -958,6 +1000,67 @@ const local: App.I18n.Schema = {
       title: 'Data Retention',
       subtitle:
         'Manage data lifecycle by product, group, or device; preview deletion impact before release and inspect runtime execution facts.'
+    },
+    aggregationGovernance: {
+      title: 'Numeric Aggregation',
+      subtitle:
+        'Inspect versioned aggregation runtime facts and register auditable recomputation by device, property, and bounded time range.',
+      boundary:
+        'Telemetry schedules bounded regular aggregation. Explicit recomputation only creates a request fact; it does not calculate in the browser request. This page refreshes on demand and does not poll silently.',
+      lastRefreshed: 'Refreshed at {time}',
+      readonly: 'This account can inspect aggregation runtime facts but cannot register recomputation requests.',
+      recomputeHelp:
+        'Use only for late rows beyond the correction window or an evidenced gap. The request must match an active rule, span at most 31 days, and contain no more than 10,000 buckets.',
+      executionSummary: '{rules} rules · {buckets} buckets generated · {late} late rows ignored',
+      section: {
+        recompute: 'Controlled Recomputation Request',
+        latest: 'Latest Runtime Conclusion',
+        executions: 'Automatic Aggregation Executions',
+        requests: 'Explicit Recomputation Requests'
+      },
+      field: {
+        product: 'Product',
+        device: 'Device',
+        propertyId: 'Numeric Property',
+        bucket: 'Rule Bucket Width',
+        range: 'Recomputation Range',
+        reason: 'Recomputation Reason',
+        status: 'Execution Status',
+        startedAt: 'Started At',
+        bucketCount: 'Buckets Generated',
+        lateRowsIgnored: 'Late Rows Ignored',
+        sourceWatermark: 'Source Ingestion Watermark',
+        rollupWatermark: 'Rollup Version Watermark'
+      },
+      action: { refresh: 'Refresh Runtime Facts', submit: 'Register Recomputation' },
+      placeholder: {
+        propertyId: 'For example, engine.rpm',
+        reason: 'Describe the gap, evidence, and intended repair range'
+      },
+      validation: {
+        required: 'Select a device and provide a valid property, time range, and reason of at least 4 characters',
+        range:
+          'The range must align to UTC bucket boundaries, end in the past, span at most 31 days, and contain no more than 10,000 buckets'
+      },
+      confirm: {
+        recompute:
+          'Recomputation creates a higher-version fact and never overwrites history in place. Register this request?'
+      },
+      message: { accepted: 'Recomputation request registered; track its status in request history' },
+      error: { title: 'Aggregation Governance Request Failed' },
+      empty: {
+        executions: 'No automatic aggregation executions exist yet',
+        requests: 'No explicit recomputation requests exist yet'
+      },
+      status: { pending: 'Pending', running: 'Running', succeeded: 'Succeeded', partial: 'Partial', failed: 'Failed' },
+      bucket: {
+        PT1M: '1 minute',
+        PT5M: '5 minutes',
+        PT15M: '15 minutes',
+        PT1H: '1 hour',
+        PT6H: '6 hours',
+        P1D: '1 day'
+      }
     },
     models: {
       title: 'Thing Models and Protocol Mapping',
@@ -1217,7 +1320,13 @@ const local: App.I18n.Schema = {
       listTitle: 'Command List',
       subtitle: 'Send published low-risk device commands and track reliable delivery through device execution.',
       empty: 'No commands match the current filters',
-      column: { product: 'Product', device: 'Device', template: 'Command Template', status: 'Status', createdAt: 'Created' },
+      column: {
+        product: 'Product',
+        device: 'Device',
+        template: 'Command Template',
+        status: 'Status',
+        createdAt: 'Created'
+      },
       action: {
         create: 'Send Command',
         send: 'Review Command',

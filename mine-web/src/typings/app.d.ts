@@ -378,6 +378,7 @@ declare namespace App {
           | 'monitor'
           | 'governance'
           | 'retention'
+          | 'aggregation'
           | 'command'
           | 'commandCenter'
           | 'alarms'
@@ -782,8 +783,8 @@ declare namespace App {
         strategy: {
           title: string;
           subtitle: string;
-          type: Record<'online_status' | 'data_quality' | 'alarm' | 'retention', string>;
-          productionHelp: Record<'online' | 'quality' | 'alarm' | 'retention', string>;
+          type: Record<'online_status' | 'data_quality' | 'alarm' | 'retention' | 'aggregation', string>;
+          productionHelp: Record<'online' | 'quality' | 'alarm' | 'retention' | 'aggregation', string>;
           section: Record<
             | 'context'
             | 'groups'
@@ -794,6 +795,7 @@ declare namespace App {
             | 'effective'
             | 'qualityRules'
             | 'alarmRules'
+            | 'aggregationRules'
             | 'retentionImpact'
             | 'retentionRollbackImpact'
             | 'retentionExecutions',
@@ -837,6 +839,10 @@ declare namespace App {
             | 'qualityRuleCode'
             | 'optionalPropertyId'
             | 'retentionPolicy'
+            | 'aggregationPolicy'
+            | 'aggregationEnabled'
+            | 'correctionWindowSeconds'
+            | 'bucketSeconds'
             | 'retentionEnabled'
             | 'rawTelemetryDays'
             | 'qualityEvidenceDays'
@@ -869,7 +875,9 @@ declare namespace App {
             | 'moveAlarmRuleDown'
             | 'previewRetention'
             | 'previewRetentionRollback'
-            | 'confirmRetentionRollback',
+            | 'confirmRetentionRollback'
+            | 'addAggregationRule'
+            | 'removeAggregationRule',
             string
           >;
           status: Record<
@@ -888,6 +896,7 @@ declare namespace App {
             | 'members'
             | 'qualityRules'
             | 'alarmRules'
+            | 'aggregationRules'
             | 'retentionPreview'
             | 'retentionExecutions',
             string
@@ -914,7 +923,10 @@ declare namespace App {
             | 'retentionEvidence'
             | 'retentionPolicy'
             | 'retentionPreview'
-            | 'retentionSaveFirst',
+            | 'retentionSaveFirst'
+            | 'aggregationCorrection'
+            | 'aggregationDuplicate'
+            | 'aggregationPolicy',
             string
           >;
           message: Record<
@@ -958,6 +970,7 @@ declare namespace App {
             | 'qualitySummary'
             | 'alarmSummary'
             | 'retentionSummary'
+            | 'aggregationSummary'
             | 'affectedDeviceCount'
             | 'eligibleRows'
             | 'eligibleRowsAtLeast'
@@ -994,10 +1007,52 @@ declare namespace App {
             qualitySummary: string;
             executionStatus: Record<'running' | 'succeeded' | 'partial' | 'failed', string>;
           };
+          aggregation: {
+            queryBoundary: string;
+            enabledHelp: string;
+            correctionHelp: string;
+            correctionSummary: string;
+            ruleCount: string;
+            bucket: Record<'60' | '300' | '900' | '3600' | '21600' | '86400', string>;
+          };
         };
         retentionGovernance: {
           title: string;
           subtitle: string;
+        };
+        aggregationGovernance: {
+          title: string;
+          subtitle: string;
+          boundary: string;
+          lastRefreshed: string;
+          readonly: string;
+          recomputeHelp: string;
+          executionSummary: string;
+          section: Record<'recompute' | 'latest' | 'executions' | 'requests', string>;
+          field: Record<
+            | 'product'
+            | 'device'
+            | 'propertyId'
+            | 'bucket'
+            | 'range'
+            | 'reason'
+            | 'status'
+            | 'startedAt'
+            | 'bucketCount'
+            | 'lateRowsIgnored'
+            | 'sourceWatermark'
+            | 'rollupWatermark',
+            string
+          >;
+          action: Record<'refresh' | 'submit', string>;
+          placeholder: Record<'propertyId' | 'reason', string>;
+          validation: Record<'required' | 'range', string>;
+          confirm: Record<'recompute', string>;
+          message: Record<'accepted', string>;
+          error: Record<'title', string>;
+          empty: Record<'executions' | 'requests', string>;
+          status: Record<'pending' | 'running' | 'succeeded' | 'partial' | 'failed', string>;
+          bucket: Record<'PT1M' | 'PT5M' | 'PT15M' | 'PT1H' | 'PT6H' | 'P1D', string>;
         };
         models: {
           title: string;
@@ -1060,12 +1115,7 @@ declare namespace App {
             expectation: Record<'success' | 'failure', string>;
             result: Record<'passed' | 'failed', string>;
             field: Record<
-              | 'name'
-              | 'sortOrder'
-              | 'rawPayload'
-              | 'expectedProperties'
-              | 'expectedSuccess'
-              | 'expectedErrorCode',
+              'name' | 'sortOrder' | 'rawPayload' | 'expectedProperties' | 'expectedSuccess' | 'expectedErrorCode',
               string
             >;
             gate: Record<'passed' | 'failed' | 'summary', string>;
@@ -1156,7 +1206,10 @@ declare namespace App {
           >;
           source: Record<'numeric' | 'quality', string>;
           recoveryReason: Record<'condition_cleared' | 'rule_disabled' | 'rule_removed' | 'rule_changed', string>;
-          detail: Record<'title' | 'triggerEvidence' | 'recoveryEvidence' | 'disposition' | 'noAction' | 'loading', string>;
+          detail: Record<
+            'title' | 'triggerEvidence' | 'recoveryEvidence' | 'disposition' | 'noAction' | 'loading',
+            string
+          >;
           validation: Record<'note', string>;
           confirm: Record<'ackTitle' | 'ackContent' | 'closeTitle' | 'closeContent', string>;
           message: Record<'acknowledged' | 'closed', string>;

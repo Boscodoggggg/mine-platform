@@ -1385,7 +1385,21 @@ export interface components {
         RetentionStrategyValues: {
             policy: components["schemas"]["RetentionPolicy"];
         };
-        StrategyValues: components["schemas"]["OnlineStatusStrategyValues"] | components["schemas"]["DataQualityStrategyValues"] | components["schemas"]["AlarmStrategyValues"] | components["schemas"]["RetentionStrategyValues"];
+        AggregationRule: {
+            propertyId: components["schemas"]["PropertyId"];
+            /** @enum {integer} */
+            bucketSeconds: 60 | 300 | 900 | 3600 | 21600 | 86400;
+        };
+        AggregationPolicy: {
+            enabled: boolean;
+            /** @description 不得小于最大规则桶宽的两倍。 */
+            correctionWindowSeconds: number;
+            rules: components["schemas"]["AggregationRule"][];
+        };
+        AggregationStrategyValues: {
+            policy: components["schemas"]["AggregationPolicy"];
+        };
+        StrategyValues: components["schemas"]["OnlineStatusStrategyValues"] | components["schemas"]["DataQualityStrategyValues"] | components["schemas"]["AlarmStrategyValues"] | components["schemas"]["RetentionStrategyValues"] | components["schemas"]["AggregationStrategyValues"];
         RetentionPreviewRequest: {
             /** Format: uuid */
             productId: string;

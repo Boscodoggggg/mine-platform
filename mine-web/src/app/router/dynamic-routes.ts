@@ -26,6 +26,7 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'device-model-management': () => import('@/modules/device/pages/model-management/DeviceModelManagementPage.vue'),
   'device-strategy-workbench': () => import('@/modules/device/pages/strategy/StrategyWorkbenchPage.vue'),
   'retention-governance': () => import('@/modules/device/pages/strategy/StrategyWorkbenchPage.vue'),
+  'aggregation-governance': () => import('@/modules/device/pages/aggregation-governance/AggregationGovernancePage.vue'),
   'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
   'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue'),
   'alarm-center': () => import('@/modules/alarm/pages/alarm-center/AlarmCenterPage.vue')
@@ -48,6 +49,7 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/device/monitor': 'mine.menu.monitor',
   '/governance': 'mine.menu.governance',
   '/governance/retention': 'mine.menu.retention',
+  '/governance/aggregation': 'mine.menu.aggregation',
   '/command': 'mine.menu.command',
   '/command/center': 'mine.menu.commandCenter',
   '/alarm': 'mine.menu.alarms',
@@ -65,6 +67,7 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'device-model-management': 'mine.menu.models',
   'device-strategy-workbench': 'mine.menu.strategies',
   'retention-governance': 'mine.menu.retention',
+  'aggregation-governance': 'mine.menu.aggregation',
   'device-monitor': 'mine.menu.monitor',
   'command-center': 'mine.menu.commandCenter',
   'alarm-center': 'mine.menu.alarmCenter'
@@ -153,7 +156,8 @@ function createMenu(node: NavigationMenuNode, children?: App.Global.Menu[]): App
   const routeName = createRouteName(node.type === 'DIRECTORY' ? 'dynamic-group' : 'dynamic', node.id);
   const i18nKey = resolveNavigationI18nKey(node);
   const resolvedIcon = resolveMenuIcon(node.icon);
-  const icon = resolvedIcon.icon || resolvedIcon.localIcon ? resolvedIcon : { icon: import.meta.env.VITE_MENU_ICON || 'mdi:menu' };
+  const icon =
+    resolvedIcon.icon || resolvedIcon.localIcon ? resolvedIcon : { icon: import.meta.env.VITE_MENU_ICON || 'mdi:menu' };
 
   return {
     key: routeName,

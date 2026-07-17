@@ -15,6 +15,8 @@ const businessPages = [
   'src/modules/device/pages/device-list/DeviceListPage.vue',
   'src/modules/device/pages/model-management/DeviceModelManagementPage.vue',
   'src/modules/device/pages/strategy/StrategyWorkbenchPage.vue',
+  'src/modules/device/pages/aggregation-governance/AggregationGovernancePage.vue',
+  'src/modules/device/components/strategy/AggregationPolicyEditor.vue',
   'src/modules/device/components/strategy/EffectiveStrategyPanel.vue',
   'src/modules/device/components/protocol/ProtocolSampleWorkbench.vue',
   'src/modules/device/components/protocol/ConfigReleasePanel.vue',

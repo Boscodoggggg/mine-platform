@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { i18n, setLocale } from '@/locales';
 import AlarmRuleEditor from '@/modules/device/components/strategy/AlarmRuleEditor.vue';
+import AggregationPolicyEditor from '@/modules/device/components/strategy/AggregationPolicyEditor.vue';
 import RetentionPolicyEditor from '@/modules/device/components/strategy/RetentionPolicyEditor.vue';
 import StrategyWorkbenchPage from './StrategyWorkbenchPage.vue';
 
@@ -150,6 +151,23 @@ const retentionDraft = {
   },
   description: '运输车标准保留基线'
 };
+const aggregationDraft = {
+  ...draft,
+  id: 'aggregation-version-2',
+  strategyType: 'AGGREGATION' as const,
+  versionNumber: 2,
+  values: {
+    policy: {
+      enabled: true,
+      correctionWindowSeconds: 86400,
+      rules: [
+        { propertyId: 'engine.rpm', bucketSeconds: 300 },
+        { propertyId: 'payload', bucketSeconds: 3600 }
+      ]
+    }
+  },
+  description: '运输车长期数值聚合基线'
+};
 const release = {
   id: 'release-8',
   productId: 'product-1',
@@ -192,6 +210,12 @@ const retentionEffective = {
   ...effective,
   strategyType: 'RETENTION' as const,
   values: retentionDraft.values,
+  sources: { policy: effective.sources.offlineThresholdSeconds }
+};
+const aggregationEffective = {
+  ...effective,
+  strategyType: 'AGGREGATION' as const,
+  values: aggregationDraft.values,
   sources: { policy: effective.sources.offlineThresholdSeconds }
 };
 const retentionPreview = {
@@ -257,7 +281,9 @@ describe('StrategyWorkbenchPage', () => {
             ? [alarmDraft]
             : strategyType === 'RETENTION'
               ? [retentionDraft]
-              : [draft]
+              : strategyType === 'AGGREGATION'
+                ? [aggregationDraft]
+                : [draft]
       )
     );
     strategyApi.listStrategyReleases.mockImplementation(({ strategyType }: { strategyType: string }) =>
@@ -269,7 +295,9 @@ describe('StrategyWorkbenchPage', () => {
           ? qualityEffective
           : strategyType === 'RETENTION'
             ? retentionEffective
-            : effective
+            : strategyType === 'AGGREGATION'
+              ? aggregationEffective
+              : effective
       )
     );
     strategyApi.previewRetentionImpact.mockResolvedValue(retentionPreview);
@@ -410,11 +438,7 @@ describe('StrategyWorkbenchPage', () => {
     await wrapper.get('[data-action="archive-group"]').trigger('click');
     await flushPromises();
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不可恢复'));
-    expect(strategyApi.archiveDeviceGroup).toHaveBeenCalledWith(
-      'group-1',
-      2,
-      retentionPreview.previewToken
-    );
+    expect(strategyApi.archiveDeviceGroup).toHaveBeenCalledWith('group-1', 2, retentionPreview.previewToken);
   });
 
   it('应携带业务原因和稳定幂等键发布，并刷新历史与有效值', async () => {
@@ -582,6 +606,29 @@ describe('StrategyWorkbenchPage', () => {
     expect(strategyApi.updateStrategyDraft).toHaveBeenCalledWith('retention-version-2', {
       values: { policy: retentionDraft.values.policy },
       description: '运输车标准保留基线',
+      version: 1
+    });
+  });
+
+  it('应切换到数值聚合策略并以固定规则集保存原子策略', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit']);
+    await flushPromises();
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+
+    selector?.vm.$emit('update:value', 'AGGREGATION');
+    await flushPromises();
+
+    expect(wrapper.findComponent(AggregationPolicyEditor).exists()).toBe(true);
+    expect(wrapper.text()).toContain('长期聚合');
+    expect(wrapper.text()).toContain('engine.rpm');
+    await wrapper.get('[data-action="save-draft"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.updateStrategyDraft).toHaveBeenCalledWith('aggregation-version-2', {
+      values: aggregationDraft.values,
+      description: '运输车长期数值聚合基线',
       version: 1
     });
   });

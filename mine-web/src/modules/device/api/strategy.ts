@@ -29,6 +29,9 @@ export type RetentionPreview = components['schemas']['RetentionPreview'];
 export type RetentionGroupChangePreviewRequest = components['schemas']['RetentionGroupChangePreviewRequest'];
 export type RetentionGroupChangePreview = components['schemas']['RetentionGroupChangePreview'];
 export type RetentionExecution = components['schemas']['RetentionExecution'];
+export type AggregationRule = components['schemas']['AggregationRule'];
+export type AggregationPolicy = components['schemas']['AggregationPolicy'];
+export type AggregationStrategyValues = components['schemas']['AggregationStrategyValues'];
 
 export interface DeviceGroupQuery {
   productId: string;

@@ -51,6 +51,7 @@ import {
   updateStrategyDraft
 } from '@/modules/device/api/strategy';
 import type {
+  AggregationPolicy,
   AlarmRule,
   DeviceGroup,
   EffectiveStrategy,
@@ -65,6 +66,7 @@ import type {
 } from '@/modules/device/api/strategy';
 import { useAuthStore } from '@/store/modules/auth';
 import AlarmRuleEditor from '@/modules/device/components/strategy/AlarmRuleEditor.vue';
+import AggregationPolicyEditor from '@/modules/device/components/strategy/AggregationPolicyEditor.vue';
 import EffectiveStrategyPanel from '@/modules/device/components/strategy/EffectiveStrategyPanel.vue';
 import RetentionPolicyEditor from '@/modules/device/components/strategy/RetentionPolicyEditor.vue';
 
@@ -132,6 +134,7 @@ const retentionGroupChangePreview = ref<RetentionGroupChangePreviewState | null>
 const retentionExecutions = ref<RetentionExecution[]>([]);
 const retentionProblem = ref<StrategyProblem | null>(null);
 const retentionPolicyValid = ref(true);
+const aggregationPolicyValid = ref(true);
 const operationProblem = ref<StrategyProblem | null>(null);
 const groupMode = ref<'create' | 'edit'>('create');
 const draftMode = ref<'create' | 'edit'>('create');
@@ -156,6 +159,11 @@ const draftForm = reactive({
     rawTelemetryDays: 90,
     qualityEvidenceDays: 180
   } as RetentionPolicy,
+  aggregationPolicy: {
+    enabled: true,
+    correctionWindowSeconds: 86400,
+    rules: [{ propertyId: '', bucketSeconds: 300 }]
+  } as AggregationPolicy,
   description: ''
 });
 const publishForm = reactive({
@@ -178,7 +186,7 @@ const deviceOptions = computed<SelectOption[]>(() =>
 );
 const memberOptions = computed<SelectOption[]>(() => deviceOptions.value);
 const strategyTypeOptions = computed<SelectOption[]>(() =>
-  (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM', 'RETENTION'] as StrategyType[]).map(value => ({
+  (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM', 'RETENTION', 'AGGREGATION'] as StrategyType[]).map(value => ({
     label: t(`mine.strategy.type.${value.toLowerCase()}`),
     value
   }))
@@ -198,12 +206,13 @@ const pageSubtitle = computed(() =>
 );
 const productionHelp = computed(() =>
   t(
-    `mine.strategy.productionHelp.${strategyType.value === 'DATA_QUALITY' ? 'quality' : strategyType.value === 'ALARM' ? 'alarm' : strategyType.value === 'RETENTION' ? 'retention' : 'online'}`
+    `mine.strategy.productionHelp.${strategyType.value === 'DATA_QUALITY' ? 'quality' : strategyType.value === 'ALARM' ? 'alarm' : strategyType.value === 'RETENTION' ? 'retention' : strategyType.value === 'AGGREGATION' ? 'aggregation' : 'online'}`
   )
 );
 const isDataQuality = computed(() => strategyType.value === 'DATA_QUALITY');
 const isAlarm = computed(() => strategyType.value === 'ALARM');
 const isRetention = computed(() => strategyType.value === 'RETENTION');
+const isAggregation = computed(() => strategyType.value === 'AGGREGATION');
 const scopeOptions = computed<SelectOption[]>(() =>
   (['PRODUCT', 'GROUP', 'DEVICE'] as StrategyScopeType[]).map(value => ({
     label: scopeLabel(value),
@@ -628,6 +637,10 @@ function syncDraftForm() {
     draftForm.retentionPolicy = retentionPolicyFrom(version.values);
     return;
   }
+  if (version.strategyType === 'AGGREGATION') {
+    draftForm.aggregationPolicy = aggregationPolicyFrom(version.values);
+    return;
+  }
   draftForm.staleAfterSeconds = numericValue(version.values, 'staleAfterSeconds');
   draftForm.futureToleranceSeconds = numericValue(version.values, 'futureToleranceSeconds');
   draftForm.qualityRules = qualityRulesFrom(version.values);
@@ -799,12 +812,12 @@ function isRetentionRollbackPreviewCurrent(release: StrategyRelease, reason = ro
   const current = retentionRollbackPreview.value;
   return Boolean(
     current &&
-      current.releaseId === release.id &&
-      current.productId === release.productId &&
-      current.strategyVersionId === release.strategyVersionId &&
-      current.scopeType === release.scopeType &&
-      current.scopeId === release.scopeId &&
-      current.reason === reason
+    current.releaseId === release.id &&
+    current.productId === release.productId &&
+    current.strategyVersionId === release.strategyVersionId &&
+    current.scopeType === release.scopeType &&
+    current.scopeId === release.scopeId &&
+    current.reason === reason
   );
 }
 
@@ -871,6 +884,11 @@ function resetDraftForm() {
       rawTelemetryDays: 90,
       qualityEvidenceDays: 180
     },
+    aggregationPolicy: {
+      enabled: true,
+      correctionWindowSeconds: 86400,
+      rules: [{ propertyId: '', bucketSeconds: 300 }]
+    },
     description: ''
   });
 }
@@ -903,6 +921,23 @@ function strategyValues(): StrategyVersion['values'] | null {
       return null;
     }
     return { policy: { ...draftForm.retentionPolicy } };
+  }
+  if (isAggregation.value) {
+    if (!aggregationPolicyValid.value || !isAggregationPolicyValid(draftForm.aggregationPolicy)) {
+      window.$message?.warning(t('mine.strategy.validation.aggregationPolicy'));
+      return null;
+    }
+    return {
+      policy: {
+        enabled: draftForm.aggregationPolicy.enabled,
+        correctionWindowSeconds: draftForm.aggregationPolicy.correctionWindowSeconds,
+        rules: draftForm.aggregationPolicy.rules
+          .map(rule => ({ propertyId: rule.propertyId.trim(), bucketSeconds: rule.bucketSeconds }))
+          .sort(
+            (left, right) => left.propertyId.localeCompare(right.propertyId) || left.bucketSeconds - right.bucketSeconds
+          )
+      }
+    };
   }
   if (isAlarm.value) return alarmStrategyValues();
   const values: Record<string, boolean | number> = {};
@@ -1026,9 +1061,9 @@ function isRetentionPolicy(value: unknown): value is RetentionPolicy {
   const policy = value as Partial<RetentionPolicy>;
   return Boolean(
     typeof policy.enabled === 'boolean' &&
-      ['SHORT', 'STANDARD', 'LONG', 'ARCHIVE'].includes(policy.retentionClass || '') &&
-      typeof policy.rawTelemetryDays === 'number' &&
-      typeof policy.qualityEvidenceDays === 'number'
+    ['SHORT', 'STANDARD', 'LONG', 'ARCHIVE'].includes(policy.retentionClass || '') &&
+    typeof policy.rawTelemetryDays === 'number' &&
+    typeof policy.qualityEvidenceDays === 'number'
   );
 }
 
@@ -1048,6 +1083,54 @@ function isRetentionPolicyValid(policy: RetentionPolicy) {
     policy.qualityEvidenceDays >= policy.rawTelemetryDays &&
     policy.qualityEvidenceDays <= 3650
   );
+}
+
+function aggregationPolicyFrom(values: StrategyVersion['values']): AggregationPolicy {
+  if ('policy' in values && isAggregationPolicy(values.policy)) {
+    return {
+      enabled: values.policy.enabled,
+      correctionWindowSeconds: values.policy.correctionWindowSeconds,
+      rules: values.policy.rules.map(rule => ({ ...rule }))
+    };
+  }
+  return {
+    enabled: true,
+    correctionWindowSeconds: 86400,
+    rules: [{ propertyId: '', bucketSeconds: 300 }]
+  };
+}
+
+function isAggregationPolicy(value: unknown): value is AggregationPolicy {
+  if (!value || typeof value !== 'object') return false;
+  const policy = value as Partial<AggregationPolicy>;
+  return Boolean(
+    typeof policy.enabled === 'boolean' &&
+    typeof policy.correctionWindowSeconds === 'number' &&
+    Array.isArray(policy.rules)
+  );
+}
+
+function isAggregationPolicyValid(policy: AggregationPolicy) {
+  const allowedBuckets = new Set([60, 300, 900, 3600, 21600, 86400]);
+  if (
+    !Number.isInteger(policy.correctionWindowSeconds) ||
+    policy.correctionWindowSeconds < 300 ||
+    policy.correctionWindowSeconds > 604800 ||
+    policy.rules.length < 1 ||
+    policy.rules.length > 100
+  )
+    return false;
+  const minimumCorrection = Math.max(...policy.rules.map(rule => rule.bucketSeconds * 2));
+  if (policy.correctionWindowSeconds < minimumCorrection) return false;
+  const keys = new Set<string>();
+  return policy.rules.every(rule => {
+    const propertyId = rule.propertyId.trim();
+    const key = `${propertyId}::${rule.bucketSeconds}`;
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(propertyId) || !allowedBuckets.has(rule.bucketSeconds) || keys.has(key))
+      return false;
+    keys.add(key);
+    return true;
+  });
 }
 
 function decimalScale(value: number) {
@@ -1086,6 +1169,12 @@ function numericValue(values: StrategyVersion['values'], field: string) {
 function strategySummary(values: StrategyVersion['values']) {
   if ('rules' in values && Array.isArray(values.rules)) {
     return t('mine.strategy.text.alarmSummary', { count: values.rules.length });
+  }
+  if ('policy' in values && isAggregationPolicy(values.policy)) {
+    return t('mine.strategy.text.aggregationSummary', {
+      count: values.policy.rules.length,
+      correction: values.policy.correctionWindowSeconds
+    });
   }
   if ('policy' in values && isRetentionPolicy(values.policy)) {
     return t('mine.strategy.text.retentionSummary', {
@@ -1476,7 +1565,7 @@ function createIdempotencyKey(prefix: string) {
                     />
                   </NFormItem>
                   <NGrid
-                    v-if="!isDataQuality && !isAlarm && !isRetention"
+                    v-if="!isDataQuality && !isAlarm && !isRetention && !isAggregation"
                     responsive="screen"
                     cols="1 s:2"
                     :x-gap="12"
@@ -1533,6 +1622,23 @@ function createIdempotencyKey(prefix: string) {
                     <AlarmRuleEditor
                       v-model="draftForm.alarmRules"
                       :readonly="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                    />
+                    <NFormItem :label="t('mine.strategy.field.status')">
+                      <NTag
+                        v-if="selectedVersion"
+                        :type="selectedVersion.status === 'DRAFT' ? 'warning' : 'success'"
+                        :bordered="false"
+                      >
+                        {{ statusLabel(selectedVersion.status) }}
+                      </NTag>
+                      <NText v-else depth="3">{{ t('mine.strategy.status.draft') }}</NText>
+                    </NFormItem>
+                  </template>
+                  <template v-else-if="isAggregation">
+                    <AggregationPolicyEditor
+                      v-model="draftForm.aggregationPolicy"
+                      :readonly="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                      @validity-change="aggregationPolicyValid = $event"
                     />
                     <NFormItem :label="t('mine.strategy.field.status')">
                       <NTag

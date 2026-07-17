@@ -15,7 +15,7 @@ import {
   NTag,
   NText
 } from 'naive-ui';
-import type { AlarmRule, EffectiveStrategy, RetentionPolicy } from '@/modules/device/api/strategy';
+import type { AggregationPolicy, AlarmRule, EffectiveStrategy, RetentionPolicy } from '@/modules/device/api/strategy';
 
 interface StrategyProblem {
   code: string;
@@ -55,11 +55,12 @@ function sourceLabel(scopeType?: string) {
   return t('mine.strategy.source.unknown');
 }
 
-function fieldLabel(field: string) {
+function fieldLabel(field: string, value: unknown) {
   if (field === 'offlineThresholdSeconds') return t('mine.strategy.field.threshold');
   if (field === 'staleAfterSeconds') return t('mine.strategy.field.staleAfterSeconds');
   if (field === 'futureToleranceSeconds') return t('mine.strategy.field.futureToleranceSeconds');
   if (field === 'rules') return t('mine.strategy.section.alarmRules');
+  if (field === 'policy' && aggregationPolicy(value)) return t('mine.strategy.field.aggregationPolicy');
   if (field === 'policy') return t('mine.strategy.field.retentionPolicy');
   const match = /^(required|minimum|maximum)\.(.+)$/.exec(field);
   if (!match?.[1] || !match[2]) return field;
@@ -72,6 +73,12 @@ function displayValue(field: string, value: unknown) {
   }
   if (field === 'policy' && retentionPolicy(value)) {
     return t(`mine.strategy.retention.class.${retentionPolicy(value)?.retentionClass.toLowerCase()}`);
+  }
+  if (field === 'policy' && aggregationPolicy(value)) {
+    return t('mine.strategy.text.aggregationSummary', {
+      count: aggregationPolicy(value)?.rules.length,
+      correction: aggregationPolicy(value)?.correctionWindowSeconds
+    });
   }
   if (typeof value === 'boolean') {
     return value ? t('mine.strategy.text.enabled') : t('mine.strategy.text.disabled');
@@ -96,13 +103,25 @@ function retentionPolicy(value: unknown): RetentionPolicy | null {
   return policy as RetentionPolicy;
 }
 
+function aggregationPolicy(value: unknown): AggregationPolicy | null {
+  if (!value || typeof value !== 'object') return null;
+  const policy = value as Partial<AggregationPolicy>;
+  if (
+    typeof policy.enabled !== 'boolean' ||
+    typeof policy.correctionWindowSeconds !== 'number' ||
+    !Array.isArray(policy.rules)
+  )
+    return null;
+  return policy as AggregationPolicy;
+}
+
 function alarmRules(value: unknown): AlarmRule[] {
   if (!Array.isArray(value)) return [];
   return value.filter(
     (rule): rule is AlarmRule =>
       Boolean(rule) &&
       typeof rule === 'object' &&
-      ('sourceType' in rule) &&
+      'sourceType' in rule &&
       ((rule as { sourceType?: unknown }).sourceType === 'NUMERIC' ||
         (rule as { sourceType?: unknown }).sourceType === 'QUALITY')
   );
@@ -212,7 +231,7 @@ function formatValue(value: unknown): string {
           <NListItem v-for="entry in valueEntries" :key="entry.field">
             <NFlex vertical :size="8" class="w-full">
               <NFlex justify="space-between" align="center" :wrap="true">
-                <NText strong>{{ fieldLabel(entry.field) }}</NText>
+                <NText strong>{{ fieldLabel(entry.field, entry.value) }}</NText>
                 <NTag type="primary" :bordered="false">{{ displayValue(entry.field, entry.value) }}</NTag>
               </NFlex>
               <NList v-if="alarmRules(entry.value).length" bordered size="small">
@@ -250,6 +269,35 @@ function formatValue(value: unknown): string {
                 <NTag :type="retentionPolicy(entry.value)?.enabled ? 'success' : 'default'" :bordered="false">
                   {{
                     retentionPolicy(entry.value)?.enabled
+                      ? t('mine.strategy.text.enabled')
+                      : t('mine.strategy.text.disabled')
+                  }}
+                </NTag>
+              </NFlex>
+              <NFlex v-if="aggregationPolicy(entry.value)" vertical :size="6">
+                <NText>
+                  {{
+                    t('mine.strategy.aggregation.correctionSummary', {
+                      seconds: aggregationPolicy(entry.value)?.correctionWindowSeconds
+                    })
+                  }}
+                </NText>
+                <NList bordered size="small">
+                  <NListItem
+                    v-for="rule in aggregationPolicy(entry.value)?.rules || []"
+                    :key="`${rule.propertyId}-${rule.bucketSeconds}`"
+                  >
+                    <NFlex justify="space-between" class="w-full" :wrap="true">
+                      <NText code>{{ rule.propertyId }}</NText>
+                      <NTag :bordered="false" size="small">
+                        {{ t(`mine.strategy.aggregation.bucket.${rule.bucketSeconds}`) }}
+                      </NTag>
+                    </NFlex>
+                  </NListItem>
+                </NList>
+                <NTag :type="aggregationPolicy(entry.value)?.enabled ? 'success' : 'default'" :bordered="false">
+                  {{
+                    aggregationPolicy(entry.value)?.enabled
                       ? t('mine.strategy.text.enabled')
                       : t('mine.strategy.text.disabled')
                   }}

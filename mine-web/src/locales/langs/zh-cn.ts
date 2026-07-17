@@ -66,6 +66,7 @@ const local: App.I18n.Schema = {
       monitor: '设备监控',
       governance: '数据治理',
       retention: '数据保留',
+      aggregation: '数值聚合',
       command: '命令管理',
       commandCenter: '命令中心',
       alarms: '告警管理',
@@ -639,15 +640,22 @@ const local: App.I18n.Schema = {
     strategy: {
       title: '策略工作台',
       subtitle: '管理产品、设备组和单设备三级策略，发布前验证范围，发布后解释每台设备的最终有效值。',
-      type: { online_status: '在线状态策略', data_quality: '数据质量策略', alarm: '告警策略', retention: '数据保留策略' },
+      type: {
+        online_status: '在线状态策略',
+        data_quality: '数据质量策略',
+        alarm: '告警策略',
+        retention: '数据保留策略',
+        aggregation: '数值聚合策略'
+      },
       productionHelp: {
         online: '策略发布会立即影响设备在线状态判定。请先核对目标范围、最终阈值和冲突证据，并填写可审计的业务原因。',
         quality:
           '策略发布会立即影响遥测质量判定和质量证据。请先核对时间窗口、属性约束、最终来源，并填写可审计的业务原因。',
         alarm:
           '告警策略发布后会参与实时遥测判定。请复核目标范围、严重度、持续时间、恢复迟滞和冷却窗口，避免抖动或漏报。',
-        retention:
-          '保留策略发布后会由运行面按计划删除到期数据。请先取得当前范围的影响预览，核对统计时点和候选数量。'
+        retention: '保留策略发布后会由运行面按计划删除到期数据。请先取得当前范围的影响预览，核对统计时点和候选数量。',
+        aggregation:
+          '聚合策略发布后会物化长期数值桶。请核对固定桶宽、迟到修正窗口和最终覆盖范围，避免提前封闭仍可能迟到的数据。'
       },
       section: {
         context: '配置上下文',
@@ -659,6 +667,7 @@ const local: App.I18n.Schema = {
         effective: '设备最终有效策略',
         qualityRules: '属性质量规则',
         alarmRules: '双来源告警规则',
+        aggregationRules: '长期聚合规则',
         retentionImpact: '删除影响预览',
         retentionRollbackImpact: '回滚删除影响',
         retentionExecutions: '最近执行事实'
@@ -701,6 +710,10 @@ const local: App.I18n.Schema = {
         qualityRuleCode: '质量规则',
         optionalPropertyId: '物模型属性（可选）',
         retentionPolicy: '数据保留策略',
+        aggregationPolicy: '数值聚合策略',
+        aggregationEnabled: '物化状态',
+        correctionWindowSeconds: '迟到修正窗口',
+        bucketSeconds: '固定桶宽',
         retentionEnabled: '执行状态',
         rawTelemetryDays: '原始数值遥测保留时间',
         qualityEvidenceDays: '质量证据保留时间',
@@ -732,7 +745,9 @@ const local: App.I18n.Schema = {
         moveAlarmRuleDown: '下移',
         previewRetention: '刷新影响预览',
         previewRetentionRollback: '预览回滚影响',
-        confirmRetentionRollback: '确认执行回滚'
+        confirmRetentionRollback: '确认执行回滚',
+        addAggregationRule: '添加聚合规则',
+        removeAggregationRule: '移除规则'
       },
       status: {
         draft: '草稿',
@@ -764,7 +779,8 @@ const local: App.I18n.Schema = {
         qualityRules: '尚未添加属性规则；至少配置一个时间窗口或属性规则。',
         alarmRules: '尚未添加告警规则；告警策略至少需要一条规则。',
         retentionPreview: '尚未取得当前策略与范围的影响预览。',
-        retentionExecutions: '运行面尚无保留任务执行事实。'
+        retentionExecutions: '运行面尚无保留任务执行事实。',
+        aggregationRules: '至少配置一条属性和固定桶宽规则。'
       },
       placeholder: {
         enter: '请输入{field}',
@@ -792,7 +808,10 @@ const local: App.I18n.Schema = {
         retentionEvidence: '质量证据保留时间不能短于原始遥测，且不得超过 3650 天',
         retentionPolicy: '保留时间必须为等级边界内的整数，质量证据不得短于原始遥测',
         retentionPreview: '发布数据保留策略前，请先取得当前范围的影响预览',
-        retentionSaveFirst: '保留策略有未保存修改，请先保存草稿再预览或发布'
+        retentionSaveFirst: '保留策略有未保存修改，请先保存草稿再预览或发布',
+        aggregationCorrection: '修正窗口不得小于最大桶宽的两倍，当前至少需要 {minimum} 秒',
+        aggregationDuplicate: '同一属性和桶宽组合不能重复',
+        aggregationPolicy: '请配置 1 至 100 条不重复规则，并确保修正窗口和固定桶宽合法'
       },
       message: {
         groupCreated: '设备组已创建',
@@ -810,7 +829,8 @@ const local: App.I18n.Schema = {
         archiveGroup: '确认归档此设备组？当前成员关系将结束，历史发布事实仍会保留。',
         rollback: '确认基于此历史发布创建新的回滚发布？',
         retentionPublish: '预览统计时点：{observedAt}。发布后到期数据会被永久删除且不可恢复，确认继续？',
-        retentionRollback: '统计时点：{observedAt}；目标 {target} 台，最终变化 {affected} 台，仍启用删除 {enabled} 台；原始遥测候选 {raw}，质量证据候选 {quality}。回滚后到期数据会被永久删除且不可恢复，确认继续？'
+        retentionRollback:
+          '统计时点：{observedAt}；目标 {target} 台，最终变化 {affected} 台，仍启用删除 {enabled} 台；原始遥测候选 {raw}，质量证据候选 {quality}。回滚后到期数据会被永久删除且不可恢复，确认继续？'
       },
       error: {
         title: '策略操作失败',
@@ -844,6 +864,7 @@ const local: App.I18n.Schema = {
         qualitySummary: '{count} 个属性规则',
         alarmSummary: '{count} 条告警规则',
         retentionSummary: '{retentionClass} · 原始遥测 {rawDays} 天 · 质量证据 {qualityDays} 天',
+        aggregationSummary: '{count} 条聚合规则 · 修正 {correction} 秒',
         affectedDeviceCount: '{count} 台设备',
         eligibleRows: '{count} 行候选数据',
         eligibleRowsAtLeast: '{count}+ 行候选数据',
@@ -867,6 +888,21 @@ const local: App.I18n.Schema = {
         rawSummary: '原始遥测 {days} 天',
         qualitySummary: '质量证据 {days} 天',
         executionStatus: { running: '执行中', succeeded: '成功', partial: '部分完成', failed: '失败' }
+      },
+      aggregation: {
+        queryBoundary: '完整且越过修正窗口的冷数据读取长期聚合；热数据和边界桶继续读取原始遥测。',
+        enabledHelp: '停用只阻止后续物化，不会删除既有聚合事实或恢复已清理原始数据。',
+        correctionHelp: '窗口内迟到数据会在桶首次闭合时纳入，超窗口数据需要显式重算。',
+        correctionSummary: '迟到修正窗口 {seconds} 秒',
+        ruleCount: '当前 {count} 条，按属性和桶宽整体覆盖上级规则集。',
+        bucket: {
+          '60': '1 分钟',
+          '300': '5 分钟',
+          '900': '15 分钟',
+          '3600': '1 小时',
+          '21600': '6 小时',
+          '86400': '1 天'
+        }
       },
       qualityField: {
         required: '必填 · {property}',
@@ -892,6 +928,48 @@ const local: App.I18n.Schema = {
     retentionGovernance: {
       title: '数据保留',
       subtitle: '按产品、设备组或单设备管理数据生命周期，发布前预览删除影响并核对运行执行事实。'
+    },
+    aggregationGovernance: {
+      title: '数值聚合',
+      subtitle: '查看版本化聚合运行事实，并按设备、属性和有界时间范围登记可审计重算。',
+      boundary:
+        '常规聚合由 Telemetry 有界调度；显式重算只创建请求事实，不在浏览器请求中同步计算。页面不会自动轮询，请按需刷新。',
+      lastRefreshed: '刷新于 {time}',
+      readonly: '当前账号可以查看聚合运行事实，但没有登记重算的治理权限。',
+      recomputeHelp: '仅用于修复超窗口迟到或明确的数据缺口。请求必须匹配当前启用规则，最长 31 天且不超过 10000 个桶。',
+      executionSummary: '{rules} 条规则 · 生成 {buckets} 个桶 · 忽略超窗口迟到 {late} 行',
+      section: {
+        recompute: '受控重算申请',
+        latest: '最近运行结论',
+        executions: '自动聚合执行历史',
+        requests: '显式重算请求历史'
+      },
+      field: {
+        product: '产品',
+        device: '设备',
+        propertyId: '数值属性',
+        bucket: '规则桶宽',
+        range: '重算时间范围',
+        reason: '重算原因',
+        status: '执行状态',
+        startedAt: '开始时间',
+        bucketCount: '生成桶数',
+        lateRowsIgnored: '超窗口迟到',
+        sourceWatermark: '原始摄取水位',
+        rollupWatermark: '聚合版本水位'
+      },
+      action: { refresh: '刷新运行事实', submit: '登记重算请求' },
+      placeholder: { propertyId: '例如 engine.rpm', reason: '说明数据缺口、证据和期望修复范围' },
+      validation: {
+        required: '请选择设备并完整填写合法属性、时间范围和至少 4 个字符的原因',
+        range: '时间必须按 UTC 桶边界对齐、早于当前时刻，最长 31 天且不超过 10000 个桶；北京时间日桶请选择 08:00'
+      },
+      confirm: { recompute: '重算会生成更高版本的新聚合事实，不会原地覆盖历史版本。确认登记此请求？' },
+      message: { accepted: '重算请求已登记，可在请求历史中跟踪状态' },
+      error: { title: '聚合治理请求失败' },
+      empty: { executions: '尚无自动聚合执行事实', requests: '尚无显式重算请求' },
+      status: { pending: '待执行', running: '执行中', succeeded: '成功', partial: '部分完成', failed: '失败' },
+      bucket: { PT1M: '1 分钟', PT5M: '5 分钟', PT15M: '15 分钟', PT1H: '1 小时', PT6H: '6 小时', P1D: '1 天' }
     },
     models: {
       title: '物模型与协议映射',

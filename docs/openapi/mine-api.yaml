@@ -2273,12 +2273,44 @@ components:
       required: [policy]
       properties:
         policy: { $ref: '#/components/schemas/RetentionPolicy' }
+    AggregationRule:
+      type: object
+      additionalProperties: false
+      required: [propertyId, bucketSeconds]
+      properties:
+        propertyId: { $ref: '#/components/schemas/PropertyId' }
+        bucketSeconds:
+          type: integer
+          enum: [60, 300, 900, 3600, 21600, 86400]
+    AggregationPolicy:
+      type: object
+      additionalProperties: false
+      required: [enabled, correctionWindowSeconds, rules]
+      properties:
+        enabled: { type: boolean }
+        correctionWindowSeconds:
+          type: integer
+          minimum: 300
+          maximum: 604800
+          description: 不得小于最大规则桶宽的两倍。
+        rules:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/AggregationRule' }
+    AggregationStrategyValues:
+      type: object
+      additionalProperties: false
+      required: [policy]
+      properties:
+        policy: { $ref: '#/components/schemas/AggregationPolicy' }
     StrategyValues:
       oneOf:
         - $ref: '#/components/schemas/OnlineStatusStrategyValues'
         - $ref: '#/components/schemas/DataQualityStrategyValues'
         - $ref: '#/components/schemas/AlarmStrategyValues'
         - $ref: '#/components/schemas/RetentionStrategyValues'
+        - $ref: '#/components/schemas/AggregationStrategyValues'
     RetentionPreviewRequest:
       type: object
       additionalProperties: false
