@@ -233,6 +233,13 @@ mine.realtime.server.{instanceId}.q
 - 消费次数超过阈值不再热循环。
 - 每个消费者实现 eventId 或业务键幂等。
 
+告警事件额外遵守以下已实现约束：
+
+- Telemetry 在遥测事务中写 `telemetry_outbox_event`，提交后只按本次返回的 `eventId` 唤醒 relay；不以高频全表扫描代替可靠投递。
+- relay 使用有界租约、指数退避、启动/重连有界恢复和 publisher confirm；达到尝试上限进入 `DEAD`，不得假装已经送达。
+- `alarm.raised` 与 `alarm.recovered` 使用同一 `alarmOccurrenceId`，重试保持消息 `eventId` 不变，载荷携带设备、规则、策略修订/快照/哈希及有界触发或恢复证据。
+- Server 使用独立只读队列账号和 `sys_inbox_event` 幂等消费；触发与恢复乱序到达时可以补齐同一周期，冲突身份或证据必须拒绝。
+
 ## 7. 背压和过载
 
 每条链路定义：
@@ -281,6 +288,17 @@ Rabbit消费
 - 同一属性命中多条规则时取最差质量；其他正常属性继续入库，原始观测值不因质量降级而静默丢弃。
 
 `telemetry_quality_evidence` 以 `event_id + property_id + rule_code` 为主键，保存观测值、阈值、运行修订、不可变快照标识和策略哈希。Inbox、数值历史、持久最新值、摄取水位和质量证据在同一 TimescaleDB 事务提交；事务成功后才刷新 Redis 和发布实时事件。RabbitMQ 重投会读取已提交的同一事件样本和属性质量，不因期间策略变化分叉出另一套缓存或 WebSocket 结果。
+
+`ALARM` 的已实现运行语义如下：
+
+- 只对已经通过持久最新值顺序状态的实时帧计算；补传、旧 boot、低序号和被拒绝覆盖的帧不推进状态机。
+- 数值来源在可用质量下计算阈值与恢复迟滞；缺值、`BAD` 和 `TIME_UNTRUSTED` 返回 `UNKNOWN`，保持候选或活动状态。
+- 质量来源只在本帧确实执行过对应质量规则和属性范围时判断；没有覆盖证据时同样返回 `UNKNOWN`。
+- 触发持续、恢复持续、冷却和最近处理时间全部使用平台可信 `receivedAt`，接收时间倒退不推进状态。
+- `telemetry_alarm_runtime_state`、`telemetry_outbox_event` 与遥测 Inbox、历史、最新值和质量证据同事务提交；事务成功后才刷新 Redis、发布实时遥测并 ACK 原消息。
+- 策略激活会在事务中协调旧状态。删除、禁用或语义变化的活动规则先产生恢复 Outbox，再移除旧状态；未变化规则保留周期连续性。
+
+告警 Outbox 发布到 `mine.business.x` 的 `alarm.raised` / `alarm.recovered`，由 quorum 队列 `mine.server.alarm-event.q` 消费。Server 以告警周期聚合触发、恢复、确认和关闭事实，恢复早到可以先建周期、触发晚到后补证据；同一事件重投不会重复创建告警或审计。
 
 实时事件同时携带整帧最差质量和 `qualities` 逐属性质量映射。WebSocket 权限过滤属性值时必须同步过滤 `qualities`，并基于剩余可见属性重新计算整帧质量；旧事件缺少 `qualities` 时仍按兼容路径读取。
 
@@ -395,3 +413,4 @@ mine:ws:subscription:{sessionId}   短期订阅信息
 - 每个 pipeline 阶段耗时，但 deviceId 不作为 Prometheus 标签。
 - 数据质量规则命中数，标签仅允许稳定 `rule` 和 `result` 枚举。
 - 数据质量策略分发结果、解码/拉取/校验/暂存/激活阶段和处理耗时，不携带产品、设备或快照标识。
+- 告警 Outbox 按固定状态的数量、Server 消费固定结果、确认/关闭固定结果和按固定等级聚合的活动告警数；设备、规则、告警周期和异常文本不得作为标签。

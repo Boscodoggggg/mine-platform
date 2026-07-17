@@ -141,7 +141,9 @@ protocol:definition:test
 protocol:definition:publish
 strategy:package:rollback
 command:instance:create
+alarm:event:view
 alarm:event:ack
+alarm:event:close
 operations:backup:restore
 ~~~
 
@@ -184,6 +186,8 @@ sys_operation_log 至少记录：
 敏感字段在审计中脱敏；审计日志不作为异常堆栈垃圾桶。
 
 当前访问管理已落地以下成功操作审计：`CREATE_USER`、`UPDATE_USER`、`ASSIGN_USER_ROLES`、`RESET_USER_PASSWORD`、`CREATE_ROLE`、`UPDATE_ROLE`、`DELETE_ROLE`、`ASSIGN_ROLE_MENUS`。密码重置摘要只记录 `passwordChangeRequired=true`，不记录明文密码、散列或令牌。
+
+告警中心按查看、确认和关闭拆分 `alarm:event:view`、`alarm:event:ack`、`alarm:event:close`。确认和关闭由后端校验权限、必填说明、`Idempotency-Key`、状态和乐观版本；前端隐藏按钮只用于减少误操作。首次确认与首次关闭记录 `ALARM` 模块结构化审计，重复处置返回当前事实，不重复写确认记录或成功审计。审计摘要只保存必要状态与版本变化，不复制完整告警消息、证据或凭据。
 
 ## 9. 设备身份
 

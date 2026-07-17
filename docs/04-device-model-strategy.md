@@ -157,6 +157,16 @@ Phase 2 当前已落地确定性的三级有效值引擎。设备组优先级数
 
 控制面变更会在原事务中生成不可变的单设备有效值增量快照和 Outbox 事件。Telemetry 收到轻量事件后分页拉取快照，校验产品、策略类型、修订号、条目顺序和完整哈希，先写暂存区，再原子替换本地运行镜像。低修订、同修订异内容和损坏快照不会覆盖最后正确版本；暂时故障重新投递，永久错误进入死信。未配置 `DATA_QUALITY` 的设备保持原有质量语义，禁止把尚无运行消费者的字段伪装成已生效能力。
 
+告警策略 `ALARM` 已进入相同的可靠快照和 Telemetry 运行消费链路。它只开放一个原子字段 `rules`，也就是设备组或单设备覆盖时会替换父级整组规则，不进行逐条拼接。每个策略包含 1～100 条稳定编码规则，首版支持：
+
+- `NUMERIC`：物模型数值属性、`GT/GTE/LT/LTE`、触发阈值、恢复阈值和迟滞区间；`BAD`、`TIME_UNTRUSTED` 或缺值不会被解释成恢复。
+- `QUALITY`：`FUTURE_TIMESTAMP`、`STALE_TIMESTAMP`、`REQUIRED_MISSING`、`BELOW_MINIMUM`、`ABOVE_MAXIMUM`；属性为空时匹配该质量规则的任意属性。
+- 通用字段：`INFO/WARNING/CRITICAL`、启停、触发持续、恢复持续和恢复后冷却；持续时间使用平台可信 `receivedAt`。
+
+阈值绝对值最多 `10^15` 且最多 12 位小数，触发/恢复持续时间为 0～86400 秒，冷却为 0～604800 秒。不接受脚本、任意表达式或未知字段。Telemetry 先通过共享类型注册表编译最后正确镜像，再只对已经通过持久最新值顺序判定的实时帧执行规则；补传、旧 boot 和低序号帧保留历史与质量证据，但不推进实时告警。
+
+每台设备、每条规则都有持久状态机 `NORMAL → FIRING_PENDING → ACTIVE → RECOVERING_PENDING → COOLDOWN`。告警状态、遥测 Inbox、历史、最新值、质量证据和告警 Outbox 在同一 TimescaleDB 事务提交；触发或恢复事件只有在 RabbitMQ publisher confirm 后才标记已发布。规则删除、禁用或语义指纹变化会以 `RULE_REMOVED`、`RULE_DISABLED` 或 `RULE_CHANGED` 恢复旧活动周期，不会把新旧语义混成同一个告警。
+
 设备组编码在产品内永久唯一。成员关系使用 `[effective_from, effective_to)` 历史区间保存，成员替换只关闭差异关系；设备或设备组归档会结束当前关系。服务层和 PostgreSQL 触发器共同阻止跨产品、已归档设备和无效组关系进入有效配置计算。
 
 ## 8. 配置包
@@ -255,6 +265,8 @@ Gateway 的落地顺序是“拉取 → 定位信息比对 → 哈希校验 → 
 Gateway 配置分发会记录 `loaded`、`permanent_failure`、`transient_failure` 和 `invalid_message` 四类低基数结果，以及解码、拉取、校验、激活、持久化、状态回报六个阶段。永久快照错误必须先向控制面写入脱敏、最多 500 字符的 `FAILED` 证据再拒绝消息；证据回报失败仍 NACK 重投。Prometheus 对持续 1 分钟的永久失败产生严重告警，并对 10 分钟内持续瞬时重试产生警告。
 
 Telemetry 数据质量策略分发同样只使用有限标签：最终结果为 `loaded`、`permanent_failure`、`transient_failure`、`invalid_message`，阶段为 `decode`、`fetch`、`validate`、`persist`、`activate`。快照完成原子激活后才 ACK；既有运行镜像在拉取、校验或持久化失败时保持不变。Prometheus 对永久加载失败、持续重试和质量规则命中突增分别告警，设备、产品、快照和异常文本不得成为指标标签。
+
+Telemetry 告警策略沿用同一分发结果和阶段指标，但拥有独立运行修订和 `telemetry_alarm_policy` 最后正确镜像。告警业务事件另由 `telemetry_outbox_event` 记录 `PENDING/PUBLISHING/PUBLISHED/FAILED/DEAD`，进程只精确唤醒已知事件，启动或 RabbitMQ 重连时执行有界恢复；Prometheus 对积压、持续重试、死信、Server 消费异常和严重活动告警增长分别告警。
 
 ## 12. 保留和清理
 

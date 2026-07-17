@@ -188,7 +188,7 @@ POST             /internal/v1/config-releases/{id}/nodes/{nodeId}
 
 样本、测试、发布、回滚和查看发布历史分别使用 `device:protocol:sample:view`、`device:protocol:sample:edit`、`device:protocol:test`、`device:configuration:publish`、`device:configuration:rollback`、`device:configuration:view` 权限。发布和回滚必须携带 `Idempotency-Key`；内部接口不使用用户会话，必须携带从只读 secret 文件加载的 `X-Mine-Service-Token`，且响应不包含任何凭据。
 
-设备组查看/维护分别使用 `device:group:view`、`device:group:edit`，策略查看/编辑/发布分别使用 `device:strategy:view`、`device:strategy:edit`、`device:strategy:publish`。设备组成员、优先级和归档变更采用乐观锁；发布和回滚要求 `Idempotency-Key` 与原因。当前策略白名单仅包含 `ONLINE_STATUS.offlineThresholdSeconds`，有效值查询返回最终字段、逐字段作用范围/发布来源、稳定内容哈希和冲突详情。同优先级设备组异值冲突返回 `409 / STRATEGY-409-001`，策略版本、发布事实和审计均不提交。
+设备组查看/维护分别使用 `device:group:view`、`device:group:edit`，策略查看/编辑/发布分别使用 `device:strategy:view`、`device:strategy:edit`、`device:strategy:publish`。设备组成员、优先级和归档变更采用乐观锁；发布和回滚要求 `Idempotency-Key` 与原因。当前策略白名单包含 `ONLINE_STATUS`、`DATA_QUALITY` 和 `ALARM`：前两类按字段继承，`ALARM.rules` 作为原子集合整组覆盖。有效值查询返回最终字段、作用范围/发布来源、稳定内容哈希和冲突详情。同优先级设备组异值冲突返回 `409 / STRATEGY-409-001`，策略版本、发布事实和审计均不提交。
 
 ### 2.4 矿山业务
 
@@ -215,9 +215,14 @@ POST      /api/v1/commands/{id}/cancel
 GET       /api/v1/command-templates
 
 GET       /api/v1/alarms
+GET       /api/v1/alarms/{id}
 POST      /api/v1/alarms/{id}/acknowledgements
 POST      /api/v1/alarms/{id}/close
 ~~~
+
+告警列表需要 `alarm:event:view`，支持 `active`、`closed`、推导状态、等级、设备 UUID/名称或编码关键词、规则编码、触发时间范围和分页。默认告警中心传 `closed=false`，因此恢复但尚未确认或关闭的周期仍可见。详情返回触发/恢复证据、恢复原因、确认/关闭事实以及触发时策略修订、快照和哈希。
+
+确认需要 `alarm:event:ack`，关闭需要 `alarm:event:close`。两个写接口都要求 `Idempotency-Key`、非空说明和当前 `version`；确认可以发生在恢复前或恢复后，关闭只允许已恢复告警。并发版本冲突返回 `409 / ALARM-409-001`，活动告警关闭返回 `409 / ALARM-409-002`。
 
 ## 3. 通用请求/响应
 
@@ -323,6 +328,8 @@ POST      /api/v1/alarms/{id}/close
 | operation.completed | telemetry/server | server | operationId |
 
 `config.release.created` 由配置发布事务写入 `sys_outbox_event`，事件只包含 releaseId、packageId、productId、releaseSequence 和 contentHash。Gateway 通过内部 HTTP 拉取完整快照并回报节点状态，完整快照和节点结果不经过 RabbitMQ 事件载荷。
+
+`alarm.raised` 与 `alarm.recovered` 的消息 `eventId` 在全部重试中保持不变，业务聚合键为 UUIDv7 `alarmOccurrenceId`。载荷完整携带设备/产品、稳定规则编码和名称快照、来源、等级、属性、策略运行修订/快照/哈希、业务时间和有界结构化证据。Server 使用 `sys_inbox_event` 与告警聚合同事务消费；恢复事件先到时可以独立创建周期，触发事件晚到时只补齐触发证据，任何身份、时间或证据冲突都拒绝而不是覆盖历史。
 
 ## 6. 数据库实例
 
@@ -479,7 +486,7 @@ Phase 2 已落地表及关键语义：
 - `dev_config_node_status`：节点维度的 `PENDING/LOADED/FAILED`、实际哈希、脱敏消息和加载时间。
 - `dev_device_group`：产品内稳定编码、显示名称、0～1000 策略优先级、归档状态和乐观锁。
 - `dev_device_group_membership`：设备组成员的生效/结束时间区间；当前关系由部分唯一索引约束，设备归档时由数据库自动关闭。
-- `dev_strategy_version`：经过策略类型注册表校验的局部字段版本；当前数据库白名单只允许 `ONLINE_STATUS`，已发布版本不可修改或删除。
+- `dev_strategy_version`：经过策略类型注册表校验的局部字段版本；当前数据库白名单允许 `ONLINE_STATUS`、`DATA_QUALITY`、`ALARM`，已发布版本不可修改或删除。
 - `dev_strategy_release`：把已发布策略版本应用到产品、设备组或单设备的不可变事实，保存组优先级审计快照、幂等键、动作和回滚引用。
 
 所有新增表和字段均通过 `COMMENT ON TABLE`、`COMMENT ON COLUMN` 提供中文注释；`DatabaseMigrationIT` 会读取 PostgreSQL 元数据校验注释不缺失。配置包和发布表由触发器保护为不可变，产品内序号、哈希格式、回滚引用、状态与加载时间等均有数据库约束。成员关系触发器再次校验设备/组产品一致性和生命周期；策略发布触发器再次校验版本、产品、策略类型与多态作用范围一致性。
@@ -516,6 +523,16 @@ cmd_reply
 alarm_event
 alarm_acknowledgement
 ~~~
+
+`alarm_event` 以告警周期为聚合根，保存设备与规则快照、策略运行证据，以及相互正交的触发、恢复、首次确认和关闭事实。推导状态包括 `ACTIVE_UNACKNOWLEDGED`、`ACTIVE_ACKNOWLEDGED`、`RECOVERED_UNACKNOWLEDGED`、`RECOVERED_ACKNOWLEDGED`、`CLOSED`；数据库约束保证关闭一定晚于恢复。`alarm_acknowledgement` 是每个周期唯一的首次确认事实，保存操作人、说明、幂等键和时间。V26 为两表及全部字段提供中文注释，`DatabaseMigrationIT` 校验完整性、索引、约束和菜单权限节点。
+
+Telemetry 数据库另保存：
+
+- `telemetry_alarm_policy`：每台设备最后正确的已编译告警策略镜像。
+- `telemetry_alarm_runtime_state`：设备+规则唯一的 `NORMAL/FIRING_PENDING/ACTIVE/RECOVERING_PENDING/COOLDOWN` 状态及策略/规则指纹。
+- `telemetry_outbox_event`：只允许 `alarm.raised` 和 `alarm.recovered` 的可靠发布事实，包含租约、退避、发布确认和死信状态。
+
+这些表与字段同样由迁移写入中文注释并由真实 TimescaleDB 集成测试校验。禁止通过手工更新运行状态、Outbox 或告警周期修复业务；策略回退必须创建更高发布，人工处置必须走受权 API。
 
 绑定表必须有排除约束或事务校验，禁止同一对象在相同类型和时间范围重叠。
 
