@@ -76,6 +76,7 @@ const local: App.I18n.Schema = {
       allStatus: 'All statuses',
       enterPlaceholder: 'Enter {field}',
       selectPlaceholder: 'Select {field}',
+      searchTitle: 'Search',
       search: 'Search',
       reset: 'Reset',
       cancel: 'Cancel',
@@ -255,6 +256,7 @@ const local: App.I18n.Schema = {
     },
     users: {
       title: 'User Management',
+      listTitle: 'User List',
       subtitle: 'Manage mine administration accounts, status, and role assignments. Passwords are never displayed.',
       search: 'Search username or display name',
       neverLoggedIn: 'Never signed in',
@@ -305,6 +307,7 @@ const local: App.I18n.Schema = {
     },
     roles: {
       title: 'Roles and Permissions',
+      listTitle: 'Role List',
       subtitle:
         'Role codes remain stable after publication. Platform releases define permission nodes; administrators assign them.',
       search: 'Search role code or name',
@@ -490,6 +493,7 @@ const local: App.I18n.Schema = {
     },
     products: {
       title: 'Product Management',
+      listTitle: 'Product List',
       subtitle: 'Maintain stable product identities for thing models, protocols, and policy releases.',
       search: 'Search product name or key',
       empty: 'Create a product before onboarding devices',
@@ -506,6 +510,7 @@ const local: App.I18n.Schema = {
     },
     devices: {
       title: 'Device Registry',
+      listTitle: 'Device List',
       subtitle: 'Maintain mine device identities and products used for access control and data tracing.',
       search: 'Search device name or code',
       empty: 'No devices match the current filters',
@@ -1017,6 +1022,7 @@ const local: App.I18n.Schema = {
     },
     commands: {
       title: 'Command Center',
+      listTitle: 'Command List',
       subtitle: 'Send published low-risk device commands and track reliable delivery through device execution.',
       empty: 'No commands match the current filters',
       column: { device: 'Device', template: 'Command Template', status: 'Status', createdAt: 'Created' },

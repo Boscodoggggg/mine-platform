@@ -139,6 +139,8 @@ describe('DeviceListPage', () => {
   it('筛选操作按钮应保持紧凑宽度', async () => {
     const wrapper = mountPage([]);
     await flushPromises();
+    await wrapper.get('[data-list-search-panel] .n-collapse-item__header-main').trigger('click');
+    await flushPromises();
     const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
 
     expect(wrapper.find('[data-filter-actions]').exists()).toBe(true);
@@ -152,12 +154,17 @@ describe('DeviceListPage', () => {
     const wrapper = mountPage(['device:device:create']);
     await flushPromises();
 
-    expect(wrapper.text()).toContain('设备台账');
+    expect(wrapper.text()).toContain('设备列表');
     expect(wrapper.text()).toContain('一号运输车');
     expect(wrapper.text()).toContain('矿用运输车');
     expect(wrapper.text()).toContain('在线');
     expect(wrapper.text()).toContain('最后上报');
     expect(wrapper.find('[data-action="create-device"]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-search-panel]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-card]').exists()).toBe(true);
+    const listToolbar = wrapper.get('[data-list-toolbar]');
+    expect(listToolbar.text()).toContain('创建设备');
+    expect(listToolbar.text()).toContain('刷新');
     const createButton = wrapper
       .findAllComponents(NButton)
       .find(button => button.attributes('data-action') === 'create-device');

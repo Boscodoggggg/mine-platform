@@ -14,7 +14,6 @@ import {
   NGrid,
   NInput,
   NModal,
-  NPageHeader,
   NSelect,
   NSpace,
   NTag,
@@ -23,6 +22,7 @@ import {
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import ListActionButton from '@/components/common/list-action-button.vue';
+import ListSearchPanel from '@/components/common/list-search-panel.vue';
 import {
   createUser,
   getRoles,
@@ -299,20 +299,7 @@ defineExpose({
 
 <template>
   <NSpace vertical :size="16">
-    <NPageHeader :title="t('mine.users.title')" :subtitle="t('mine.users.subtitle')">
-      <template #extra>
-        <ListActionButton
-          v-if="can('system:user:create')"
-          kind="create"
-          data-action="create-user"
-          @click="openCreate"
-        >
-          {{ t('mine.users.action.create') }}
-        </ListActionButton>
-      </template>
-    </NPageHeader>
-
-    <NCard size="small">
+    <ListSearchPanel>
       <NFlex align="center">
         <NInput
           v-model:value="query.keyword"
@@ -333,9 +320,24 @@ defineExpose({
           <ListActionButton kind="reset" @click="resetQuery">{{ t('mine.common.reset') }}</ListActionButton>
         </NSpace>
       </NFlex>
-    </NCard>
+    </ListSearchPanel>
 
-    <NCard size="small">
+    <NCard data-list-card :title="t('mine.users.listTitle')" :bordered="false" size="small">
+      <template #header-extra>
+        <NSpace data-list-toolbar>
+          <ListActionButton
+            v-if="can('system:user:create')"
+            kind="create"
+            data-action="create-user"
+            @click="openCreate"
+          >
+            {{ t('mine.users.action.create') }}
+          </ListActionButton>
+          <ListActionButton kind="refresh" :loading="loading" @click="loadUsers">
+            {{ t('common.refresh') }}
+          </ListActionButton>
+        </NSpace>
+      </template>
       <NDataTable
         remote
         :columns="columns"

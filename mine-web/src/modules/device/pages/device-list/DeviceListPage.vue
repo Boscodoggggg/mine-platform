@@ -18,7 +18,6 @@ import {
   NInput,
   NInputNumber,
   NModal,
-  NPageHeader,
   NSelect,
   NSpace,
   NSpin,
@@ -28,6 +27,7 @@ import {
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import ListActionButton from '@/components/common/list-action-button.vue';
+import ListSearchPanel from '@/components/common/list-search-panel.vue';
 import {
   archiveDevice,
   createDevice,
@@ -602,20 +602,7 @@ defineExpose({
 
 <template>
   <NSpace vertical :size="16">
-    <NPageHeader :title="t('mine.devices.title')" :subtitle="t('mine.devices.subtitle')">
-      <template #extra>
-        <ListActionButton
-          v-if="can('device:device:create')"
-          kind="create"
-          data-action="create-device"
-          @click="openCreate"
-        >
-          {{ t('mine.devices.action.create') }}
-        </ListActionButton>
-      </template>
-    </NPageHeader>
-
-    <NCard size="small">
+    <ListSearchPanel>
       <NFlex align="center">
         <NInput
           v-model:value="query.keyword"
@@ -644,9 +631,24 @@ defineExpose({
           <ListActionButton kind="reset" @click="resetQuery">{{ t('mine.common.reset') }}</ListActionButton>
         </NSpace>
       </NFlex>
-    </NCard>
+    </ListSearchPanel>
 
-    <NCard size="small">
+    <NCard data-list-card :title="t('mine.devices.listTitle')" :bordered="false" size="small">
+      <template #header-extra>
+        <NSpace data-list-toolbar>
+          <ListActionButton
+            v-if="can('device:device:create')"
+            kind="create"
+            data-action="create-device"
+            @click="openCreate"
+          >
+            {{ t('mine.devices.action.create') }}
+          </ListActionButton>
+          <ListActionButton kind="refresh" :loading="loading" @click="loadDevices">
+            {{ t('common.refresh') }}
+          </ListActionButton>
+        </NSpace>
+      </template>
       <NEmpty v-if="!loading && devices.length === 0" :description="t('mine.devices.empty')" />
       <NDataTable
         v-else

@@ -55,9 +55,14 @@ describe('ProductListPage', () => {
     await flushPromises();
 
     expect(api.getProducts).toHaveBeenCalledWith(expect.objectContaining({ page: 1, size: 20 }));
-    expect(wrapper.text()).toContain('产品管理');
+    expect(wrapper.text()).toContain('产品列表');
     expect(wrapper.text()).toContain('矿用运输车');
     expect(wrapper.find('[data-action="create-product"]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-search-panel]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-card]').exists()).toBe(true);
+    const listToolbar = wrapper.get('[data-list-toolbar]');
+    expect(listToolbar.text()).toContain('创建产品');
+    expect(listToolbar.text()).toContain('刷新');
     const createButton = wrapper
       .findAllComponents(NButton)
       .find(button => button.attributes('data-action') === 'create-product');
@@ -68,6 +73,8 @@ describe('ProductListPage', () => {
 
   it('筛选操作按钮应保持紧凑宽度', async () => {
     const wrapper = mountPage([]);
+    await flushPromises();
+    await wrapper.get('[data-list-search-panel] .n-collapse-item__header-main').trigger('click');
     await flushPromises();
     const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
 

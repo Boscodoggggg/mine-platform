@@ -19,7 +19,6 @@ import {
   NInput,
   NInputNumber,
   NModal,
-  NPageHeader,
   NSelect,
   NSpace,
   NTag,
@@ -28,6 +27,7 @@ import {
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import ListActionButton from '@/components/common/list-action-button.vue';
+import ListSearchPanel from '@/components/common/list-search-panel.vue';
 import {
   cancelCommand,
   createCommand,
@@ -396,24 +396,7 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
 <template>
   <div>
     <NSpace vertical :size="16">
-      <NPageHeader :title="t('mine.commands.title')" :subtitle="t('mine.commands.subtitle')">
-        <template #extra>
-          <NSpace>
-            <ListActionButton kind="refresh" :loading="loading" @click="loadCommands">
-              {{ t('common.refresh') }}
-            </ListActionButton>
-            <ListActionButton
-              v-if="can('command:instance:create') && can('command:template:view')"
-              kind="create"
-              @click="openCreate"
-            >
-              {{ t('mine.commands.action.create') }}
-            </ListActionButton>
-          </NSpace>
-        </template>
-      </NPageHeader>
-
-      <NCard>
+      <ListSearchPanel>
         <NFlex data-command-filter-row align="center">
           <NSelect
             v-model:value="query.deviceId"
@@ -444,9 +427,23 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
             <ListActionButton kind="reset" @click="resetQuery">{{ t('mine.common.reset') }}</ListActionButton>
           </NSpace>
         </NFlex>
-      </NCard>
+      </ListSearchPanel>
 
-      <NCard>
+      <NCard data-list-card :title="t('mine.commands.listTitle')" :bordered="false" size="small">
+        <template #header-extra>
+          <NSpace data-list-toolbar>
+            <ListActionButton
+              v-if="can('command:instance:create') && can('command:template:view')"
+              kind="create"
+              @click="openCreate"
+            >
+              {{ t('mine.commands.action.create') }}
+            </ListActionButton>
+            <ListActionButton kind="refresh" :loading="loading" @click="loadCommands">
+              {{ t('common.refresh') }}
+            </ListActionButton>
+          </NSpace>
+        </template>
         <NDataTable
           v-if="commands.length || loading"
           remote

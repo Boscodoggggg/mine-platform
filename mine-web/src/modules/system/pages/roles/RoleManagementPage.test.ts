@@ -64,8 +64,13 @@ describe('RoleManagementPage', () => {
     await flushPromises();
 
     expect(api.getRoles).toHaveBeenCalled();
-    expect(wrapper.text()).toContain('角色与权限');
+    expect(wrapper.text()).toContain('角色列表');
     expect(wrapper.find('[data-action="create-role"]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-search-panel]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-card]').exists()).toBe(true);
+    const listToolbar = wrapper.get('[data-list-toolbar]');
+    expect(listToolbar.text()).toContain('创建角色');
+    expect(listToolbar.text()).toContain('刷新');
     const createButton = wrapper
       .findAllComponents(NButton)
       .find(button => button.attributes('data-action') === 'create-role');
@@ -77,6 +82,8 @@ describe('RoleManagementPage', () => {
   it('筛选操作按钮应保持紧凑宽度', async () => {
     const wrapper = mountPage([]);
     await flushPromises();
+    await wrapper.get('[data-list-search-panel] .n-collapse-item__header-main').trigger('click');
+    await flushPromises();
     const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
 
     expect(filterButtons).toHaveLength(2);
@@ -87,6 +94,8 @@ describe('RoleManagementPage', () => {
 
   it('未选择状态时应展示筛选占位提示', async () => {
     const wrapper = mountPage([]);
+    await flushPromises();
+    await wrapper.get('[data-list-search-panel] .n-collapse-item__header-main').trigger('click');
     await flushPromises();
     const statusFilter = wrapper.findAllComponents(NSelect)[0];
 

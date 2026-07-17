@@ -76,6 +76,7 @@ const local: App.I18n.Schema = {
       allStatus: '全部状态',
       enterPlaceholder: '请输入{field}',
       selectPlaceholder: '请选择{field}',
+      searchTitle: '搜索',
       search: '查询',
       reset: '重置',
       cancel: '取消',
@@ -269,6 +270,7 @@ const local: App.I18n.Schema = {
     },
     users: {
       title: '用户管理',
+      listTitle: '用户列表',
       subtitle: '维护矿区管理端账号、启停状态和角色分配。用户密码不会在页面回显。',
       search: '搜索登录名或显示名称',
       neverLoggedIn: '从未登录',
@@ -308,6 +310,7 @@ const local: App.I18n.Schema = {
     },
     roles: {
       title: '角色与权限',
+      listTitle: '角色列表',
       subtitle: '角色编码发布后保持不变；权限节点由平台版本维护，管理员只负责勾选授权。',
       search: '搜索角色编码或名称',
       permissionCount: '{count} 项',
@@ -462,6 +465,7 @@ const local: App.I18n.Schema = {
     },
     products: {
       title: '产品管理',
+      listTitle: '产品列表',
       subtitle: '按设备族维护稳定产品编码，为后续物模型、协议和策略发布提供边界。',
       search: '搜索产品名称或编码',
       empty: '先创建产品，再接入设备',
@@ -478,6 +482,7 @@ const local: App.I18n.Schema = {
     },
     devices: {
       title: '设备台账',
+      listTitle: '设备列表',
       subtitle: '维护矿区设备身份与所属产品；设备编码用于接入鉴权和数据追踪。',
       search: '搜索设备名称或编码',
       empty: '当前筛选条件下没有设备',
@@ -949,6 +954,7 @@ const local: App.I18n.Schema = {
     },
     commands: {
       title: '命令中心',
+      listTitle: '命令列表',
       subtitle: '下发已发布的低风险设备命令，跟踪消息从排队到设备执行的可靠状态。',
       empty: '当前筛选条件下没有命令',
       column: { device: '设备', template: '命令模板', status: '状态', createdAt: '下发时间' },

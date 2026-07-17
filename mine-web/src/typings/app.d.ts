@@ -389,6 +389,7 @@ declare namespace App {
           allStatus: string;
           enterPlaceholder: string;
           selectPlaceholder: string;
+          searchTitle: string;
           search: string;
           reset: string;
           cancel: string;
@@ -521,6 +522,7 @@ declare namespace App {
         };
         users: {
           title: string;
+          listTitle: string;
           subtitle: string;
           search: string;
           neverLoggedIn: string;
@@ -536,6 +538,7 @@ declare namespace App {
         };
         roles: {
           title: string;
+          listTitle: string;
           subtitle: string;
           search: string;
           permissionCount: string;
@@ -654,6 +657,7 @@ declare namespace App {
         };
         products: {
           title: string;
+          listTitle: string;
           subtitle: string;
           search: string;
           empty: string;
@@ -670,6 +674,7 @@ declare namespace App {
         };
         devices: {
           title: string;
+          listTitle: string;
           subtitle: string;
           search: string;
           empty: string;
@@ -996,6 +1001,7 @@ declare namespace App {
         };
         commands: {
           title: string;
+          listTitle: string;
           subtitle: string;
           empty: string;
           column: Record<'device' | 'template' | 'status' | 'createdAt', string>;

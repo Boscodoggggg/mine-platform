@@ -65,8 +65,13 @@ describe('UserManagementPage', () => {
     await flushPromises();
 
     expect(api.getUsers).toHaveBeenCalledWith(expect.objectContaining({ page: 1, size: 20 }));
-    expect(wrapper.text()).toContain('用户管理');
+    expect(wrapper.text()).toContain('用户列表');
     expect(wrapper.find('[data-action="create-user"]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-search-panel]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-card]').exists()).toBe(true);
+    const listToolbar = wrapper.get('[data-list-toolbar]');
+    expect(listToolbar.text()).toContain('创建用户');
+    expect(listToolbar.text()).toContain('刷新');
     const createButton = wrapper
       .findAllComponents(NButton)
       .find(button => button.attributes('data-action') === 'create-user');
@@ -78,6 +83,8 @@ describe('UserManagementPage', () => {
 
   it('筛选操作按钮应保持紧凑宽度', async () => {
     const wrapper = mountPage([]);
+    await flushPromises();
+    await wrapper.get('[data-list-search-panel] .n-collapse-item__header-main').trigger('click');
     await flushPromises();
     const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
 

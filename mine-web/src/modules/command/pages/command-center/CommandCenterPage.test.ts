@@ -44,7 +44,7 @@ describe('CommandCenterPage', () => {
     const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
     await flushPromises();
 
-    expect(wrapper.text()).toContain('命令中心');
+    expect(wrapper.text()).toContain('命令列表');
     expect(wrapper.text()).toContain('状态查询');
     expect(wrapper.text()).toContain('执行成功');
     expect(api.getCommandTargets).toHaveBeenCalled();
@@ -53,12 +53,19 @@ describe('CommandCenterPage', () => {
   it('桌面筛选条件和紧凑操作按钮应保持在同一行容器', async () => {
     const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
     await flushPromises();
+    await wrapper.get('[data-list-search-panel] .n-collapse-item__header-main').trigger('click');
+    await flushPromises();
     const filterRow = wrapper.find('[data-command-filter-row]');
     const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
 
     expect(filterRow.exists()).toBe(true);
     expect(filterRow.text()).toContain('查询');
     expect(filterRow.text()).toContain('重置');
+    expect(wrapper.find('[data-list-search-panel]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-card]').exists()).toBe(true);
+    const listToolbar = wrapper.get('[data-list-toolbar]');
+    expect(listToolbar.text()).toContain('下发命令');
+    expect(listToolbar.text()).toContain('刷新');
     expect(filterButtons).toHaveLength(2);
     expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
     expect(filterButtons.every(button => button.props('size') === 'small')).toBe(true);

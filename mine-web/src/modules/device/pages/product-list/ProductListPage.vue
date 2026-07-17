@@ -14,7 +14,6 @@ import {
   NGrid,
   NInput,
   NModal,
-  NPageHeader,
   NSelect,
   NSpace,
   NTag,
@@ -23,6 +22,7 @@ import {
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import ListActionButton from '@/components/common/list-action-button.vue';
+import ListSearchPanel from '@/components/common/list-search-panel.vue';
 import { archiveProduct, createProduct, getProducts, updateProduct } from '@/modules/device/api/device';
 import type { Product, ProductStatus } from '@/modules/device/api/device';
 import { getEnabledDictionaryItems } from '@/modules/system/api/dictionary';
@@ -270,20 +270,7 @@ defineExpose({
 
 <template>
   <NSpace vertical :size="16">
-    <NPageHeader :title="t('mine.products.title')" :subtitle="t('mine.products.subtitle')">
-      <template #extra>
-        <ListActionButton
-          v-if="can('device:product:create')"
-          kind="create"
-          data-action="create-product"
-          @click="openCreate"
-        >
-          {{ t('mine.products.action.create') }}
-        </ListActionButton>
-      </template>
-    </NPageHeader>
-
-    <NCard size="small">
+    <ListSearchPanel>
       <NFlex align="center">
         <NInput
           v-model:value="query.keyword"
@@ -304,9 +291,24 @@ defineExpose({
           <ListActionButton kind="reset" @click="resetQuery">{{ t('mine.common.reset') }}</ListActionButton>
         </NSpace>
       </NFlex>
-    </NCard>
+    </ListSearchPanel>
 
-    <NCard size="small">
+    <NCard data-list-card :title="t('mine.products.listTitle')" :bordered="false" size="small">
+      <template #header-extra>
+        <NSpace data-list-toolbar>
+          <ListActionButton
+            v-if="can('device:product:create')"
+            kind="create"
+            data-action="create-product"
+            @click="openCreate"
+          >
+            {{ t('mine.products.action.create') }}
+          </ListActionButton>
+          <ListActionButton kind="refresh" :loading="loading" @click="loadProducts">
+            {{ t('common.refresh') }}
+          </ListActionButton>
+        </NSpace>
+      </template>
       <NEmpty v-if="!loading && products.length === 0" :description="t('mine.products.empty')">
         <template #extra>
           <NText depth="3">{{ t('mine.products.emptyDescription') }}</NText>
