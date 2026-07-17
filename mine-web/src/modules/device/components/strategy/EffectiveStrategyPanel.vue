@@ -16,6 +16,7 @@ import {
   NText
 } from 'naive-ui';
 import type { EffectiveStrategy } from '@/modules/device/api/strategy';
+import type { AlarmRule } from '@/modules/device/api/strategy';
 
 interface StrategyProblem {
   code: string;
@@ -59,12 +60,16 @@ function fieldLabel(field: string) {
   if (field === 'offlineThresholdSeconds') return t('mine.strategy.field.threshold');
   if (field === 'staleAfterSeconds') return t('mine.strategy.field.staleAfterSeconds');
   if (field === 'futureToleranceSeconds') return t('mine.strategy.field.futureToleranceSeconds');
+  if (field === 'rules') return t('mine.strategy.section.alarmRules');
   const match = /^(required|minimum|maximum)\.(.+)$/.exec(field);
   if (!match?.[1] || !match[2]) return field;
   return t(`mine.strategy.qualityField.${match[1]}`, { property: match[2] });
 }
 
-function displayValue(field: string, value: boolean | number) {
+function displayValue(field: string, value: unknown) {
+  if (field === 'rules' && Array.isArray(value)) {
+    return t('mine.strategy.text.alarmSummary', { count: value.length });
+  }
   if (typeof value === 'boolean') {
     return value ? t('mine.strategy.text.enabled') : t('mine.strategy.text.disabled');
   }
@@ -72,6 +77,36 @@ function displayValue(field: string, value: boolean | number) {
     return `${value} ${t('mine.strategy.text.seconds')}`;
   }
   return String(value);
+}
+
+function alarmRules(value: unknown): AlarmRule[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (rule): rule is AlarmRule =>
+      Boolean(rule) &&
+      typeof rule === 'object' &&
+      ('sourceType' in rule) &&
+      ((rule as { sourceType?: unknown }).sourceType === 'NUMERIC' ||
+        (rule as { sourceType?: unknown }).sourceType === 'QUALITY')
+  );
+}
+
+function alarmRuleDetail(rule: AlarmRule) {
+  const timing = t('mine.strategy.alarm.timing', {
+    trigger: rule.triggerDurationSeconds,
+    recover: rule.recoverDurationSeconds,
+    cooldown: rule.cooldownSeconds
+  });
+  if (rule.sourceType === 'NUMERIC') {
+    return `${rule.propertyId} · ${t(`mine.strategy.alarm.operator.${rule.operator.toLowerCase()}`)} ${rule.threshold} · ${t('mine.strategy.field.recoverThreshold')} ${rule.recoverThreshold} · ${timing}`;
+  }
+  return `${t(`mine.strategy.alarm.qualityCode.${rule.qualityRuleCode.toLowerCase()}`)}${rule.propertyId ? ` · ${rule.propertyId}` : ''} · ${timing}`;
+}
+
+function severityType(severity: AlarmRule['severity']) {
+  if (severity === 'CRITICAL') return 'error' as const;
+  if (severity === 'WARNING') return 'warning' as const;
+  return 'info' as const;
 }
 
 function fieldOrder(field: string) {
@@ -163,6 +198,23 @@ function formatValue(value: unknown): string {
                 <NText strong>{{ fieldLabel(entry.field) }}</NText>
                 <NTag type="primary" :bordered="false">{{ displayValue(entry.field, entry.value) }}</NTag>
               </NFlex>
+              <NList v-if="alarmRules(entry.value).length" bordered size="small">
+                <NListItem v-for="rule in alarmRules(entry.value)" :key="rule.key">
+                  <NFlex vertical :size="3" class="w-full">
+                    <NFlex justify="space-between" align="center" :wrap="true">
+                      <NText strong>{{ rule.name }}</NText>
+                      <NTag :type="severityType(rule.severity)" :bordered="false" size="small">
+                        {{ t(`mine.strategy.alarm.severity.${rule.severity.toLowerCase()}`) }}
+                      </NTag>
+                      <NTag :type="rule.enabled ? 'success' : 'default'" :bordered="false" size="small">
+                        {{ rule.enabled ? t('mine.strategy.text.enabled') : t('mine.strategy.text.disabled') }}
+                      </NTag>
+                    </NFlex>
+                    <NText code>{{ rule.key }}</NText>
+                    <NText depth="3">{{ alarmRuleDetail(rule) }}</NText>
+                  </NFlex>
+                </NListItem>
+              </NList>
               <NDescriptions v-if="entry.source" :column="1" label-placement="left" bordered size="small">
                 <NDescriptionsItem :label="t('mine.strategy.field.source')">
                   <NFlex align="center" :wrap="true">

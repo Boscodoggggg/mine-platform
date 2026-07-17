@@ -46,6 +46,7 @@ import {
   updateStrategyDraft
 } from '@/modules/device/api/strategy';
 import type {
+  AlarmRule,
   DeviceGroup,
   EffectiveStrategy,
   StrategyRelease,
@@ -54,6 +55,7 @@ import type {
   StrategyVersion
 } from '@/modules/device/api/strategy';
 import { useAuthStore } from '@/store/modules/auth';
+import AlarmRuleEditor from '@/modules/device/components/strategy/AlarmRuleEditor.vue';
 import EffectiveStrategyPanel from '@/modules/device/components/strategy/EffectiveStrategyPanel.vue';
 
 interface StrategyProblem {
@@ -109,6 +111,7 @@ const draftForm = reactive({
   staleAfterSeconds: 300 as number | null,
   futureToleranceSeconds: 5 as number | null,
   qualityRules: [] as QualityRuleForm[],
+  alarmRules: [] as AlarmRule[],
   description: ''
 });
 const publishForm = reactive({
@@ -131,7 +134,7 @@ const deviceOptions = computed<SelectOption[]>(() =>
 );
 const memberOptions = computed<SelectOption[]>(() => deviceOptions.value);
 const strategyTypeOptions = computed<SelectOption[]>(() =>
-  (['ONLINE_STATUS', 'DATA_QUALITY'] as StrategyType[]).map(value => ({
+  (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM'] as StrategyType[]).map(value => ({
     label: t(`mine.strategy.type.${value.toLowerCase()}`),
     value
   }))
@@ -144,9 +147,12 @@ const versionOptions = computed<SelectOption[]>(() =>
 );
 const policyName = computed(() => t(`mine.strategy.type.${strategyType.value.toLowerCase()}`));
 const productionHelp = computed(() =>
-  t(`mine.strategy.productionHelp.${strategyType.value === 'DATA_QUALITY' ? 'quality' : 'online'}`)
+  t(
+    `mine.strategy.productionHelp.${strategyType.value === 'DATA_QUALITY' ? 'quality' : strategyType.value === 'ALARM' ? 'alarm' : 'online'}`
+  )
 );
 const isDataQuality = computed(() => strategyType.value === 'DATA_QUALITY');
+const isAlarm = computed(() => strategyType.value === 'ALARM');
 const scopeOptions = computed<SelectOption[]>(() =>
   (['PRODUCT', 'GROUP', 'DEVICE'] as StrategyScopeType[]).map(value => ({
     label: scopeLabel(value),
@@ -237,7 +243,7 @@ async function loadDevices() {
   const response = await getDevices({
     productId: productId.value,
     page: 1,
-    size: 200
+    size: 100
   });
   devices.value = response.items.filter(item => item.status !== 'ARCHIVED');
   selectedDeviceId.value = devices.value.some(item => item.id === selectedDeviceId.value)
@@ -405,6 +411,10 @@ function syncDraftForm() {
     draftForm.threshold = numericValue(version.values, 'offlineThresholdSeconds') ?? 180;
     return;
   }
+  if (version.strategyType === 'ALARM') {
+    draftForm.alarmRules = alarmRulesFrom(version.values);
+    return;
+  }
   draftForm.staleAfterSeconds = numericValue(version.values, 'staleAfterSeconds');
   draftForm.futureToleranceSeconds = numericValue(version.values, 'futureToleranceSeconds');
   draftForm.qualityRules = qualityRulesFrom(version.values);
@@ -510,6 +520,7 @@ function resetDraftForm() {
     staleAfterSeconds: 300,
     futureToleranceSeconds: 5,
     qualityRules: [],
+    alarmRules: [],
     description: ''
   });
 }
@@ -529,13 +540,14 @@ function removeQualityRule(key: string) {
 }
 
 function strategyValues(): StrategyVersion['values'] | null {
-  if (!isDataQuality.value) {
+  if (strategyType.value === 'ONLINE_STATUS') {
     if (draftForm.threshold < 30 || draftForm.threshold > 86400) {
       window.$message?.warning(t('mine.strategy.validation.threshold'));
       return null;
     }
     return { offlineThresholdSeconds: draftForm.threshold };
   }
+  if (isAlarm.value) return alarmStrategyValues();
   const values: Record<string, boolean | number> = {};
   if (draftForm.staleAfterSeconds !== null) {
     if (draftForm.staleAfterSeconds < 1 || draftForm.staleAfterSeconds > 604800) {
@@ -574,6 +586,80 @@ function strategyValues(): StrategyVersion['values'] | null {
   return values;
 }
 
+function alarmStrategyValues(): StrategyVersion['values'] | null {
+  if (draftForm.alarmRules.length < 1 || draftForm.alarmRules.length > 100) {
+    window.$message?.warning(t('mine.strategy.validation.alarmRuleCount'));
+    return null;
+  }
+  const keys = new Set<string>();
+  const normalized: AlarmRule[] = [];
+  for (const rule of draftForm.alarmRules) {
+    const key = rule.key.trim();
+    const name = rule.name.trim();
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(key) || keys.has(key) || !name || name.length > 100) {
+      window.$message?.warning(t('mine.strategy.validation.alarmIdentity'));
+      return null;
+    }
+    if (
+      !Number.isInteger(rule.triggerDurationSeconds) ||
+      rule.triggerDurationSeconds < 0 ||
+      rule.triggerDurationSeconds > 86400 ||
+      !Number.isInteger(rule.recoverDurationSeconds) ||
+      rule.recoverDurationSeconds < 0 ||
+      rule.recoverDurationSeconds > 86400 ||
+      !Number.isInteger(rule.cooldownSeconds) ||
+      rule.cooldownSeconds < 0 ||
+      rule.cooldownSeconds > 604800
+    ) {
+      window.$message?.warning(t('mine.strategy.validation.alarmDuration'));
+      return null;
+    }
+    keys.add(key);
+    if (rule.sourceType === 'NUMERIC') {
+      const propertyId = rule.propertyId.trim();
+      const invalidHysteresis = ['GT', 'GTE'].includes(rule.operator)
+        ? rule.recoverThreshold > rule.threshold
+        : rule.recoverThreshold < rule.threshold;
+      if (!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(propertyId)) {
+        window.$message?.warning(t('mine.strategy.validation.property'));
+        return null;
+      }
+      if (
+        !Number.isFinite(rule.threshold) ||
+        !Number.isFinite(rule.recoverThreshold) ||
+        Math.abs(rule.threshold) > 1000000000000000 ||
+        Math.abs(rule.recoverThreshold) > 1000000000000000 ||
+        decimalScale(rule.threshold) > 12 ||
+        decimalScale(rule.recoverThreshold) > 12 ||
+        invalidHysteresis
+      ) {
+        window.$message?.warning(t('mine.strategy.validation.alarmHysteresis'));
+        return null;
+      }
+      normalized.push({ ...rule, key, name, propertyId });
+      continue;
+    }
+    const propertyId = rule.propertyId?.trim();
+    if (propertyId && !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(propertyId)) {
+      window.$message?.warning(t('mine.strategy.validation.property'));
+      return null;
+    }
+    normalized.push({ ...rule, key, name, ...(propertyId ? { propertyId } : { propertyId: undefined }) });
+  }
+  return { rules: normalized };
+}
+
+function alarmRulesFrom(values: StrategyVersion['values']): AlarmRule[] {
+  if (!('rules' in values) || !Array.isArray(values.rules)) return [];
+  return values.rules.map(rule => ({ ...rule }));
+}
+
+function decimalScale(value: number) {
+  const [coefficient = '', exponentText = '0'] = value.toString().toLowerCase().split('e');
+  const fractionLength = coefficient.split('.')[1]?.length || 0;
+  return Math.max(0, fractionLength - Number(exponentText));
+}
+
 function qualityRulesFrom(values: StrategyVersion['values']): QualityRuleForm[] {
   const properties = new Map<string, QualityRuleForm>();
   Object.entries(values).forEach(([field, value]) => {
@@ -602,6 +688,9 @@ function numericValue(values: StrategyVersion['values'], field: string) {
 }
 
 function strategySummary(values: StrategyVersion['values']) {
+  if ('rules' in values && Array.isArray(values.rules)) {
+    return t('mine.strategy.text.alarmSummary', { count: values.rules.length });
+  }
   const threshold = numericValue(values, 'offlineThresholdSeconds');
   if (threshold !== null) {
     return t('mine.strategy.text.onlineSummary', {
@@ -906,7 +995,7 @@ function createIdempotencyKey(prefix: string) {
                       @update:value="syncDraftForm"
                     />
                   </NFormItem>
-                  <NGrid v-if="!isDataQuality" responsive="screen" cols="1 s:2" :x-gap="12">
+                  <NGrid v-if="!isDataQuality && !isAlarm" responsive="screen" cols="1 s:2" :x-gap="12">
                     <NGi>
                       <NFormItem :label="t('mine.strategy.field.threshold')">
                         <NInputNumber
@@ -937,6 +1026,23 @@ function createIdempotencyKey(prefix: string) {
                       </NFormItem>
                     </NGi>
                   </NGrid>
+                  <template v-else-if="isAlarm">
+                    <NAlert type="info" :bordered="false">{{ t('mine.strategy.help.alarmTemplate') }}</NAlert>
+                    <AlarmRuleEditor
+                      v-model="draftForm.alarmRules"
+                      :readonly="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                    />
+                    <NFormItem :label="t('mine.strategy.field.status')">
+                      <NTag
+                        v-if="selectedVersion"
+                        :type="selectedVersion.status === 'DRAFT' ? 'warning' : 'success'"
+                        :bordered="false"
+                      >
+                        {{ statusLabel(selectedVersion.status) }}
+                      </NTag>
+                      <NText v-else depth="3">{{ t('mine.strategy.status.draft') }}</NText>
+                    </NFormItem>
+                  </template>
                   <template v-else>
                     <NAlert type="info" :bordered="false">{{ t('mine.strategy.help.qualityTemplate') }}</NAlert>
                     <NGrid responsive="screen" cols="1 s:2" :x-gap="12">

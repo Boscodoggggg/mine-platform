@@ -118,4 +118,60 @@ describe('EffectiveStrategyPanel', () => {
     expect(wrapper.text()).toContain('单设备覆盖');
     expect(wrapper.text()).toContain('quality-release-3');
   });
+
+  it('应展示最终生效的告警规则、严重度、迟滞阈值与原子来源', () => {
+    setLocale('zh-CN');
+    const wrapper = mount(EffectiveStrategyPanel, {
+      props: {
+        deviceName: '北区运输车 01',
+        loading: false,
+        effective: {
+          deviceId: 'device-1',
+          productId: 'product-1',
+          strategyType: 'ALARM',
+          valid: true,
+          values: {
+            rules: [
+              {
+                key: 'engine-temperature-high',
+                name: '发动机温度过高',
+                sourceType: 'NUMERIC',
+                severity: 'CRITICAL',
+                triggerDurationSeconds: 10,
+                recoverDurationSeconds: 30,
+                cooldownSeconds: 300,
+                enabled: false,
+                propertyId: 'engine.temperature',
+                operator: 'GT',
+                threshold: 110,
+                recoverThreshold: 100
+              }
+            ]
+          },
+          sources: {
+            rules: {
+              scopeType: 'GROUP',
+              scopeId: 'group-1',
+              releaseId: 'alarm-release-5',
+              groupPriority: 900
+            }
+          },
+          conflicts: [],
+          contentHash: `sha256:${'d'.repeat(64)}`
+        }
+      },
+      global: { plugins: [i18n] }
+    });
+
+    expect(wrapper.text()).toContain('1 条告警规则');
+    expect(wrapper.text()).toContain('发动机温度过高');
+    expect(wrapper.text()).toContain('严重');
+    expect(wrapper.text()).toContain('停用');
+    expect(wrapper.text()).toContain('engine.temperature');
+    expect(wrapper.text()).toContain('恢复阈值 100');
+    expect(wrapper.text()).toContain('触发 10 秒');
+    expect(wrapper.text()).toContain('恢复 30 秒');
+    expect(wrapper.text()).toContain('冷却 300 秒');
+    expect(wrapper.text()).toContain('alarm-release-5');
+  });
 });

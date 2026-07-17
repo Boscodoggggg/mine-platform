@@ -47,9 +47,11 @@ public class AlarmEventController {
     @SaCheckPermission("alarm:event:view")
     public PageResponse<AlarmEventResponse> findAlarms(
             @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) Boolean closed,
             @RequestParam(required = false) AlarmStatus status,
             @RequestParam(required = false) String severity,
             @RequestParam(required = false) UUID deviceId,
+            @RequestParam(required = false) String deviceKeyword,
             @RequestParam(required = false) String ruleKey,
             @RequestParam(required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
@@ -58,7 +60,9 @@ public class AlarmEventController {
             @RequestParam(defaultValue = "1") @Min(1) @Max(1_000_000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size
     ) {
-        return service.find(active, status, severity, deviceId, ruleKey, from, to, page, size);
+        return service.find(
+                active, closed, status, severity, deviceId, deviceKeyword,
+                ruleKey, from, to, page, size);
     }
 
     /** 读取告警详情。 */

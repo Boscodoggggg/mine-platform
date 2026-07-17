@@ -66,6 +66,8 @@ const local: App.I18n.Schema = {
       monitor: '设备监控',
       command: '命令管理',
       commandCenter: '命令中心',
+      alarms: '告警管理',
+      alarmCenter: '告警处置中心',
       overview: '运行总览'
     },
     common: {
@@ -635,11 +637,13 @@ const local: App.I18n.Schema = {
     strategy: {
       title: '策略工作台',
       subtitle: '管理产品、设备组和单设备三级策略，发布前验证范围，发布后解释每台设备的最终有效值。',
-      type: { online_status: '在线状态策略', data_quality: '数据质量策略' },
+      type: { online_status: '在线状态策略', data_quality: '数据质量策略', alarm: '告警策略' },
       productionHelp: {
         online: '策略发布会立即影响设备在线状态判定。请先核对目标范围、最终阈值和冲突证据，并填写可审计的业务原因。',
         quality:
-          '策略发布会立即影响遥测质量判定和质量证据。请先核对时间窗口、属性约束、最终来源，并填写可审计的业务原因。'
+          '策略发布会立即影响遥测质量判定和质量证据。请先核对时间窗口、属性约束、最终来源，并填写可审计的业务原因。',
+        alarm:
+          '告警策略发布后会参与实时遥测判定。请复核目标范围、严重度、持续时间、恢复迟滞和冷却窗口，避免抖动或漏报。'
       },
       section: {
         context: '配置上下文',
@@ -649,7 +653,8 @@ const local: App.I18n.Schema = {
         publish: '发布控制',
         history: '不可变发布历史',
         effective: '设备最终有效策略',
-        qualityRules: '属性质量规则'
+        qualityRules: '属性质量规则',
+        alarmRules: '双来源告警规则'
       },
       field: {
         strategyType: '策略类型',
@@ -674,7 +679,20 @@ const local: App.I18n.Schema = {
         propertyId: '物模型属性标识',
         required: '本帧必填',
         minimum: '质量下限',
-        maximum: '质量上限'
+        maximum: '质量上限',
+        alarmRuleKey: '规则编码',
+        alarmRuleName: '规则名称',
+        alarmSourceType: '告警来源',
+        alarmSeverity: '严重度',
+        alarmEnabled: '启用状态',
+        triggerDurationSeconds: '触发持续时间',
+        recoverDurationSeconds: '恢复持续时间',
+        cooldownSeconds: '冷却窗口',
+        alarmOperator: '比较条件',
+        alarmThreshold: '触发阈值',
+        recoverThreshold: '恢复阈值',
+        qualityRuleCode: '质量规则',
+        optionalPropertyId: '物模型属性（可选）'
       },
       action: {
         newGroup: '新建设备组',
@@ -688,7 +706,13 @@ const local: App.I18n.Schema = {
         rollback: '回滚到此发布',
         refresh: '刷新有效值',
         addQualityRule: '添加属性规则',
-        removeQualityRule: '移除'
+        removeQualityRule: '移除',
+        addNumericAlarmRule: '添加数值规则',
+        addQualityAlarmRule: '添加质量规则',
+        removeAlarmRule: '移除规则',
+        copyAlarmRule: '复制',
+        moveAlarmRuleUp: '上移',
+        moveAlarmRuleDown: '下移'
       },
       status: {
         draft: '草稿',
@@ -717,12 +741,16 @@ const local: App.I18n.Schema = {
         releases: '尚无策略发布记录',
         effective: '选择设备后查看最终有效策略',
         members: '该设备组暂无成员',
-        qualityRules: '尚未添加属性规则；至少配置一个时间窗口或属性规则。'
+        qualityRules: '尚未添加属性规则；至少配置一个时间窗口或属性规则。',
+        alarmRules: '尚未添加告警规则；告警策略至少需要一条规则。'
       },
       placeholder: {
         enter: '请输入{field}',
         select: '请选择{field}',
-        propertyId: '例如 engine.rpm'
+        propertyId: '例如 engine.rpm',
+        alarmRuleKey: '例如 engine-temperature-high',
+        alarmRuleName: '例如 发动机温度过高',
+        optionalPropertyId: '整帧规则可留空'
       },
       validation: {
         required: '请完整填写必填项',
@@ -734,7 +762,11 @@ const local: App.I18n.Schema = {
         future: '未来时间容差必须在 0 至 3600 秒之间',
         property: '属性标识格式不正确、存在重复项，或未填写属性标识',
         range: '同一属性的质量下限不能大于上限',
-        qualityRequired: '至少配置一个时间窗口或属性质量规则'
+        qualityRequired: '至少配置一个时间窗口或属性质量规则',
+        alarmRuleCount: '告警规则数量必须在 1 至 100 条之间',
+        alarmIdentity: '规则编码格式不正确、存在重复项，或规则名称为空',
+        alarmDuration: '持续时间必须为有效整数；触发和恢复不超过 86400 秒，冷却不超过 604800 秒',
+        alarmHysteresis: '触发或恢复阈值超出范围、精度超过 12 位小数，或没有形成合法迟滞区间'
       },
       message: {
         groupCreated: '设备组已创建',
@@ -763,7 +795,11 @@ const local: App.I18n.Schema = {
         members: '成员只能来自当前产品，保存时使用乐观锁防止覆盖其他管理员的修改。',
         readonly: '当前账号可查看策略，但没有维护或发布权限。',
         qualityTemplate: '时间窗口适用于整帧遥测；属性规则用于判定缺失值和数值越界。未配置的规则不会参与判定。',
-        qualityRules: '属性标识应与已发布物模型一致；必填、下限和上限会生成可审计的逐属性质量证据。'
+        qualityRules: '属性标识应与已发布物模型一致；必填、下限和上限会生成可审计的逐属性质量证据。',
+        alarmTemplate: '数值规则直接比较遥测属性；质量规则复用数据质量证据。规则编码发布后用于告警归并，请保持稳定。',
+        alarmRules: '使用持续时间过滤瞬时毛刺，使用恢复阈值形成迟滞区间，使用冷却窗口限制重复周期。',
+        alarmHysteresis: '高值告警的恢复阈值不得高于触发阈值；低值告警的恢复阈值不得低于触发阈值。',
+        alarmAtomicOverride: '告警规则集按顺序整体发布；设备组或单设备覆盖会替换上级的完整规则集，不会只追加当前规则。'
       },
       text: {
         seconds: '秒',
@@ -774,12 +810,28 @@ const local: App.I18n.Schema = {
         memberCount: '{count} 台设备',
         priority: '优先级 {priority}',
         onlineSummary: '离线阈值 {seconds} 秒',
-        qualitySummary: '{count} 个属性规则'
+        qualitySummary: '{count} 个属性规则',
+        alarmSummary: '{count} 条告警规则'
       },
       qualityField: {
         required: '必填 · {property}',
         minimum: '下限 · {property}',
         maximum: '上限 · {property}'
+      },
+      alarm: {
+        unnamedRule: '未命名规则',
+        copySuffix: '（副本）',
+        timing: '触发 {trigger} 秒 · 恢复 {recover} 秒 · 冷却 {cooldown} 秒',
+        source: { numeric: '数值阈值', quality: '数据质量' },
+        severity: { info: '提示', warning: '警告', critical: '严重' },
+        operator: { gt: '大于', gte: '大于等于', lt: '小于', lte: '小于等于' },
+        qualityCode: {
+          future_timestamp: '设备时间超前',
+          stale_timestamp: '设备时间陈旧',
+          required_missing: '必填属性缺失',
+          below_minimum: '低于物模型下限',
+          above_maximum: '高于物模型上限'
+        }
       }
     },
     models: {
@@ -951,6 +1003,77 @@ const local: App.I18n.Schema = {
         vehicleSpeed: '运行速度',
         fuelLevel: '燃油液位'
       }
+    },
+    alarms: {
+      title: '告警处置中心',
+      subtitle: '统一查看实时告警周期，保留触发与恢复证据，并用确认、关闭事实完成可审计处置闭环。',
+      listTitle: '告警周期',
+      pendingVisible: '当前页待确认 {count} 条',
+      empty: '当前筛选条件下没有告警',
+      column: {
+        severity: '严重度',
+        status: '处置状态',
+        device: '设备',
+        rule: '告警规则',
+        source: '来源属性',
+        raisedAt: '触发时间'
+      },
+      action: { detail: '详情', acknowledge: '确认告警', close: '关闭告警' },
+      placeholder: {
+        status: '全部未关闭状态',
+        severity: '全部严重度',
+        device: '输入设备名称或编码',
+        ruleKey: '规则编码',
+        from: '触发开始时间',
+        to: '触发结束时间',
+        note: '填写现场联系、排查结论或关闭依据'
+      },
+      field: {
+        ruleKey: '规则编码',
+        source: '告警来源',
+        raisedAt: '触发时间',
+        recoveredAt: '恢复时间',
+        acknowledgedAt: '确认时间',
+        acknowledgement: '确认记录',
+        closedAt: '关闭时间',
+        closure: '关闭记录',
+        recoveryReason: '恢复原因',
+        policyRevision: '策略运行修订',
+        policyHash: '策略内容哈希',
+        note: '处置说明'
+      },
+      severity: { info: '提示', warning: '警告', critical: '严重' },
+      status: {
+        active_unacknowledged: '活动 · 未确认',
+        active_acknowledged: '活动 · 已确认',
+        recovered_unacknowledged: '已恢复 · 未确认',
+        recovered_acknowledged: '已恢复 · 已确认',
+        closed: '已关闭'
+      },
+      source: { numeric: '数值阈值', quality: '数据质量' },
+      recoveryReason: {
+        condition_cleared: '条件已消除',
+        rule_disabled: '规则已停用',
+        rule_removed: '规则已移除',
+        rule_changed: '规则已变更'
+      },
+      detail: {
+        title: '告警完整事实',
+        triggerEvidence: '触发证据',
+        recoveryEvidence: '恢复证据',
+        disposition: '处置记录',
+        noAction: '当前告警无需操作，或当前账号没有对应处置权限。',
+        loading: '正在读取告警详情'
+      },
+      validation: { note: '处置说明至少填写 2 个字符' },
+      confirm: {
+        ackTitle: '确认已接手处置',
+        ackContent: '确认后会永久记录当前操作员、时间和说明，但不会改变告警触发与恢复事实。',
+        closeTitle: '确认关闭已恢复告警',
+        closeContent: '只有已经恢复的告警可以关闭；关闭后完整证据和处置历史仍会保留。'
+      },
+      message: { acknowledged: '告警确认事实已记录', closed: '告警已关闭' },
+      error: { title: '告警操作失败', code: '错误码：{code}' }
     },
     commands: {
       title: '命令中心',

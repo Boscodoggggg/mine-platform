@@ -200,6 +200,34 @@ describe('buildDynamicNavigation', () => {
     ]);
   });
 
+  it('告警中心组件键应命中本地白名单并生成国际化导航', () => {
+    const alarmDirectory: NavigationMenuNode = {
+      ...nodes[0],
+      id: 'alarm-directory',
+      name: '告警管理',
+      path: '/alarm',
+      children: [
+        {
+          ...nodes[0].children[0],
+          id: 'alarm-center',
+          name: '告警处置中心',
+          path: '/alarm/center',
+          componentKey: 'alarm-center',
+          children: []
+        }
+      ]
+    };
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation([alarmDirectory]);
+    setLocale('zh-CN');
+
+    expect(result.routes[0]?.meta?.componentFallback).toBe(false);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]?.label).toBe('Alarm Management');
+    expect(result.menus[0]?.children?.[0]?.label).toBe('Alarm Center');
+  });
+
   it('已注册动态菜单应生成国际化键并按当前语言显示', () => {
     const systemNodes: NavigationMenuNode[] = [
       {

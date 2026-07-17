@@ -26,7 +26,8 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'device-model-management': () => import('@/modules/device/pages/model-management/DeviceModelManagementPage.vue'),
   'device-strategy-workbench': () => import('@/modules/device/pages/strategy/StrategyWorkbenchPage.vue'),
   'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
-  'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue')
+  'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue'),
+  'alarm-center': () => import('@/modules/alarm/pages/alarm-center/AlarmCenterPage.vue')
 };
 
 const fallbackView: ViewLoader = () => import('./DynamicFallbackPage.vue');
@@ -45,7 +46,9 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/device/strategies': 'mine.menu.strategies',
   '/device/monitor': 'mine.menu.monitor',
   '/command': 'mine.menu.command',
-  '/command/center': 'mine.menu.commandCenter'
+  '/command/center': 'mine.menu.commandCenter',
+  '/alarm': 'mine.menu.alarms',
+  '/alarm/center': 'mine.menu.alarmCenter'
 };
 const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18nKey>>> = {
   'home-overview': 'mine.menu.overview',
@@ -59,7 +62,8 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'device-model-management': 'mine.menu.models',
   'device-strategy-workbench': 'mine.menu.strategies',
   'device-monitor': 'mine.menu.monitor',
-  'command-center': 'mine.menu.commandCenter'
+  'command-center': 'mine.menu.commandCenter',
+  'alarm-center': 'mine.menu.alarmCenter'
 };
 
 export interface DynamicNavigationResult {

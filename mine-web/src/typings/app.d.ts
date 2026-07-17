@@ -378,6 +378,8 @@ declare namespace App {
           | 'monitor'
           | 'command'
           | 'commandCenter'
+          | 'alarms'
+          | 'alarmCenter'
           | 'overview',
           string
         >;
@@ -778,10 +780,18 @@ declare namespace App {
         strategy: {
           title: string;
           subtitle: string;
-          type: Record<'online_status' | 'data_quality', string>;
-          productionHelp: Record<'online' | 'quality', string>;
+          type: Record<'online_status' | 'data_quality' | 'alarm', string>;
+          productionHelp: Record<'online' | 'quality' | 'alarm', string>;
           section: Record<
-            'context' | 'groups' | 'members' | 'draft' | 'publish' | 'history' | 'effective' | 'qualityRules',
+            | 'context'
+            | 'groups'
+            | 'members'
+            | 'draft'
+            | 'publish'
+            | 'history'
+            | 'effective'
+            | 'qualityRules'
+            | 'alarmRules',
             string
           >;
           field: Record<
@@ -807,7 +817,20 @@ declare namespace App {
             | 'propertyId'
             | 'required'
             | 'minimum'
-            | 'maximum',
+            | 'maximum'
+            | 'alarmRuleKey'
+            | 'alarmRuleName'
+            | 'alarmSourceType'
+            | 'alarmSeverity'
+            | 'alarmEnabled'
+            | 'triggerDurationSeconds'
+            | 'recoverDurationSeconds'
+            | 'cooldownSeconds'
+            | 'alarmOperator'
+            | 'alarmThreshold'
+            | 'recoverThreshold'
+            | 'qualityRuleCode'
+            | 'optionalPropertyId',
             string
           >;
           action: Record<
@@ -822,7 +845,13 @@ declare namespace App {
             | 'rollback'
             | 'refresh'
             | 'addQualityRule'
-            | 'removeQualityRule',
+            | 'removeQualityRule'
+            | 'addNumericAlarmRule'
+            | 'addQualityAlarmRule'
+            | 'removeAlarmRule'
+            | 'copyAlarmRule'
+            | 'moveAlarmRuleUp'
+            | 'moveAlarmRuleDown',
             string
           >;
           status: Record<
@@ -832,10 +861,21 @@ declare namespace App {
           scope: Record<'product' | 'group' | 'device', string>;
           source: Record<'product' | 'group' | 'device' | 'unknown' | 'priority' | 'release', string>;
           empty: Record<
-            'products' | 'groups' | 'devices' | 'versions' | 'releases' | 'effective' | 'members' | 'qualityRules',
+            | 'products'
+            | 'groups'
+            | 'devices'
+            | 'versions'
+            | 'releases'
+            | 'effective'
+            | 'members'
+            | 'qualityRules'
+            | 'alarmRules',
             string
           >;
-          placeholder: Record<'enter' | 'select' | 'propertyId', string>;
+          placeholder: Record<
+            'enter' | 'select' | 'propertyId' | 'alarmRuleKey' | 'alarmRuleName' | 'optionalPropertyId',
+            string
+          >;
           validation: Record<
             | 'required'
             | 'threshold'
@@ -846,7 +886,11 @@ declare namespace App {
             | 'future'
             | 'property'
             | 'range'
-            | 'qualityRequired',
+            | 'qualityRequired'
+            | 'alarmRuleCount'
+            | 'alarmIdentity'
+            | 'alarmDuration'
+            | 'alarmHysteresis',
             string
           >;
           message: Record<
@@ -862,7 +906,19 @@ declare namespace App {
           >;
           confirm: Record<'archiveGroup' | 'rollback', string>;
           error: Record<'title' | 'conflictTitle' | 'invalidTitle' | 'code' | 'details', string>;
-          help: Record<'groupPriority' | 'scope' | 'members' | 'readonly' | 'qualityTemplate' | 'qualityRules', string>;
+          help: Record<
+            | 'groupPriority'
+            | 'scope'
+            | 'members'
+            | 'readonly'
+            | 'qualityTemplate'
+            | 'qualityRules'
+            | 'alarmTemplate'
+            | 'alarmRules'
+            | 'alarmHysteresis'
+            | 'alarmAtomicOverride',
+            string
+          >;
           text: Record<
             | 'seconds'
             | 'enabled'
@@ -872,10 +928,23 @@ declare namespace App {
             | 'memberCount'
             | 'priority'
             | 'onlineSummary'
-            | 'qualitySummary',
+            | 'qualitySummary'
+            | 'alarmSummary',
             string
           >;
           qualityField: Record<'required' | 'minimum' | 'maximum', string>;
+          alarm: {
+            unnamedRule: string;
+            copySuffix: string;
+            timing: string;
+            source: Record<'numeric' | 'quality', string>;
+            severity: Record<'info' | 'warning' | 'critical', string>;
+            operator: Record<'gt' | 'gte' | 'lt' | 'lte', string>;
+            qualityCode: Record<
+              'future_timestamp' | 'stale_timestamp' | 'required_missing' | 'below_minimum' | 'above_maximum',
+              string
+            >;
+          };
         };
         models: {
           title: string;
@@ -998,6 +1067,47 @@ declare namespace App {
           waiting: string;
           quality: Record<'good' | 'uncertain' | 'bad' | 'timeUntrusted' | 'unknown', string>;
           property: Record<'engineRpm' | 'coolantTemperature' | 'vehicleSpeed' | 'fuelLevel', string>;
+        };
+        alarms: {
+          title: string;
+          subtitle: string;
+          listTitle: string;
+          pendingVisible: string;
+          empty: string;
+          column: Record<'severity' | 'status' | 'device' | 'rule' | 'source' | 'raisedAt', string>;
+          action: Record<'detail' | 'acknowledge' | 'close', string>;
+          placeholder: Record<'status' | 'severity' | 'device' | 'ruleKey' | 'from' | 'to' | 'note', string>;
+          field: Record<
+            | 'ruleKey'
+            | 'source'
+            | 'raisedAt'
+            | 'recoveredAt'
+            | 'acknowledgedAt'
+            | 'acknowledgement'
+            | 'closedAt'
+            | 'closure'
+            | 'recoveryReason'
+            | 'policyRevision'
+            | 'policyHash'
+            | 'note',
+            string
+          >;
+          severity: Record<'info' | 'warning' | 'critical', string>;
+          status: Record<
+            | 'active_unacknowledged'
+            | 'active_acknowledged'
+            | 'recovered_unacknowledged'
+            | 'recovered_acknowledged'
+            | 'closed',
+            string
+          >;
+          source: Record<'numeric' | 'quality', string>;
+          recoveryReason: Record<'condition_cleared' | 'rule_disabled' | 'rule_removed' | 'rule_changed', string>;
+          detail: Record<'title' | 'triggerEvidence' | 'recoveryEvidence' | 'disposition' | 'noAction' | 'loading', string>;
+          validation: Record<'note', string>;
+          confirm: Record<'ackTitle' | 'ackContent' | 'closeTitle' | 'closeContent', string>;
+          message: Record<'acknowledged' | 'closed', string>;
+          error: Record<'title' | 'code', string>;
         };
         commands: {
           title: string;

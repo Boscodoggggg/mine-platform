@@ -66,6 +66,8 @@ const local: App.I18n.Schema = {
       monitor: 'Device Monitoring',
       command: 'Command Management',
       commandCenter: 'Command Center',
+      alarms: 'Alarm Management',
+      alarmCenter: 'Alarm Center',
       overview: 'Operations Overview'
     },
     common: {
@@ -682,13 +684,16 @@ const local: App.I18n.Schema = {
         'Manage product, group, and device policies; verify target scope before release and explain each device’s final effective value.',
       type: {
         online_status: 'Online Status Policy',
-        data_quality: 'Data Quality Policy'
+        data_quality: 'Data Quality Policy',
+        alarm: 'Alarm Policy'
       },
       productionHelp: {
         online:
           'A release immediately changes online-status evaluation. Verify the scope, final threshold, and conflict evidence, then provide an auditable business reason.',
         quality:
-          'A release immediately changes telemetry quality evaluation and evidence. Verify time windows, property constraints, final sources, and provide an auditable business reason.'
+          'A release immediately changes telemetry quality evaluation and evidence. Verify time windows, property constraints, final sources, and provide an auditable business reason.',
+        alarm:
+          'An alarm release participates in real-time telemetry evaluation. Review scope, severity, durations, recovery hysteresis, and cooldown to prevent chatter or missed alarms.'
       },
       section: {
         context: 'Configuration Context',
@@ -698,7 +703,8 @@ const local: App.I18n.Schema = {
         publish: 'Release Control',
         history: 'Immutable Release History',
         effective: 'Final Effective Device Policy',
-        qualityRules: 'Property Quality Rules'
+        qualityRules: 'Property Quality Rules',
+        alarmRules: 'Dual-source Alarm Rules'
       },
       field: {
         strategyType: 'Policy Type',
@@ -723,7 +729,20 @@ const local: App.I18n.Schema = {
         propertyId: 'Thing Model Property',
         required: 'Required in Frame',
         minimum: 'Quality Minimum',
-        maximum: 'Quality Maximum'
+        maximum: 'Quality Maximum',
+        alarmRuleKey: 'Rule Key',
+        alarmRuleName: 'Rule Name',
+        alarmSourceType: 'Alarm Source',
+        alarmSeverity: 'Severity',
+        alarmEnabled: 'Enabled',
+        triggerDurationSeconds: 'Trigger Duration',
+        recoverDurationSeconds: 'Recovery Duration',
+        cooldownSeconds: 'Cooldown Window',
+        alarmOperator: 'Comparison',
+        alarmThreshold: 'Trigger Threshold',
+        recoverThreshold: 'Recovery Threshold',
+        qualityRuleCode: 'Quality Rule',
+        optionalPropertyId: 'Thing Model Property (Optional)'
       },
       action: {
         newGroup: 'New Group',
@@ -737,7 +756,13 @@ const local: App.I18n.Schema = {
         rollback: 'Roll Back to This Release',
         refresh: 'Refresh Effective Value',
         addQualityRule: 'Add Property Rule',
-        removeQualityRule: 'Remove'
+        removeQualityRule: 'Remove',
+        addNumericAlarmRule: 'Add Numeric Rule',
+        addQualityAlarmRule: 'Add Quality Rule',
+        removeAlarmRule: 'Remove Rule',
+        copyAlarmRule: 'Copy',
+        moveAlarmRuleUp: 'Move Up',
+        moveAlarmRuleDown: 'Move Down'
       },
       status: {
         draft: 'Draft',
@@ -770,12 +795,16 @@ const local: App.I18n.Schema = {
         releases: 'No policy releases exist yet',
         effective: 'Select a device to inspect its final effective policy',
         members: 'This group has no members',
-        qualityRules: 'No property rules yet. Configure at least one time window or property rule.'
+        qualityRules: 'No property rules yet. Configure at least one time window or property rule.',
+        alarmRules: 'No alarm rules yet. An alarm policy requires at least one rule.'
       },
       placeholder: {
         enter: 'Enter {field}',
         select: 'Select {field}',
-        propertyId: 'For example, engine.rpm'
+        propertyId: 'For example, engine.rpm',
+        alarmRuleKey: 'For example, engine-temperature-high',
+        alarmRuleName: 'For example, Engine temperature high',
+        optionalPropertyId: 'Leave empty for frame-level rules'
       },
       validation: {
         required: 'Complete all required fields',
@@ -787,7 +816,12 @@ const local: App.I18n.Schema = {
         future: 'Future time tolerance must be between 0 and 3600 seconds',
         property: 'A property identifier is invalid, duplicated, or missing',
         range: 'A property minimum cannot be greater than its maximum',
-        qualityRequired: 'Configure at least one time window or property quality rule'
+        qualityRequired: 'Configure at least one time window or property quality rule',
+        alarmRuleCount: 'Configure between 1 and 100 alarm rules',
+        alarmIdentity: 'A rule key is invalid or duplicated, or its name is empty',
+        alarmDuration: 'Durations must be integers; trigger and recovery cap at 86400 seconds and cooldown at 604800 seconds',
+        alarmHysteresis:
+          'A threshold is out of range, has more than 12 decimal places, or does not form valid recovery hysteresis'
       },
       message: {
         groupCreated: 'Device group created',
@@ -821,7 +855,15 @@ const local: App.I18n.Schema = {
         qualityTemplate:
           'Time windows apply to the whole telemetry frame. Property rules detect missing and out-of-range values. Unconfigured rules are ignored.',
         qualityRules:
-          'Property identifiers must match the published thing model. Required and range rules produce auditable per-property quality evidence.'
+          'Property identifiers must match the published thing model. Required and range rules produce auditable per-property quality evidence.',
+        alarmTemplate:
+          'Numeric rules compare telemetry properties directly; quality rules reuse data-quality evidence. Keep published rule keys stable for alarm correlation.',
+        alarmRules:
+          'Use duration to reject transients, a recovery threshold for hysteresis, and cooldown to limit repeated cycles.',
+        alarmHysteresis:
+          'High-value alarms require a recovery threshold no higher than the trigger; low-value alarms require one no lower than the trigger.',
+        alarmAtomicOverride:
+          'Alarm rules are released as one ordered set. A group or device override replaces the complete parent rule set; it does not append only this rule.'
       },
       text: {
         seconds: 'seconds',
@@ -832,12 +874,28 @@ const local: App.I18n.Schema = {
         memberCount: '{count} devices',
         priority: 'Priority {priority}',
         onlineSummary: 'Offline after {seconds} seconds',
-        qualitySummary: '{count} property rules'
+        qualitySummary: '{count} property rules',
+        alarmSummary: '{count} alarm rules'
       },
       qualityField: {
         required: 'Required · {property}',
         minimum: 'Minimum · {property}',
         maximum: 'Maximum · {property}'
+      },
+      alarm: {
+        unnamedRule: 'Unnamed Rule',
+        copySuffix: ' (Copy)',
+        timing: 'Trigger {trigger}s · Recover {recover}s · Cooldown {cooldown}s',
+        source: { numeric: 'Numeric Threshold', quality: 'Data Quality' },
+        severity: { info: 'Info', warning: 'Warning', critical: 'Critical' },
+        operator: { gt: 'Greater Than', gte: 'Greater or Equal', lt: 'Less Than', lte: 'Less or Equal' },
+        qualityCode: {
+          future_timestamp: 'Device Time Is in the Future',
+          stale_timestamp: 'Device Time Is Stale',
+          required_missing: 'Required Property Missing',
+          below_minimum: 'Below Thing Model Minimum',
+          above_maximum: 'Above Thing Model Maximum'
+        }
       }
     },
     models: {
@@ -1019,6 +1077,79 @@ const local: App.I18n.Schema = {
         vehicleSpeed: 'Vehicle Speed',
         fuelLevel: 'Fuel Level'
       }
+    },
+    alarms: {
+      title: 'Alarm Center',
+      subtitle:
+        'Review real-time alarm cycles, retain trigger and recovery evidence, and complete an auditable acknowledgement and closure loop.',
+      listTitle: 'Alarm Cycles',
+      pendingVisible: '{count} awaiting acknowledgement on this page',
+      empty: 'No alarms match the current filters',
+      column: {
+        severity: 'Severity',
+        status: 'Disposition Status',
+        device: 'Device',
+        rule: 'Alarm Rule',
+        source: 'Source Property',
+        raisedAt: 'Raised At'
+      },
+      action: { detail: 'Details', acknowledge: 'Acknowledge', close: 'Close Alarm' },
+      placeholder: {
+        status: 'All unclosed statuses',
+        severity: 'All severities',
+        device: 'Enter a device name or code',
+        ruleKey: 'Rule key',
+        from: 'Raised from',
+        to: 'Raised before',
+        note: 'Enter site contact, investigation result, or closure evidence'
+      },
+      field: {
+        ruleKey: 'Rule Key',
+        source: 'Alarm Source',
+        raisedAt: 'Raised At',
+        recoveredAt: 'Recovered At',
+        acknowledgedAt: 'Acknowledged At',
+        acknowledgement: 'Acknowledgement',
+        closedAt: 'Closed At',
+        closure: 'Closure',
+        recoveryReason: 'Recovery Reason',
+        policyRevision: 'Policy Runtime Revision',
+        policyHash: 'Policy Content Hash',
+        note: 'Disposition Note'
+      },
+      severity: { info: 'Info', warning: 'Warning', critical: 'Critical' },
+      status: {
+        active_unacknowledged: 'Active · Unacknowledged',
+        active_acknowledged: 'Active · Acknowledged',
+        recovered_unacknowledged: 'Recovered · Unacknowledged',
+        recovered_acknowledged: 'Recovered · Acknowledged',
+        closed: 'Closed'
+      },
+      source: { numeric: 'Numeric Threshold', quality: 'Data Quality' },
+      recoveryReason: {
+        condition_cleared: 'Condition Cleared',
+        rule_disabled: 'Rule Disabled',
+        rule_removed: 'Rule Removed',
+        rule_changed: 'Rule Changed'
+      },
+      detail: {
+        title: 'Complete Alarm Facts',
+        triggerEvidence: 'Trigger Evidence',
+        recoveryEvidence: 'Recovery Evidence',
+        disposition: 'Disposition',
+        noAction: 'No action is needed, or this account lacks the required disposition permission.',
+        loading: 'Loading alarm details'
+      },
+      validation: { note: 'Enter at least 2 characters for the disposition note' },
+      confirm: {
+        ackTitle: 'Confirm Ownership',
+        ackContent:
+          'Acknowledgement permanently records the operator, time, and note without changing trigger or recovery facts.',
+        closeTitle: 'Close Recovered Alarm',
+        closeContent: 'Only recovered alarms can be closed. Complete evidence and disposition history remain available.'
+      },
+      message: { acknowledged: 'Alarm acknowledgement recorded', closed: 'Alarm closed' },
+      error: { title: 'Alarm Operation Failed', code: 'Error code: {code}' }
     },
     commands: {
       title: 'Command Center',

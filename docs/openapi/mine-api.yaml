@@ -884,10 +884,14 @@ paths:
       operationId: listAlarms
       summary: 组合过滤并分页查询告警周期
       description: |
-        status 由触发、恢复、确认和关闭事实实时推导；active=true 只返回尚未恢复的告警。
+        status 由触发、恢复、确认和关闭事实实时推导；active=true 只返回尚未恢复的告警，
+        closed=false 返回全部未关闭告警并包含恢复未确认事实。
         查询结果按触发时间和告警标识倒序排列。
       parameters:
         - name: active
+          in: query
+          schema: { type: boolean }
+        - name: closed
           in: query
           schema: { type: boolean }
         - name: status
@@ -899,6 +903,10 @@ paths:
         - name: deviceId
           in: query
           schema: { type: string, format: uuid }
+        - name: deviceKeyword
+          in: query
+          description: 按设备编码或设备名称模糊匹配，不需要设备台账权限。
+          schema: { type: string, maxLength: 128 }
         - name: ruleKey
           in: query
           schema: { type: string, maxLength: 64 }
@@ -2006,10 +2014,14 @@ components:
           type: number
           minimum: -1000000000000000
           maximum: 1000000000000000
+          multipleOf: 0.000000000001
+          description: 绝对值不超过 10^15，最多 12 位小数。
         recoverThreshold:
           type: number
           minimum: -1000000000000000
           maximum: 1000000000000000
+          multipleOf: 0.000000000001
+          description: 绝对值不超过 10^15，最多 12 位小数。
     AlarmQualityRule:
       type: object
       additionalProperties: false
@@ -2179,25 +2191,12 @@ components:
         strategyType: { $ref: '#/components/schemas/StrategyType' }
         valid: { type: boolean }
         values:
-          type: object
-          maxProperties: 256
-          additionalProperties:
-            oneOf:
-              - type: boolean
-              - type: number
-          properties:
-            offlineThresholdSeconds:
-              type: integer
-              minimum: 1
-              maximum: 604800
-            staleAfterSeconds:
-              type: integer
-              minimum: 1
-              maximum: 604800
-            futureToleranceSeconds:
-              type: integer
-              minimum: 0
-              maximum: 3600
+          oneOf:
+            - $ref: '#/components/schemas/StrategyValues'
+            - type: object
+              additionalProperties: false
+              maxProperties: 0
+              description: 最终策略冲突或没有可用发布时返回空对象。
         sources:
           type: object
           additionalProperties: { $ref: '#/components/schemas/StrategyValueSource' }

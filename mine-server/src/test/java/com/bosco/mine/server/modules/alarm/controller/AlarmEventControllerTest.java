@@ -50,15 +50,15 @@ class AlarmEventControllerTest {
     void 告警列表应透传组合过滤并返回推导状态() throws Exception {
         AlarmEventResponse alarm = alarm(AlarmStatus.ACTIVE_UNACKNOWLEDGED, 2);
         when(service.find(
-                true, AlarmStatus.ACTIVE_UNACKNOWLEDGED, "CRITICAL", alarm.deviceId(),
+                null, false, null, "CRITICAL", alarm.deviceId(), "运输车",
                 "engine-hot", null, null, 1, 20))
                 .thenReturn(new PageResponse<>(List.of(alarm), 1, 20, 1));
 
         mockMvc.perform(get("/api/v1/alarms")
-                        .param("active", "true")
-                        .param("status", "ACTIVE_UNACKNOWLEDGED")
+                        .param("closed", "false")
                         .param("severity", "CRITICAL")
                         .param("deviceId", alarm.deviceId().toString())
+                        .param("deviceKeyword", "运输车")
                         .param("ruleKey", "engine-hot"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].id").value(ALARM_ID.toString()))
@@ -114,7 +114,7 @@ class AlarmEventControllerTest {
     @Test
     void 所有告警入口都应声明最小权限() throws Exception {
         assertPermission("findAlarms", "alarm:event:view",
-                Boolean.class, AlarmStatus.class, String.class, UUID.class, String.class,
+                Boolean.class, Boolean.class, AlarmStatus.class, String.class, UUID.class, String.class, String.class,
                 Instant.class, Instant.class, int.class, int.class);
         assertPermission("findAlarm", "alarm:event:view", UUID.class);
         assertPermission("acknowledge", "alarm:event:ack",

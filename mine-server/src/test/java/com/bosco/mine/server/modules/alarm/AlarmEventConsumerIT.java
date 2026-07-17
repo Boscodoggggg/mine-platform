@@ -184,11 +184,11 @@ class AlarmEventConsumerIT {
                 message(86L, raisedEnvelope()), mock(Channel.class));
 
         var page = service.find(
-                true, AlarmStatus.ACTIVE_UNACKNOWLEDGED, "CRITICAL", DEVICE_ID,
-                "engine-hot", RAISED_AT.minusSeconds(1), RAISED_AT.plusSeconds(1), 1, 20);
+                null, false, AlarmStatus.ACTIVE_UNACKNOWLEDGED, "CRITICAL", DEVICE_ID,
+                "集成测试矿卡", "engine-hot", RAISED_AT.minusSeconds(1), RAISED_AT.plusSeconds(1), 1, 20);
         var excluded = service.find(
-                true, AlarmStatus.ACTIVE_UNACKNOWLEDGED, "WARNING", DEVICE_ID,
-                "engine-hot", RAISED_AT, RAISED_AT.plusSeconds(1), 1, 20);
+                null, false, AlarmStatus.ACTIVE_UNACKNOWLEDGED, "WARNING", DEVICE_ID,
+                "不存在设备", "engine-hot", RAISED_AT, RAISED_AT.plusSeconds(1), 1, 20);
 
         assertThat(page.total()).isEqualTo(1L);
         assertThat(page.items()).singleElement()
@@ -199,6 +199,20 @@ class AlarmEventConsumerIT {
                 });
         assertThat(excluded.total()).isZero();
         assertThat(repository.countActiveBySeverity("CRITICAL")).isEqualTo(1L);
+    }
+
+    @Test
+    void 默认未关闭查询应包含恢复但尚未确认的告警() throws Exception {
+        new AlarmEventConsumer(service).onMessage(
+                message(89L, recoveredEnvelope()), mock(Channel.class));
+
+        var page = service.find(
+                null, false, null, null, null, "truck-alarm", null,
+                null, null, 1, 20);
+
+        assertThat(page.items()).singleElement()
+                .satisfies(alarm -> assertThat(alarm.status())
+                        .isEqualTo(AlarmStatus.RECOVERED_UNACKNOWLEDGED));
     }
 
     @Test

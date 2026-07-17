@@ -129,7 +129,7 @@ class AlarmEventServiceTest {
     @Test
     void 超大页码应在进入数据库前拒绝() {
         assertThatThrownBy(() -> service.find(
-                null, null, null, null, null, null, null, 1_000_001, 20))
+                null, null, null, null, null, null, null, null, null, 1_000_001, 20))
                 .isInstanceOfSatisfying(MineException.class,
                         exception -> assertThat(exception.errorCode().code()).isEqualTo("ALARM-400-001"));
         verify(repository, never()).find(any(), anyInt(), anyInt());

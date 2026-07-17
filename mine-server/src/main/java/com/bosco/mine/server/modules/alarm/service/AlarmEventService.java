@@ -188,9 +188,11 @@ public class AlarmEventService {
     @Transactional(readOnly = true)
     public PageResponse<AlarmEventResponse> find(
             Boolean active,
+            Boolean closed,
             AlarmStatus status,
             String severity,
             UUID deviceId,
+            String deviceKeyword,
             String ruleKey,
             Instant from,
             Instant to,
@@ -201,12 +203,14 @@ public class AlarmEventService {
             throw error("ALARM-400-001", "告警分页参数不合法");
         }
         String normalizedSeverity = normalizeSeverity(severity);
+        String normalizedDeviceKeyword = normalizeOptional(deviceKeyword, 128, "设备关键词");
         String normalizedRuleKey = normalizeOptional(ruleKey, 64, "规则编码");
         if (from != null && to != null && !from.isBefore(to)) {
             throw error("ALARM-400-002", "告警查询开始时间必须早于结束时间");
         }
         AlarmQuery query = new AlarmQuery(
-                active, status, normalizedSeverity, deviceId, normalizedRuleKey, from, to);
+                active, closed, status, normalizedSeverity, deviceId,
+                normalizedDeviceKeyword, normalizedRuleKey, from, to);
         return new PageResponse<>(repository.find(query, page, size).stream()
                 .map(this::toResponse)
                 .toList(), page, size, repository.count(query));

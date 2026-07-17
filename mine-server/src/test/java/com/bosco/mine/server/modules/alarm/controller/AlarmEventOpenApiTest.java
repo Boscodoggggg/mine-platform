@@ -33,6 +33,10 @@ class AlarmEventOpenApiTest {
         assertThat(list(acknowledgement.get("parameters")))
                 .anySatisfy(parameter -> assertThat(map(parameter).get("$ref"))
                         .isEqualTo("#/components/parameters/IdempotencyKey"));
+        Map<String, Object> listAlarms = map(map(paths.get("/alarms")).get("get"));
+        assertThat(list(listAlarms.get("parameters")))
+                .extracting(parameter -> map(parameter).get("name"))
+                .contains("closed", "deviceKeyword");
         Map<String, Object> schemas = map(map(root.get("components")).get("schemas"));
         assertThat(list(map(schemas.get("AlarmStatus")).get("enum")))
                 .containsExactly(

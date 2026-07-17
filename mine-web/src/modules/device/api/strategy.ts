@@ -18,6 +18,10 @@ export type StrategyPublishRequest = components['schemas']['StrategyPublishReque
 export type StrategyRollbackRequest = components['schemas']['StrategyRollbackRequest'];
 export type StrategyRelease = components['schemas']['StrategyRelease'];
 export type EffectiveStrategy = components['schemas']['EffectiveStrategy'];
+export type AlarmNumericRule = components['schemas']['AlarmNumericRule'];
+export type AlarmQualityRule = components['schemas']['AlarmQualityRule'];
+export type AlarmRule = AlarmNumericRule | AlarmQualityRule;
+export type AlarmStrategyValues = components['schemas']['AlarmStrategyValues'];
 
 export interface DeviceGroupQuery {
   productId: string;

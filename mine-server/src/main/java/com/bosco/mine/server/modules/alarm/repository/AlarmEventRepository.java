@@ -159,7 +159,12 @@ public class AlarmEventRepository {
     public long count(AlarmQuery query) {
         SqlWithParameters filter = filter(query);
         return namedJdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM alarm_event alarm WHERE 1 = 1 " + filter.sql(),
+                """
+                SELECT COUNT(*)
+                FROM alarm_event alarm
+                JOIN dev_device device ON device.id = alarm.device_id
+                WHERE 1 = 1
+                """ + filter.sql(),
                 filter.parameters(), Long.class
         );
     }
@@ -289,6 +294,11 @@ public class AlarmEventRepository {
                     ? " AND alarm.recovered_at IS NULL AND alarm.closed_at IS NULL"
                     : " AND alarm.recovered_at IS NOT NULL");
         }
+        if (query.closed() != null) {
+            sql.append(query.closed()
+                    ? " AND alarm.closed_at IS NOT NULL"
+                    : " AND alarm.closed_at IS NULL");
+        }
         if (query.status() != null) {
             sql.append(switch (query.status()) {
                 case ACTIVE_UNACKNOWLEDGED ->
@@ -313,6 +323,11 @@ public class AlarmEventRepository {
         if (query.deviceId() != null) {
             sql.append(" AND alarm.device_id = :deviceId");
             parameters.addValue("deviceId", query.deviceId());
+        }
+        if (query.deviceKeyword() != null) {
+            sql.append(" AND (POSITION(LOWER(:deviceKeyword) IN LOWER(device.device_code)) > 0"
+                    + " OR POSITION(LOWER(:deviceKeyword) IN LOWER(device.name)) > 0)");
+            parameters.addValue("deviceKeyword", query.deviceKeyword());
         }
         if (query.ruleKey() != null) {
             sql.append(" AND alarm.rule_key = :ruleKey");
@@ -346,9 +361,11 @@ public class AlarmEventRepository {
     /** 告警查询条件。 */
     public record AlarmQuery(
             Boolean active,
+            Boolean closed,
             AlarmStatus status,
             String severity,
             UUID deviceId,
+            String deviceKeyword,
             String ruleKey,
             Instant from,
             Instant to

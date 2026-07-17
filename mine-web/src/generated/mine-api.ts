@@ -614,7 +614,8 @@ export interface paths {
         };
         /**
          * 组合过滤并分页查询告警周期
-         * @description status 由触发、恢复、确认和关闭事实实时推导；active=true 只返回尚未恢复的告警。
+         * @description status 由触发、恢复、确认和关闭事实实时推导；active=true 只返回尚未恢复的告警，
+         *     closed=false 返回全部未关闭告警并包含恢复未确认事实。
          *     查询结果按触发时间和告警标识倒序排列。
          */
         get: operations["listAlarms"];
@@ -1207,7 +1208,9 @@ export interface components {
             propertyId: string;
             /** @enum {string} */
             operator: "GT" | "GTE" | "LT" | "LTE";
+            /** @description 绝对值不超过 10^15，最多 12 位小数。 */
             threshold: number;
+            /** @description 绝对值不超过 10^15，最多 12 位小数。 */
             recoverThreshold: number;
         };
         AlarmQualityRule: {
@@ -1319,13 +1322,7 @@ export interface components {
             productId: string;
             strategyType: components["schemas"]["StrategyType"];
             valid: boolean;
-            values: {
-                offlineThresholdSeconds?: number;
-                staleAfterSeconds?: number;
-                futureToleranceSeconds?: number;
-            } & {
-                [key: string]: boolean | number;
-            };
+            values: components["schemas"]["StrategyValues"] | Record<string, never>;
             sources: {
                 [key: string]: components["schemas"]["StrategyValueSource"];
             };
@@ -3497,9 +3494,12 @@ export interface operations {
         parameters: {
             query?: {
                 active?: boolean;
+                closed?: boolean;
                 status?: components["schemas"]["AlarmStatus"];
                 severity?: components["schemas"]["AlarmSeverity"];
                 deviceId?: string;
+                /** @description 按设备编码或设备名称模糊匹配，不需要设备台账权限。 */
+                deviceKeyword?: string;
                 ruleKey?: string;
                 /** @description 触发时间范围起点，包含。 */
                 from?: string;

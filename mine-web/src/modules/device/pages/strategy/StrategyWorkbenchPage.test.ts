@@ -3,6 +3,7 @@ import { NSelect } from 'naive-ui';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { i18n, setLocale } from '@/locales';
+import AlarmRuleEditor from '@/modules/device/components/strategy/AlarmRuleEditor.vue';
 import StrategyWorkbenchPage from './StrategyWorkbenchPage.vue';
 
 const deviceApi = vi.hoisted(() => ({
@@ -94,6 +95,42 @@ const qualityDraft = {
   },
   description: '运输车数据可信基线'
 };
+const alarmDraft = {
+  ...draft,
+  id: 'alarm-version-4',
+  strategyType: 'ALARM' as const,
+  versionNumber: 4,
+  values: {
+    rules: [
+      {
+        key: 'engine-temperature-high',
+        name: '发动机温度过高',
+        sourceType: 'NUMERIC' as const,
+        severity: 'CRITICAL' as const,
+        triggerDurationSeconds: 10,
+        recoverDurationSeconds: 30,
+        cooldownSeconds: 300,
+        enabled: true,
+        propertyId: 'engine.temperature',
+        operator: 'GT' as const,
+        threshold: 110,
+        recoverThreshold: 100
+      },
+      {
+        key: 'any-required-missing',
+        name: '任意必填属性缺失',
+        sourceType: 'QUALITY' as const,
+        severity: 'WARNING' as const,
+        triggerDurationSeconds: 0,
+        recoverDurationSeconds: 30,
+        cooldownSeconds: 300,
+        enabled: true,
+        qualityRuleCode: 'REQUIRED_MISSING' as const
+      }
+    ]
+  },
+  description: '运输车关键温度告警'
+};
 const release = {
   id: 'release-8',
   productId: 'product-1',
@@ -146,7 +183,7 @@ describe('StrategyWorkbenchPage', () => {
     deviceApi.getDevices.mockResolvedValue({
       items: [device],
       page: 1,
-      size: 200,
+      size: 100,
       total: 1
     });
     strategyApi.listDeviceGroups.mockResolvedValue({
@@ -157,7 +194,7 @@ describe('StrategyWorkbenchPage', () => {
     });
     strategyApi.listDeviceGroupMembers.mockResolvedValue([{ ...device, effectiveFrom: '2026-07-16T01:00:00Z' }]);
     strategyApi.listStrategyVersions.mockImplementation(({ strategyType }: { strategyType: string }) =>
-      Promise.resolve(strategyType === 'DATA_QUALITY' ? [qualityDraft] : [draft])
+      Promise.resolve(strategyType === 'DATA_QUALITY' ? [qualityDraft] : strategyType === 'ALARM' ? [alarmDraft] : [draft])
     );
     strategyApi.listStrategyReleases.mockImplementation(({ strategyType }: { strategyType: string }) =>
       Promise.resolve(strategyType === 'DATA_QUALITY' ? [] : [release])
@@ -292,6 +329,52 @@ describe('StrategyWorkbenchPage', () => {
       description: '运输车数据可信基线',
       version: 1
     });
+  });
+
+  it('应切换到告警策略、展示规则并按完整契约保存草稿', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit']);
+    await flushPromises();
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+
+    selector?.vm.$emit('update:value', 'ALARM');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('告警策略');
+    expect(wrapper.text()).toContain('发动机温度过高');
+    await wrapper.get('[data-action="save-draft"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.updateStrategyDraft).toHaveBeenCalledWith('alarm-version-4', {
+      values: alarmDraft.values,
+      description: '运输车关键温度告警',
+      version: 1
+    });
+  });
+
+  it('告警阈值应允许十二位小数并在提交前拒绝十三位小数', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit']);
+    await flushPromises();
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+    selector?.vm.$emit('update:value', 'ALARM');
+    await flushPromises();
+    const editor = wrapper.getComponent(AlarmRuleEditor);
+    const rules = alarmDraft.values.rules;
+
+    editor.vm.$emit('update:modelValue', [{ ...rules[0], threshold: 1.123456789012, recoverThreshold: 1 }, rules[1]]);
+    await wrapper.get('[data-action="save-draft"]').trigger('click');
+    await flushPromises();
+    expect(strategyApi.updateStrategyDraft).toHaveBeenCalled();
+
+    strategyApi.updateStrategyDraft.mockClear();
+    editor.vm.$emit('update:modelValue', [{ ...rules[0], threshold: 1.1234567890123, recoverThreshold: 1 }, rules[1]]);
+    await wrapper.get('[data-action="save-draft"]').trigger('click');
+    await flushPromises();
+    expect(strategyApi.updateStrategyDraft).not.toHaveBeenCalled();
+    expect(window.$message?.warning).toHaveBeenCalledWith(expect.stringContaining('12 位小数'));
   });
 });
 
