@@ -13,23 +13,12 @@ defineProps<{
 const { t } = useI18n();
 const helpId = useId();
 const helpVisible = ref(false);
-const hovered = ref(false);
-const focused = ref(false);
-
-function syncHelpVisible() {
-  helpVisible.value = hovered.value || focused.value;
-}
-
-function dismissHelp() {
-  hovered.value = false;
-  focused.value = false;
-  helpVisible.value = false;
-}
 </script>
 
 <template>
   <NSpace align="center" :size="4">
     <span>{{ t(labelKey) }}</span>
+    <span :id="helpId" class="sr-only">{{ t(helpKey) }}</span>
     <NTooltip placement="top" trigger="manual" :show="helpVisible">
       <template #trigger>
         <NButton
@@ -40,16 +29,13 @@ function dismissHelp() {
           :aria-describedby="helpId"
           :aria-expanded="helpVisible"
           :data-field-help="helpKey"
-          @mouseenter="hovered = true; syncHelpVisible()"
-          @mouseleave="hovered = false; syncHelpVisible()"
-          @focus="focused = true; syncHelpVisible()"
-          @blur="focused = false; syncHelpVisible()"
-          @keydown.esc.stop="dismissHelp"
+          @mouseenter="helpVisible = true"
+          @mouseleave="helpVisible = false"
         >
           <span aria-hidden="true">?</span>
         </NButton>
       </template>
-      <span :id="helpId">{{ t(helpKey) }}</span>
+      <span>{{ t(helpKey) }}</span>
     </NTooltip>
   </NSpace>
 </template>

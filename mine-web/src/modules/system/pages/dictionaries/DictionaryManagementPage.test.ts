@@ -116,9 +116,20 @@ describe('DictionaryManagementPage', () => {
     const codeHelpButton = typeFields[0].querySelector<HTMLButtonElement>('[data-field-help]');
     expect(codeHelpButton?.getAttribute('aria-label')).toContain('稳定编码');
     expect(codeHelpButton?.getAttribute('aria-describedby')).toBeTruthy();
+    expect(document.getElementById(codeHelpButton?.getAttribute('aria-describedby') ?? '')?.textContent).toContain(
+      '必须以小写字母开头'
+    );
+    expect(codeHelpButton?.getAttribute('aria-expanded')).toBe('false');
     codeHelpButton?.focus();
     await flushPromises();
+    expect(codeHelpButton?.getAttribute('aria-expanded')).toBe('false');
+    codeHelpButton?.dispatchEvent(new MouseEvent('mouseenter'));
+    await flushPromises();
+    expect(codeHelpButton?.getAttribute('aria-expanded')).toBe('true');
     expect(document.body.textContent).toContain('必须以小写字母开头');
+    codeHelpButton?.dispatchEvent(new MouseEvent('mouseleave'));
+    await flushPromises();
+    expect(codeHelpButton?.getAttribute('aria-expanded')).toBe('false');
 
     await wrapper.findAllComponents(NButton).find(button => button.text() === '新增数据项')?.trigger('click');
     await flushPromises();
@@ -134,6 +145,11 @@ describe('DictionaryManagementPage', () => {
       'mine.dictionaries.help.status',
       'mine.dictionaries.help.default'
     ]);
+    const valueHelpButton = itemFields[0].querySelector<HTMLButtonElement>('[data-field-help]');
+    expect(valueHelpButton?.getAttribute('aria-expanded')).toBe('false');
+    valueHelpButton?.focus();
+    await flushPromises();
+    expect(valueHelpButton?.getAttribute('aria-expanded')).toBe('false');
   });
 });
 
