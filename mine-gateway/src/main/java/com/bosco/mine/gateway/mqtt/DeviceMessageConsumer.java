@@ -1,6 +1,7 @@
 package com.bosco.mine.gateway.mqtt;
 
 import com.bosco.mine.gateway.normalize.InvalidDeviceMessageException;
+import com.bosco.mine.gateway.publish.TelemetryPublisher;
 import com.bosco.mine.messaging.MessageEnvelope;
 import com.bosco.mine.model.message.UnifiedDeviceMessage;
 import com.rabbitmq.client.Channel;
@@ -19,7 +20,7 @@ public final class DeviceMessageConsumer implements ChannelAwareMessageListener 
     private static final Logger LOGGER = LoggerFactory.getLogger(DeviceMessageConsumer.class);
 
     private final Normalizer normalizer;
-    private final Publisher publisher;
+    private final TelemetryPublisher publisher;
 
     /**
      * 创建设备消息消费者。
@@ -27,7 +28,7 @@ public final class DeviceMessageConsumer implements ChannelAwareMessageListener 
      * @param normalizer 标准化边界
      * @param publisher 带发布确认的内部事件发布边界
      */
-    public DeviceMessageConsumer(Normalizer normalizer, Publisher publisher) {
+    public DeviceMessageConsumer(Normalizer normalizer, TelemetryPublisher publisher) {
         this.normalizer = Objects.requireNonNull(normalizer, "normalizer 不能为空");
         this.publisher = Objects.requireNonNull(publisher, "publisher 不能为空");
     }
@@ -77,12 +78,6 @@ public final class DeviceMessageConsumer implements ChannelAwareMessageListener 
      * 内部遥测事件可靠发布边界。
      */
     @FunctionalInterface
-    public interface Publisher {
-        /**
-         * 发布事件，只有 Broker 已确认接收时才能正常返回。
-         *
-         * @param envelope 内部遥测事件
-         */
-        void publish(MessageEnvelope<UnifiedDeviceMessage> envelope);
+    public interface Publisher extends TelemetryPublisher {
     }
 }

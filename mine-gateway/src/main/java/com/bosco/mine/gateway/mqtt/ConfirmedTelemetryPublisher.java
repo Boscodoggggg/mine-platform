@@ -1,5 +1,6 @@
 package com.bosco.mine.gateway.mqtt;
 
+import com.bosco.mine.gateway.publish.TelemetryPublisher;
 import com.bosco.mine.messaging.MessageEnvelope;
 import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.model.message.UnifiedDeviceMessage;
@@ -16,7 +17,7 @@ import java.util.Objects;
 /**
  * 在专用平台 vhost 连接上发布标准化遥测，并同步等待 RabbitMQ publisher confirm。
  */
-public final class ConfirmedTelemetryPublisher implements DeviceMessageConsumer.Publisher {
+public final class ConfirmedTelemetryPublisher implements TelemetryPublisher {
 
     private final RabbitOperations rabbitOperations;
     private final long confirmTimeoutMillis;
