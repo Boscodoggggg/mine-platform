@@ -5,6 +5,7 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -88,6 +89,114 @@ public class AggregationRecomputeRepository {
                 """, AggregationRecomputeRepository::mapRecord, limit);
     }
 
+    /**
+     * 原子认领最早的待执行或租约过期请求。
+     *
+     * @param instanceId Telemetry 实例标识
+     * @param leaseDuration 租约时长
+     * @param executionId 首次认领时使用的稳定执行标识
+     * @param claimToken 本次租约随机令牌
+     * @return 成功认领的请求，当前无可认领请求时为空
+     */
+    public Optional<ClaimRecord> claimNext(
+            String instanceId,
+            Duration leaseDuration,
+            UUID executionId,
+            UUID claimToken
+    ) {
+        if (instanceId == null || instanceId.isBlank() || instanceId.length() > 128
+                || leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()
+                || leaseDuration.compareTo(Duration.ofDays(1)) > 0
+                || executionId == null || claimToken == null) {
+            throw new IllegalArgumentException("聚合重算认领参数不合法");
+        }
+        long leaseSeconds = leaseDuration.toSeconds();
+        return jdbcTemplate.query("""
+                WITH candidate AS (
+                    SELECT request_id
+                      FROM dev_aggregation_recompute_request
+                     WHERE status = 'PENDING'
+                        OR (status = 'RUNNING' AND lease_until <= CURRENT_TIMESTAMP)
+                     ORDER BY created_at, request_id
+                     FOR UPDATE SKIP LOCKED
+                     LIMIT 1
+                ), claimed AS (
+                    UPDATE dev_aggregation_recompute_request target
+                       SET status = 'RUNNING',
+                           execution_id = COALESCE(target.execution_id, ?),
+                           claimed_by = ?,
+                           claim_token = ?,
+                           claimed_at = CURRENT_TIMESTAMP,
+                           lease_until = CURRENT_TIMESTAMP + make_interval(secs => ?),
+                           attempt_count = target.attempt_count + 1,
+                           updated_at = CURRENT_TIMESTAMP
+                      FROM candidate
+                     WHERE target.request_id = candidate.request_id
+                    RETURNING target.request_id, target.execution_id, target.claim_token,
+                              target.device_id, target.property_id, target.bucket_seconds,
+                              target.from_at, target.to_at, target.lease_until,
+                              target.attempt_count
+                )
+                SELECT * FROM claimed
+                """, AggregationRecomputeRepository::mapClaim,
+                executionId, instanceId.strip(), claimToken, leaseSeconds)
+                .stream()
+                .findFirst();
+    }
+
+    /**
+     * 使用当前租约令牌把运行中请求收敛为成功或失败。
+     *
+     * @param requestId 请求标识
+     * @param executionId 稳定执行标识
+     * @param claimToken 当前租约令牌
+     * @param status SUCCEEDED 或 FAILED
+     * @param lastError 失败时的脱敏错误摘要
+     * @return 是否由当前租约完成了状态迁移
+     */
+    public boolean complete(
+            UUID requestId,
+            UUID executionId,
+            UUID claimToken,
+            String status,
+            String lastError
+    ) {
+        if (requestId == null || executionId == null || claimToken == null
+                || !("SUCCEEDED".equals(status) || "FAILED".equals(status))
+                || ("SUCCEEDED".equals(status) && lastError != null)
+                || ("FAILED".equals(status) && (lastError == null || lastError.isBlank()))) {
+            throw new IllegalArgumentException("聚合重算完成参数不合法");
+        }
+        return jdbcTemplate.update("""
+                UPDATE dev_aggregation_recompute_request
+                   SET status = ?,
+                       completed_at = CURRENT_TIMESTAMP,
+                       lease_until = NULL,
+                       last_error = ?,
+                       updated_at = CURRENT_TIMESTAMP
+                 WHERE request_id = ?
+                   AND execution_id = ?
+                   AND claim_token = ?
+                   AND status = 'RUNNING'
+                """, status, lastError, requestId, executionId, claimToken) == 1;
+    }
+
+    private static ClaimRecord mapClaim(java.sql.ResultSet resultSet, int rowNumber)
+            throws java.sql.SQLException {
+        return new ClaimRecord(
+                resultSet.getObject("request_id", UUID.class),
+                resultSet.getObject("execution_id", UUID.class),
+                resultSet.getObject("claim_token", UUID.class),
+                resultSet.getObject("device_id", UUID.class),
+                resultSet.getString("property_id"),
+                resultSet.getInt("bucket_seconds"),
+                resultSet.getTimestamp("from_at").toInstant(),
+                resultSet.getTimestamp("to_at").toInstant(),
+                resultSet.getTimestamp("lease_until").toInstant(),
+                resultSet.getInt("attempt_count")
+        );
+    }
+
     private static RequestRecord mapRecord(java.sql.ResultSet resultSet, int rowNumber)
             throws java.sql.SQLException {
         Timestamp completedAt = resultSet.getTimestamp("completed_at");
@@ -146,6 +255,34 @@ public class AggregationRecomputeRepository {
             Instant completedAt,
             UUID executionId,
             String lastError
+    ) {
+    }
+
+    /**
+     * 已获得当前租约的聚合重算计算合同。
+     *
+     * @param requestId 请求标识
+     * @param executionId 跨租约保持稳定的执行标识
+     * @param claimToken 当前租约令牌
+     * @param deviceId 目标设备标识
+     * @param propertyId 目标数值属性
+     * @param bucketSeconds 固定桶宽秒数
+     * @param from 左闭开始时间
+     * @param to 右开结束时间
+     * @param leaseUntil 当前租约到期时间
+     * @param attemptCount 累计认领次数
+     */
+    public record ClaimRecord(
+            UUID requestId,
+            UUID executionId,
+            UUID claimToken,
+            UUID deviceId,
+            String propertyId,
+            int bucketSeconds,
+            Instant from,
+            Instant to,
+            Instant leaseUntil,
+            int attemptCount
     ) {
     }
 }

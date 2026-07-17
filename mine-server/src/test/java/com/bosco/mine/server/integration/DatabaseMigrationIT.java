@@ -22,6 +22,7 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -214,6 +215,41 @@ class DatabaseMigrationIT {
             assertThat(aggregationRecomputeRepository.findRecent(20))
                     .extracting(AggregationRecomputeRepository.RequestRecord::requestId)
                     .contains(requestId);
+
+            UUID firstExecutionId = UUID.randomUUID();
+            UUID firstClaimToken = UUID.randomUUID();
+            AggregationRecomputeRepository.ClaimRecord firstClaim = aggregationRecomputeRepository
+                    .claimNext("telemetry-a", Duration.ofMinutes(5), firstExecutionId, firstClaimToken)
+                    .orElseThrow();
+            assertThat(firstClaim.requestId()).isEqualTo(requestId);
+            assertThat(firstClaim.executionId()).isEqualTo(firstExecutionId);
+            assertThat(firstClaim.claimToken()).isEqualTo(firstClaimToken);
+            assertThat(firstClaim.attemptCount()).isEqualTo(1);
+            assertThat(aggregationRecomputeRepository.claimNext(
+                    "telemetry-b", Duration.ofMinutes(5), UUID.randomUUID(), UUID.randomUUID()))
+                    .isEmpty();
+
+            jdbcTemplate.update("""
+                    UPDATE dev_aggregation_recompute_request
+                       SET claimed_at = CURRENT_TIMESTAMP - INTERVAL '10 minutes',
+                           lease_until = CURRENT_TIMESTAMP - INTERVAL '1 second'
+                     WHERE request_id = ?
+                    """, requestId);
+            UUID secondClaimToken = UUID.randomUUID();
+            AggregationRecomputeRepository.ClaimRecord recovered = aggregationRecomputeRepository
+                    .claimNext("telemetry-b", Duration.ofMinutes(5), UUID.randomUUID(), secondClaimToken)
+                    .orElseThrow();
+            assertThat(recovered.executionId()).isEqualTo(firstExecutionId);
+            assertThat(recovered.claimToken()).isEqualTo(secondClaimToken);
+            assertThat(recovered.attemptCount()).isEqualTo(2);
+            assertThat(aggregationRecomputeRepository.complete(
+                    requestId, firstExecutionId, firstClaimToken, "SUCCEEDED", null)).isFalse();
+            assertThat(aggregationRecomputeRepository.complete(
+                    requestId, firstExecutionId, secondClaimToken, "SUCCEEDED", null)).isTrue();
+            assertThat(aggregationRecomputeRepository.findByIdempotency(userId, "repository-it"))
+                    .get()
+                    .extracting(AggregationRecomputeRepository.RequestRecord::status)
+                    .isEqualTo("SUCCEEDED");
         } finally {
             jdbcTemplate.update(
                     "DELETE FROM dev_aggregation_recompute_request WHERE request_id = ?", requestId);

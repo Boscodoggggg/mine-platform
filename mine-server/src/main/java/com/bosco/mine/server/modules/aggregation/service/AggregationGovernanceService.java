@@ -5,6 +5,7 @@ import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.server.modules.aggregation.dto.AggregationExecutionResponse;
+import com.bosco.mine.server.modules.aggregation.dto.InternalAggregationRecomputeClaim;
 import com.bosco.mine.server.modules.aggregation.dto.AggregationRecomputeRequest;
 import com.bosco.mine.server.modules.aggregation.dto.AggregationRecomputeResponse;
 import com.bosco.mine.server.modules.aggregation.repository.AggregationRecomputeRepository;
@@ -19,8 +20,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * 管理有界、幂等且可审计的聚合重算请求及聚合运行历史。
@@ -43,6 +46,11 @@ public class AggregationGovernanceService {
             Set.of(60, 300, 900, 3_600, 21_600, 86_400);
     private static final Duration MAX_RANGE = Duration.ofDays(31);
     private static final long MAX_BUCKETS = 10_000L;
+    private static final Duration MINIMUM_CLAIM_LEASE = Duration.ofMinutes(1);
+    private static final Duration MAXIMUM_CLAIM_LEASE = Duration.ofHours(1);
+    private static final Pattern SECRET = Pattern.compile(
+            "(?i)\\b(password|token|secret|authorization|credential)\\s*[:=]\\s*[^\\s,;]+"
+    );
 
     private final DeviceMapper deviceMapper;
     private final DeviceTelemetryRepository telemetryRepository;
@@ -137,6 +145,69 @@ public class AggregationGovernanceService {
                 )
         );
         return toResponse(record);
+    }
+
+    /**
+     * 为 Telemetry 原子认领一个待执行或租约过期的显式重算请求。
+     *
+     * @param instanceId Telemetry 实例标识
+     * @param leaseDuration 有界租约时长
+     * @return 当前租约，暂无可认领请求时为空
+     */
+    @Transactional
+    public Optional<InternalAggregationRecomputeClaim> claimRecomputation(
+            String instanceId,
+            Duration leaseDuration
+    ) {
+        String normalizedInstance = instanceId == null ? "" : instanceId.strip();
+        if (normalizedInstance.isEmpty() || normalizedInstance.length() > 128
+                || leaseDuration == null
+                || leaseDuration.compareTo(MINIMUM_CLAIM_LEASE) < 0
+                || leaseDuration.compareTo(MAXIMUM_CLAIM_LEASE) > 0) {
+            throw invalid("claim");
+        }
+        return recomputeRepository.claimNext(
+                        normalizedInstance, leaseDuration, idGenerator.next(), UUID.randomUUID())
+                .map(record -> new InternalAggregationRecomputeClaim(
+                        record.requestId(), record.executionId(), record.claimToken(),
+                        record.deviceId(), record.propertyId(),
+                        Duration.ofSeconds(record.bucketSeconds()), record.from(), record.to(),
+                        record.leaseUntil(), record.attemptCount()));
+    }
+
+    /**
+     * 使用当前租约令牌把显式重算请求收敛为成功或失败。
+     *
+     * @param requestId 请求标识
+     * @param executionId 稳定执行标识
+     * @param claimToken 当前租约令牌
+     * @param status SUCCEEDED 或 FAILED
+     * @param error 失败时的原始错误摘要
+     * @return 当前租约是否成功完成状态迁移
+     */
+    @Transactional
+    public boolean completeRecomputation(
+            UUID requestId,
+            UUID executionId,
+            UUID claimToken,
+            String status,
+            String error
+    ) {
+        if (requestId == null || executionId == null || claimToken == null
+                || !("SUCCEEDED".equals(status) || "FAILED".equals(status))) {
+            throw invalid("completion");
+        }
+        String safeError = null;
+        if ("FAILED".equals(status)) {
+            if (error == null || error.isBlank()) {
+                throw invalid("error");
+            }
+            safeError = safeError(error);
+        } else if (error != null) {
+            throw invalid("error");
+        }
+        return recomputeRepository.complete(
+                requestId, executionId, claimToken, status, safeError);
     }
 
     /**
@@ -248,6 +319,12 @@ public class AggregationGovernanceService {
         MineException exception = new MineException(RUNTIME_UNAVAILABLE, Map.of());
         exception.initCause(cause);
         return exception;
+    }
+
+    private static String safeError(String value) {
+        String singleLine = value.replaceAll("[\\r\\n\\t]+", " ").strip();
+        String redacted = SECRET.matcher(singleLine).replaceAll("$1=[REDACTED]");
+        return redacted.length() <= 2_000 ? redacted : redacted.substring(0, 2_000);
     }
 
     private static AggregationRecomputeResponse toResponse(

@@ -78,6 +78,24 @@ class InternalServiceTokenFilterTest {
         verify(chain).doFilter(request, response);
     }
 
+    @Test
+    void 同一服务令牌必须保护聚合重算认领接口() throws Exception {
+        Path tokenFile = tempDir.resolve("configuration-token");
+        String token = "configuration-token-with-at-least-32-bytes";
+        Files.writeString(tokenFile, token);
+        InternalServiceTokenFilter filter = new InternalServiceTokenFilter(
+                new ConfigurationDistributionProperties(true, tokenFile));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST", "/internal/v1/aggregation-recomputations/claim");
+        request.addHeader(InternalServiceTokenFilter.TOKEN_HEADER, token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        verify(chain).doFilter(request, response);
+    }
+
     private MockHttpServletRequest request() {
         return new MockHttpServletRequest("GET", "/internal/v1/config-releases/release-id");
     }

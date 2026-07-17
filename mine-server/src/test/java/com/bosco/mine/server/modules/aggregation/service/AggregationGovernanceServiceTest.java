@@ -183,6 +183,36 @@ class AggregationGovernanceServiceTest {
                         .isEqualTo("recompute-020"));
     }
 
+    @Test
+    void 内部租约应映射稳定执行标识且失败回写必须脱敏() {
+        Fixture fixture = fixture();
+        UUID requestId = UUID.randomUUID();
+        UUID executionId = UUID.randomUUID();
+        UUID claimToken = UUID.randomUUID();
+        when(fixture.repository.claimNext(
+                eq("telemetry-a"), eq(Duration.ofMinutes(5)), any(), any()))
+                .thenReturn(Optional.of(new AggregationRecomputeRepository.ClaimRecord(
+                        requestId, executionId, claimToken, DEVICE_ID, "engine.rpm", 300,
+                        FROM, TO, FROM.plusSeconds(300), 2)));
+
+        assertThat(fixture.service.claimRecomputation(" telemetry-a ", Duration.ofMinutes(5)))
+                .get()
+                .satisfies(claim -> {
+                    assertThat(claim.executionId()).isEqualTo(executionId);
+                    assertThat(claim.claimToken()).isEqualTo(claimToken);
+                    assertThat(claim.attemptCount()).isEqualTo(2);
+                });
+        when(fixture.repository.complete(
+                requestId, executionId, claimToken, "FAILED", "password=[REDACTED] failed"))
+                .thenReturn(true);
+
+        assertThat(fixture.service.completeRecomputation(
+                requestId, executionId, claimToken, "FAILED",
+                "password=secret\nfailed")).isTrue();
+        verify(fixture.repository).complete(
+                requestId, executionId, claimToken, "FAILED", "password=[REDACTED] failed");
+    }
+
     private Fixture fixture() {
         DeviceMapper mapper = mock(DeviceMapper.class);
         when(mapper.findDeviceById(DEVICE_ID)).thenReturn(Optional.of(new Device(
