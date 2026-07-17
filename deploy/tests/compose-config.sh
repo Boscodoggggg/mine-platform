@@ -31,6 +31,13 @@ jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_DISTRIBUT
   and .services["mine-telemetry"].depends_on["mine-server"].condition == "service_healthy"' "${rendered}" >/dev/null \
   || { echo "FAIL: telemetry 必须通过 secret 和内部接口加载策略快照" >&2; exit 1; }
 
+jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_RETENTION_ENABLED == "true"
+  and .services["mine-telemetry"].environment.MINE_TELEMETRY_RETENTION_INSTANCE_ID == "standalone-telemetry"
+  and .services["mine-telemetry"].environment.MINE_TELEMETRY_RETENTION_BATCH_SIZE == "10000"
+  and .services["mine-telemetry"].environment.MINE_TELEMETRY_RETENTION_MAX_CYCLES == "10"
+  and .services["mine-telemetry"].environment.MINE_TELEMETRY_RETENTION_INTERVAL == "5m"' "${rendered}" >/dev/null \
+  || { echo "FAIL: standalone telemetry 必须显式启用受控有界数据保留" >&2; exit 1; }
+
 jq -e '.services["mine-server"].environment.MINE_ALARM_RABBIT_ENABLED == "true"
   and .services["mine-server"].environment.MINE_ALARM_RABBIT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_alarm_password"
   and (.services["mine-server"].secrets | any(.source == "rabbitmq_server_alarm_password"))
@@ -91,6 +98,14 @@ grep -q 'MineCriticalActiveAlarmsGrowing' "${rules_file}" \
   || { echo "FAIL: 缺少严重活动告警增长告警" >&2; exit 1; }
 grep -q 'mine_server_alarm_active' "${rules_file}" \
   || { echo "FAIL: 严重活动告警规则未引用活动告警指标" >&2; exit 1; }
+grep -q 'MineTelemetryRetentionConsecutiveFailures' "${rules_file}" \
+  || { echo "FAIL: 缺少数据保留连续失败告警" >&2; exit 1; }
+grep -q 'MineTelemetryRetentionNoRecentSuccess' "${rules_file}" \
+  || { echo "FAIL: 缺少数据保留长时间无成功告警" >&2; exit 1; }
+grep -q 'MineTelemetryRetentionPersistentlyPartial' "${rules_file}" \
+  || { echo "FAIL: 缺少数据保留持续未完成告警" >&2; exit 1; }
+grep -q 'mine_telemetry_retention_consecutive_failures' "${rules_file}" \
+  || { echo "FAIL: 数据保留告警未引用低基数失败指标" >&2; exit 1; }
 if grep -Eq 'productId|releaseId|deviceId|groupId' "${rules_file}"; then
   echo "FAIL: Prometheus 规则不得依赖高基数业务标识标签" >&2
   exit 1
@@ -118,4 +133,4 @@ grep -q "mine\\\\.business\\\\.x" "${bootstrap_file}" \
 grep -q "mine\\\\.server\\\\.alarm-event\\\\.q" "${bootstrap_file}" \
   || { echo "FAIL: server 告警账号未限制为告警队列只读" >&2; exit 1; }
 
-echo "PASS: 部署配置覆盖独立告警账号、可靠拓扑和低基数告警规则"
+echo "PASS: 部署配置覆盖可靠拓扑、受控数据保留和低基数告警规则"

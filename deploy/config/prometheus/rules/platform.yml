@@ -152,3 +152,38 @@ groups:
         annotations:
           summary: "严重活动告警持续增长"
           description: "严重活动告警不少于 10 条且 10 分钟内净增长至少 5 条，请立即进入告警中心组织处置。"
+
+  - name: mine-telemetry-retention
+    rules:
+      - alert: MineTelemetryRetentionConsecutiveFailures
+        expr: max by (job) (mine_telemetry_retention_consecutive_failures) >= 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "数据保留任务连续失败"
+          description: "{{ $labels.job }} 数据保留任务已连续失败至少 3 轮，请检查 TimescaleDB、执行事实和最近脱敏错误。"
+
+      - alert: MineTelemetryRetentionNoRecentSuccess
+        expr: >-
+          ((max by (job) (mine_telemetry_retention_last_success_epoch_seconds) > 0)
+          and on (job) (time() - max by (job)
+          (mine_telemetry_retention_last_success_epoch_seconds) > 7200))
+          or ((max by (job) (mine_telemetry_retention_last_success_epoch_seconds) == 0)
+          and on (job) (time() - min by (job)
+          (mine_telemetry_retention_started_epoch_seconds) > 7200))
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据保留任务长时间没有完整成功"
+          description: "{{ $labels.job }} 超过 2 小时没有完成一次全量过期扫描，请检查失败、锁竞争或持续部分完成状态。"
+
+      - alert: MineTelemetryRetentionPersistentlyPartial
+        expr: max by (job) (mine_telemetry_retention_consecutive_partial) >= 3
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据保留任务持续未完成"
+          description: "{{ $labels.job }} 已连续至少 3 轮达到有界批次上限，请评估积压、批次参数和 TimescaleDB 执行计划。"

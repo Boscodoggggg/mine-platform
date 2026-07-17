@@ -63,3 +63,11 @@ mine:
       service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
       page-size: ${MINE_TELEMETRY_STRATEGY_PAGE_SIZE:500}
       request-timeout: ${MINE_TELEMETRY_STRATEGY_REQUEST_TIMEOUT:10s}
+    retention:
+      enabled: ${MINE_TELEMETRY_RETENTION_ENABLED:false}
+      instance-id: ${MINE_TELEMETRY_RETENTION_INSTANCE_ID:${MINE_TELEMETRY_INSTANCE_ID:${HOSTNAME:mine-telemetry}}}
+      batch-size: ${MINE_TELEMETRY_RETENTION_BATCH_SIZE:10000}
+      max-cycles: ${MINE_TELEMETRY_RETENTION_MAX_CYCLES:10}
+      initial-delay: ${MINE_TELEMETRY_RETENTION_INITIAL_DELAY:30s}
+      interval: ${MINE_TELEMETRY_RETENTION_INTERVAL:5m}
+      stale-execution-timeout: ${MINE_TELEMETRY_RETENTION_STALE_TIMEOUT:2h}
