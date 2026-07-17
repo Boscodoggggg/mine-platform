@@ -1156,11 +1156,12 @@ declare namespace App {
           listTitle: string;
           subtitle: string;
           empty: string;
-          column: Record<'device' | 'template' | 'status' | 'createdAt', string>;
+          column: Record<'product' | 'device' | 'template' | 'status' | 'createdAt', string>;
           action: Record<'create' | 'send' | 'confirmSend' | 'detail' | 'cancel' | 'confirmCancel', string>;
           modal: Record<'create' | 'cancel', string>;
           field: Record<
             | 'id'
+            | 'product'
             | 'device'
             | 'template'
             | 'status'

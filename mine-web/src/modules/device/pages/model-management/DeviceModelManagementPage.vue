@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue';
+import { computed, h, onMounted, reactive, ref, toRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import {
@@ -213,15 +213,13 @@ async function reloadAfterSamples() {
 }
 
 function syncModelFields() {
-  modelFields.value = structuredClone(
-    configuration.value.models.find(item => item.version.id === selectedModelId.value)?.fields || []
-  );
+  const fields = configuration.value.models.find(item => item.version.id === selectedModelId.value)?.fields || [];
+  modelFields.value = structuredClone(toRaw(fields));
 }
 
 function syncProtocolFields() {
-  protocolFields.value = structuredClone(
-    configuration.value.protocols.find(item => item.version.id === selectedProtocolId.value)?.fields || []
-  );
+  const fields = configuration.value.protocols.find(item => item.version.id === selectedProtocolId.value)?.fields || [];
+  protocolFields.value = structuredClone(toRaw(fields));
 }
 
 async function newModelDraft() {

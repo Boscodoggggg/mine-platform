@@ -1125,7 +1125,7 @@ const local: App.I18n.Schema = {
       listTitle: '命令列表',
       subtitle: '下发已发布的低风险设备命令，跟踪消息从排队到设备执行的可靠状态。',
       empty: '当前筛选条件下没有命令',
-      column: { device: '设备', template: '命令模板', status: '状态', createdAt: '下发时间' },
+      column: { product: '产品', device: '设备', template: '命令模板', status: '状态', createdAt: '下发时间' },
       action: {
         create: '下发命令',
         send: '准备下发',
@@ -1137,6 +1137,7 @@ const local: App.I18n.Schema = {
       modal: { create: '下发设备命令', cancel: '取消待发送命令' },
       field: {
         id: '命令编号',
+        product: '所属产品',
         device: '目标设备',
         template: '命令模板',
         status: '当前状态',

@@ -5,23 +5,30 @@ import { i18n, setLocale } from '@/locales';
 import CommandCenterPage from './CommandCenterPage.vue';
 
 const api = vi.hoisted(() => ({
+  cancelCommand: vi.fn(),
   createCommand: vi.fn(),
   getCommand: vi.fn(),
   getCommandTargets: vi.fn(),
   getCommandTemplates: vi.fn(),
   getCommands: vi.fn()
 }));
+const registryApi = vi.hoisted(() => ({
+  getDevices: vi.fn(),
+  getProducts: vi.fn()
+}));
 const authState = vi.hoisted(() => ({
   userInfo: { buttons: ['command:instance:create', 'command:template:view'] as string[] }
 }));
 
 vi.mock('@/modules/command/api/command', () => api);
+vi.mock('@/modules/device/api/device', () => registryApi);
 vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
 
 describe('CommandCenterPage', () => {
   beforeEach(() => {
     setLocale('zh-CN');
     Object.values(api).forEach(mock => mock.mockReset());
+    Object.values(registryApi).forEach(mock => mock.mockReset());
     api.getCommandTargets.mockResolvedValue({ items: [target()], page: 1, size: 100, total: 1 });
     api.getCommandTemplates.mockResolvedValue([
       {
@@ -36,6 +43,18 @@ describe('CommandCenterPage', () => {
     api.getCommands.mockResolvedValue({ items: [command('SUCCEEDED')], page: 1, size: 20, total: 1 });
     api.createCommand.mockResolvedValue(command('QUEUED'));
     api.getCommand.mockResolvedValue(command('SUCCEEDED'));
+    registryApi.getProducts.mockResolvedValue({
+      items: [product()],
+      page: 1,
+      size: 100,
+      total: 1
+    });
+    registryApi.getDevices.mockResolvedValue({
+      items: [device()],
+      page: 1,
+      size: 100,
+      total: 1
+    });
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
     window.$dialog = { warning: vi.fn() } as never;
   });
@@ -48,6 +67,19 @@ describe('CommandCenterPage', () => {
     expect(wrapper.text()).toContain('状态查询');
     expect(wrapper.text()).toContain('执行成功');
     expect(api.getCommandTargets).toHaveBeenCalled();
+  });
+
+  it('历史命令应展示产品名称和设备名称而不是设备标识', async () => {
+    api.getCommandTargets.mockResolvedValue({ items: [], page: 1, size: 100, total: 0 });
+    api.getCommands.mockResolvedValue({ items: [command('EXPIRED')], page: 1, size: 20, total: 1 });
+    const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+
+    const list = wrapper.get('[data-list-card]');
+    expect(list.text()).toContain('矿用运输车');
+    expect(list.text()).toContain('一号运输车');
+    expect(list.text()).toContain('truck-001');
+    expect(list.text()).not.toContain('device-1');
   });
 
   it('桌面筛选条件和紧凑操作按钮应保持在同一行容器', async () => {
@@ -125,6 +157,34 @@ describe('CommandCenterPage', () => {
 
 function target() {
   return { id: 'device-1', deviceCode: 'truck-001', name: '一号运输车' };
+}
+
+function product() {
+  return {
+    id: 'product-1',
+    productKey: 'haul-truck',
+    name: '矿用运输车',
+    deviceType: 'VEHICLE',
+    status: 'ACTIVE',
+    archivedAt: null,
+    createdAt: '2026-07-15T08:00:00Z',
+    updatedAt: '2026-07-15T08:00:00Z',
+    version: 0
+  };
+}
+
+function device() {
+  return {
+    id: 'device-1',
+    productId: 'product-1',
+    deviceCode: 'truck-001',
+    name: '一号运输车',
+    status: 'ARCHIVED',
+    archivedAt: '2026-07-16T08:00:00Z',
+    createdAt: '2026-07-15T08:00:00Z',
+    updatedAt: '2026-07-16T08:00:00Z',
+    version: 1
+  };
 }
 
 function command(status: string) {

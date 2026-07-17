@@ -37,6 +37,8 @@ import {
   getCommandTemplates
 } from '@/modules/command/api/command';
 import type { Command, CommandStatus, CommandTarget, CommandTemplate } from '@/modules/command/api/command';
+import { getDevices, getProducts } from '@/modules/device/api/device';
+import type { Device, Product } from '@/modules/device/api/device';
 import CommandTimeline from '@/modules/command/components/CommandTimeline.vue';
 import { useAuthStore } from '@/store/modules/auth';
 
@@ -47,6 +49,8 @@ const saving = ref(false);
 const commands = ref<Command[]>([]);
 const targets = ref<CommandTarget[]>([]);
 const templates = ref<CommandTemplate[]>([]);
+const devices = ref<Device[]>([]);
+const products = ref<Product[]>([]);
 const total = ref(0);
 const modalVisible = ref(false);
 const drawerVisible = ref(false);
@@ -90,7 +94,8 @@ const commandStatuses: CommandStatus[] = [
   'CANCELLED'
 ];
 
-const deviceMap = computed(() => new Map(targets.value.map(device => [device.id, device])));
+const deviceMap = computed(() => new Map(devices.value.map(device => [device.id, device])));
+const productMap = computed(() => new Map(products.value.map(product => [product.id, product])));
 const deviceOptions = computed<SelectOption[]>(() =>
   targets.value.map(device => ({
     label: `${device.name} (${device.deviceCode})`,
@@ -124,10 +129,23 @@ const statusOptions = computed<SelectOption[]>(() =>
 );
 const columns = computed<DataTableColumns<Command>>(() => [
   {
+    title: t('mine.commands.column.product'),
+    key: 'product',
+    minWidth: 160,
+    render: row => {
+      const device = deviceMap.value.get(row.deviceId);
+      const product = device ? productMap.value.get(device.productId) : undefined;
+      return product ? identityCell(product.name, product.productKey) : t('mine.common.empty');
+    }
+  },
+  {
     title: t('mine.commands.column.device'),
     key: 'deviceId',
     minWidth: 180,
-    render: row => deviceMap.value.get(row.deviceId)?.name || row.deviceId
+    render: row => {
+      const device = deviceMap.value.get(row.deviceId);
+      return device ? identityCell(device.name, device.deviceCode) : row.deviceId;
+    }
   },
   {
     title: t('mine.commands.column.template'),
@@ -167,8 +185,21 @@ const columns = computed<DataTableColumns<Command>>(() => [
 ]);
 
 onMounted(async () => {
-  await Promise.all([loadTargets(), loadTemplates(), loadCommands()]);
+  await Promise.all([loadTargets(), loadTemplates(), loadRegistry(), loadCommands()]);
 });
+
+async function loadRegistry() {
+  try {
+    const [productPage, devicePage] = await Promise.all([
+      getProducts({ page: 1, size: 100 }),
+      getDevices({ page: 1, size: 100 })
+    ]);
+    products.value = productPage.items;
+    devices.value = devicePage.items;
+  } catch (error) {
+    showError(error);
+  }
+}
 
 async function loadTargets(keyword = '') {
   try {
@@ -370,6 +401,13 @@ function statusType(status: CommandStatus) {
   return 'info' as const;
 }
 
+function identityCell(name: string, code: string) {
+  return h(NSpace, { vertical: true, size: 0 }, () => [
+    h(NText, null, () => name),
+    h(NText, { depth: 3 }, () => code)
+  ]);
+}
+
 function formatTime(value: string) {
   return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value));
 }
@@ -569,8 +607,18 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
               <NButton text :loading="loading" @click="refreshDetails">{{ t('common.refresh') }}</NButton>
             </NSpace>
             <NDescriptions label-placement="left" :column="1" bordered>
+              <NDescriptionsItem :label="t('mine.commands.field.product')">
+                {{
+                  productMap.get(deviceMap.get(selectedCommand.deviceId)?.productId || '')?.name ||
+                    t('mine.common.empty')
+                }}
+              </NDescriptionsItem>
               <NDescriptionsItem :label="t('mine.commands.field.device')">
-                {{ deviceMap.get(selectedCommand.deviceId)?.name || selectedCommand.deviceId }}
+                {{
+                  deviceMap.get(selectedCommand.deviceId)
+                    ? `${deviceMap.get(selectedCommand.deviceId)?.name} (${deviceMap.get(selectedCommand.deviceId)?.deviceCode})`
+                    : selectedCommand.deviceId
+                }}
               </NDescriptionsItem>
               <NDescriptionsItem :label="t('mine.commands.field.template')">
                 {{ templateLabel(selectedCommand.templateKey) }}

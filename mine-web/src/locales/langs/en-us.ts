@@ -1203,7 +1203,7 @@ const local: App.I18n.Schema = {
       listTitle: 'Command List',
       subtitle: 'Send published low-risk device commands and track reliable delivery through device execution.',
       empty: 'No commands match the current filters',
-      column: { device: 'Device', template: 'Command Template', status: 'Status', createdAt: 'Created' },
+      column: { product: 'Product', device: 'Device', template: 'Command Template', status: 'Status', createdAt: 'Created' },
       action: {
         create: 'Send Command',
         send: 'Review Command',
@@ -1215,6 +1215,7 @@ const local: App.I18n.Schema = {
       modal: { create: 'Send Device Command', cancel: 'Cancel Queued Command' },
       field: {
         id: 'Command ID',
+        product: 'Product',
         device: 'Target Device',
         template: 'Command Template',
         status: 'Current Status',
