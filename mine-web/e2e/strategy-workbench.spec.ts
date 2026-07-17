@@ -8,7 +8,7 @@ test('策略管理员应查看最终值并通过幂等发布形成新的不可�
   await expect(page.getByText('北区运输组', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('北区运输车 01', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('设备组覆盖', { exact: true }).last()).toBeVisible();
-  await expect(page.getByText('180', { exact: true }).last()).toBeVisible();
+  await expect(page.getByText('180 秒', { exact: true }).last()).toBeVisible();
 
   await page.locator('[data-field="publish-reason"] textarea').fill('雨季延长离线判定窗口');
   await page.locator('[data-action="publish-strategy"]').click();

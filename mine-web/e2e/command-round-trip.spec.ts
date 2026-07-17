@@ -11,7 +11,7 @@ for (const terminalCase of terminalCases) {
     await mockCommandCenter(page, terminalCase);
 
     await page.goto('/command/center');
-    await expect(page.getByText('下发已发布的低风险设备命令，跟踪消息从排队到设备执行的可靠状态。')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '命令列表', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '详情' }).click();
 
     await expect(page.getByText(terminalCase.label).last()).toBeVisible();
@@ -27,7 +27,7 @@ test('离开命令中心后应正常显示其他页面', async ({ page }) => {
   await mockCommandCenter(page, terminalCases[0]);
 
   await page.goto('/command/center');
-  await expect(page.getByText('下发已发布的低风险设备命令，跟踪消息从排队到设备执行的可靠状态。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '命令列表', exact: true })).toBeVisible();
   await page.getByRole('menuitem', { name: '首页' }).click();
 
   await expect(page).toHaveURL(/\/home$/);
