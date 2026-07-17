@@ -111,6 +111,16 @@
       }
     },
     {
+      "name": "mine.telemetry.strategy.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
       "name": "mine.dead-letter.q",
       "vhost": "/mine-platform",
       "durable": true,
@@ -152,6 +162,15 @@
     },
     {
       "name": "mine.config.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.strategy.x",
       "vhost": "/mine-platform",
       "type": "topic",
       "durable": true,
@@ -241,6 +260,14 @@
       "destination": "mine.config.q",
       "destination_type": "queue",
       "routing_key": "config.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.strategy.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.telemetry.strategy.q",
+      "destination_type": "queue",
+      "routing_key": "strategy.runtime.#",
       "arguments": {}
     },
     {

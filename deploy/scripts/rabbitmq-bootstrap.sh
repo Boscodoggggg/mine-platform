@@ -78,13 +78,13 @@ rabbitmqctl -q set_permissions -p /mine-device "mine-gateway-device" \
 rabbitmqctl -q set_permissions -p /mine-platform "mine-gateway-platform" \
   '^$' '^(mine\.telemetry\.x|mine\.command\.x)$' '^(mine\.gateway\.command\.q|mine\.config\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-telemetry" \
-  '^$' '^mine\.realtime\.x$' '^mine\.telemetry\.q$'
+  '^$' '^mine\.realtime\.x$' '^(mine\.telemetry\.q|mine\.telemetry\.strategy\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-server-realtime" \
   '^(mine\.realtime\.x|mine\.realtime\.server\.[A-Za-z0-9_-]+\.q)$' \
   '^(mine\.realtime\.x|mine\.realtime\.server\.[A-Za-z0-9_-]+\.q)$' \
   '^(mine\.realtime\.x|mine\.realtime\.server\.[A-Za-z0-9_-]+\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-server-command" \
-  '^$' '^(mine\.command\.x|mine\.config\.x)$' '^mine\.server\.command-status\.q$'
+  '^$' '^(mine\.command\.x|mine\.config\.x|mine\.strategy\.x)$' '^mine\.server\.command-status\.q$'
 unset legacy_command_messages gateway_device_password gateway_platform_password telemetry_password server_realtime_password server_command_password
 touch /tmp/mine-rabbitmq-bootstrap-complete
 

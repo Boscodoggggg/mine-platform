@@ -25,6 +25,12 @@ jq -e '.services["mine-server"].environment.MINE_CONFIGURATION_DISTRIBUTION_ENAB
   and (.services["mine-gateway"].secrets | any(.source == "mine_configuration_distribution_token"))' "${rendered}" >/dev/null \
   || { echo "FAIL: server 与 gateway 必须启用基于 secret 的配置分发闭环" >&2; exit 1; }
 
+jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED == "true"
+  and .services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_SERVER_URL == "http://mine-server:8080"
+  and (.services["mine-telemetry"].secrets | any(.source == "mine_configuration_distribution_token"))
+  and .services["mine-telemetry"].depends_on["mine-server"].condition == "service_healthy"' "${rendered}" >/dev/null \
+  || { echo "FAIL: telemetry 必须通过 secret 和内部接口加载策略快照" >&2; exit 1; }
+
 jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_CONFIGURATION_CACHE_FILE == "/var/lib/mine/gateway/protocol-snapshots.json"
   and (.services["mine-gateway"].volumes | any(.source == "gateway_configuration_cache" and .target == "/var/lib/mine/gateway"))
   and .services["mine-gateway"].depends_on["mine-gateway-cache-init"].condition == "service_completed_successfully"
