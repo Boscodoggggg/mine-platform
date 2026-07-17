@@ -31,6 +31,7 @@ import {
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import FormFieldLabel from '@/components/common/form-field-label.vue';
+import ListActionButton from '@/components/common/list-action-button.vue';
 import SvgIcon from '@/components/custom/svg-icon.vue';
 import MenuIconSelect from '@/modules/system/components/MenuIconSelect.vue';
 import {
@@ -721,22 +722,23 @@ function showError(error: unknown) {
         <NSpace justify="space-between" align="center">
           <NText strong>{{ t('mine.menus.listTitle') }}</NText>
           <NSpace>
-            <NButton
+            <ListActionButton
               v-if="can('system:menu:delete')"
-              type="error"
-              secondary
+              kind="delete"
               :disabled="checkedRowKeys.length === 0"
               :loading="deleting"
               @click="batchRemove"
             >
               {{ t('mine.menus.action.batchDelete', { count: checkedRowKeys.length }) }}
-            </NButton>
-            <NButton data-action="refresh-menu" :loading="loading" @click="load">
+            </ListActionButton>
+            <ListActionButton kind="refresh" data-action="refresh-menu" :loading="loading" @click="load">
               {{ t('mine.menus.action.refresh') }}
-            </NButton>
+            </ListActionButton>
             <NPopover trigger="click" placement="bottom-end">
               <template #trigger>
-                <NButton data-action="configure-columns">{{ t('mine.menus.action.columns') }}</NButton>
+                <ListActionButton kind="columns" data-action="configure-columns">
+                  {{ t('mine.menus.action.columns') }}
+                </ListActionButton>
               </template>
               <NCheckboxGroup v-model:value="visibleColumnKeys">
                 <NSpace vertical>
@@ -746,9 +748,9 @@ function showError(error: unknown) {
                 </NSpace>
               </NCheckboxGroup>
             </NPopover>
-            <NButton v-if="can('system:menu:create')" type="primary" @click="openCreate()">
+            <ListActionButton v-if="can('system:menu:create')" kind="create" @click="openCreate()">
               {{ t('mine.menus.action.create') }}
-            </NButton>
+            </ListActionButton>
           </NSpace>
         </NSpace>
 
@@ -932,9 +934,9 @@ function showError(error: unknown) {
           <NSpace vertical :size="12">
             <NSpace justify="space-between" align="center">
               <NText depth="3">{{ t('mine.menus.buttonPermissionTip') }}</NText>
-              <NButton v-if="can('system:menu:create')" size="small" @click="openButtonCreate">
+              <ListActionButton v-if="can('system:menu:create')" kind="create" @click="openButtonCreate">
                 {{ t('mine.menus.action.addButton') }}
-              </NButton>
+              </ListActionButton>
             </NSpace>
             <NDataTable
               :columns="buttonColumns"

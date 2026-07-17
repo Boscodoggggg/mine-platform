@@ -61,6 +61,8 @@ describe('CommandCenterPage', () => {
     expect(filterRow.text()).toContain('重置');
     expect(filterButtons).toHaveLength(2);
     expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
+    expect(filterButtons.every(button => button.props('size') === 'small')).toBe(true);
+    expect(filterButtons.every(button => button.find('.n-button__icon').exists())).toBe(true);
   });
 
   it('下发前应显示二次确认且复用同一个幂等键提交', async () => {

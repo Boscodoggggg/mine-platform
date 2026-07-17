@@ -22,6 +22,7 @@ import {
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
+import ListActionButton from '@/components/common/list-action-button.vue';
 import { archiveProduct, createProduct, getProducts, updateProduct } from '@/modules/device/api/device';
 import type { Product, ProductStatus } from '@/modules/device/api/device';
 import { getEnabledDictionaryItems } from '@/modules/system/api/dictionary';
@@ -271,9 +272,14 @@ defineExpose({
   <NSpace vertical :size="16">
     <NPageHeader :title="t('mine.products.title')" :subtitle="t('mine.products.subtitle')">
       <template #extra>
-        <NButton v-if="can('device:product:create')" type="primary" data-action="create-product" @click="openCreate">
+        <ListActionButton
+          v-if="can('device:product:create')"
+          kind="create"
+          data-action="create-product"
+          @click="openCreate"
+        >
           {{ t('mine.products.action.create') }}
-        </NButton>
+        </ListActionButton>
       </template>
     </NPageHeader>
 
@@ -294,8 +300,8 @@ defineExpose({
           class="w-52"
         />
         <NSpace data-filter-actions>
-          <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
-          <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+          <ListActionButton kind="search" @click="search">{{ t('mine.common.search') }}</ListActionButton>
+          <ListActionButton kind="reset" @click="resetQuery">{{ t('mine.common.reset') }}</ListActionButton>
         </NSpace>
       </NFlex>
     </NCard>

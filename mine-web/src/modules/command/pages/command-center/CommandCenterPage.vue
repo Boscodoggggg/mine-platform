@@ -27,6 +27,7 @@ import {
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
+import ListActionButton from '@/components/common/list-action-button.vue';
 import {
   cancelCommand,
   createCommand,
@@ -398,14 +399,16 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
       <NPageHeader :title="t('mine.commands.title')" :subtitle="t('mine.commands.subtitle')">
         <template #extra>
           <NSpace>
-            <NButton :loading="loading" @click="loadCommands">{{ t('common.refresh') }}</NButton>
-            <NButton
+            <ListActionButton kind="refresh" :loading="loading" @click="loadCommands">
+              {{ t('common.refresh') }}
+            </ListActionButton>
+            <ListActionButton
               v-if="can('command:instance:create') && can('command:template:view')"
-              type="primary"
+              kind="create"
               @click="openCreate"
             >
               {{ t('mine.commands.action.create') }}
-            </NButton>
+            </ListActionButton>
           </NSpace>
         </template>
       </NPageHeader>
@@ -437,8 +440,8 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
             class="min-w-56 flex-1"
           />
           <NSpace data-filter-actions>
-            <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
-            <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+            <ListActionButton kind="search" @click="search">{{ t('mine.common.search') }}</ListActionButton>
+            <ListActionButton kind="reset" @click="resetQuery">{{ t('mine.common.reset') }}</ListActionButton>
           </NSpace>
         </NFlex>
       </NCard>

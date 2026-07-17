@@ -23,6 +23,7 @@ import {
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
 import FormFieldLabel from '@/components/common/form-field-label.vue';
+import ListActionButton from '@/components/common/list-action-button.vue';
 import {
   createDictionaryItem,
   createDictionaryType,
@@ -342,9 +343,9 @@ function showError(error: unknown) {
   <NSpace vertical :size="16">
     <NPageHeader :title="t('mine.dictionaries.title')" :subtitle="t('mine.dictionaries.subtitle')">
       <template #extra>
-        <NButton v-if="can('system:dictionary:create')" type="primary" @click="openCreateType">
+        <ListActionButton v-if="can('system:dictionary:create')" kind="create" @click="openCreateType">
           {{ t('mine.dictionaries.action.createType') }}
-        </NButton>
+        </ListActionButton>
       </template>
     </NPageHeader>
 
@@ -371,14 +372,13 @@ function showError(error: unknown) {
                   {{ t('mine.dictionaries.builtIn') }}
                 </NTag>
               </NSpace>
-              <NButton
+              <ListActionButton
                 v-if="selectedType && can('system:dictionary:create')"
-                type="primary"
-                secondary
+                kind="create"
                 @click="openCreateItem"
               >
                 {{ t('mine.dictionaries.action.createItem') }}
-              </NButton>
+              </ListActionButton>
             </NSpace>
             <NDataTable :columns="itemColumns" :data="items" :row-key="row => row.id" />
           </NSpace>

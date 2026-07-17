@@ -27,6 +27,7 @@ import {
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
+import ListActionButton from '@/components/common/list-action-button.vue';
 import {
   archiveDevice,
   createDevice,
@@ -603,9 +604,14 @@ defineExpose({
   <NSpace vertical :size="16">
     <NPageHeader :title="t('mine.devices.title')" :subtitle="t('mine.devices.subtitle')">
       <template #extra>
-        <NButton v-if="can('device:device:create')" type="primary" data-action="create-device" @click="openCreate">
+        <ListActionButton
+          v-if="can('device:device:create')"
+          kind="create"
+          data-action="create-device"
+          @click="openCreate"
+        >
           {{ t('mine.devices.action.create') }}
-        </NButton>
+        </ListActionButton>
       </template>
     </NPageHeader>
 
@@ -634,8 +640,8 @@ defineExpose({
           class="w-48"
         />
         <NSpace data-filter-actions>
-          <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
-          <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+          <ListActionButton kind="search" @click="search">{{ t('mine.common.search') }}</ListActionButton>
+          <ListActionButton kind="reset" @click="resetQuery">{{ t('mine.common.reset') }}</ListActionButton>
         </NSpace>
       </NFlex>
     </NCard>

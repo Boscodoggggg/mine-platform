@@ -23,6 +23,7 @@ import {
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
+import ListActionButton from '@/components/common/list-action-button.vue';
 import {
   createRole,
   deleteRole,
@@ -267,9 +268,14 @@ defineExpose({
   <NSpace vertical :size="16">
     <NPageHeader :title="t('mine.roles.title')" :subtitle="t('mine.roles.subtitle')">
       <template #extra>
-        <NButton v-if="can('system:role:create')" type="primary" data-action="create-role" @click="openCreate">
+        <ListActionButton
+          v-if="can('system:role:create')"
+          kind="create"
+          data-action="create-role"
+          @click="openCreate"
+        >
           {{ t('mine.roles.action.create') }}
-        </NButton>
+        </ListActionButton>
       </template>
     </NPageHeader>
 
@@ -289,9 +295,9 @@ defineExpose({
           :placeholder="t('mine.common.allStatus')"
           class="w-52"
         />
-        <NSpace>
-          <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
-          <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+        <NSpace data-filter-actions>
+          <ListActionButton kind="search" @click="search">{{ t('mine.common.search') }}</ListActionButton>
+          <ListActionButton kind="reset" @click="resetQuery">{{ t('mine.common.reset') }}</ListActionButton>
         </NSpace>
       </NFlex>
     </NCard>

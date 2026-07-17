@@ -58,6 +58,12 @@ describe('ProductListPage', () => {
     expect(wrapper.text()).toContain('产品管理');
     expect(wrapper.text()).toContain('矿用运输车');
     expect(wrapper.find('[data-action="create-product"]').exists()).toBe(true);
+    const createButton = wrapper
+      .findAllComponents(NButton)
+      .find(button => button.attributes('data-action') === 'create-product');
+    expect(createButton?.props('size')).toBe('small');
+    expect(createButton?.props('ghost')).toBe(true);
+    expect(createButton?.find('.n-button__icon').exists()).toBe(true);
   });
 
   it('筛选操作按钮应保持紧凑宽度', async () => {
@@ -68,6 +74,8 @@ describe('ProductListPage', () => {
     expect(wrapper.find('[data-filter-actions]').exists()).toBe(true);
     expect(filterButtons).toHaveLength(2);
     expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
+    expect(filterButtons.every(button => button.props('size') === 'small')).toBe(true);
+    expect(filterButtons.every(button => button.find('.n-button__icon').exists())).toBe(true);
   });
 
   it('创建产品时应提交稳定产品编码和初始状态', async () => {

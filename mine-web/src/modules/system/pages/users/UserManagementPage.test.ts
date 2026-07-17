@@ -67,6 +67,12 @@ describe('UserManagementPage', () => {
     expect(api.getUsers).toHaveBeenCalledWith(expect.objectContaining({ page: 1, size: 20 }));
     expect(wrapper.text()).toContain('用户管理');
     expect(wrapper.find('[data-action="create-user"]').exists()).toBe(true);
+    const createButton = wrapper
+      .findAllComponents(NButton)
+      .find(button => button.attributes('data-action') === 'create-user');
+    expect(createButton?.props('size')).toBe('small');
+    expect(createButton?.props('ghost')).toBe(true);
+    expect(createButton?.find('.n-button__icon').exists()).toBe(true);
     expect(wrapper.text()).not.toContain('temporary-password');
   });
 
@@ -78,6 +84,8 @@ describe('UserManagementPage', () => {
     expect(wrapper.find('[data-filter-actions]').exists()).toBe(true);
     expect(filterButtons).toHaveLength(2);
     expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
+    expect(filterButtons.every(button => button.props('size') === 'small')).toBe(true);
+    expect(filterButtons.every(button => button.find('.n-button__icon').exists())).toBe(true);
   });
 
   it('创建用户后应清除临时密码字段', async () => {

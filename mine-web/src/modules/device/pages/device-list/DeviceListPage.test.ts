@@ -144,6 +144,8 @@ describe('DeviceListPage', () => {
     expect(wrapper.find('[data-filter-actions]').exists()).toBe(true);
     expect(filterButtons).toHaveLength(2);
     expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
+    expect(filterButtons.every(button => button.props('size') === 'small')).toBe(true);
+    expect(filterButtons.every(button => button.find('.n-button__icon').exists())).toBe(true);
   });
 
   it('应显示设备与所属产品并按权限显示创建入口', async () => {
@@ -156,6 +158,12 @@ describe('DeviceListPage', () => {
     expect(wrapper.text()).toContain('在线');
     expect(wrapper.text()).toContain('最后上报');
     expect(wrapper.find('[data-action="create-device"]').exists()).toBe(true);
+    const createButton = wrapper
+      .findAllComponents(NButton)
+      .find(button => button.attributes('data-action') === 'create-device');
+    expect(createButton?.props('size')).toBe('small');
+    expect(createButton?.props('ghost')).toBe(true);
+    expect(createButton?.find('.n-button__icon').exists()).toBe(true);
     expect(wrapper.find('[data-action="connection-profile"]').exists()).toBe(false);
   });
 

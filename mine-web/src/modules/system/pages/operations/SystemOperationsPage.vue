@@ -23,6 +23,7 @@ import {
 } from 'naive-ui';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import { ApiError } from '@/api/client';
+import ListActionButton from '@/components/common/list-action-button.vue';
 import {
   checkSystemOperation,
   getSystemOperationSeries,
@@ -311,7 +312,9 @@ function showError(error: unknown, fallbackKey: App.I18n.I18nKey) {
     <NFlex vertical :size="16">
       <NPageHeader :title="t('mine.operations.title')" :subtitle="t('mine.operations.subtitle')">
         <template #extra>
-          <NButton :loading="historyLoading" @click="loadHistory">{{ t('common.refresh') }}</NButton>
+          <ListActionButton kind="refresh" :loading="historyLoading" @click="loadHistory">
+            {{ t('common.refresh') }}
+          </ListActionButton>
         </template>
       </NPageHeader>
 
