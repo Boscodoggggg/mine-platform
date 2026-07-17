@@ -10,10 +10,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 /**
- * 保存 gateway 当前生效的 MQTT 凭据身份快照。
+ * 保存 gateway 当前生效的 MQTT 与 TCP 可信设备身份快照。
  *
  * <p>RabbitMQ 只暴露主题中的客户端标识，不能证明报文内业务设备编码。该注册表负责把平台签发的
- * {@code productKey + clientId} 映射到可信业务设备，快照替换不会让消费线程看到半更新状态。</p>
+ * {@code productKey + clientId} 或 {@code productKey + deviceCode} 映射到可信业务设备，快照替换不会让
+ * 消费线程看到半更新状态。</p>
  */
 public final class DeviceSessionRegistry {
 
@@ -22,7 +23,7 @@ public final class DeviceSessionRegistry {
 
     private final AtomicReference<IdentitySnapshot> snapshot =
             new AtomicReference<>(new IdentitySnapshot(
-                    Map.of(), Map.of(), new SnapshotStatus(0, "", 0)
+                    Map.of(), Map.of(), Map.of(), new SnapshotStatus(0, "", 0)
             ));
 
     /**
@@ -46,7 +47,7 @@ public final class DeviceSessionRegistry {
         IdentityIndexes indexes = indexes(identities);
         SnapshotStatus candidateStatus = new SnapshotStatus(version, sha256, indexes.byTopic().size());
         IdentitySnapshot candidate = new IdentitySnapshot(
-                indexes.byTopic(), indexes.byDeviceId(), candidateStatus
+                indexes.byTopic(), indexes.byTcpIdentity(), indexes.byDeviceId(), candidateStatus
         );
         while (true) {
             IdentitySnapshot current = snapshot.get();
@@ -70,6 +71,7 @@ public final class DeviceSessionRegistry {
     private IdentityIndexes indexes(List<DeviceIdentity> identities) {
         Objects.requireNonNull(identities, "identities 不能为空");
         Map<IdentityKey, DeviceIdentity> byTopic = new LinkedHashMap<>();
+        Map<TcpIdentityKey, DeviceIdentity> byTcpIdentity = new LinkedHashMap<>();
         Map<UUID, DeviceIdentity> byDeviceId = new LinkedHashMap<>();
         for (DeviceIdentity identity : identities) {
             Objects.requireNonNull(identity, "设备身份不能为空");
@@ -77,12 +79,17 @@ public final class DeviceSessionRegistry {
             if (byTopic.putIfAbsent(key, identity) != null) {
                 throw new IllegalArgumentException("MQTT 设备身份重复: " + key);
             }
+            TcpIdentityKey tcpKey = new TcpIdentityKey(identity.productKey(), identity.deviceCode());
+            if (byTcpIdentity.putIfAbsent(tcpKey, identity) != null) {
+                throw new IllegalArgumentException("TCP 设备身份重复: " + tcpKey);
+            }
             UUID deviceId = UUID.fromString(identity.deviceId());
             if (byDeviceId.putIfAbsent(deviceId, identity) != null) {
                 throw new IllegalArgumentException("业务设备身份重复: " + deviceId);
             }
         }
-        return new IdentityIndexes(Map.copyOf(byTopic), Map.copyOf(byDeviceId));
+        return new IdentityIndexes(
+                Map.copyOf(byTopic), Map.copyOf(byTcpIdentity), Map.copyOf(byDeviceId));
     }
 
     /**
@@ -94,6 +101,18 @@ public final class DeviceSessionRegistry {
      */
     public Optional<DeviceIdentity> find(String productKey, String clientId) {
         return Optional.ofNullable(snapshot.get().byTopic().get(new IdentityKey(productKey, clientId)));
+    }
+
+    /**
+     * 按 TCP 帧内产品编码和设备自然编码查询平台可信身份。
+     *
+     * @param productKey 产品标识
+     * @param deviceCode 设备自然编码
+     * @return 已登记身份，不存在时为空
+     */
+    public Optional<DeviceIdentity> findByDeviceCode(String productKey, String deviceCode) {
+        return Optional.ofNullable(snapshot.get().byTcpIdentity().get(
+                new TcpIdentityKey(productKey, deviceCode)));
     }
 
     /**
@@ -122,6 +141,7 @@ public final class DeviceSessionRegistry {
      */
     private record IdentitySnapshot(
             Map<IdentityKey, DeviceIdentity> byTopic,
+            Map<TcpIdentityKey, DeviceIdentity> byTcpIdentity,
             Map<UUID, DeviceIdentity> byDeviceId,
             SnapshotStatus status
     ) {
@@ -132,6 +152,7 @@ public final class DeviceSessionRegistry {
      */
     private record IdentityIndexes(
             Map<IdentityKey, DeviceIdentity> byTopic,
+            Map<TcpIdentityKey, DeviceIdentity> byTcpIdentity,
             Map<UUID, DeviceIdentity> byDeviceId
     ) {
     }
@@ -140,6 +161,13 @@ public final class DeviceSessionRegistry {
         private IdentityKey {
             productKey = requireTopicSegment(productKey, "productKey");
             clientId = requireTopicSegment(clientId, "clientId");
+        }
+    }
+
+    private record TcpIdentityKey(String productKey, String deviceCode) {
+        private TcpIdentityKey {
+            productKey = requireTopicSegment(productKey, "productKey");
+            deviceCode = requireText(deviceCode, "deviceCode");
         }
     }
 

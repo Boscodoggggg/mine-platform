@@ -81,6 +81,38 @@ class DeviceSessionRegistryVersionTest {
     }
 
     @Test
+    void 应按产品和设备编码反查TCP可信身份() {
+        DeviceSessionRegistry registry = new DeviceSessionRegistry();
+        DeviceSessionRegistry.DeviceIdentity truck = identity(
+                "haul-truck", "client-001", "019f63e2-071f-706a-bd12-4dad7150e75d",
+                "truck-001", "haul-truck-binary:v1");
+        DeviceSessionRegistry.DeviceIdentity loader = identity(
+                "loader", "client-002", "019f63e2-071f-706a-bd12-4dad7150e75e",
+                "truck-001", "loader-binary:v1");
+        registry.activate(1, DIGEST_1, List.of(truck, loader));
+
+        assertThat(registry.findByDeviceCode("haul-truck", "truck-001")).containsSame(truck);
+        assertThat(registry.findByDeviceCode("loader", "truck-001")).containsSame(loader);
+        assertThat(registry.findByDeviceCode("haul-truck", "missing")).isEmpty();
+    }
+
+    @Test
+    void 同一产品重复设备编码应拒绝且不得替换最后正确快照() {
+        DeviceSessionRegistry registry = activatedRegistry();
+
+        assertThatIllegalArgumentException().isThrownBy(() -> registry.activate(
+                3, DIGEST_3, List.of(
+                        identity("haul-truck", "client-003",
+                                "019f63e2-071f-706a-bd12-4dad7150e75f", "truck-003", "binary:v1"),
+                        identity("haul-truck", "client-004",
+                                "019f63e2-071f-706a-bd12-4dad7150e760", "truck-003", "binary:v1")
+                )))
+                .withMessageContaining("TCP");
+
+        assertLastKnownGood(registry);
+    }
+
+    @Test
     void 并发激活不同版本时最终必须保留最高版本() throws Exception {
         DeviceSessionRegistry registry = new DeviceSessionRegistry();
         CountDownLatch ready = new CountDownLatch(2);
@@ -180,8 +212,18 @@ class DeviceSessionRegistryVersionTest {
     }
 
     private DeviceSessionRegistry.DeviceIdentity identity(String clientId, String deviceId) {
+        return identity("haul-truck", clientId, deviceId, "truck-001", "mqtt-json-v1");
+    }
+
+    private DeviceSessionRegistry.DeviceIdentity identity(
+            String productKey,
+            String clientId,
+            String deviceId,
+            String deviceCode,
+            String protocolVersion
+    ) {
         return new DeviceSessionRegistry.DeviceIdentity(
-                "haul-truck", clientId, deviceId, "truck-001", "mine-site-001", "mqtt-json-v1"
+                productKey, clientId, deviceId, deviceCode, "mine-site-001", protocolVersion
         );
     }
 
