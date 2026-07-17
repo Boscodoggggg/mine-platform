@@ -2,6 +2,7 @@ package com.bosco.mine.telemetry.bootstrap;
 
 import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.telemetry.alarm.AlarmPolicyRepository;
+import com.bosco.mine.telemetry.alarm.AlarmMetrics;
 import com.bosco.mine.telemetry.alarm.outbox.AlarmOutboxEventObserver;
 import com.bosco.mine.telemetry.alarm.outbox.RabbitAlarmOutboxPublisher;
 import com.bosco.mine.telemetry.alarm.outbox.TelemetryOutboxRecovery;
@@ -173,14 +174,25 @@ public class TelemetryStorageConfiguration {
         return new TelemetryOutboxRepository(dataSource);
     }
 
+    /** 创建不携带业务标识标签的告警 Outbox 积压指标。 */
+    @Bean
+    public AlarmMetrics alarmMetrics(
+            MeterRegistry registry,
+            TelemetryOutboxRepository repository
+    ) {
+        return new AlarmMetrics(registry, repository);
+    }
+
     /** 创建只向业务交换机发送告警白名单事件的确认发布器。 */
     @Bean
     public RabbitAlarmOutboxPublisher rabbitAlarmOutboxPublisher(
             CachingConnectionFactory telemetryConnectionFactory,
             TelemetryRabbitProperties properties
     ) {
+        RabbitTemplate template = new RabbitTemplate(telemetryConnectionFactory);
+        template.setMandatory(true);
         return new RabbitAlarmOutboxPublisher(
-                new RabbitTemplate(telemetryConnectionFactory),
+                template,
                 positive(properties.resolvedConfirmTimeoutMillis(), "confirmTimeoutMillis")
         );
     }
@@ -293,7 +305,8 @@ public class TelemetryStorageConfiguration {
         factory.setVirtualHost(MineTopology.PLATFORM_VHOST);
         factory.setUsername(account.username());
         factory.setPassword(readSecret(account.passwordFile()));
-        factory.setPublisherConfirmType(CachingConnectionFactory.ConfirmType.SIMPLE);
+        factory.setPublisherConfirmType(CachingConnectionFactory.ConfirmType.CORRELATED);
+        factory.setPublisherReturns(true);
         return factory;
     }
 

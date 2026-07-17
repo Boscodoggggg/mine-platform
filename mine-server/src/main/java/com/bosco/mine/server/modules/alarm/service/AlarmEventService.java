@@ -7,6 +7,9 @@ import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.common.time.MineClock;
 import com.bosco.mine.messaging.alarm.AlarmRaisedPayload;
 import com.bosco.mine.messaging.alarm.AlarmRecoveredPayload;
+import com.bosco.mine.server.modules.alarm.AlarmMetrics;
+import com.bosco.mine.server.modules.alarm.AlarmMetrics.DispositionAction;
+import com.bosco.mine.server.modules.alarm.AlarmMetrics.DispositionOutcome;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.alarm.domain.AlarmStatus;
 import com.bosco.mine.server.modules.alarm.dto.AlarmEventResponse;
@@ -18,6 +21,10 @@ import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -35,6 +42,7 @@ import java.util.regex.Pattern;
  */
 @Service
 public class AlarmEventService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AlarmEventService.class);
     private static final Set<String> SEVERITIES = Set.of("INFO", "WARNING", "CRITICAL");
     private static final Pattern IDEMPOTENCY_KEY = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
 
@@ -42,6 +50,7 @@ public class AlarmEventService {
     private final OperationAuditService auditService;
     private final MineClock clock;
     private final IdGenerator idGenerator;
+    private final AlarmMetrics metrics;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
     /**
@@ -49,13 +58,15 @@ public class AlarmEventService {
      *
      * @param repository 告警仓储
      * @param auditService 操作审计服务
+     * @param metrics 告警运行指标
      */
     @Autowired
     public AlarmEventService(
             AlarmEventRepository repository,
-            OperationAuditService auditService
+            OperationAuditService auditService,
+            AlarmMetrics metrics
     ) {
-        this(repository, auditService, MineClock.systemUtc(), IdGenerator.timeOrdered());
+        this(repository, auditService, MineClock.systemUtc(), IdGenerator.timeOrdered(), metrics);
     }
 
     /**
@@ -72,10 +83,30 @@ public class AlarmEventService {
             MineClock clock,
             IdGenerator idGenerator
     ) {
+        this(repository, auditService, clock, idGenerator, AlarmMetrics.noOp());
+    }
+
+    /**
+     * 创建可观测的告警服务测试实例。
+     *
+     * @param repository 告警仓储
+     * @param auditService 操作审计服务
+     * @param clock 业务时钟
+     * @param idGenerator 标识生成器
+     * @param metrics 告警运行指标
+     */
+    AlarmEventService(
+            AlarmEventRepository repository,
+            OperationAuditService auditService,
+            MineClock clock,
+            IdGenerator idGenerator,
+            AlarmMetrics metrics
+    ) {
         this.repository = Objects.requireNonNull(repository, "告警仓储不能为空");
         this.auditService = Objects.requireNonNull(auditService, "操作审计服务不能为空");
         this.clock = Objects.requireNonNull(clock, "告警业务时钟不能为空");
         this.idGenerator = Objects.requireNonNull(idGenerator, "告警标识生成器不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "告警运行指标不能为空");
     }
 
     /**
@@ -211,6 +242,24 @@ public class AlarmEventService {
             String idempotencyKey,
             long expectedVersion
     ) {
+        try {
+            return acknowledgeInternal(alarmId, operatorId, note, idempotencyKey, expectedVersion);
+        } catch (MineException exception) {
+            observeDisposition(DispositionAction.ACKNOWLEDGE, classify(exception));
+            throw exception;
+        } catch (RuntimeException exception) {
+            observeDisposition(DispositionAction.ACKNOWLEDGE, DispositionOutcome.FAILED);
+            throw exception;
+        }
+    }
+
+    private AlarmEventResponse acknowledgeInternal(
+            UUID alarmId,
+            UUID operatorId,
+            String note,
+            String idempotencyKey,
+            long expectedVersion
+    ) {
         UUID normalizedAlarmId = requireAlarmId(alarmId);
         UUID normalizedOperator = Objects.requireNonNull(operatorId, "告警确认人不能为空");
         String normalizedNote = normalizeNote(note);
@@ -218,7 +267,10 @@ public class AlarmEventService {
         repository.lockOccurrence(normalizedAlarmId);
         AlarmEventRecord current = repository.lockById(normalizedAlarmId).orElseThrow(this::notFound);
         if (current.acknowledgedAt() != null) {
-            return toResponse(current);
+            AlarmEventResponse response = toResponse(current);
+            observeDispositionAfterCommit(
+                    DispositionAction.ACKNOWLEDGE, DispositionOutcome.DUPLICATE);
+            return response;
         }
         requireVersion(current.version(), expectedVersion);
         Instant now = clock.instant();
@@ -236,7 +288,11 @@ public class AlarmEventService {
                         "version", current.version()),
                 Map.of("acknowledged", true, "version", current.version() + 1)
         );
-        return toResponse(repository.findById(normalizedAlarmId).orElseThrow(this::notFound));
+        AlarmEventResponse response = toResponse(
+                repository.findById(normalizedAlarmId).orElseThrow(this::notFound));
+        observeDispositionAfterCommit(
+                DispositionAction.ACKNOWLEDGE, DispositionOutcome.APPLIED);
+        return response;
     }
 
     /**
@@ -263,6 +319,24 @@ public class AlarmEventService {
             String idempotencyKey,
             long expectedVersion
     ) {
+        try {
+            return closeInternal(alarmId, operatorId, note, idempotencyKey, expectedVersion);
+        } catch (MineException exception) {
+            observeDisposition(DispositionAction.CLOSE, classify(exception));
+            throw exception;
+        } catch (RuntimeException exception) {
+            observeDisposition(DispositionAction.CLOSE, DispositionOutcome.FAILED);
+            throw exception;
+        }
+    }
+
+    private AlarmEventResponse closeInternal(
+            UUID alarmId,
+            UUID operatorId,
+            String note,
+            String idempotencyKey,
+            long expectedVersion
+    ) {
         UUID normalizedAlarmId = requireAlarmId(alarmId);
         UUID normalizedOperator = Objects.requireNonNull(operatorId, "告警关闭人不能为空");
         String normalizedNote = normalizeNote(note);
@@ -270,7 +344,9 @@ public class AlarmEventService {
         repository.lockOccurrence(normalizedAlarmId);
         AlarmEventRecord current = repository.lockById(normalizedAlarmId).orElseThrow(this::notFound);
         if (current.closedAt() != null) {
-            return toResponse(current);
+            AlarmEventResponse response = toResponse(current);
+            observeDispositionAfterCommit(DispositionAction.CLOSE, DispositionOutcome.DUPLICATE);
+            return response;
         }
         if (current.recoveredAt() == null) {
             throw error("ALARM-409-002", "活动告警恢复后才能关闭");
@@ -289,7 +365,10 @@ public class AlarmEventService {
                         "version", current.version()),
                 Map.of("status", AlarmStatus.CLOSED.name(), "version", current.version() + 1)
         );
-        return toResponse(repository.findById(normalizedAlarmId).orElseThrow(this::notFound));
+        AlarmEventResponse response = toResponse(
+                repository.findById(normalizedAlarmId).orElseThrow(this::notFound));
+        observeDispositionAfterCommit(DispositionAction.CLOSE, DispositionOutcome.APPLIED);
+        return response;
     }
 
     private void validateDevice(UUID deviceId, String productKey) {
@@ -431,5 +510,50 @@ public class AlarmEventService {
 
     private MineException error(String code, String message) {
         return new MineException(new ErrorCode(code, message), Map.of());
+    }
+
+    private DispositionOutcome classify(MineException exception) {
+        String code = exception.errorCode().code();
+        if (code.startsWith("ALARM-404-")) {
+            return DispositionOutcome.NOT_FOUND;
+        }
+        if ("ALARM-409-001".equals(code)) {
+            return DispositionOutcome.CONFLICT;
+        }
+        if (code.startsWith("ALARM-400-") || "ALARM-409-002".equals(code)) {
+            return DispositionOutcome.INVALID;
+        }
+        return DispositionOutcome.FAILED;
+    }
+
+    private void observeDisposition(DispositionAction action, DispositionOutcome outcome) {
+        try {
+            metrics.recordDisposition(action, outcome);
+        } catch (RuntimeException exception) {
+            LOGGER.warn("记录告警处置指标失败，不改变既定业务结果", exception);
+        }
+    }
+
+    private void observeDispositionAfterCommit(
+            DispositionAction action,
+            DispositionOutcome outcome
+    ) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            observeDisposition(action, outcome);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                observeDisposition(action, outcome);
+            }
+
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    observeDisposition(action, DispositionOutcome.FAILED);
+                }
+            }
+        });
     }
 }

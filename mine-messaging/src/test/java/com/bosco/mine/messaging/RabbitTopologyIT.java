@@ -94,6 +94,7 @@ class RabbitTopologyIT {
                         MineTopology.TELEMETRY_EXCHANGE,
                         MineTopology.COMMAND_EXCHANGE,
                         MineTopology.CONFIG_EXCHANGE,
+                        MineTopology.BUSINESS_EXCHANGE,
                         MineTopology.DEAD_LETTER_EXCHANGE
                 );
 
@@ -108,9 +109,16 @@ class RabbitTopologyIT {
                         MineTopology.COMMAND_STATUS_QUEUE,
                         MineTopology.COMMAND_TIMEOUT_WAIT_QUEUE,
                         MineTopology.CONFIG_QUEUE,
+                        MineTopology.SERVER_ALARM_EVENT_QUEUE,
                         MineTopology.DEAD_LETTER_QUEUE
                 );
         assertThat(lineStartingWith(queues, MineTopology.TELEMETRY_QUEUE))
+                .contains(
+                        "\ttrue\t",
+                        "{\"x-queue-type\",\"quorum\"}",
+                        "{\"x-dead-letter-exchange\",\"mine.dlx\"}"
+                );
+        assertThat(lineStartingWith(queues, MineTopology.SERVER_ALARM_EVENT_QUEUE))
                 .contains(
                         "\ttrue\t",
                         "{\"x-queue-type\",\"quorum\"}",
@@ -142,7 +150,10 @@ class RabbitTopologyIT {
                                 + "command.timeout.schedule",
                         MineTopology.CONFIG_EXCHANGE + "\t"
                                 + MineTopology.CONFIG_QUEUE + "\t"
-                                + MineTopology.CONFIG_ROUTING_PATTERN
+                                + MineTopology.CONFIG_ROUTING_PATTERN,
+                        MineTopology.BUSINESS_EXCHANGE + "\t"
+                                + MineTopology.SERVER_ALARM_EVENT_QUEUE + "\t"
+                                + MineTopology.ALARM_EVENT_ROUTING_PATTERN
                 );
 
         String deviceQueues = rabbitmqctl(

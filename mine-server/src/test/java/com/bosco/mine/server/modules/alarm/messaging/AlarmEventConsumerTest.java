@@ -5,6 +5,7 @@ import com.bosco.mine.messaging.MessageType;
 import com.bosco.mine.messaging.alarm.AlarmEvidencePayload;
 import com.bosco.mine.messaging.alarm.AlarmRaisedPayload;
 import com.bosco.mine.messaging.topology.MineTopology;
+import com.bosco.mine.server.modules.alarm.AlarmMetrics;
 import com.bosco.mine.server.modules.alarm.service.AlarmEventService;
 import com.rabbitmq.client.Channel;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,9 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * 校验告警消息仅在事务成功后确认，并区分永久和暂时错误。
@@ -34,12 +37,31 @@ class AlarmEventConsumerTest {
     @Test
     void 事务成功后应确认告警事件() throws Exception {
         AlarmEventService service = mock(AlarmEventService.class);
+        AlarmMetrics metrics = mock(AlarmMetrics.class);
         Channel channel = mock(Channel.class);
+        when(service.applyRaised(any(UUID.class), any(AlarmRaisedPayload.class))).thenReturn(true);
 
-        new AlarmEventConsumer(service).onMessage(message(71L, body(ALARM_ID.toString())), channel);
+        new AlarmEventConsumer(service, metrics)
+                .onMessage(message(71L, body(ALARM_ID.toString())), channel);
 
         verify(service).applyRaised(any(UUID.class), any(AlarmRaisedPayload.class));
+        verify(metrics).recordProcessed();
         verify(channel).basicAck(71L, false);
+    }
+
+    @Test
+    void 重复告警事件应确认但单独计数() throws Exception {
+        AlarmEventService service = mock(AlarmEventService.class);
+        AlarmMetrics metrics = mock(AlarmMetrics.class);
+        Channel channel = mock(Channel.class);
+        when(service.applyRaised(any(UUID.class), any(AlarmRaisedPayload.class))).thenReturn(false);
+
+        new AlarmEventConsumer(service, metrics)
+                .onMessage(message(76L, body(ALARM_ID.toString())), channel);
+
+        verify(metrics).recordDuplicate();
+        verify(metrics, never()).recordProcessed();
+        verify(channel).basicAck(76L, false);
     }
 
     @Test
@@ -47,20 +69,26 @@ class AlarmEventConsumerTest {
         AlarmEventService service = mock(AlarmEventService.class);
         doThrow(new IllegalStateException("数据库暂时不可用"))
                 .when(service).applyRaised(any(UUID.class), any(AlarmRaisedPayload.class));
+        AlarmMetrics metrics = mock(AlarmMetrics.class);
         Channel channel = mock(Channel.class);
 
-        new AlarmEventConsumer(service).onMessage(message(72L, body(ALARM_ID.toString())), channel);
+        new AlarmEventConsumer(service, metrics)
+                .onMessage(message(72L, body(ALARM_ID.toString())), channel);
 
+        verify(metrics).recordRequeued();
         verify(channel).basicNack(72L, false, true);
     }
 
     @Test
     void 信封关联标识与载荷不一致应永久拒绝() throws Exception {
         AlarmEventService service = mock(AlarmEventService.class);
+        AlarmMetrics metrics = mock(AlarmMetrics.class);
         Channel channel = mock(Channel.class);
 
-        new AlarmEventConsumer(service).onMessage(message(73L, body(UUID.randomUUID().toString())), channel);
+        new AlarmEventConsumer(service, metrics)
+                .onMessage(message(73L, body(UUID.randomUUID().toString())), channel);
 
+        verify(metrics).recordRejected();
         verify(channel).basicReject(73L, false);
     }
 
@@ -69,11 +97,29 @@ class AlarmEventConsumerTest {
         AlarmEventService service = mock(AlarmEventService.class);
         doThrow(new InvalidAlarmEventMessageException("身份冲突"))
                 .when(service).applyRaised(any(UUID.class), any(AlarmRaisedPayload.class));
+        AlarmMetrics metrics = mock(AlarmMetrics.class);
         Channel channel = mock(Channel.class);
 
-        new AlarmEventConsumer(service).onMessage(message(74L, body(ALARM_ID.toString())), channel);
+        new AlarmEventConsumer(service, metrics)
+                .onMessage(message(74L, body(ALARM_ID.toString())), channel);
 
+        verify(metrics).recordRejected();
         verify(channel).basicReject(74L, false);
+    }
+
+    @Test
+    void 指标记录失败不应改变已经完成的消息确认() throws Exception {
+        AlarmEventService service = mock(AlarmEventService.class);
+        AlarmMetrics metrics = mock(AlarmMetrics.class);
+        when(service.applyRaised(any(UUID.class), any(AlarmRaisedPayload.class))).thenReturn(true);
+        doThrow(new IllegalStateException("指标后端不可用")).when(metrics).recordProcessed();
+        Channel channel = mock(Channel.class);
+
+        new AlarmEventConsumer(service, metrics)
+                .onMessage(message(75L, body(ALARM_ID.toString())), channel);
+
+        verify(channel).basicAck(75L, false);
+        verify(channel, never()).basicNack(75L, false, true);
     }
 
     private byte[] body(String correlationId) throws Exception {

@@ -161,6 +161,13 @@ class TelemetryMigrationIT {
                 """))
                 .hasSize(79)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
+        assertThat(queryStrings("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'telemetry_outbox_event'
+                ORDER BY indexname
+                """)).contains("idx_telemetry_outbox_event_unfinished_status");
 
         assertThat(queryStrings("""
                 SELECT current_boot_id || ':' || highest_sequence

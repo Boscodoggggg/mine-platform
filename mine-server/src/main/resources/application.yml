@@ -97,6 +97,16 @@ mine:
     maximum-pool-size: ${MINE_TELEMETRY_QUERY_MAXIMUM_POOL_SIZE:5}
     connection-timeout: ${MINE_TELEMETRY_QUERY_CONNECTION_TIMEOUT:PT2S}
     query-timeout: ${MINE_TELEMETRY_QUERY_QUERY_TIMEOUT:PT2S}
+  alarm:
+    rabbit:
+      enabled: ${MINE_ALARM_RABBIT_ENABLED:false}
+      auto-startup: ${MINE_ALARM_RABBIT_AUTO_STARTUP:true}
+      host: ${MINE_ALARM_RABBIT_HOST:rabbitmq}
+      port: ${MINE_ALARM_RABBIT_PORT:5672}
+      prefetch: ${MINE_ALARM_RABBIT_PREFETCH:50}
+      account:
+        username: ${MINE_ALARM_RABBIT_USERNAME:mine-server-alarm}
+        password-file: ${MINE_ALARM_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_alarm_password}
   realtime:
     enabled: ${MINE_REALTIME_ENABLED:false}
     path: ${MINE_REALTIME_PATH:/api/v1/realtime}

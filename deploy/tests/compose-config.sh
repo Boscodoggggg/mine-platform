@@ -31,6 +31,12 @@ jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_DISTRIBUT
   and .services["mine-telemetry"].depends_on["mine-server"].condition == "service_healthy"' "${rendered}" >/dev/null \
   || { echo "FAIL: telemetry 必须通过 secret 和内部接口加载策略快照" >&2; exit 1; }
 
+jq -e '.services["mine-server"].environment.MINE_ALARM_RABBIT_ENABLED == "true"
+  and .services["mine-server"].environment.MINE_ALARM_RABBIT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_alarm_password"
+  and (.services["mine-server"].secrets | any(.source == "rabbitmq_server_alarm_password"))
+  and (.services.rabbitmq.secrets | any(.source == "rabbitmq_server_alarm_password"))' "${rendered}" >/dev/null \
+  || { echo "FAIL: mine-server 必须使用独立 secret 启用告警消息消费" >&2; exit 1; }
+
 jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_CONFIGURATION_CACHE_FILE == "/var/lib/mine/gateway/protocol-snapshots.json"
   and (.services["mine-gateway"].volumes | any(.source == "gateway_configuration_cache" and .target == "/var/lib/mine/gateway"))
   and .services["mine-gateway"].depends_on["mine-gateway-cache-init"].condition == "service_completed_successfully"
@@ -69,9 +75,47 @@ grep -q 'MineTelemetryDataQualitySpike' "${rules_file}" \
   || { echo "FAIL: 缺少数据质量异常突增告警" >&2; exit 1; }
 grep -q 'mine_telemetry_quality_rule_hits_total' "${rules_file}" \
   || { echo "FAIL: 数据质量告警未引用规则命中指标" >&2; exit 1; }
+grep -q 'MineTelemetryAlarmOutboxBacklog' "${rules_file}" \
+  || { echo "FAIL: 缺少告警 Outbox 积压告警" >&2; exit 1; }
+grep -q 'mine_telemetry_alarm_outbox_events' "${rules_file}" \
+  || { echo "FAIL: Outbox 告警未引用固定状态低基数指标" >&2; exit 1; }
+grep -q 'MineTelemetryAlarmOutboxFailed' "${rules_file}" \
+  || { echo "FAIL: 缺少告警 Outbox 持续失败告警" >&2; exit 1; }
+grep -q 'MineTelemetryAlarmOutboxDead' "${rules_file}" \
+  || { echo "FAIL: 缺少告警 Outbox 死信告警" >&2; exit 1; }
+grep -q 'MineServerAlarmConsumeFailures' "${rules_file}" \
+  || { echo "FAIL: 缺少告警消费失败告警" >&2; exit 1; }
+grep -q 'mine_server_alarm_consume_total' "${rules_file}" \
+  || { echo "FAIL: 告警消费失败规则未引用消费结果指标" >&2; exit 1; }
+grep -q 'MineCriticalActiveAlarmsGrowing' "${rules_file}" \
+  || { echo "FAIL: 缺少严重活动告警增长告警" >&2; exit 1; }
+grep -q 'mine_server_alarm_active' "${rules_file}" \
+  || { echo "FAIL: 严重活动告警规则未引用活动告警指标" >&2; exit 1; }
 if grep -Eq 'productId|releaseId|deviceId|groupId' "${rules_file}"; then
   echo "FAIL: Prometheus 规则不得依赖高基数业务标识标签" >&2
   exit 1
 fi
 
-echo "PASS: 可观测组件能够独立启动并覆盖 Redis 指标"
+definitions_file="${ROOT_DIR}/deploy/config/rabbitmq/definitions.json"
+jq -e '[.exchanges[] | select(.vhost == "/mine-platform" and .name == "mine.business.x" and .type == "topic" and .durable == true)] | length == 1' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少持久业务事实交换机" >&2; exit 1; }
+jq -e '[.queues[] | select(.vhost == "/mine-platform" and .name == "mine.server.alarm-event.q"
+  and .durable == true and .arguments["x-queue-type"] == "quorum"
+  and .arguments["x-dead-letter-exchange"] == "mine.dlx")] | length == 1' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少带死信的 quorum 告警队列" >&2; exit 1; }
+jq -e '[.bindings[] | select(.vhost == "/mine-platform" and .source == "mine.business.x"
+  and .destination == "mine.server.alarm-event.q" and .routing_key == "alarm.*")] | length == 1' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少告警业务事实绑定" >&2; exit 1; }
+
+bootstrap_file="${ROOT_DIR}/deploy/scripts/rabbitmq-bootstrap.sh"
+grep -q 'upsert_user "mine-server-alarm"' "${bootstrap_file}" \
+  || { echo "FAIL: RabbitMQ 启动脚本缺少告警消费账号" >&2; exit 1; }
+grep -q "mine\\\\.business\\\\.x" "${bootstrap_file}" \
+  || { echo "FAIL: telemetry 账号未获得业务事实交换机写权限" >&2; exit 1; }
+grep -q "mine\\\\.server\\\\.alarm-event\\\\.q" "${bootstrap_file}" \
+  || { echo "FAIL: server 告警账号未限制为告警队列只读" >&2; exit 1; }
+
+echo "PASS: 部署配置覆盖独立告警账号、可靠拓扑和低基数告警规则"

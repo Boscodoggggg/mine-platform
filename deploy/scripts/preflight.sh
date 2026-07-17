@@ -25,7 +25,7 @@ if [[ -z "${secrets_dir}" ]]; then
   exit 1
 fi
 
-required=(postgres_password timescale_password timescale_reader_password redis_password rabbitmq_admin_username rabbitmq_admin_password rabbitmq_gateway_device_password rabbitmq_gateway_platform_password rabbitmq_telemetry_password rabbitmq_server_realtime_password rabbitmq_server_command_password mine_configuration_distribution_token mine_super_admin_password tls.crt tls.key)
+required=(postgres_password timescale_password timescale_reader_password redis_password rabbitmq_admin_username rabbitmq_admin_password rabbitmq_gateway_device_password rabbitmq_gateway_platform_password rabbitmq_telemetry_password rabbitmq_server_realtime_password rabbitmq_server_command_password rabbitmq_server_alarm_password mine_configuration_distribution_token mine_super_admin_password tls.crt tls.key)
 if [[ "${MINE_PREFLIGHT_PROFILE:-}" == "observability" ]]; then
   required+=(grafana_admin_password redis_exporter_passwords.json)
 fi

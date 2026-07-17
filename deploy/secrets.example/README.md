@@ -11,9 +11,10 @@
 - `rabbitmq_admin_password`：RabbitMQ 运维密码，使用十六进制随机值，避免配置语法字符。
 - `rabbitmq_gateway_device_password`：gateway 读取 `/mine-device` 上行队列的独立密码。
 - `rabbitmq_gateway_platform_password`：gateway 写入 `/mine-platform` 遥测交换机的独立密码。
-- `rabbitmq_telemetry_password`：telemetry 只读消费 `/mine-platform` 遥测队列的独立密码。
+- `rabbitmq_telemetry_password`：telemetry 消费遥测与策略队列、发布实时和告警业务事件的独立密码。
 - `rabbitmq_server_realtime_password`：mine-server 创建本实例临时队列并消费实时事件的独立密码。
 - `rabbitmq_server_command_password`：mine-server 只写命令交换机的独立密码，不授予队列读取权限。
+- `rabbitmq_server_alarm_password`：mine-server 只读告警事实队列的独立密码，不授予交换机写入权限。
 - `mine_configuration_distribution_token`：mine-server 与运行节点之间拉取配置快照、回报加载状态的共享服务令牌，至少 32 个随机字符。
 - `mine_super_admin_password`：平台首次启动超级管理员密码，12–72 UTF-8 字节。
 - `grafana_admin_password`：Grafana 运维管理员密码，建议至少 24 个随机字符。

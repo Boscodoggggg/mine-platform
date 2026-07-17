@@ -135,6 +135,27 @@ public class TelemetryOutboxRepository {
                 """, UUID.class, limit);
     }
 
+    /**
+     * 按固定未完成状态统计告警 Outbox 事件。
+     *
+     * @param status 待处理、发布中、失败或死信状态
+     * @return 对应状态事件数量
+     */
+    public long countByStatus(String status) {
+        if (!java.util.Set.of("PENDING", "PUBLISHING", "FAILED", "DEAD").contains(status)) {
+            return 0L;
+        }
+        Long count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM telemetry_outbox_event
+                WHERE aggregate_type = 'ALARM_OCCURRENCE'
+                  AND event_type IN ('alarm.raised', 'alarm.recovered')
+                  AND status IN ('PENDING', 'PUBLISHING', 'FAILED', 'DEAD')
+                  AND status = ?
+                """, Long.class, status);
+        return count == null ? 0L : count;
+    }
+
     private ClaimedEvent mapEvent(ResultSet resultSet, int rowNumber) throws SQLException {
         return new ClaimedEvent(
                 resultSet.getObject("event_id", UUID.class),

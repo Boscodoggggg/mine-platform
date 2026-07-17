@@ -6,6 +6,7 @@ import com.bosco.mine.common.time.MineClock;
 import com.bosco.mine.messaging.alarm.AlarmEvidencePayload;
 import com.bosco.mine.messaging.alarm.AlarmRaisedPayload;
 import com.bosco.mine.messaging.alarm.AlarmRecoveredPayload;
+import com.bosco.mine.server.modules.alarm.AlarmMetrics;
 import com.bosco.mine.server.modules.alarm.domain.AlarmStatus;
 import com.bosco.mine.server.modules.alarm.messaging.InvalidAlarmEventMessageException;
 import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository;
@@ -13,6 +14,8 @@ import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository.Alarm
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -50,17 +53,20 @@ class AlarmEventServiceTest {
 
     private AlarmEventRepository repository;
     private OperationAuditService auditService;
+    private AlarmMetrics metrics;
     private AlarmEventService service;
 
     @BeforeEach
     void 创建告警服务测试环境() {
         repository = mock(AlarmEventRepository.class);
         auditService = mock(OperationAuditService.class);
+        metrics = mock(AlarmMetrics.class);
         service = new AlarmEventService(
                 repository,
                 auditService,
                 MineClock.fixed(NOW, ZoneOffset.UTC),
-                IdGenerator.timeOrdered()
+                IdGenerator.timeOrdered(),
+                metrics
         );
         when(repository.recordInbox(any(UUID.class))).thenReturn(true);
         when(repository.findDeviceProductKey(DEVICE_ID)).thenReturn(Optional.of("haul-truck"));
@@ -151,6 +157,66 @@ class AlarmEventServiceTest {
                 org.mockito.ArgumentMatchers.eq("alarm:event:ack"),
                 org.mockito.ArgumentMatchers.eq("ALARM_EVENT"),
                 org.mockito.ArgumentMatchers.eq(ALARM_ID), any(), any());
+        verify(metrics).recordDisposition(
+                AlarmMetrics.DispositionAction.ACKNOWLEDGE,
+                AlarmMetrics.DispositionOutcome.APPLIED);
+    }
+
+    @Test
+    void 确认结果指标应在事务提交后记录且回滚时记为失败() {
+        AlarmEventRecord current = record(EVENT_ID, null, null, 3, null, null, null);
+        AlarmEventRecord acknowledged = record(EVENT_ID, null, null, 4, NOW, null, null);
+        when(repository.lockById(ALARM_ID)).thenReturn(Optional.of(current));
+        when(repository.acknowledge(ALARM_ID, OPERATOR_ID, "已通知调度", NOW, 3)).thenReturn(1);
+        when(repository.findById(ALARM_ID)).thenReturn(Optional.of(acknowledged));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.acknowledge(ALARM_ID, OPERATOR_ID, "已通知调度", "ack-commit", 3);
+
+            verify(metrics, never()).recordDisposition(
+                    AlarmMetrics.DispositionAction.ACKNOWLEDGE,
+                    AlarmMetrics.DispositionOutcome.APPLIED);
+            var synchronizations = TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+            synchronizations.forEach(TransactionSynchronization::afterCommit);
+            synchronizations.forEach(synchronization -> synchronization.afterCompletion(
+                    TransactionSynchronization.STATUS_COMMITTED));
+
+            verify(metrics).recordDisposition(
+                    AlarmMetrics.DispositionAction.ACKNOWLEDGE,
+                    AlarmMetrics.DispositionOutcome.APPLIED);
+            verify(metrics, never()).recordDisposition(
+                    AlarmMetrics.DispositionAction.ACKNOWLEDGE,
+                    AlarmMetrics.DispositionOutcome.FAILED);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    void 确认事务最终回滚时不得记录成功结果() {
+        AlarmEventRecord current = record(EVENT_ID, null, null, 3, null, null, null);
+        AlarmEventRecord acknowledged = record(EVENT_ID, null, null, 4, NOW, null, null);
+        when(repository.lockById(ALARM_ID)).thenReturn(Optional.of(current));
+        when(repository.acknowledge(ALARM_ID, OPERATOR_ID, "已通知调度", NOW, 3)).thenReturn(1);
+        when(repository.findById(ALARM_ID)).thenReturn(Optional.of(acknowledged));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.acknowledge(ALARM_ID, OPERATOR_ID, "已通知调度", "ack-rollback", 3);
+            var synchronizations = TransactionSynchronizationManager.getSynchronizations();
+
+            synchronizations.forEach(synchronization -> synchronization.afterCompletion(
+                    TransactionSynchronization.STATUS_ROLLED_BACK));
+
+            verify(metrics, never()).recordDisposition(
+                    AlarmMetrics.DispositionAction.ACKNOWLEDGE,
+                    AlarmMetrics.DispositionOutcome.APPLIED);
+            verify(metrics).recordDisposition(
+                    AlarmMetrics.DispositionAction.ACKNOWLEDGE,
+                    AlarmMetrics.DispositionOutcome.FAILED);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
@@ -164,6 +230,9 @@ class AlarmEventServiceTest {
         verify(repository, never()).insertAcknowledgement(any(), any(), any(), anyString(), anyString(), any());
         verify(auditService, never()).recordSuccess(
                 anyString(), anyString(), anyString(), anyString(), any(), any(), any());
+        verify(metrics).recordDisposition(
+                AlarmMetrics.DispositionAction.ACKNOWLEDGE,
+                AlarmMetrics.DispositionOutcome.DUPLICATE);
     }
 
     @Test
@@ -176,6 +245,9 @@ class AlarmEventServiceTest {
                 .isInstanceOfSatisfying(MineException.class,
                         exception -> assertThat(exception.errorCode().code()).isEqualTo("ALARM-409-002"));
         verify(repository, never()).close(any(), any(), anyString(), anyString(), any(), anyLong());
+        verify(metrics).recordDisposition(
+                AlarmMetrics.DispositionAction.CLOSE,
+                AlarmMetrics.DispositionOutcome.INVALID);
     }
 
     @Test
@@ -188,6 +260,9 @@ class AlarmEventServiceTest {
                 .isInstanceOfSatisfying(MineException.class,
                         exception -> assertThat(exception.errorCode().code()).isEqualTo("ALARM-409-001"));
         verify(repository, never()).close(any(), any(), anyString(), anyString(), any(), anyLong());
+        verify(metrics).recordDisposition(
+                AlarmMetrics.DispositionAction.CLOSE,
+                AlarmMetrics.DispositionOutcome.CONFLICT);
     }
 
     @Test
@@ -208,6 +283,9 @@ class AlarmEventServiceTest {
                 org.mockito.ArgumentMatchers.eq("alarm:event:close"),
                 org.mockito.ArgumentMatchers.eq("ALARM_EVENT"),
                 org.mockito.ArgumentMatchers.eq(ALARM_ID), any(), any());
+        verify(metrics).recordDisposition(
+                AlarmMetrics.DispositionAction.CLOSE,
+                AlarmMetrics.DispositionOutcome.APPLIED);
     }
 
     private AlarmRaisedPayload raised() {

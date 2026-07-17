@@ -9,6 +9,7 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.rabbit.core.RabbitOperations;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -18,6 +19,9 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * 将白名单告警 Outbox 事件发布到业务交换机并等待 Broker 确认。
@@ -89,11 +93,30 @@ public final class RabbitAlarmOutboxPublisher implements TelemetryOutboxRelay.Pu
                 .setHeader("schemaVersion", event.schemaVersion())
                 .setHeader("aggregateId", event.aggregateId().toString())
                 .build();
-        rabbitOperations.invoke(scoped -> {
-            scoped.send(MineTopology.BUSINESS_EXCHANGE, event.eventType(), message);
-            scoped.waitForConfirmsOrDie(confirmTimeoutMillis);
-            return null;
-        });
+        CorrelationData correlationData = new CorrelationData(event.eventId().toString());
+        rabbitOperations.send(
+                MineTopology.BUSINESS_EXCHANGE, event.eventType(), message, correlationData);
+        CorrelationData.Confirm confirm = awaitConfirm(correlationData);
+        if (correlationData.getReturned() != null) {
+            throw new IllegalStateException("告警消息不可路由: "
+                    + correlationData.getReturned().getReplyText());
+        }
+        if (!confirm.ack()) {
+            throw new IllegalStateException("Broker 拒绝告警消息: " + confirm.reason());
+        }
+    }
+
+    private CorrelationData.Confirm awaitConfirm(CorrelationData correlationData) {
+        try {
+            return correlationData.getFuture().get(confirmTimeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待告警发布确认时线程被中断", exception);
+        } catch (TimeoutException exception) {
+            throw new IllegalStateException("等待告警发布确认超时", exception);
+        } catch (ExecutionException exception) {
+            throw new IllegalStateException("等待告警发布确认失败", exception.getCause());
+        }
     }
 
     private ParsedAlarm parseAlarm(TelemetryOutboxRepository.ClaimedEvent event) {

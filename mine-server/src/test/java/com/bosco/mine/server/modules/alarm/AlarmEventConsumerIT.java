@@ -9,6 +9,7 @@ import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.server.MineServerApplication;
 import com.bosco.mine.server.modules.alarm.domain.AlarmStatus;
 import com.bosco.mine.server.modules.alarm.messaging.AlarmEventConsumer;
+import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository;
 import com.bosco.mine.server.modules.alarm.service.AlarmEventService;
 import com.rabbitmq.client.Channel;
 import org.junit.jupiter.api.AfterEach;
@@ -64,6 +65,9 @@ class AlarmEventConsumerIT {
 
     @Autowired
     private AlarmEventService service;
+
+    @Autowired
+    private AlarmEventRepository repository;
 
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
@@ -123,6 +127,7 @@ class AlarmEventConsumerIT {
                 SELECT COUNT(*) FROM sys_inbox_event
                 WHERE consumer_name = 'mine-server-alarm-event'
                 """, Long.class)).isEqualTo(2L);
+        assertThat(repository.countActiveBySeverity("CRITICAL")).isZero();
     }
 
     @Test
@@ -193,6 +198,7 @@ class AlarmEventConsumerIT {
                     assertThat(alarm.raisedEvidence()).containsEntry("operator", "GT");
                 });
         assertThat(excluded.total()).isZero();
+        assertThat(repository.countActiveBySeverity("CRITICAL")).isEqualTo(1L);
     }
 
     @Test

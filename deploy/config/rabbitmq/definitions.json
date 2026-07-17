@@ -121,6 +121,16 @@
       }
     },
     {
+      "name": "mine.server.alarm-event.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
       "name": "mine.dead-letter.q",
       "vhost": "/mine-platform",
       "durable": true,
@@ -180,6 +190,15 @@
     },
     {
       "name": "mine.realtime.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.business.x",
       "vhost": "/mine-platform",
       "type": "topic",
       "durable": true,
@@ -268,6 +287,14 @@
       "destination": "mine.telemetry.strategy.q",
       "destination_type": "queue",
       "routing_key": "strategy.runtime.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.business.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.server.alarm-event.q",
+      "destination_type": "queue",
+      "routing_key": "alarm.*",
       "arguments": {}
     },
     {

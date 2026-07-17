@@ -50,7 +50,9 @@ class AlarmOutboxIT {
     @Test
     void 应精确认领并在租约到期前拒绝其他实例() {
         UUID eventId = uuid(21);
+        long pendingBefore = repository.countByStatus("PENDING");
         insertEvent(eventId, uuid(22), "alarm.raised");
+        assertThat(repository.countByStatus("PENDING")).isEqualTo(pendingBefore + 1L);
 
         TelemetryOutboxRepository.ClaimedEvent claimed = repository.claimById(
                 eventId, "telemetry-a", Duration.ofSeconds(30)).orElseThrow();
@@ -59,6 +61,8 @@ class AlarmOutboxIT {
         assertThat(repository.claimById(eventId, "telemetry-b", Duration.ofSeconds(30))).isEmpty();
         repository.markPublished(eventId, "telemetry-a");
         assertThat(status(eventId)).isEqualTo("PUBLISHED");
+        assertThat(repository.countByStatus("PENDING")).isEqualTo(pendingBefore);
+        assertThat(repository.countByStatus("PUBLISHED")).isZero();
     }
 
     @Test

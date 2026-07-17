@@ -105,3 +105,50 @@ groups:
         annotations:
           summary: "遥测数据质量异常突增"
           description: "规则 {{ $labels.rule }} 的 {{ $labels.result }} 结果在最近 10 分钟命中至少 100 次；请核对设备时钟、传感器和当前数据质量策略。"
+
+  - name: mine-alarm-runtime
+    rules:
+      - alert: MineTelemetryAlarmOutboxBacklog
+        expr: sum(mine_telemetry_alarm_outbox_events{status=~"PENDING|PUBLISHING"}) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "告警可靠发布持续积压"
+          description: "Telemetry 待发布或发布中的告警 Outbox 事件已连续 5 分钟超过 1000 条，请检查 RabbitMQ 和发布确认。"
+
+      - alert: MineTelemetryAlarmOutboxFailed
+        expr: mine_telemetry_alarm_outbox_events{status="FAILED"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "告警可靠发布持续重试"
+          description: "Telemetry 存在持续 5 分钟尚未重试成功的告警 Outbox 事件，请检查 RabbitMQ 路由、网络和发布确认。"
+
+      - alert: MineTelemetryAlarmOutboxDead
+        expr: mine_telemetry_alarm_outbox_events{status="DEAD"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "告警可靠发布事件进入死信"
+          description: "Telemetry 存在已耗尽重试次数的告警 Outbox 事件，告警事实尚未送达告警中心，必须立即人工处置。"
+
+      - alert: MineServerAlarmConsumeFailures
+        expr: sum(increase(mine_server_alarm_consume_total{outcome="rejected"}[10m])) > 0 or sum(increase(mine_server_alarm_consume_total{outcome="requeued"}[10m])) >= 5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "告警事实消费异常"
+          description: "最近 10 分钟出现永久拒绝的告警事件，或至少 5 次暂时失败重投；请检查死信、数据库和消息契约。"
+
+      - alert: MineCriticalActiveAlarmsGrowing
+        expr: mine_server_alarm_active{severity="CRITICAL"} >= 10 and delta(mine_server_alarm_active{severity="CRITICAL"}[10m]) >= 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "严重活动告警持续增长"
+          description: "严重活动告警不少于 10 条且 10 分钟内净增长至少 5 条，请立即进入告警中心组织处置。"

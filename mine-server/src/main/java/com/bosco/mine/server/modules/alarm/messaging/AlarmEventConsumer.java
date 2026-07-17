@@ -4,6 +4,7 @@ import com.bosco.mine.messaging.MessageEnvelope;
 import com.bosco.mine.messaging.alarm.AlarmRaisedPayload;
 import com.bosco.mine.messaging.alarm.AlarmRecoveredPayload;
 import com.bosco.mine.messaging.topology.MineTopology;
+import com.bosco.mine.server.modules.alarm.AlarmMetrics;
 import com.bosco.mine.server.modules.alarm.service.AlarmEventService;
 import com.rabbitmq.client.Channel;
 import org.slf4j.Logger;
@@ -25,6 +26,7 @@ public final class AlarmEventConsumer implements ChannelAwareMessageListener {
     private static final int MAX_MESSAGE_BYTES = 64 * 1024;
 
     private final AlarmEventService service;
+    private final AlarmMetrics metrics;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
     /**
@@ -33,7 +35,18 @@ public final class AlarmEventConsumer implements ChannelAwareMessageListener {
      * @param service 告警聚合服务
      */
     public AlarmEventConsumer(AlarmEventService service) {
+        this(service, AlarmMetrics.noOp());
+    }
+
+    /**
+     * 创建带低基数运行指标的告警事件消费者。
+     *
+     * @param service 告警聚合服务
+     * @param metrics 告警运行指标
+     */
+    public AlarmEventConsumer(AlarmEventService service, AlarmMetrics metrics) {
         this.service = Objects.requireNonNull(service, "告警事件服务不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "告警运行指标不能为空");
     }
 
     /**
@@ -44,20 +57,32 @@ public final class AlarmEventConsumer implements ChannelAwareMessageListener {
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         try {
             DecodedAlarm decoded = decode(message.getBody());
+            boolean changed;
             if (decoded.payload() instanceof AlarmRaisedPayload raised) {
-                service.applyRaised(decoded.envelope().eventId(), raised);
+                changed = service.applyRaised(decoded.envelope().eventId(), raised);
             } else if (decoded.payload() instanceof AlarmRecoveredPayload recovered) {
-                service.applyRecovered(decoded.envelope().eventId(), recovered);
+                changed = service.applyRecovered(decoded.envelope().eventId(), recovered);
             } else {
                 throw new InvalidAlarmEventMessageException("告警事件载荷类型不受支持");
             }
             channel.basicAck(deliveryTag, false);
+            observe(changed ? metrics::recordProcessed : metrics::recordDuplicate);
         } catch (InvalidAlarmEventMessageException exception) {
             LOGGER.warn("拒绝不可重试的告警事件: {}", exception.getMessage());
             channel.basicReject(deliveryTag, false);
+            observe(metrics::recordRejected);
         } catch (RuntimeException exception) {
             LOGGER.error("告警事件事务未完成，消息将重新投递", exception);
             channel.basicNack(deliveryTag, false, true);
+            observe(metrics::recordRequeued);
+        }
+    }
+
+    private void observe(Runnable observation) {
+        try {
+            observation.run();
+        } catch (RuntimeException exception) {
+            LOGGER.warn("记录告警消费指标失败，不改变既定消息确认结果", exception);
         }
     }
 

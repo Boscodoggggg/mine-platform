@@ -5,6 +5,8 @@ import com.bosco.mine.messaging.alarm.AlarmRaisedPayload;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageDeliveryMode;
+import org.springframework.amqp.core.ReturnedMessage;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitOperations;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -19,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -42,19 +45,19 @@ class RabbitAlarmOutboxPublisherTest {
     @Test
     void 应发布完整持久化信封并等待Broker确认() throws Exception {
         RabbitOperations operations = mock(RabbitOperations.class);
-        RabbitOperations scoped = mock(RabbitOperations.class);
-        when(operations.invoke(any())).thenAnswer(invocation -> {
-            RabbitOperations.OperationsCallback<?> callback = invocation.getArgument(0);
-            return callback.doInRabbit(scoped);
-        });
+        doAnswer(invocation -> {
+            CorrelationData correlationData = invocation.getArgument(3);
+            correlationData.getFuture().complete(new CorrelationData.Confirm(true, null));
+            return null;
+        }).when(operations).send(any(), any(), any(), any(CorrelationData.class));
         TelemetryOutboxRepository.ClaimedEvent event = event(OCCURRENCE_ID, DEVICE_ID);
 
         new RabbitAlarmOutboxPublisher(operations, 3_000L).publish(event);
 
         var message = org.mockito.ArgumentCaptor.forClass(Message.class);
-        verify(scoped).send(
-                eq("mine.business.x"), eq("alarm.raised"), message.capture());
-        verify(scoped).waitForConfirmsOrDie(3_000L);
+        verify(operations).send(
+                eq("mine.business.x"), eq("alarm.raised"), message.capture(),
+                any(CorrelationData.class));
         assertThat(message.getValue().getMessageProperties().getDeliveryMode())
                 .isEqualTo(MessageDeliveryMode.PERSISTENT);
         assertThat(message.getValue().getMessageProperties().getMessageId())
@@ -65,6 +68,24 @@ class RabbitAlarmOutboxPublisherTest {
                 .contains("\"producer\":\"mine-telemetry\"")
                 .contains("\"alarmOccurrenceId\":\"" + OCCURRENCE_ID + "\"")
                 .contains("\"partitionKey\":\"" + DEVICE_ID + "\"");
+    }
+
+    @Test
+    void Broker确认但消息不可路由时仍应判定发布失败() throws Exception {
+        RabbitOperations operations = mock(RabbitOperations.class);
+        doAnswer(invocation -> {
+            Message message = invocation.getArgument(2);
+            CorrelationData correlationData = invocation.getArgument(3);
+            correlationData.setReturned(new ReturnedMessage(
+                    message, 312, "NO_ROUTE", "mine.business.x", "alarm.raised"));
+            correlationData.getFuture().complete(new CorrelationData.Confirm(true, null));
+            return null;
+        }).when(operations).send(any(), any(), any(), any(CorrelationData.class));
+
+        assertThatThrownBy(() -> new RabbitAlarmOutboxPublisher(operations, 3_000L)
+                .publish(event(OCCURRENCE_ID, DEVICE_ID)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("不可路由");
     }
 
     @Test

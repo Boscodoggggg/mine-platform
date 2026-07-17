@@ -164,6 +164,21 @@ public class AlarmEventRepository {
         );
     }
 
+    /** 按固定告警等级统计尚未恢复的活动告警数量。 */
+    public long countActiveBySeverity(String severity) {
+        if (!java.util.Set.of("INFO", "WARNING", "CRITICAL").contains(severity)) {
+            throw new IllegalArgumentException("活动告警指标等级不受支持");
+        }
+        Long count = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM alarm_event
+                WHERE recovered_at IS NULL
+                  AND closed_at IS NULL
+                  AND severity = ?
+                """, Long.class, severity);
+        return count == null ? 0L : count;
+    }
+
     /** 按时间倒序分页查询告警。 */
     public List<AlarmEventRecord> find(AlarmQuery query, int page, int size) {
         SqlWithParameters filter = filter(query);
