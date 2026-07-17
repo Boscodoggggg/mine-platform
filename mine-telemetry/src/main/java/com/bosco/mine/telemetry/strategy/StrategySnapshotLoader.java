@@ -1,6 +1,7 @@
 package com.bosco.mine.telemetry.strategy;
 
 import com.bosco.mine.messaging.strategy.StrategyRuntimeChangedPayload;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -10,6 +11,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+
+import static com.bosco.mine.telemetry.strategy.StrategyDistributionMetrics.Stage;
+import static com.bosco.mine.telemetry.strategy.StrategyDistributionMetrics.StageResult;
 
 /**
  * 分页拉取控制面不可变快照，独立校验后委托仓储原子切换本地策略镜像。
@@ -21,6 +25,7 @@ public class StrategySnapshotLoader {
     private final StrategyPolicyRepository repository;
     private final StrategySnapshotSource source;
     private final int pageSize;
+    private final StrategyDistributionMetrics metrics;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
     /**
@@ -35,12 +40,35 @@ public class StrategySnapshotLoader {
             StrategySnapshotSource source,
             int pageSize
     ) {
+        this(
+                repository,
+                source,
+                pageSize,
+                new StrategyDistributionMetrics(new SimpleMeterRegistry())
+        );
+    }
+
+    /**
+     * 创建带固定阶段指标的策略快照加载器。
+     *
+     * @param repository 持久镜像仓储
+     * @param source 受信任控制面快照源
+     * @param pageSize 单次拉取条目数
+     * @param metrics 策略分发指标记录器
+     */
+    public StrategySnapshotLoader(
+            StrategyPolicyRepository repository,
+            StrategySnapshotSource source,
+            int pageSize,
+            StrategyDistributionMetrics metrics
+    ) {
         this.repository = Objects.requireNonNull(repository, "策略镜像仓储不能为空");
         this.source = Objects.requireNonNull(source, "策略快照源不能为空");
         if (pageSize < 1 || pageSize > 1_000) {
             throw new IllegalArgumentException("策略快照页大小必须在 1 到 1000 之间");
         }
         this.pageSize = pageSize;
+        this.metrics = Objects.requireNonNull(metrics, "策略分发指标不能为空");
     }
 
     /**
@@ -64,47 +92,82 @@ public class StrategySnapshotLoader {
                 if (++pageCount > payload.itemCount() / pageSize + 2) {
                     throw new PermanentStrategySnapshotException("策略快照分页游标未能收敛");
                 }
-                StrategySnapshotSource.SnapshotPage page =
-                        source.fetch(payload.snapshotId(), cursor, pageSize);
-                validateHeader(page, payload);
-                List<StrategyPolicyRepository.StagedPolicy> staged = new ArrayList<>();
-                for (StrategySnapshotSource.SnapshotItem item : page.items()) {
-                    if (previousDeviceId != null
-                            && UUID_ORDER.compare(previousDeviceId, item.deviceId()) >= 0) {
-                        throw new PermanentStrategySnapshotException("策略快照设备条目未稳定递增排序");
-                    }
-                    StrategySnapshotIntegrity.ValidatedPolicy validated =
-                            StrategySnapshotIntegrity.validateAndNormalize(
-                                    item.deviceId(), item.values());
-                    if (!validated.contentHash().equals(item.contentHash())) {
-                        throw new PermanentStrategySnapshotException("单设备策略哈希不一致");
-                    }
-                    staged.add(new StrategyPolicyRepository.StagedPolicy(
-                            item.deviceId(), writeJson(validated.values()), item.contentHash()));
-                    digest.add(item.deviceId(), item.contentHash());
-                    previousDeviceId = item.deviceId();
-                    itemCount++;
-                    if (itemCount > payload.itemCount()) {
-                        throw new PermanentStrategySnapshotException("策略快照条目超过事件声明数量");
-                    }
+                StrategySnapshotSource.SnapshotPage page;
+                try {
+                    page = source.fetch(payload.snapshotId(), cursor, pageSize);
+                    metrics.stage(Stage.FETCH, StageResult.SUCCESS);
+                } catch (RuntimeException exception) {
+                    metrics.stage(Stage.FETCH, StageResult.FAILURE);
+                    throw exception;
                 }
-                repository.stage(payload.snapshotId(), List.copyOf(staged));
-                UUID next = page.nextAfterDeviceId();
-                if (next != null && (page.items().isEmpty()
-                        || !next.equals(page.items().getLast().deviceId())
-                        || next.equals(cursor))) {
-                    throw new PermanentStrategySnapshotException("策略快照下一页游标不合法");
+                List<StrategyPolicyRepository.StagedPolicy> staged = new ArrayList<>();
+                UUID next;
+                try {
+                    validateHeader(page, payload);
+                    for (StrategySnapshotSource.SnapshotItem item : page.items()) {
+                        if (previousDeviceId != null
+                                && UUID_ORDER.compare(previousDeviceId, item.deviceId()) >= 0) {
+                            throw new PermanentStrategySnapshotException(
+                                    "策略快照设备条目未稳定递增排序");
+                        }
+                        StrategySnapshotIntegrity.ValidatedPolicy validated =
+                                StrategySnapshotIntegrity.validateAndNormalize(
+                                        item.deviceId(), item.values());
+                        if (!validated.contentHash().equals(item.contentHash())) {
+                            throw new PermanentStrategySnapshotException("单设备策略哈希不一致");
+                        }
+                        staged.add(new StrategyPolicyRepository.StagedPolicy(
+                                item.deviceId(), writeJson(validated.values()), item.contentHash()));
+                        digest.add(item.deviceId(), item.contentHash());
+                        previousDeviceId = item.deviceId();
+                        itemCount++;
+                        if (itemCount > payload.itemCount()) {
+                            throw new PermanentStrategySnapshotException(
+                                    "策略快照条目超过事件声明数量");
+                        }
+                    }
+                    next = page.nextAfterDeviceId();
+                    if (next != null && (page.items().isEmpty()
+                            || !next.equals(page.items().getLast().deviceId())
+                            || next.equals(cursor))) {
+                        throw new PermanentStrategySnapshotException(
+                                "策略快照下一页游标不合法");
+                    }
+                    metrics.stage(Stage.VALIDATE, StageResult.SUCCESS);
+                } catch (RuntimeException exception) {
+                    metrics.stage(Stage.VALIDATE, StageResult.FAILURE);
+                    throw exception;
+                }
+                try {
+                    repository.stage(payload.snapshotId(), List.copyOf(staged));
+                    metrics.stage(Stage.PERSIST, StageResult.SUCCESS);
+                } catch (RuntimeException exception) {
+                    metrics.stage(Stage.PERSIST, StageResult.FAILURE);
+                    throw exception;
                 }
                 cursor = next;
             } while (cursor != null);
 
-            if (itemCount != payload.itemCount()) {
-                throw new PermanentStrategySnapshotException("策略快照条目数与事件声明不一致");
+            try {
+                if (itemCount != payload.itemCount()) {
+                    throw new PermanentStrategySnapshotException(
+                            "策略快照条目数与事件声明不一致");
+                }
+                if (!digest.finish().equals(payload.contentHash())) {
+                    throw new PermanentStrategySnapshotException("策略快照完整哈希不一致");
+                }
+                metrics.stage(Stage.VALIDATE, StageResult.SUCCESS);
+            } catch (RuntimeException exception) {
+                metrics.stage(Stage.VALIDATE, StageResult.FAILURE);
+                throw exception;
             }
-            if (!digest.finish().equals(payload.contentHash())) {
-                throw new PermanentStrategySnapshotException("策略快照完整哈希不一致");
+            try {
+                repository.finalizeApply(eventId, payload);
+                metrics.stage(Stage.ACTIVATE, StageResult.SUCCESS);
+            } catch (RuntimeException exception) {
+                metrics.stage(Stage.ACTIVATE, StageResult.FAILURE);
+                throw exception;
             }
-            repository.finalizeApply(eventId, payload);
         } catch (PermanentStrategySnapshotException exception) {
             repository.discard(payload.snapshotId());
             throw exception;

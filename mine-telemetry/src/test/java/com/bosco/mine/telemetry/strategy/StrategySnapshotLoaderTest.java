@@ -1,6 +1,7 @@
 package com.bosco.mine.telemetry.strategy;
 
 import com.bosco.mine.messaging.strategy.StrategyRuntimeChangedPayload;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -11,6 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -49,8 +51,11 @@ class StrategySnapshotLoaderTest {
                         SECOND_DEVICE_ID, Map.of(), secondHash)),
                 null
         ));
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
-        new StrategySnapshotLoader(repository, source, 1).apply(EVENT_ID, payload);
+        new StrategySnapshotLoader(
+                repository, source, 1, new StrategyDistributionMetrics(meterRegistry)
+        ).apply(EVENT_ID, payload);
 
         verify(repository).stage(SNAPSHOT_ID, List.of(
                 new StrategyPolicyRepository.StagedPolicy(
@@ -59,6 +64,10 @@ class StrategySnapshotLoaderTest {
                 new StrategyPolicyRepository.StagedPolicy(
                         SECOND_DEVICE_ID, "{}", secondHash)));
         verify(repository).finalizeApply(EVENT_ID, payload);
+        assertThat(counter(meterRegistry, "fetch", "success")).isEqualTo(2D);
+        assertThat(counter(meterRegistry, "validate", "success")).isEqualTo(3D);
+        assertThat(counter(meterRegistry, "persist", "success")).isEqualTo(2D);
+        assertThat(counter(meterRegistry, "activate", "success")).isOne();
     }
 
     @Test
@@ -73,12 +82,16 @@ class StrategySnapshotLoaderTest {
                         FIRST_DEVICE_ID, Map.of(), itemHash)),
                 null
         ));
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
         assertThatThrownBy(() ->
-                new StrategySnapshotLoader(repository, source, 100).apply(EVENT_ID, payload))
+                new StrategySnapshotLoader(
+                        repository, source, 100, new StrategyDistributionMetrics(meterRegistry)
+                ).apply(EVENT_ID, payload))
                 .isInstanceOf(PermanentStrategySnapshotException.class);
 
         verify(repository, never()).finalizeApply(EVENT_ID, payload);
+        assertThat(counter(meterRegistry, "validate", "failure")).isOne();
     }
 
     private StrategySnapshotSource.SnapshotPage page(
@@ -103,5 +116,12 @@ class StrategySnapshotLoaderTest {
                     .getBytes(StandardCharsets.UTF_8));
         }
         return "sha256:" + HexFormat.of().formatHex(digest.digest());
+    }
+
+    private double counter(SimpleMeterRegistry registry, String stage, String result) {
+        return registry.get("mine.telemetry.strategy.stage")
+                .tags("stage", stage, "result", result)
+                .counter()
+                .count();
     }
 }

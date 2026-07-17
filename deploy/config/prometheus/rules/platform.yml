@@ -76,3 +76,32 @@ groups:
         annotations:
           summary: "Gateway 配置分发持续重试"
           description: "Gateway 在 10 分钟内至少 3 次因网络、磁盘或状态回报失败而重投配置事件。"
+
+  - name: mine-telemetry-strategy-quality
+    rules:
+      - alert: MineTelemetryStrategyLoadFailed
+        expr: increase(mine_telemetry_strategy_distribution_total{outcome="permanent_failure"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Telemetry 数据质量策略永久加载失败"
+          description: "最近 10 分钟有策略快照未通过完整性校验并进入死信；最后正确版本仍在运行，请检查策略队列死信和控制面快照。"
+
+      - alert: MineTelemetryStrategyRetrying
+        expr: increase(mine_telemetry_strategy_distribution_total{outcome="transient_failure"}[10m]) >= 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Telemetry 策略分发持续重试"
+          description: "Telemetry 在 10 分钟内至少 3 次因控制面、网络或数据库暂时失败而重投策略事件。"
+
+      - alert: MineTelemetryDataQualitySpike
+        expr: sum by (rule, result) (increase(mine_telemetry_quality_rule_hits_total[10m])) >= 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "遥测数据质量异常突增"
+          description: "规则 {{ $labels.rule }} 的 {{ $labels.result }} 结果在最近 10 分钟命中至少 100 次；请核对设备时钟、传感器和当前数据质量策略。"

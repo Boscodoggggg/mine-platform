@@ -12,6 +12,7 @@ import com.bosco.mine.telemetry.realtime.ConfirmedRealtimePublisher;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
 import com.bosco.mine.telemetry.strategy.HttpStrategySnapshotSource;
 import com.bosco.mine.telemetry.strategy.StrategyPolicyRepository;
+import com.bosco.mine.telemetry.strategy.StrategyDistributionMetrics;
 import com.bosco.mine.telemetry.strategy.StrategyRuntimeConsumer;
 import com.bosco.mine.telemetry.strategy.StrategySnapshotLoader;
 import org.springframework.amqp.core.AcknowledgeMode;
@@ -225,17 +226,30 @@ public class TelemetryStorageConfiguration {
     public StrategySnapshotLoader strategySnapshotLoader(
             StrategyPolicyRepository repository,
             HttpStrategySnapshotSource source,
-            StrategyDistributionProperties properties
+            StrategyDistributionProperties properties,
+            StrategyDistributionMetrics metrics
     ) {
-        return new StrategySnapshotLoader(repository, source, properties.resolvedPageSize());
+        return new StrategySnapshotLoader(
+                repository, source, properties.resolvedPageSize(), metrics);
+    }
+
+    /** 创建策略分发最终结果、阶段和耗时的低基数指标。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.strategy-distribution", name = "enabled", havingValue = "true")
+    public StrategyDistributionMetrics strategyDistributionMetrics(MeterRegistry meterRegistry) {
+        return new StrategyDistributionMetrics(meterRegistry);
     }
 
     /** 创建策略运行变更消息消费者。 */
     @Bean
     @ConditionalOnProperty(
             prefix = "mine.telemetry.strategy-distribution", name = "enabled", havingValue = "true")
-    public StrategyRuntimeConsumer strategyRuntimeConsumer(StrategySnapshotLoader loader) {
-        return new StrategyRuntimeConsumer(loader);
+    public StrategyRuntimeConsumer strategyRuntimeConsumer(
+            StrategySnapshotLoader loader,
+            StrategyDistributionMetrics metrics
+    ) {
+        return new StrategyRuntimeConsumer(loader, metrics);
     }
 
     /**

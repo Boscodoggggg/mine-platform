@@ -3,6 +3,7 @@ package com.bosco.mine.telemetry.strategy;
 import com.bosco.mine.messaging.MessageEnvelope;
 import com.bosco.mine.messaging.strategy.StrategyRuntimeChangedPayload;
 import com.rabbitmq.client.Channel;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.AmqpIOException;
@@ -15,6 +16,10 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.util.Objects;
 
+import static com.bosco.mine.telemetry.strategy.StrategyDistributionMetrics.Outcome;
+import static com.bosco.mine.telemetry.strategy.StrategyDistributionMetrics.Stage;
+import static com.bosco.mine.telemetry.strategy.StrategyDistributionMetrics.StageResult;
+
 /**
  * 消费策略运行变更事件，成功原子切换后才确认 RabbitMQ 消息。
  */
@@ -25,11 +30,26 @@ public final class StrategyRuntimeConsumer implements ChannelAwareMessageListene
             new TypeReference<>() { };
 
     private final StrategySnapshotLoader loader;
+    private final StrategyDistributionMetrics metrics;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
     /** 创建策略运行变更消费者。 */
     public StrategyRuntimeConsumer(StrategySnapshotLoader loader) {
+        this(loader, new StrategyDistributionMetrics(new SimpleMeterRegistry()));
+    }
+
+    /**
+     * 创建带低基数可观测证据的策略运行变更消费者。
+     *
+     * @param loader 策略快照加载器
+     * @param metrics 策略分发指标记录器
+     */
+    public StrategyRuntimeConsumer(
+            StrategySnapshotLoader loader,
+            StrategyDistributionMetrics metrics
+    ) {
         this.loader = Objects.requireNonNull(loader, "策略快照加载器不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "策略分发指标不能为空");
     }
 
     /**
@@ -41,17 +61,30 @@ public final class StrategyRuntimeConsumer implements ChannelAwareMessageListene
     public void onMessage(Message message, Channel channel) {
         Objects.requireNonNull(message, "策略消息不能为空");
         Objects.requireNonNull(channel, "RabbitMQ 通道不能为空");
+        StrategyDistributionMetrics.ProcessingSample sample = metrics.start();
+        boolean decoded = false;
         try {
             MessageEnvelope<StrategyRuntimeChangedPayload> envelope = decode(message);
+            decoded = true;
+            metrics.stage(Stage.DECODE, StageResult.SUCCESS);
             loader.apply(envelope.eventId(), envelope.payload());
-            ack(message, channel);
         } catch (PermanentStrategySnapshotException exception) {
+            if (!decoded) {
+                metrics.stage(Stage.DECODE, StageResult.FAILURE);
+            }
+            metrics.complete(sample, decoded
+                    ? Outcome.PERMANENT_FAILURE : Outcome.INVALID_MESSAGE);
             LOGGER.warn("拒绝不可重试的策略运行快照: {}", exception.getMessage());
             reject(message, channel);
+            return;
         } catch (RuntimeException exception) {
+            metrics.complete(sample, Outcome.TRANSIENT_FAILURE);
             LOGGER.error("策略运行快照暂时无法应用，消息将重新投递", exception);
             nack(message, channel);
+            return;
         }
+        metrics.complete(sample, Outcome.LOADED);
+        ack(message, channel);
     }
 
     private MessageEnvelope<StrategyRuntimeChangedPayload> decode(Message message) {

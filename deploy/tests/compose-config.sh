@@ -59,6 +59,16 @@ grep -q 'MineGatewayConfigurationRetrying' "${rules_file}" \
   || { echo "FAIL: 缺少 Gateway 配置持续重试告警" >&2; exit 1; }
 grep -q 'mine_gateway_configuration_distribution_total' "${rules_file}" \
   || { echo "FAIL: Gateway 配置告警未引用分发结果指标" >&2; exit 1; }
+grep -q 'MineTelemetryStrategyLoadFailed' "${rules_file}" \
+  || { echo "FAIL: 缺少 Telemetry 策略永久加载失败告警" >&2; exit 1; }
+grep -q 'MineTelemetryStrategyRetrying' "${rules_file}" \
+  || { echo "FAIL: 缺少 Telemetry 策略持续重试告警" >&2; exit 1; }
+grep -q 'mine_telemetry_strategy_distribution_total' "${rules_file}" \
+  || { echo "FAIL: Telemetry 策略告警未引用分发结果指标" >&2; exit 1; }
+grep -q 'MineTelemetryDataQualitySpike' "${rules_file}" \
+  || { echo "FAIL: 缺少数据质量异常突增告警" >&2; exit 1; }
+grep -q 'mine_telemetry_quality_rule_hits_total' "${rules_file}" \
+  || { echo "FAIL: 数据质量告警未引用规则命中指标" >&2; exit 1; }
 if grep -Eq 'productId|releaseId|deviceId|groupId' "${rules_file}"; then
   echo "FAIL: Prometheus 规则不得依赖高基数业务标识标签" >&2
   exit 1
