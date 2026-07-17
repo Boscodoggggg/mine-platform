@@ -75,7 +75,10 @@ class StaticInteractionContractTest {
                 "form.elements.payloadTemplate.value = templates[mode]");
         assertThat(styles).contains(
                 ".help-tooltip:hover::after",
-                ".help-tooltip:focus::after");
+                ".help-tooltip:focus::after",
+                ".help-tooltip::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 9px); left: 0;",
+                ".checkbox-label .help-tooltip::after",
+                "[hidden] { display: none !important; }");
     }
 
     private String resource(String path) throws IOException {
