@@ -107,7 +107,7 @@ Compose profiles：
 |---|---|---|---|
 | 443 | 办公/调度网 | VIP/Nginx | HTTPS/WSS |
 | 8883 | 设备网 | node-1/2 VIP → Nginx stream → RabbitMQ | MQTTS 透传；必要时启用 PROXY protocol 保留源地址 |
-| 私有 TCP 端口 | 指定设备网段 | gateway | 按协议白名单 |
+| 9000（示例，可配置） | 指定设备网段 | gateway | 一个端口绑定一个离线审核协议；宿主默认仅发布到 127.0.0.1，设备网开放前必须启用 ACL/TLS |
 | 5671 | 应用节点 | RabbitMQ | AMQPS |
 | 5432 | 应用/备份节点 | PostgreSQL/TimescaleDB | 数据库 TLS |
 | 6379 或 TLS 端口 | 应用节点 | Redis | ACL/TLS |
@@ -218,6 +218,32 @@ Compose profiles：
 
 批次、周期、间隔和租约是资源保护参数，不是性能承诺。生产调整前必须使用真实数据分布验证桶积压、查询计划、WAL/IO、磁盘、并发历史查询和重算时长。操作、告警、暂停和恢复见 [数值聚合运行手册](runbooks/aggregation-runtime.md)。
 
+### 7.3 TCP 二进制 Gateway 参数
+
+TCP 二进制监听器在应用默认配置中关闭，Standalone Compose 为可复现纵向样例显式开启。容器内部监听全部接口，
+宿主发布地址默认 `127.0.0.1`；只有设备网防火墙、来源白名单、证书、身份快照和告警全部就绪后，才能把
+`MINE_GATEWAY_TCP_PUBLISHED_ADDRESS` 改为设备网地址。
+
+| 环境变量 | 应用/Standalone 默认值 | 安全边界与说明 |
+|---|---:|---|
+| `MINE_GATEWAY_TCP_ENABLED` | 应用 `false`；Standalone `true` | 是否创建监听器；未知插件、无可靠发布器或配置非法会阻止 Gateway 启动 |
+| `MINE_GATEWAY_TCP_BIND_HOST` | `0.0.0.0` | 容器内绑定地址；宿主暴露范围由 Compose published address 与防火墙共同控制 |
+| `MINE_GATEWAY_TCP_PORT` | `9000` | 0 仅供自动化随机端口；生产使用 1～65535 的固定受控端口 |
+| `MINE_GATEWAY_TCP_PROTOCOL_KEY` | `haul-truck-binary` | 一个监听器绑定一个已离线审核且唯一的 ServiceLoader 插件键 |
+| `MINE_GATEWAY_TCP_WORKER_THREADS` | `2` | Netty IO 线程 1～128，不执行同步 publisher confirm |
+| `MINE_GATEWAY_TCP_BUSINESS_THREADS` | `4` | 每连接保持有序的解析与可靠发布线程 1～256 |
+| `MINE_GATEWAY_TCP_BACKLOG` | `1024` | 内核接受队列 16～65535，不是可承诺并发量 |
+| `MINE_GATEWAY_TCP_MAX_CONNECTIONS` | `10000` | 全局活动连接硬上限 1～1000000；生产值必须来自容量报告 |
+| `MINE_GATEWAY_TCP_MAX_CONNECTIONS_PER_IP` | `100` | 单来源地址上限，不得大于全局上限；经四层代理时必须先验证源地址保留 |
+| `MINE_GATEWAY_TCP_READ_IDLE_SECONDS` | `120` | 1～86400 秒无入站字节后关闭会话 |
+| `MINE_GATEWAY_TCP_SHUTDOWN_TIMEOUT` | `30s` | 1 秒～2 分钟，先停监听并关闭活动连接，再停止业务和 IO 线程 |
+| `MINE_GATEWAY_TCP_TLS_ENABLED` | `false` | 明文只允许回环或受控内网演示；生产必须为 `true` |
+| `MINE_GATEWAY_TCP_TLS_CERTIFICATE` | `/run/secrets/tcp_tls_certificate` | PEM 证书链绝对路径，通过只读 Compose/Kubernetes secret 挂载 |
+| `MINE_GATEWAY_TCP_TLS_PRIVATE_KEY` | `/run/secrets/tcp_tls_private_key` | PEM 私钥绝对路径，不进入镜像、环境变量、日志或离线示例 |
+
+证书和私钥只在监听器启动时加载，轮换必须走受控重启；当前没有原地热加载。插件安装、身份快照、模拟器、告警、
+暂停、升级与回退步骤见 [TCP 二进制 Gateway 运行手册](runbooks/tcp-binary-gateway.md)。
+
 ## 8. 服务发现
 
 - 单机：Compose service name。
@@ -319,6 +345,10 @@ TimescaleDB 的 PostgreSQL major 版本升级不是普通容器重建。PG17 数
 
 数据库不可逆迁移必须有单独恢复方案，不能承诺简单回退镜像即可恢复。
 
+TCP 插件升级属于应用镜像升级，不支持把 JAR 直接复制进运行容器。协议 ABI、协议键和 `protocolVersion` 不变时可按 Gateway
+实例滚动升级；协议版本变化时，旧新实例无法同时共享单一身份快照版本，必须使用新协议键/新端口并行迁移，或申请维护窗口完成
+全量切换。失败时回退到上一不可变镜像和匹配的完整身份快照；已收到 ACK 的遥测不得由运维伪造重放，未收到 ACK 的设备应按原序号重传。
+
 ## 14. 离线安装
 
 离线包必须在与现场同架构的干净环境验证：
@@ -359,6 +389,20 @@ Prometheus 不把 deviceId、commandId、traceId 当 label，避免高基数。
 - `MineTelemetryRetentionConsecutiveFailures`、`MineTelemetryRetentionNoRecentSuccess`、`MineTelemetryRetentionPersistentlyPartial`。
 
 告警后的标准顺序是：确认是否仍在删除、检查最近执行事实与数据库健康、必要时停止调度、再处理积压或回滚策略。禁止为了消除告警删除执行事实、清零数据库状态或手工批量删除。
+
+### 15.2 TCP 二进制接入监控
+
+至少观察以下低基数指标和告警：
+
+- `mine_gateway_tcp_listener_up{protocol=...}`、`mine_gateway_tcp_connections_active{protocol=...}`；
+- `mine_gateway_tcp_connections{protocol=...,result="accepted|rejected"}`；
+- `mine_gateway_tcp_frames{protocol=...,result="success|rejected",reason=...}`；
+- `mine_gateway_tcp_publish_failures{protocol=...,result="failure"}` 与 `mine_gateway_tcp_acknowledgements{protocol=...,result="success"}`；
+- `MineGatewayTcpListenerDown`、`MineGatewayTcpConnectionsRejected`、`MineGatewayTcpFramesRejected`、
+  `MineGatewayTcpPublishFailures`、`MineGatewayTcpNoSuccessfulTelemetry`。
+
+标签只能使用协议键、结果和固定原因，不得加入设备、IP、帧内容、异常文本或业务标识。告警处置顺序见
+[TCP 二进制 Gateway 运行手册](runbooks/tcp-binary-gateway.md)，不得为消警放宽 CRC、身份、帧长或 publisher confirm 门禁。
 
 ## 16. 运维页面和 Grafana 边界
 

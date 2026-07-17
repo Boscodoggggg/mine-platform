@@ -83,7 +83,10 @@ HEX 模板允许空格和换行，例如 `68 01 00 02 FF 16`。
 
 ## 协议边界
 
-当前版本实现的是 MQTT 和透明 TCP 传输层，适合测试平台连接、鉴权、Topic 路由和自定义 JSON/二进制报文接入。JT/T 808、Modbus TCP、OPC UA 是应用层协议，尚未在当前版本中宣称完整实现；后续可在现有 TCP 传输层上增加编解码模板。
+模拟器实现 MQTT 和透明 TCP 传输层，适合测试平台连接、鉴权、Topic 路由和自定义 JSON/二进制报文接入。平台已经提供
+`haul-truck-binary` 非厂商 TCP 二进制纵向示例，可按
+[黄金帧与字段说明](../examples/protocols/tcp-binary/haul-truck/README.md)配置 TCP Client + HEX 单次发送。JT/T 808、
+Modbus TCP、OPC UA 仍未宣称实现，不能把透明传输或仓库示例当作对应行业协议。
 
 TLS 使用 JVM 默认信任库。TCP Server TLS 需要在启动 JVM 时提供服务端密钥库，例如：
 

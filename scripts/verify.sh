@@ -28,6 +28,9 @@ echo "[4/5] Prometheus、Loki 与 Alloy 配置"
 docker run --rm --entrypoint /bin/promtool \
   -v "${ROOT_DIR}/deploy/config/prometheus:/etc/prometheus:ro" \
   prom/prometheus:v3.12.0 check config /etc/prometheus/prometheus.yml
+docker run --rm --entrypoint /bin/promtool \
+  -v "${ROOT_DIR}/deploy/config/prometheus:/etc/prometheus:ro" \
+  prom/prometheus:v3.12.0 test rules /etc/prometheus/tests/platform.test.yml
 docker run --rm \
   -v "${ROOT_DIR}/deploy/config/loki/loki.yml:/etc/loki/loki.yml:ro" \
   grafana/loki:3.7.2 -config.file=/etc/loki/loki.yml -verify-config=true

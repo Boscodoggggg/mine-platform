@@ -182,6 +182,22 @@ services:
       MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
       MINE_GATEWAY_CONFIGURATION_CACHE_FILE: /var/lib/mine/gateway/protocol-snapshots.json
       MINE_GATEWAY_NODE_ID: standalone-gateway
+      MINE_GATEWAY_TCP_ENABLED: ${MINE_GATEWAY_TCP_ENABLED:-true}
+      MINE_GATEWAY_TCP_BIND_HOST: 0.0.0.0
+      MINE_GATEWAY_TCP_PORT: ${MINE_GATEWAY_TCP_PORT:-9000}
+      MINE_GATEWAY_TCP_PROTOCOL_KEY: ${MINE_GATEWAY_TCP_PROTOCOL_KEY:-haul-truck-binary}
+      MINE_GATEWAY_TCP_WORKER_THREADS: ${MINE_GATEWAY_TCP_WORKER_THREADS:-2}
+      MINE_GATEWAY_TCP_BUSINESS_THREADS: ${MINE_GATEWAY_TCP_BUSINESS_THREADS:-4}
+      MINE_GATEWAY_TCP_BACKLOG: ${MINE_GATEWAY_TCP_BACKLOG:-1024}
+      MINE_GATEWAY_TCP_MAX_CONNECTIONS: ${MINE_GATEWAY_TCP_MAX_CONNECTIONS:-10000}
+      MINE_GATEWAY_TCP_MAX_CONNECTIONS_PER_IP: ${MINE_GATEWAY_TCP_MAX_CONNECTIONS_PER_IP:-100}
+      MINE_GATEWAY_TCP_READ_IDLE_SECONDS: ${MINE_GATEWAY_TCP_READ_IDLE_SECONDS:-120}
+      MINE_GATEWAY_TCP_SHUTDOWN_TIMEOUT: ${MINE_GATEWAY_TCP_SHUTDOWN_TIMEOUT:-30s}
+      MINE_GATEWAY_TCP_TLS_ENABLED: ${MINE_GATEWAY_TCP_TLS_ENABLED:-false}
+      MINE_GATEWAY_TCP_TLS_CERTIFICATE: /run/secrets/tcp_tls_certificate
+      MINE_GATEWAY_TCP_TLS_PRIVATE_KEY: /run/secrets/tcp_tls_private_key
+    ports:
+      - "${MINE_GATEWAY_TCP_PUBLISHED_ADDRESS:-127.0.0.1}:${MINE_GATEWAY_TCP_PORT:-9000}:${MINE_GATEWAY_TCP_PORT:-9000}"
     volumes:
       - ../../mine-gateway/target:/opt/mine/source:ro
       - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
@@ -191,6 +207,10 @@ services:
       - rabbitmq_gateway_device_password
       - rabbitmq_gateway_platform_password
       - mine_configuration_distribution_token
+      - source: tls_certificate
+        target: tcp_tls_certificate
+      - source: tls_private_key
+        target: tcp_tls_private_key
     depends_on:
       rabbitmq:
         condition: service_healthy

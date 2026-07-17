@@ -1,0 +1,55 @@
+rule_files:
+  - ../rules/platform.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: TCP 监听器启动满三十分钟且没有成功遥测才告警
+    interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="mine-gateway", instance="mine-gateway:18081"}'
+        values: '0+0x40'
+      - series: 'mine_gateway_tcp_listener_up{job="mine-gateway", instance="mine-gateway:18081", protocol="haul-truck-binary"}'
+        values: '1+0x40'
+      - series: 'mine_gateway_tcp_frames{job="mine-gateway", instance="mine-gateway:18081", protocol="haul-truck-binary", result="success", reason="none"}'
+        values: '0+0x40'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: MineGatewayTcpNoSuccessfulTelemetry
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: MineGatewayTcpNoSuccessfulTelemetry
+        exp_alerts:
+          - exp_labels:
+              instance: mine-gateway:18081
+              job: mine-gateway
+              protocol: haul-truck-binary
+              severity: warning
+            exp_annotations:
+              summary: Gateway TCP 长时间没有成功遥测
+              description: haul-truck-binary 监听器仍在线，进程已运行且连续 30 分钟没有完成解析、可靠发布和 ACK，请检查矿区设备、边缘网络及协议配置。
+
+  - name: TCP 成功遥测会重置三十分钟无数据窗口
+    interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="mine-gateway", instance="mine-gateway:18081"}'
+        values: '0+0x50'
+      - series: 'mine_gateway_tcp_listener_up{job="mine-gateway", instance="mine-gateway:18081", protocol="haul-truck-binary"}'
+        values: '1+0x50'
+      - series: 'mine_gateway_tcp_frames{job="mine-gateway", instance="mine-gateway:18081", protocol="haul-truck-binary", result="success", reason="none"}'
+        values: '0+0x9 1+0x41'
+    alert_rule_test:
+      - eval_time: 38m
+        alertname: MineGatewayTcpNoSuccessfulTelemetry
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: MineGatewayTcpNoSuccessfulTelemetry
+        exp_alerts:
+          - exp_labels:
+              instance: mine-gateway:18081
+              job: mine-gateway
+              protocol: haul-truck-binary
+              severity: warning
+            exp_annotations:
+              summary: Gateway TCP 长时间没有成功遥测
+              description: haul-truck-binary 监听器仍在线，进程已运行且连续 30 分钟没有完成解析、可靠发布和 ACK，请检查矿区设备、边缘网络及协议配置。

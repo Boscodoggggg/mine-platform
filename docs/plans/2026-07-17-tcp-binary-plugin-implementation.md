@@ -127,6 +127,6 @@
 1. 先写 Compose/Prometheus 失败检查，要求应用默认关闭、单机显式启用、端口/连接/空闲/TLS 文件边界和固定低基数告警。
 2. 把示例插件以 runtime 依赖装入 Gateway，单机暴露受控 TCP 端口；生产 TLS 仍须显式证书。
 3. 更新架构、运行手册、示例模拟器步骤、升级回退和明确延期门禁。
-4. 运行 `./mvnw -pl mine-protocol-sdk,mine-protocol-engine,mine-protocol-example-haul-truck,mine-gateway -am test`。
+4. 运行 `./mvnw -pl mine-protocol-sdk,mine-protocol-engine,:mine-protocol-example-haul-truck,mine-gateway -am test`。
 5. 运行 `bash deploy/tests/compose-config.sh`、Prometheus 校验、`bash scripts/verify.sh` 和 `git diff --check`。
 6. 提交 `docs(protocol): 完成 TCP 二进制纵向样例验收`。

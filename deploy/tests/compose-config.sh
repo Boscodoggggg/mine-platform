@@ -6,10 +6,14 @@ COMPOSE_FILE="${ROOT_DIR}/deploy/compose/compose-standalone.yml"
 ENV_FILE="${ROOT_DIR}/deploy/env/standalone.env.example"
 
 rendered="$(mktemp)"
-trap 'rm -f "${rendered}"' EXIT
+rendered_tcp_disabled="$(mktemp)"
+trap 'rm -f "${rendered}" "${rendered_tcp_disabled}"' EXIT
 
 docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --format json \
   >"${rendered}"
+
+MINE_GATEWAY_TCP_ENABLED=false docker compose --profile observability --env-file "${ENV_FILE}" \
+  -f "${COMPOSE_FILE}" config --format json >"${rendered_tcp_disabled}"
 
 jq -e '.services["redis-exporter"]' "${rendered}" >/dev/null \
   || { echo "FAIL: observability profile 缺少 redis-exporter" >&2; exit 1; }
@@ -59,6 +63,33 @@ jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_CONFIGURATION_CACHE_FI
   and (.services["mine-gateway-cache-init"].volumes | any(.source == "gateway_configuration_cache" and .target == "/var/lib/mine/gateway"))' "${rendered}" >/dev/null \
   || { echo "FAIL: gateway 必须使用初始化权限后的持久卷保存最后可用配置" >&2; exit 1; }
 
+grep -Fq 'enabled: ${MINE_GATEWAY_TCP_ENABLED:false}' \
+  "${ROOT_DIR}/mine-gateway/src/main/resources/application.yml" \
+  || { echo "FAIL: TCP 二进制监听器必须保持应用默认关闭" >&2; exit 1; }
+
+jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_TCP_ENABLED == "true"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_BIND_HOST == "0.0.0.0"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_PORT == "9000"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_PROTOCOL_KEY == "haul-truck-binary"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_MAX_CONNECTIONS == "10000"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_MAX_CONNECTIONS_PER_IP == "100"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_READ_IDLE_SECONDS == "120"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_ENABLED == "false"' \
+  "${rendered}" >/dev/null \
+  || { echo "FAIL: standalone gateway 必须显式启用受控 TCP 二进制监听器" >&2; exit 1; }
+
+jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_TCP_ENABLED == "false"' \
+  "${rendered_tcp_disabled}" >/dev/null \
+  || { echo "FAIL: standalone gateway 必须允许通过环境变量紧急停用 TCP 监听器" >&2; exit 1; }
+
+jq -e '(.services["mine-gateway"].ports | any(.target == 9000 and .published == "9000" and .host_ip == "127.0.0.1"))
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_CERTIFICATE == "/run/secrets/tcp_tls_certificate"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_PRIVATE_KEY == "/run/secrets/tcp_tls_private_key"
+  and (.services["mine-gateway"].secrets | any(.source == "tls_certificate" and .target == "tcp_tls_certificate"))
+  and (.services["mine-gateway"].secrets | any(.source == "tls_private_key" and .target == "tcp_tls_private_key"))' \
+  "${rendered}" >/dev/null \
+  || { echo "FAIL: TCP 端口和 TLS 文件必须通过受控发布及只读 secret 提供" >&2; exit 1; }
+
 jq -e '.services.prometheus.depends_on // {} | keys | all(. != "mine-server" and . != "mine-gateway" and . != "mine-telemetry" and . != "rabbitmq" and . != "postgres-exporter" and . != "timescale-exporter" and . != "redis-exporter")' \
   "${rendered}" >/dev/null \
   || { echo "FAIL: Prometheus 不得等待被观测目标健康后才启动" >&2; exit 1; }
@@ -81,6 +112,24 @@ grep -q 'MineGatewayConfigurationRetrying' "${rules_file}" \
   || { echo "FAIL: 缺少 Gateway 配置持续重试告警" >&2; exit 1; }
 grep -q 'mine_gateway_configuration_distribution_total' "${rules_file}" \
   || { echo "FAIL: Gateway 配置告警未引用分发结果指标" >&2; exit 1; }
+grep -q 'MineGatewayTcpListenerDown' "${rules_file}" \
+  || { echo "FAIL: 缺少 TCP 监听器不可用告警" >&2; exit 1; }
+grep -q 'MineGatewayTcpConnectionsRejected' "${rules_file}" \
+  || { echo "FAIL: 缺少 TCP 连接持续拒绝告警" >&2; exit 1; }
+grep -q 'MineGatewayTcpFramesRejected' "${rules_file}" \
+  || { echo "FAIL: 缺少 TCP 二进制帧持续拒绝告警" >&2; exit 1; }
+grep -q 'MineGatewayTcpPublishFailures' "${rules_file}" \
+  || { echo "FAIL: 缺少 TCP 遥测可靠发布失败告警" >&2; exit 1; }
+grep -q 'MineGatewayTcpNoSuccessfulTelemetry' "${rules_file}" \
+  || { echo "FAIL: 缺少 TCP 长时间无成功遥测告警" >&2; exit 1; }
+grep -q 'mine_gateway_tcp_listener_up' "${rules_file}" \
+  || { echo "FAIL: TCP 监听告警未引用低基数可用性指标" >&2; exit 1; }
+grep -q 'mine_gateway_tcp_connections' "${rules_file}" \
+  || { echo "FAIL: TCP 连接告警未引用低基数结果指标" >&2; exit 1; }
+grep -q 'mine_gateway_tcp_frames' "${rules_file}" \
+  || { echo "FAIL: TCP 帧告警未引用低基数结果指标" >&2; exit 1; }
+grep -q 'mine_gateway_tcp_publish_failures' "${rules_file}" \
+  || { echo "FAIL: TCP 发布告警未引用低基数失败指标" >&2; exit 1; }
 grep -q 'MineTelemetryStrategyLoadFailed' "${rules_file}" \
   || { echo "FAIL: 缺少 Telemetry 策略永久加载失败告警" >&2; exit 1; }
 grep -q 'MineTelemetryStrategyRetrying' "${rules_file}" \
@@ -168,4 +217,4 @@ grep -q "mine\\\\.business\\\\.x" "${bootstrap_file}" \
 grep -q "mine\\\\.server\\\\.alarm-event\\\\.q" "${bootstrap_file}" \
   || { echo "FAIL: server 告警账号未限制为告警队列只读" >&2; exit 1; }
 
-echo "PASS: 部署配置覆盖可靠拓扑、受控聚合与保留和低基数告警规则"
+echo "PASS: 部署配置覆盖可靠拓扑、受控 TCP、聚合与保留和低基数告警规则"

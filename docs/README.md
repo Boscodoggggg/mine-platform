@@ -61,6 +61,8 @@ Phase 2 的 [数据保留策略运行闭环验收报告](reports/phase-2-retenti
 [数据保留运行手册](runbooks/retention-runtime.md)。策略回滚不能恢复已删除数据，真实数据 dry-run、备份恢复、容量、HA 和长稳仍是生产放行前置条件。
 Phase 2 的 [数值聚合运行闭环验收报告](reports/phase-2-aggregation-runtime-acceptance.md) 已完成非现场自动化基线；策略发布、版本化事实、冷热查询、受控重算、保留覆盖保护和故障恢复遵循
 [数值聚合运行手册](runbooks/aggregation-runtime.md)。真实数据对账、容量基线、主备切换、备份恢复和 24/72 小时长稳仍须在现场完成，自动化通过不得解释为生产放行。
+Phase 2 的 [TCP 二进制插件纵向样例验收报告](reports/phase-2-tcp-binary-acceptance.md) 已完成稳定 SPI、矿卡黄金协议、可信身份、可靠 ACK、TLS/限流/指标和部署告警的非现场自动化基线；
+启用、模拟、告警、升级与回退遵循 [TCP 二进制 Gateway 运行手册](runbooks/tcp-binary-gateway.md)。真实厂商协议、原生 mTLS/设备证书身份、矿区网络、容量、双 Gateway 和长稳仍是生产阻断项。
 现场执行必须遵循 [MQTT 真实设备现场接入与 24 小时验收手册](runbooks/device-onboarding.md)，并按
 [Phase 1 真实设备验收记录契约](contracts/phase-1-device-acceptance-v1.schema.json) 留存结构化证据。
 

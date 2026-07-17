@@ -77,6 +77,56 @@ groups:
           summary: "Gateway 配置分发持续重试"
           description: "Gateway 在 10 分钟内至少 3 次因网络、磁盘或状态回报失败而重投配置事件。"
 
+  - name: mine-gateway-tcp
+    rules:
+      - alert: MineGatewayTcpListenerDown
+        expr: max by (job, protocol) (mine_gateway_tcp_listener_up) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway TCP 二进制监听器不可用"
+          description: "{{ $labels.job }} 的 {{ $labels.protocol }} 监听器已连续 2 分钟停止接受连接。"
+
+      - alert: MineGatewayTcpConnectionsRejected
+        expr: sum by (job, protocol) (increase(mine_gateway_tcp_connections{result="rejected"}[10m])) >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway TCP 连接持续被拒绝"
+          description: "{{ $labels.protocol }} 最近 10 分钟至少拒绝 10 个连接，请检查全局及单来源连接上限和异常接入流量。"
+
+      - alert: MineGatewayTcpFramesRejected
+        expr: sum by (job, protocol, reason) (increase(mine_gateway_tcp_frames{result="rejected"}[10m])) >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway TCP 二进制帧持续被拒绝"
+          description: "{{ $labels.protocol }} 因固定原因 {{ $labels.reason }} 在最近 10 分钟至少拒绝 10 帧，请检查设备协议版本、CRC、身份和链路质量。"
+
+      - alert: MineGatewayTcpPublishFailures
+        expr: sum by (job, protocol) (increase(mine_gateway_tcp_publish_failures{result="failure"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway TCP 遥测可靠发布失败"
+          description: "{{ $labels.protocol }} 最近 5 分钟出现 RabbitMQ 发布确认或 ACK 编码失败；Gateway 未向设备返回成功确认。"
+
+      - alert: MineGatewayTcpNoSuccessfulTelemetry
+        expr: >-
+          (max by (job, instance, protocol) (mine_gateway_tcp_listener_up) == 1)
+          and on (job, instance) (time() - process_start_time_seconds >= 1800)
+          and on (job, instance, protocol) (sum by (job, instance, protocol)
+          (increase(mine_gateway_tcp_frames{result="success"}[30m])) == 0)
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway TCP 长时间没有成功遥测"
+          description: "{{ $labels.protocol }} 监听器仍在线，进程已运行且连续 30 分钟没有完成解析、可靠发布和 ACK，请检查矿区设备、边缘网络及协议配置。"
+
   - name: mine-telemetry-strategy-quality
     rules:
       - alert: MineTelemetryStrategyLoadFailed

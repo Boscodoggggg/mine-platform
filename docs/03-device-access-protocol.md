@@ -58,13 +58,14 @@ TCP pipeline 采用：
 
 ~~~text
 连接限流
-→ 空闲检测
-→ TLS（可选/推荐）
-→ 报文边界解码
-→ 登录/设备识别
-→ 协议执行计划
+→ TLS（可选；生产必需）
+→ 读空闲检测
+→ 有界报文边界解码
+→ 每连接插件会话
+→ 可信设备身份绑定
 → 统一消息转换
 → RabbitMQ发布确认
+→ 应用级ACK
 ~~~
 
 每个连接保存最小会话状态：
@@ -97,6 +98,11 @@ TCP pipeline 采用：
 - 规则引擎无法安全、确定性表达的逻辑。
 
 前台不得上传任意 class 直接执行。插件 JAR 由运维离线审核、签名、安装和重启/热部署流程管理，具体取决于安全测试结果。
+
+Phase 2 已交付第一版稳定 TCP 插件 ABI。`mine-protocol-sdk` 只向插件传递不可变 Java 类型、固定错误码、帧定义和每连接会话，
+不注入 Spring、Netty、RabbitMQ 或平台数据库对象；`mine-protocol-engine` 使用标准 ServiceLoader 原子加载，协议键重复、格式非法或
+API 主版本不兼容会阻止监听器启动。插件 JAR 仍是与 Gateway 同进程运行的受信代码，不构成安全沙箱，因此必须在构建镜像前完成
+源码/字节码、依赖、文件与网络访问审计；当前不支持网页上传、任意脚本或热卸载。
 
 ## 6. 协议定义模型
 
@@ -184,6 +190,25 @@ sequenceDiagram
     Gateway-->>MQ: 缓存与状态回报成功后 ACK
 ~~~
 
+### 7.2 Phase 2 已实现的 TCP 二进制插件边界
+
+首条纵向链路使用 `haul-truck-binary` 示例插件证明以下运行语义：
+
+- 监听端口显式绑定一个受控 `protocolKey`，应用默认关闭；Standalone Compose 显式启用。
+- SDK 只允许 1、2、4 字节长度字段和 32 字节～1 MiB 有界帧；示例协议进一步限制为 256 字节。
+- Netty 在插件解码前处理半包、粘包和超长帧；CRC、魔数、版本、类型、长度、身份和字段范围失败均关闭当前连接。
+- 每个连接创建独立插件会话，首个有效帧绑定平台设备；后续帧切换设备身份立即拒绝。
+- 帧内只提供 `productKey + deviceCode` 候选身份，Gateway 必须从完整身份快照反查平台 `deviceId`，并校验
+  `protocolVersion=haul-truck-binary:v1`，不能信任设备自报的平台标识。
+- 协议解析和同步 publisher confirm 在专用有序业务线程执行，不阻塞 Netty IO 线程。
+- 只有 RabbitMQ publisher confirm 成功后才生成并写出应用 ACK；解析、身份、发布或 ACK 编码失败均不得确认。
+- TLS、全局/单来源连接上限、读空闲、优雅停止、健康状态和低基数指标由 Gateway 统一治理，插件不能绕过。
+
+黄金帧、字段表和模拟器步骤见
+[矿卡 TCP 二进制示例](../examples/protocols/tcp-binary/haul-truck/README.md)，部署、告警、升级与回退见
+[TCP 二进制 Gateway 运行手册](runbooks/tcp-binary-gateway.md)。该示例不对应任何真实厂商协议，也不代表 JT/T 808、
+Modbus TCP 或 MQTT Binary 已实现。
+
 ## 8. 协议工作台
 
 前端至少包含：
@@ -214,7 +239,8 @@ Phase 2 工作台已经交付 MQTT JSON 样本的列表、编辑、全量保存�
 | `nested` | 嵌套元数据和嵌套属性 | 发动机转速、冷却液温度 |
 | `enum-scale` | 数值缩放、枚举码表、未知码拒绝 | 电机电流、运行状态 |
 
-二进制协议的 CRC、半包、粘包和命令编码样本仍属于后续 TCP/MQTT Binary 适配器；不能把 MQTT JSON 的阶段性交付描述为已经覆盖这些能力。
+TCP 二进制示例现已覆盖长度字段、CRC、半包、粘包、可信身份和成功 ACK；MQTT Binary、厂商命令编码、动态密钥、
+复杂加解密和多步骤业务会话仍属于后续适配器，不能用本示例替代真实厂商协议验收。
 
 ## 9. 统一设备消息
 
