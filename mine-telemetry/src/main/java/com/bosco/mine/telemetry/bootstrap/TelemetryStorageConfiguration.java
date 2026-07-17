@@ -2,6 +2,10 @@ package com.bosco.mine.telemetry.bootstrap;
 
 import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.telemetry.alarm.AlarmPolicyRepository;
+import com.bosco.mine.telemetry.alarm.outbox.RabbitAlarmOutboxPublisher;
+import com.bosco.mine.telemetry.alarm.outbox.TelemetryOutboxRecovery;
+import com.bosco.mine.telemetry.alarm.outbox.TelemetryOutboxRelay;
+import com.bosco.mine.telemetry.alarm.outbox.TelemetryOutboxRepository;
 import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapMetrics;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapObserver;
@@ -22,14 +26,20 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Clock;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 装配遥测服务的 RabbitMQ 批消费者、Redis 最新值仓储和 TimescaleDB 历史批写器。
@@ -146,6 +156,83 @@ public class TelemetryStorageConfiguration {
                 new RabbitTemplate(telemetryConnectionFactory),
                 positive(properties.resolvedConfirmTimeoutMillis(), "confirmTimeoutMillis")
         );
+    }
+
+    /** 创建使用原子 SQL 精确认领告警事件的 Outbox 仓储。 */
+    @Bean
+    public TelemetryOutboxRepository telemetryOutboxRepository(DataSource dataSource) {
+        return new TelemetryOutboxRepository(dataSource);
+    }
+
+    /** 创建只向业务交换机发送告警白名单事件的确认发布器。 */
+    @Bean
+    public RabbitAlarmOutboxPublisher rabbitAlarmOutboxPublisher(
+            CachingConnectionFactory telemetryConnectionFactory,
+            TelemetryRabbitProperties properties
+    ) {
+        return new RabbitAlarmOutboxPublisher(
+                new RabbitTemplate(telemetryConnectionFactory),
+                positive(properties.resolvedConfirmTimeoutMillis(), "confirmTimeoutMillis")
+        );
+    }
+
+    /** 创建只负责已知事件标识重试的单线程调度器。 */
+    @Bean(name = "telemetryOutboxTaskScheduler", destroyMethod = "shutdown")
+    public ThreadPoolTaskScheduler telemetryOutboxTaskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("telemetry-outbox-retry-");
+        scheduler.setRemoveOnCancelPolicy(true);
+        return scheduler;
+    }
+
+    /** 创建虚拟线程执行器，避免 publisher confirm 阻塞遥测消费线程。 */
+    @Bean(name = "telemetryOutboxExecutor", destroyMethod = "close")
+    public ExecutorService telemetryOutboxExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
+    }
+
+    /** 创建只调度一个已知告警事件标识的进程内重试器。 */
+    @Bean
+    public TelemetryOutboxRelay.RetryScheduler telemetryOutboxRetryScheduler(
+            @Qualifier("telemetryOutboxTaskScheduler") ThreadPoolTaskScheduler scheduler,
+            ObjectProvider<TelemetryOutboxRelay> relayProvider
+    ) {
+        return (eventId, retryAt) -> scheduler.schedule(
+                () -> relayProvider.getObject().publishById(eventId), retryAt);
+    }
+
+    /** 创建带租约、指数退避和有界恢复的告警 Outbox 中继器。 */
+    @Bean
+    public TelemetryOutboxRelay telemetryOutboxRelay(
+            TelemetryOutboxRepository repository,
+            RabbitAlarmOutboxPublisher publisher,
+            TelemetryOutboxRelay.RetryScheduler retryScheduler,
+            TelemetryRabbitProperties properties
+    ) {
+        TelemetryRabbitProperties.Outbox outbox = properties.resolvedOutbox();
+        return new TelemetryOutboxRelay(
+                repository,
+                publisher,
+                retryScheduler,
+                outbox.resolvedInstanceId(),
+                outbox.resolvedLeaseDuration(),
+                outbox.resolvedMaxAttempts(),
+                outbox.resolvedRecoveryLimit(),
+                outbox.resolvedRetryBaseDelay(),
+                outbox.resolvedRetryMaxDelay(),
+                Clock.systemUTC()
+        );
+    }
+
+    /** 创建应用启动和 RabbitMQ 重连后的有界恢复协调器。 */
+    @Bean
+    public TelemetryOutboxRecovery telemetryOutboxRecovery(
+            TelemetryOutboxRelay relay,
+            CachingConnectionFactory telemetryConnectionFactory,
+            @Qualifier("telemetryOutboxExecutor") ExecutorService executor
+    ) {
+        return new TelemetryOutboxRecovery(relay, telemetryConnectionFactory, executor);
     }
 
     /**

@@ -48,6 +48,9 @@ public final class MineTopology {
     /** 已持久化最新值的实时通知交换机。 */
     public static final String REALTIME_EXCHANGE = "mine.realtime.x";
 
+    /** 告警等平台业务事实交换机。 */
+    public static final String BUSINESS_EXCHANGE = "mine.business.x";
+
     /** 实时遥测事件路由模式。 */
     public static final String REALTIME_TELEMETRY_ROUTING_PATTERN = "realtime.telemetry.#";
 
@@ -72,6 +75,9 @@ public final class MineTopology {
     /** 遥测服务运行策略消费队列。 */
     public static final String TELEMETRY_STRATEGY_QUEUE = "mine.telemetry.strategy.q";
 
+    /** 管理服务告警事实消费队列。 */
+    public static final String SERVER_ALARM_EVENT_QUEUE = "mine.server.alarm-event.q";
+
     /** 人工处置和重放使用的死信队列。 */
     public static final String DEAD_LETTER_QUEUE = "mine.dead-letter.q";
 
@@ -89,6 +95,15 @@ public final class MineTopology {
 
     /** 运行策略变更路由模式。 */
     public static final String STRATEGY_ROUTING_PATTERN = "strategy.runtime.#";
+
+    /** 告警触发稳定路由键。 */
+    public static final String ALARM_RAISED_ROUTING_KEY = "alarm.raised";
+
+    /** 告警恢复稳定路由键。 */
+    public static final String ALARM_RECOVERED_ROUTING_KEY = "alarm.recovered";
+
+    /** 管理服务告警事实绑定模式。 */
+    public static final String ALARM_EVENT_ROUTING_PATTERN = "alarm.*";
 
     private MineTopology() {
     }

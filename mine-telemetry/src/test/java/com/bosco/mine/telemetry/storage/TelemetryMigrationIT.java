@@ -131,11 +131,13 @@ class TelemetryMigrationIT {
                     'telemetry_data_quality_policy',
                     'telemetry_alarm_policy',
                     'telemetry_strategy_event_inbox',
-                    'telemetry_quality_evidence'
+                    'telemetry_quality_evidence',
+                    'telemetry_alarm_runtime_state',
+                    'telemetry_outbox_event'
                 ]) AS table_name
                 ORDER BY table_name
                 """))
-                .hasSize(6)
+                .hasSize(8)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(queryStrings("""
                 SELECT COALESCE(col_description(table_class.oid, attribute.attnum), '')
@@ -149,13 +151,15 @@ class TelemetryMigrationIT {
                     'telemetry_data_quality_policy',
                     'telemetry_alarm_policy',
                     'telemetry_strategy_event_inbox',
-                    'telemetry_quality_evidence'
+                    'telemetry_quality_evidence',
+                    'telemetry_alarm_runtime_state',
+                    'telemetry_outbox_event'
                   )
                   AND attribute.attnum > 0
                   AND NOT attribute.attisdropped
                 ORDER BY table_class.relname, attribute.attnum
                 """))
-                .hasSize(40)
+                .hasSize(79)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
 
         assertThat(queryStrings("""
@@ -247,13 +251,17 @@ class TelemetryMigrationIT {
                     'telemetry_data_quality_policy',
                     'telemetry_alarm_policy',
                     'telemetry_strategy_event_inbox',
-                    'telemetry_quality_evidence'
+                    'telemetry_quality_evidence',
+                    'telemetry_alarm_runtime_state',
+                    'telemetry_outbox_event'
                   )
                 ORDER BY table_name
                 """))
                 .containsExactly(
                         "telemetry_alarm_policy",
+                        "telemetry_alarm_runtime_state",
                         "telemetry_data_quality_policy",
+                        "telemetry_outbox_event",
                         "telemetry_quality_evidence",
                         "telemetry_strategy_event_inbox",
                         "telemetry_strategy_runtime_revision",
