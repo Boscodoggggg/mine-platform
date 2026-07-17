@@ -1,6 +1,8 @@
 package com.bosco.mine.telemetry.aggregation;
 
+import com.bosco.mine.telemetry.bootstrap.StrategyDistributionProperties;
 import io.micrometer.core.instrument.MeterRegistry;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -14,7 +16,9 @@ import javax.sql.DataSource;
  * 独立于消息消费开关装配数值聚合执行、指标和单线程固定延迟调度。
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(AggregationProperties.class)
+@EnableConfigurationProperties({
+        AggregationProperties.class, StrategyDistributionProperties.class
+})
 @ConditionalOnProperty(
         prefix = "mine.telemetry.aggregation", name = "enabled", havingValue = "true")
 public class AggregationConfiguration {
@@ -40,6 +44,49 @@ public class AggregationConfiguration {
         );
     }
 
+    /** 创建与常规聚合共用数据库锁和仓储的版本化显式重算执行器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.aggregation",
+            name = "recompute-enabled",
+            havingValue = "true")
+    public AggregationRecomputeExecutor aggregationRecomputeExecutor(
+            AggregationExecutionRepository repository,
+            AggregationProperties properties
+    ) {
+        return new AggregationRecomputeExecutor(
+                repository, properties.resolvedInstanceId());
+    }
+
+    /** 创建复用外部服务令牌访问控制面租约接口的内部客户端。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.aggregation",
+            name = "recompute-enabled",
+            havingValue = "true")
+    public AggregationRecomputeClient aggregationRecomputeClient(
+            StrategyDistributionProperties properties
+    ) {
+        return new HttpAggregationRecomputeClient(properties);
+    }
+
+    /** 创建每轮最多消费一个控制面租约的显式重算工作器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.aggregation",
+            name = "recompute-enabled",
+            havingValue = "true")
+    public AggregationRecomputeWorker aggregationRecomputeWorker(
+            AggregationRecomputeClient client,
+            AggregationRecomputeExecutor executor,
+            AggregationMetrics metrics,
+            AggregationProperties properties
+    ) {
+        return new AggregationRecomputeWorker(
+                client, executor, metrics, properties.resolvedInstanceId(),
+                properties.resolvedRecomputeLeaseDuration());
+    }
+
     /** 创建固定状态标签的数值聚合指标。 */
     @Bean
     public AggregationMetrics aggregationMetrics(MeterRegistry registry) {
@@ -63,12 +110,14 @@ public class AggregationConfiguration {
     public AggregationScheduler aggregationScheduler(
             AggregationExecutor executor,
             AggregationMetrics metrics,
+            ObjectProvider<AggregationRecomputeWorker> recomputeWorker,
             @Qualifier("aggregationTaskScheduler") ThreadPoolTaskScheduler taskScheduler,
             AggregationProperties properties
     ) {
         return new AggregationScheduler(
                 executor,
                 metrics,
+                recomputeWorker.getIfAvailable(),
                 taskScheduler,
                 properties.resolvedInitialDelay(),
                 properties.resolvedInterval()

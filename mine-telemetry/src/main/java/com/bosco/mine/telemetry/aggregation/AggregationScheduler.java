@@ -20,6 +20,7 @@ public final class AggregationScheduler implements ApplicationRunner, AutoClosea
 
     private final AggregationExecutor executor;
     private final AggregationMetrics metrics;
+    private final AggregationRecomputeWorker recomputeWorker;
     private final TaskScheduler taskScheduler;
     private final Duration initialDelay;
     private final Duration interval;
@@ -37,7 +38,22 @@ public final class AggregationScheduler implements ApplicationRunner, AutoClosea
             Duration initialDelay,
             Duration interval
     ) {
-        this(executor, metrics, taskScheduler, initialDelay, interval, Clock.systemUTC());
+        this(executor, metrics, null, taskScheduler, initialDelay, interval, Clock.systemUTC());
+    }
+
+    /**
+     * 创建同时消费显式重算租约的数值聚合固定延迟协调器。
+     */
+    public AggregationScheduler(
+            AggregationExecutor executor,
+            AggregationMetrics metrics,
+            AggregationRecomputeWorker recomputeWorker,
+            TaskScheduler taskScheduler,
+            Duration initialDelay,
+            Duration interval
+    ) {
+        this(executor, metrics, recomputeWorker, taskScheduler,
+                initialDelay, interval, Clock.systemUTC());
     }
 
     /**
@@ -51,8 +67,24 @@ public final class AggregationScheduler implements ApplicationRunner, AutoClosea
             Duration interval,
             Clock clock
     ) {
+        this(executor, metrics, null, taskScheduler, initialDelay, interval, clock);
+    }
+
+    /**
+     * 创建可注入显式重算工作器和确定性时钟的调度测试实例。
+     */
+    AggregationScheduler(
+            AggregationExecutor executor,
+            AggregationMetrics metrics,
+            AggregationRecomputeWorker recomputeWorker,
+            TaskScheduler taskScheduler,
+            Duration initialDelay,
+            Duration interval,
+            Clock clock
+    ) {
         this.executor = Objects.requireNonNull(executor, "数值聚合执行器不能为空");
         this.metrics = Objects.requireNonNull(metrics, "数值聚合指标不能为空");
+        this.recomputeWorker = recomputeWorker;
         this.taskScheduler = Objects.requireNonNull(
                 taskScheduler, "数值聚合任务调度器不能为空");
         this.initialDelay = requireNonNegative(initialDelay, "数值聚合首次运行延迟");
@@ -102,6 +134,24 @@ public final class AggregationScheduler implements ApplicationRunner, AutoClosea
                     exception.getClass().getSimpleName());
         } finally {
             metrics.executionStopped();
+        }
+        executeRecomputeSafely();
+    }
+
+    /**
+     * 与常规聚合失败相互隔离地消费至多一个显式重算租约。
+     */
+    private void executeRecomputeSafely() {
+        if (recomputeWorker == null) return;
+        try {
+            AggregationRecomputeWorker.WorkResult result = recomputeWorker.runOnce();
+            LOGGER.info(
+                    "显式聚合重算调度完成: requestId={}, executionId={}, status={}, buckets={}",
+                    result.requestId(), result.executionId(), result.status(),
+                    result.bucketCount());
+        } catch (RuntimeException exception) {
+            LOGGER.error("显式聚合重算调度发生未收敛异常: exceptionType={}",
+                    exception.getClass().getSimpleName());
         }
     }
 

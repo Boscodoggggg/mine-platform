@@ -14,6 +14,8 @@ import java.time.Duration;
  * @param initialDelay 应用启动后的首次调度延迟
  * @param interval 每轮完成到下一轮开始的固定延迟
  * @param staleExecutionTimeout 运行事实失联后允许后续实例恢复的超时
+ * @param recomputeEnabled 是否消费控制面显式重算租约
+ * @param recomputeLeaseDuration 单个显式重算请求的租约时长
  */
 @ConfigurationProperties("mine.telemetry.aggregation")
 public record AggregationProperties(
@@ -23,7 +25,9 @@ public record AggregationProperties(
         Integer maxCycles,
         Duration initialDelay,
         Duration interval,
-        Duration staleExecutionTimeout
+        Duration staleExecutionTimeout,
+        Boolean recomputeEnabled,
+        Duration recomputeLeaseDuration
 ) {
 
     /** @return 默认关闭，只有显式配置为真时才启用 */
@@ -69,6 +73,18 @@ public record AggregationProperties(
         return bounded(
                 staleExecutionTimeout, Duration.ofHours(2), Duration.ofMinutes(1),
                 Duration.ofDays(7), "数值聚合运行事实失联超时");
+    }
+
+    /** @return 只有显式配置为真时才消费控制面重算请求 */
+    public boolean resolvedRecomputeEnabled() {
+        return Boolean.TRUE.equals(recomputeEnabled);
+    }
+
+    /** @return 1 分钟到 1 小时之间的显式重算租约时长 */
+    public Duration resolvedRecomputeLeaseDuration() {
+        return bounded(
+                recomputeLeaseDuration, Duration.ofMinutes(10), Duration.ofMinutes(1),
+                Duration.ofHours(1), "显式聚合重算租约时长");
     }
 
     /**

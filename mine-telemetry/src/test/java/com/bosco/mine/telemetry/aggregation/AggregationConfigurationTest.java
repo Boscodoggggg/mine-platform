@@ -26,7 +26,7 @@ class AggregationConfigurationTest {
     @Test
     void 未配置时应保持关闭并使用安全默认参数() {
         AggregationProperties properties = new AggregationProperties(
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null);
 
         assertThat(properties.resolvedEnabled()).isFalse();
         assertThat(properties.resolvedInstanceId()).isEqualTo("mine-telemetry");
@@ -35,6 +35,9 @@ class AggregationConfigurationTest {
         assertThat(properties.resolvedInitialDelay()).isEqualTo(Duration.ofSeconds(30));
         assertThat(properties.resolvedInterval()).isEqualTo(Duration.ofMinutes(1));
         assertThat(properties.resolvedStaleExecutionTimeout()).isEqualTo(Duration.ofHours(2));
+        assertThat(properties.resolvedRecomputeEnabled()).isFalse();
+        assertThat(properties.resolvedRecomputeLeaseDuration())
+                .isEqualTo(Duration.ofMinutes(10));
 
         contextRunner.run(context -> {
             assertThat(context).doesNotHaveBean(AggregationScheduler.class);
@@ -56,12 +59,17 @@ class AggregationConfigurationTest {
                 .resolvedInterval()).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new AggregationProperties(
                 true, " ", 1_000, 10, Duration.ZERO,
-                Duration.ofMinutes(1), Duration.ofHours(2)).resolvedInstanceId())
+                Duration.ofMinutes(1), Duration.ofHours(2), false, null)
+                .resolvedInstanceId())
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new AggregationProperties(
                 true, "telemetry", 1_000, 10, Duration.ZERO,
-                Duration.ofMinutes(1), Duration.ofSeconds(59))
+                Duration.ofMinutes(1), Duration.ofSeconds(59), false, null)
                 .resolvedStaleExecutionTimeout()).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new AggregationProperties(
+                true, "telemetry", 1_000, 10, Duration.ZERO,
+                Duration.ofMinutes(1), Duration.ofHours(2), true, Duration.ofSeconds(59))
+                .resolvedRecomputeLeaseDuration()).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -74,6 +82,7 @@ class AggregationConfigurationTest {
             assertThat(context).hasSingleBean(AggregationMetrics.class);
             assertThat(context).hasSingleBean(AggregationExecutor.class);
             assertThat(context).hasSingleBean(AggregationExecutionRepository.class);
+            assertThat(context).doesNotHaveBean(AggregationRecomputeWorker.class);
             ThreadPoolTaskScheduler scheduler = context.getBean(
                     "aggregationTaskScheduler", ThreadPoolTaskScheduler.class);
             assertThat(scheduler.getScheduledThreadPoolExecutor().getCorePoolSize()).isOne();
@@ -81,10 +90,24 @@ class AggregationConfigurationTest {
         });
     }
 
+    @Test
+    void 显式开启重算消费时应装配内部客户端执行器和工作器() {
+        contextRunner.withPropertyValues(
+                "mine.telemetry.aggregation.enabled=true",
+                "mine.telemetry.aggregation.recompute-enabled=true",
+                "mine.telemetry.aggregation.instance-id=telemetry-aggregation-it",
+                "mine.telemetry.strategy-distribution.server-url=http://mine-server:8080"
+        ).run(context -> {
+            assertThat(context).hasSingleBean(AggregationRecomputeClient.class);
+            assertThat(context).hasSingleBean(AggregationRecomputeExecutor.class);
+            assertThat(context).hasSingleBean(AggregationRecomputeWorker.class);
+        });
+    }
+
     private AggregationProperties properties(int batchSize, int maxCycles, Duration interval) {
         return new AggregationProperties(
                 true, "telemetry", batchSize, maxCycles, Duration.ZERO,
-                interval, Duration.ofHours(2));
+                interval, Duration.ofHours(2), false, null);
     }
 
     @Configuration(proxyBeanMethods = false)

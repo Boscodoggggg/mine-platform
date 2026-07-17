@@ -240,3 +240,69 @@ groups:
         annotations:
           summary: "遥测到达延迟超过聚合修正窗口"
           description: "{{ $labels.job }} 最近 15 分钟存在未纳入聚合的超窗口迟到遥测，请检查边缘网络、设备时钟和修正窗口策略。"
+
+      - alert: MineTelemetryAggregationRecomputeConsecutiveFailures
+        expr: >-
+          (max by (job) (mine_telemetry_aggregation_recompute_enabled) == 1)
+          and on (job) (max by (job)
+          (mine_telemetry_aggregation_recompute_consecutive_failures) >= 3)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "显式聚合重算连续失败"
+          description: "{{ $labels.job }} 显式重算已连续失败至少 3 轮，请检查控制面内部接口、service token、TimescaleDB 和最近脱敏错误。"
+
+      - alert: MineTelemetryAggregationRecomputeWorkerStuck
+        expr: >-
+          (max by (job) (mine_telemetry_aggregation_recompute_enabled) == 1)
+          and on (job) (max by (job)
+          (mine_telemetry_aggregation_recompute_running) == 1)
+          and on (job) (time() - max by (job)
+          (mine_telemetry_aggregation_recompute_operation_started_epoch_seconds) > 900)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "显式聚合重算执行卡死"
+          description: "{{ $labels.job }} 单次显式重算已运行超过 15 分钟，超过默认租约恢复窗口，请检查数据库锁、慢查询和线程转储。"
+
+      - alert: MineTelemetryAggregationRecomputeNoRecentPoll
+        expr: >-
+          (max by (job) (mine_telemetry_aggregation_recompute_enabled) == 1)
+          and on (job) (((max by (job)
+          (mine_telemetry_aggregation_recompute_last_poll_epoch_seconds) > 0)
+          and on (job) (time() - max by (job)
+          (mine_telemetry_aggregation_recompute_last_poll_epoch_seconds) > 300))
+          or ((max by (job)
+          (mine_telemetry_aggregation_recompute_last_poll_epoch_seconds) == 0)
+          and on (job) (time() - min by (job)
+          (mine_telemetry_aggregation_started_epoch_seconds) > 300)))
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "显式聚合重算长时间没有轮询控制面"
+          description: "{{ $labels.job }} 超过 5 分钟未成功访问重算认领接口，请检查调度线程、mine-server 健康状态和内部网络。"
+
+      - alert: MineServerAggregationRecomputeClaimableBacklog
+        expr: >-
+          max by (job)
+          (mine_server_aggregation_recompute_claimable_oldest_age_seconds) > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "显式聚合重算可认领请求持续积压"
+          description: "{{ $labels.job }} 最老可认领重算请求已等待超过 10 分钟，请检查 Telemetry 重算消费、租约和控制面鉴权。"
+
+      - alert: MineTelemetryAggregationRecomputeLeaseLost
+        expr: >-
+          sum by (job) (increase(mine_telemetry_aggregation_recompute_runs_total
+          {status="LEASE_LOST"}[15m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "显式聚合重算发生租约转移"
+          description: "{{ $labels.job }} 最近 15 分钟发生重算完成回写租约丢失，系统会用稳定执行标识自动重放；若持续出现请检查查询时长和租约配置。"

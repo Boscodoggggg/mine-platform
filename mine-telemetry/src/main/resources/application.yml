@@ -79,3 +79,5 @@ mine:
       initial-delay: ${MINE_TELEMETRY_AGGREGATION_INITIAL_DELAY:30s}
       interval: ${MINE_TELEMETRY_AGGREGATION_INTERVAL:1m}
       stale-execution-timeout: ${MINE_TELEMETRY_AGGREGATION_STALE_TIMEOUT:2h}
+      recompute-enabled: ${MINE_TELEMETRY_AGGREGATION_RECOMPUTE_ENABLED:false}
+      recompute-lease-duration: ${MINE_TELEMETRY_AGGREGATION_RECOMPUTE_LEASE:10m}

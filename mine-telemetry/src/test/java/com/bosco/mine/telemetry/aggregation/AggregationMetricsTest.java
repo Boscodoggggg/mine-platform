@@ -71,4 +71,34 @@ class AggregationMetricsTest {
         assertThat(registry.get("mine.telemetry.aggregation.consecutive.failures")
                 .gauge().value()).isOne();
     }
+
+    @Test
+    void 显式重算指标应只使用固定状态且准确暴露启用运行和失败状态() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AggregationMetrics metrics = new AggregationMetrics(registry, CLOCK);
+
+        metrics.recomputeEnabled();
+        metrics.recomputeStarted();
+        metrics.recomputePollSucceeded();
+        metrics.recomputeClaimed(NOW.plusSeconds(600));
+        metrics.recordRecomputeUnhandledFailure();
+        metrics.recomputeStopped();
+
+        assertThat(registry.get("mine.telemetry.aggregation.recompute.enabled")
+                .gauge().value()).isOne();
+        assertThat(registry.get("mine.telemetry.aggregation.recompute.running")
+                .gauge().value()).isZero();
+        assertThat(registry.get("mine.telemetry.aggregation.recompute.runs")
+                .tag("status", "UNHANDLED").counter().count()).isOne();
+        assertThat(registry.get("mine.telemetry.aggregation.recompute.consecutive.failures")
+                .gauge().value()).isOne();
+        assertThat(registry.get("mine.telemetry.aggregation.recompute.last.poll.epoch.seconds")
+                .gauge().value()).isEqualTo((double) NOW.getEpochSecond());
+        assertThat(registry.get("mine.telemetry.aggregation.recompute.lease.until.epoch.seconds")
+                .gauge().value()).isEqualTo((double) NOW.plusSeconds(600).getEpochSecond());
+        assertThat(registry.getMeters()).allSatisfy(meter ->
+                assertThat(meter.getId().getTags()).noneMatch(tag ->
+                        tag.getKey().matches(
+                                "device(Id)?|product(Id)?|property(Id)?|request(Id)?|execution(Id)?|instance(Id)?")));
+    }
 }

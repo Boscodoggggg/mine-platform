@@ -58,15 +58,16 @@ public class AggregationRecomputeRepository {
                 INSERT INTO dev_aggregation_recompute_request (
                     request_id, device_id, property_id, bucket_seconds,
                     from_at, to_at, reason, idempotency_key, requested_by,
-                    status, created_at, completed_at, execution_id, last_error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    status, created_at, completed_at, execution_id, last_error,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (requested_by, idempotency_key) DO NOTHING
                 """,
                 record.requestId(), record.deviceId(), record.propertyId(),
                 record.bucketSeconds(), Timestamp.from(record.from()), Timestamp.from(record.to()),
                 record.reason(), record.idempotencyKey(), record.requestedBy(), record.status(),
                 Timestamp.from(record.createdAt()), nullableTimestamp(record.completedAt()),
-                record.executionId(), record.lastError()) == 1;
+                record.executionId(), record.lastError(), Timestamp.from(record.createdAt())) == 1;
     }
 
     /**
@@ -87,6 +88,38 @@ public class AggregationRecomputeRepository {
                  ORDER BY created_at DESC, request_id DESC
                  LIMIT ?
                 """, AggregationRecomputeRepository::mapRecord, limit);
+    }
+
+    /**
+     * 统计尚未进入成功或失败终态的显式重算请求数量。
+     *
+     * @return PENDING 与 RUNNING 请求总数
+     */
+    public long countUnfinished() {
+        Long value = jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM dev_aggregation_recompute_request
+                 WHERE status IN ('PENDING', 'RUNNING')
+                """, Long.class);
+        return value == null ? 0 : value;
+    }
+
+    /**
+     * 查询当前可认领请求中最老一条从创建到现在的秒数。
+     *
+     * @return 无可认领请求时为零
+     */
+    public long oldestClaimableAgeSeconds() {
+        Long value = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(GREATEST(
+                           0,
+                           EXTRACT(EPOCH FROM CURRENT_TIMESTAMP - MIN(created_at))::BIGINT
+                       ), 0)
+                  FROM dev_aggregation_recompute_request
+                 WHERE status = 'PENDING'
+                    OR (status = 'RUNNING' AND lease_until <= CURRENT_TIMESTAMP)
+                """, Long.class);
+        return value == null ? 0 : value;
     }
 
     /**

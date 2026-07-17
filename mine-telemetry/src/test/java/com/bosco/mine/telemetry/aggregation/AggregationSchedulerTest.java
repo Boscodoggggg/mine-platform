@@ -61,6 +61,7 @@ class AggregationSchedulerTest {
     @Test
     void 单轮异常不得终止后续固定延迟调度() throws Exception {
         AggregationExecutor executor = mock(AggregationExecutor.class);
+        AggregationRecomputeWorker recomputeWorker = mock(AggregationRecomputeWorker.class);
         TaskScheduler taskScheduler = mock(TaskScheduler.class);
         @SuppressWarnings("unchecked")
         ScheduledFuture<?> future = mock(ScheduledFuture.class);
@@ -72,7 +73,11 @@ class AggregationSchedulerTest {
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         AggregationMetrics metrics = new AggregationMetrics(registry, CLOCK);
         AggregationScheduler scheduler = new AggregationScheduler(
-                executor, metrics, taskScheduler, INITIAL_DELAY, INTERVAL, CLOCK);
+                executor, metrics, recomputeWorker,
+                taskScheduler, INITIAL_DELAY, INTERVAL, CLOCK);
+        when(recomputeWorker.runOnce()).thenReturn(new AggregationRecomputeWorker.WorkResult(
+                AggregationRecomputeWorker.WorkStatus.NO_WORK,
+                null, null, 0, null));
 
         scheduler.run(null);
         ArgumentCaptor<Runnable> task = ArgumentCaptor.forClass(Runnable.class);
@@ -82,6 +87,7 @@ class AggregationSchedulerTest {
         task.getValue().run();
 
         verify(executor, times(2)).runOnce();
+        verify(recomputeWorker, times(2)).runOnce();
         assertThat(registry.get("mine.telemetry.aggregation.runs")
                 .tag("status", "FAILED").counter().count()).isOne();
         assertThat(registry.get("mine.telemetry.aggregation.runs")

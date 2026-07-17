@@ -208,6 +208,14 @@ class DatabaseMigrationIT {
 
             assertThat(aggregationRecomputeRepository.insert(record)).isTrue();
             assertThat(aggregationRecomputeRepository.insert(record)).isFalse();
+            jdbcTemplate.update("""
+                    UPDATE dev_aggregation_recompute_request
+                       SET created_at = CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+                     WHERE request_id = ?
+                    """, requestId);
+            assertThat(aggregationRecomputeRepository.countUnfinished()).isOne();
+            assertThat(aggregationRecomputeRepository.oldestClaimableAgeSeconds())
+                    .isGreaterThanOrEqualTo(899L);
             assertThat(aggregationRecomputeRepository.findByIdempotency(userId, "repository-it"))
                     .get()
                     .extracting(AggregationRecomputeRepository.RequestRecord::requestId)
@@ -225,6 +233,7 @@ class DatabaseMigrationIT {
             assertThat(firstClaim.executionId()).isEqualTo(firstExecutionId);
             assertThat(firstClaim.claimToken()).isEqualTo(firstClaimToken);
             assertThat(firstClaim.attemptCount()).isEqualTo(1);
+            assertThat(aggregationRecomputeRepository.oldestClaimableAgeSeconds()).isZero();
             assertThat(aggregationRecomputeRepository.claimNext(
                     "telemetry-b", Duration.ofMinutes(5), UUID.randomUUID(), UUID.randomUUID()))
                     .isEmpty();
@@ -235,6 +244,8 @@ class DatabaseMigrationIT {
                            lease_until = CURRENT_TIMESTAMP - INTERVAL '1 second'
                      WHERE request_id = ?
                     """, requestId);
+            assertThat(aggregationRecomputeRepository.oldestClaimableAgeSeconds())
+                    .isGreaterThanOrEqualTo(899L);
             UUID secondClaimToken = UUID.randomUUID();
             AggregationRecomputeRepository.ClaimRecord recovered = aggregationRecomputeRepository
                     .claimNext("telemetry-b", Duration.ofMinutes(5), UUID.randomUUID(), secondClaimToken)
@@ -242,6 +253,7 @@ class DatabaseMigrationIT {
             assertThat(recovered.executionId()).isEqualTo(firstExecutionId);
             assertThat(recovered.claimToken()).isEqualTo(secondClaimToken);
             assertThat(recovered.attemptCount()).isEqualTo(2);
+            assertThat(aggregationRecomputeRepository.oldestClaimableAgeSeconds()).isZero();
             assertThat(aggregationRecomputeRepository.complete(
                     requestId, firstExecutionId, firstClaimToken, "SUCCEEDED", null)).isFalse();
             assertThat(aggregationRecomputeRepository.complete(
@@ -250,6 +262,7 @@ class DatabaseMigrationIT {
                     .get()
                     .extracting(AggregationRecomputeRepository.RequestRecord::status)
                     .isEqualTo("SUCCEEDED");
+            assertThat(aggregationRecomputeRepository.countUnfinished()).isZero();
         } finally {
             jdbcTemplate.update(
                     "DELETE FROM dev_aggregation_recompute_request WHERE request_id = ?", requestId);

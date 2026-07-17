@@ -42,8 +42,10 @@ jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_ENABLE
   and .services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_INSTANCE_ID == "standalone-telemetry"
   and .services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_BATCH_SIZE == "1000"
   and .services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_MAX_CYCLES == "10"
-  and .services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_INTERVAL == "1m"' "${rendered}" >/dev/null \
-  || { echo "FAIL: standalone telemetry 必须显式启用受控有界数值聚合" >&2; exit 1; }
+  and .services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_INTERVAL == "1m"
+  and .services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_RECOMPUTE_ENABLED == "true"
+  and .services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_RECOMPUTE_LEASE == "10m"' "${rendered}" >/dev/null \
+  || { echo "FAIL: standalone telemetry 必须显式启用受控有界数值聚合和重算消费" >&2; exit 1; }
 
 jq -e '.services["mine-server"].environment.MINE_ALARM_RABBIT_ENABLED == "true"
   and .services["mine-server"].environment.MINE_ALARM_RABBIT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_alarm_password"
@@ -127,6 +129,18 @@ grep -q 'MineTelemetryAggregationLateRowsIgnored' "${rules_file}" \
   || { echo "FAIL: 缺少超窗口迟到遥测告警" >&2; exit 1; }
 grep -q 'mine_telemetry_aggregation_consecutive_failures' "${rules_file}" \
   || { echo "FAIL: 数值聚合告警未引用低基数失败指标" >&2; exit 1; }
+grep -q 'MineTelemetryAggregationRecomputeConsecutiveFailures' "${rules_file}" \
+  || { echo "FAIL: 缺少显式聚合重算连续失败告警" >&2; exit 1; }
+grep -q 'MineTelemetryAggregationRecomputeWorkerStuck' "${rules_file}" \
+  || { echo "FAIL: 缺少显式聚合重算卡死告警" >&2; exit 1; }
+grep -q 'MineTelemetryAggregationRecomputeNoRecentPoll' "${rules_file}" \
+  || { echo "FAIL: 缺少显式聚合重算轮询中断告警" >&2; exit 1; }
+grep -q 'MineServerAggregationRecomputeClaimableBacklog' "${rules_file}" \
+  || { echo "FAIL: 缺少显式聚合重算控制面积压告警" >&2; exit 1; }
+grep -q 'MineTelemetryAggregationRecomputeLeaseLost' "${rules_file}" \
+  || { echo "FAIL: 缺少显式聚合重算租约转移告警" >&2; exit 1; }
+grep -q 'mine_server_aggregation_recompute_claimable_oldest_age_seconds' "${rules_file}" \
+  || { echo "FAIL: 重算积压告警未引用低基数最老可认领年龄" >&2; exit 1; }
 if grep -Eq 'productId|releaseId|deviceId|groupId' "${rules_file}"; then
   echo "FAIL: Prometheus 规则不得依赖高基数业务标识标签" >&2
   exit 1
