@@ -711,6 +711,7 @@ const local: App.I18n.Schema = {
         qualityRules: 'Property Quality Rules',
         alarmRules: 'Dual-source Alarm Rules',
         retentionImpact: 'Deletion Impact Preview',
+        retentionRollbackImpact: 'Rollback Deletion Impact',
         retentionExecutions: 'Recent Execution Facts'
       },
       field: {
@@ -755,7 +756,9 @@ const local: App.I18n.Schema = {
         rawTelemetryDays: 'Raw Telemetry Retention',
         qualityEvidenceDays: 'Quality Evidence Retention',
         observedAt: 'Database Observation Time',
+        targetDevices: 'Target Devices',
         affectedDevices: 'Affected Devices',
+        enabledDevices: 'Deletion Still Enabled',
         earliestEligibleAt: 'Earliest Eligible Data',
         runtimeInstance: 'Runtime Instance'
       },
@@ -778,7 +781,9 @@ const local: App.I18n.Schema = {
         copyAlarmRule: 'Copy',
         moveAlarmRuleUp: 'Move Up',
         moveAlarmRuleDown: 'Move Down',
-        previewRetention: 'Refresh Impact Preview'
+        previewRetention: 'Refresh Impact Preview',
+        previewRetentionRollback: 'Preview Rollback Impact',
+        confirmRetentionRollback: 'Confirm Rollback'
       },
       status: {
         draft: 'Draft',
@@ -842,7 +847,8 @@ const local: App.I18n.Schema = {
           'A threshold is out of range, has more than 12 decimal places, or does not form valid recovery hysteresis',
         retentionEvidence: 'Quality evidence cannot expire before raw telemetry and cannot exceed 3650 days',
         retentionPolicy: 'Retention days must be integers within the class range and quality evidence cannot be shorter than raw telemetry',
-        retentionPreview: 'Preview the current scope before releasing a data retention policy'
+        retentionPreview: 'Preview the current scope before releasing a data retention policy',
+        retentionSaveFirst: 'Save the modified retention draft before previewing or releasing it'
       },
       message: {
         groupCreated: 'Device group created',
@@ -853,13 +859,15 @@ const local: App.I18n.Schema = {
         draftUpdated: 'Policy draft saved',
         published: 'Policy released and taking effect',
         rolledBack: 'A new rollback release was created',
-        retentionPreviewLoaded: 'Impact preview updated at the current database observation time'
+        retentionPreviewLoaded: 'Point-in-time impact preview generated from the saved version and final overrides',
+        retentionRollbackPreviewLoaded: 'Rollback impact is visible. Review it, then confirm the operation again.'
       },
       confirm: {
         archiveGroup:
           'Archive this device group? Current memberships will end while release history remains immutable.',
         rollback: 'Create a new rollback release from this historical release?',
-        retentionPublish: 'Preview observed at {observedAt}. Expired data will be permanently deleted and cannot be recovered. Continue?'
+        retentionPublish: 'Preview observed at {observedAt}. Expired data will be permanently deleted and cannot be recovered. Continue?',
+        retentionRollback: 'Observed at {observedAt}: {target} targets, {affected} final changes, {enabled} with deletion enabled; {raw} raw rows and {quality} quality rows are eligible. Expired data will be permanently deleted and cannot be recovered. Continue?'
       },
       error: {
         title: 'Policy Operation Failed',
@@ -908,6 +916,12 @@ const local: App.I18n.Schema = {
         noEligibleTime: 'No eligible data'
       },
       retention: {
+        groupChangeImpactTitle: 'Retention Impact of Group Change',
+        groupChangePreviewLoaded: 'The group-change impact is visible. Review it, then submit again.',
+        groupChangeSummary:
+          '{action} affects {target} target devices at {observedAt}; {affected} final policies change and {enabled} remain deletion-enabled.',
+        groupChangeConfirm:
+          '{action} changes an active data-retention policy. Observed at {observedAt}: {target} targets, {affected} final changes, {enabled} remain deletion-enabled; {raw} raw rows and {quality} quality rows are eligible. Deleted expired data cannot be recovered. Continue?',
         presetTitle: 'Safe Retention Presets',
         presetHelp: 'A preset atomically replaces the class and both retention windows. You can fine-tune within the class boundary.',
         class: { short: 'Short', standard: 'Standard', long: 'Long', archive: 'Archive' },

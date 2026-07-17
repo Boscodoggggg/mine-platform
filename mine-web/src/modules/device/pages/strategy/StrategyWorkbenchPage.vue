@@ -42,6 +42,7 @@ import {
   listRetentionExecutions,
   listStrategyReleases,
   listStrategyVersions,
+  previewRetentionGroupChange,
   previewRetentionImpact,
   publishStrategy,
   replaceDeviceGroupMembers,
@@ -54,6 +55,7 @@ import type {
   DeviceGroup,
   EffectiveStrategy,
   RetentionExecution,
+  RetentionGroupChangePreviewRequest,
   RetentionPolicy,
   RetentionPreview,
   StrategyRelease,
@@ -79,6 +81,22 @@ interface QualityRuleForm {
   required: boolean;
   minimum: number | null;
   maximum: number | null;
+}
+
+interface RetentionRollbackPreview {
+  releaseId: string;
+  productId: string;
+  strategyVersionId: string;
+  scopeType: StrategyScopeType;
+  scopeId: string;
+  reason: string;
+  preview: RetentionPreview;
+}
+
+interface RetentionGroupChangePreviewState {
+  key: string;
+  changeType: RetentionGroupChangePreviewRequest['changeType'];
+  preview: RetentionPreview;
 }
 
 const props = defineProps<{
@@ -109,6 +127,8 @@ const selectedVersionId = ref<string | null>(null);
 const memberIds = ref<string[]>([]);
 const effective = ref<EffectiveStrategy | null>(null);
 const retentionPreview = ref<RetentionPreview | null>(null);
+const retentionRollbackPreview = ref<RetentionRollbackPreview | null>(null);
+const retentionGroupChangePreview = ref<RetentionGroupChangePreviewState | null>(null);
 const retentionExecutions = ref<RetentionExecution[]>([]);
 const retentionProblem = ref<StrategyProblem | null>(null);
 const retentionPolicyValid = ref(true);
@@ -194,6 +214,17 @@ const scopeOptions = computed<SelectOption[]>(() =>
 const selectedGroup = computed(() => groups.value.find(item => item.id === selectedGroupId.value) || null);
 const selectedDevice = computed(() => devices.value.find(item => item.id === selectedDeviceId.value) || null);
 const selectedVersion = computed(() => versions.value.find(item => item.id === selectedVersionId.value) || null);
+const retentionDraftDirty = computed(() => {
+  if (!isRetention.value || selectedVersion.value?.status !== 'DRAFT') return false;
+  const saved = retentionPolicyFrom(selectedVersion.value.values);
+  const current = draftForm.retentionPolicy;
+  return (
+    saved.enabled !== current.enabled ||
+    saved.retentionClass !== current.retentionClass ||
+    saved.rawTelemetryDays !== current.rawTelemetryDays ||
+    saved.qualityEvidenceDays !== current.qualityEvidenceDays
+  );
+});
 const publishScopeId = computed(() => {
   if (publishForm.scopeType === 'PRODUCT') return productId.value;
   if (publishForm.scopeType === 'GROUP') return selectedGroupId.value;
@@ -204,6 +235,51 @@ watch(
   () => [strategyType.value, selectedVersionId.value, publishForm.scopeType, publishScopeId.value, publishForm.reason],
   () => {
     publishIdempotencyKey.value = null;
+  }
+);
+
+watch(
+  () => rollbackReason.value,
+  () => {
+    retentionRollbackPreview.value = null;
+  }
+);
+
+watch(
+  () => selectedGroupId.value,
+  () => {
+    retentionGroupChangePreview.value = null;
+  }
+);
+
+watch(
+  () => memberIds.value,
+  () => {
+    if (retentionGroupChangePreview.value?.changeType === 'MEMBERSHIP') {
+      retentionGroupChangePreview.value = null;
+    }
+  },
+  { deep: true }
+);
+
+watch(
+  () => groupForm.priority,
+  () => {
+    if (retentionGroupChangePreview.value?.changeType === 'PRIORITY') {
+      retentionGroupChangePreview.value = null;
+    }
+  }
+);
+
+watch(
+  () =>
+    releases.value
+      .map(release =>
+        [release.id, release.productId, release.strategyVersionId, release.scopeType, release.scopeId].join(':')
+      )
+      .join('|'),
+  () => {
+    retentionRollbackPreview.value = null;
   }
 );
 
@@ -384,11 +460,22 @@ async function saveGroup() {
   try {
     let saved: DeviceGroup;
     if (groupMode.value === 'edit' && selectedGroup.value) {
+      const preview =
+        groupForm.priority === selectedGroup.value.priority
+          ? undefined
+          : await prepareRetentionGroupChange({
+              groupId: selectedGroup.value.id,
+              changeType: 'PRIORITY',
+              groupVersion: selectedGroup.value.version,
+              nextPriority: groupForm.priority
+            });
+      if (preview === null) return;
       saved = await updateDeviceGroup(selectedGroup.value.id, {
         name: groupForm.name.trim(),
         priority: groupForm.priority,
         description: groupForm.description.trim() || null,
-        version: selectedGroup.value.version
+        version: selectedGroup.value.version,
+        ...(preview ? { retentionPreviewToken: preview.previewToken } : {})
       });
       window.$message?.success(t('mine.strategy.message.groupUpdated'));
     } else {
@@ -401,9 +488,11 @@ async function saveGroup() {
       });
       window.$message?.success(t('mine.strategy.message.groupCreated'));
     }
+    retentionGroupChangePreview.value = null;
     await loadGroups(saved.id);
     startEditGroup();
   } catch (error) {
+    retentionGroupChangePreview.value = null;
     captureProblem(error);
   } finally {
     savingGroup.value = false;
@@ -415,14 +504,24 @@ async function saveMembers() {
   savingMembers.value = true;
   operationProblem.value = null;
   try {
+    const preview = await prepareRetentionGroupChange({
+      groupId: selectedGroup.value.id,
+      changeType: 'MEMBERSHIP',
+      groupVersion: selectedGroup.value.version,
+      deviceIds: [...memberIds.value].sort()
+    });
+    if (preview === null) return;
     await replaceDeviceGroupMembers(selectedGroup.value.id, {
       deviceIds: memberIds.value,
-      version: selectedGroup.value.version
+      version: selectedGroup.value.version,
+      ...(preview ? { retentionPreviewToken: preview.previewToken } : {})
     });
+    retentionGroupChangePreview.value = null;
     window.$message?.success(t('mine.strategy.message.membersUpdated'));
     await loadGroups(selectedGroup.value.id);
     await loadEffective();
   } catch (error) {
+    retentionGroupChangePreview.value = null;
     captureProblem(error);
   } finally {
     savingMembers.value = false;
@@ -430,18 +529,75 @@ async function saveMembers() {
 }
 
 async function archiveSelectedGroup() {
-  if (!selectedGroup.value || !window.confirm(t('mine.strategy.confirm.archiveGroup'))) return;
+  if (!selectedGroup.value) return;
   operationProblem.value = null;
   try {
-    await archiveDeviceGroup(selectedGroup.value.id, selectedGroup.value.version);
+    const preview = await prepareRetentionGroupChange({
+      groupId: selectedGroup.value.id,
+      changeType: 'GROUP_ARCHIVE',
+      groupVersion: selectedGroup.value.version
+    });
+    if (preview === null) return;
+    if (!preview && !window.confirm(t('mine.strategy.confirm.archiveGroup'))) return;
+    await archiveDeviceGroup(selectedGroup.value.id, selectedGroup.value.version, preview?.previewToken);
+    retentionGroupChangePreview.value = null;
     window.$message?.success(t('mine.strategy.message.groupArchived'));
     selectedGroupId.value = null;
     await loadGroups();
     resetGroupForm();
     await loadEffective();
   } catch (error) {
+    retentionGroupChangePreview.value = null;
     captureProblem(error);
   }
+}
+
+async function prepareRetentionGroupChange(
+  request: RetentionGroupChangePreviewRequest
+): Promise<RetentionPreview | null | undefined> {
+  if (!can('device:strategy:publish')) return undefined;
+  const normalizedRequest = {
+    ...request,
+    ...(request.deviceIds ? { deviceIds: [...request.deviceIds].sort() } : {})
+  };
+  const key = JSON.stringify(normalizedRequest);
+  const current = retentionGroupChangePreview.value;
+  if (current?.key === key) {
+    const preview = current.preview;
+    if (
+      !window.confirm(
+        t('mine.strategy.retention.groupChangeConfirm', {
+          action: retentionGroupChangeAction(request.changeType),
+          observedAt: preview.observedAt,
+          target: formatNumber(preview.targetDeviceCount),
+          affected: formatNumber(preview.affectedDeviceCount),
+          enabled: formatNumber(preview.enabledDeviceCount),
+          raw: eligibleRowsText(preview.rawTelemetry),
+          quality: eligibleRowsText(preview.qualityEvidence)
+        })
+      )
+    ) {
+      return null;
+    }
+    return preview;
+  }
+  retentionGroupChangePreview.value = null;
+  const result = await previewRetentionGroupChange(normalizedRequest);
+  if (!result.required) return undefined;
+  if (!result.preview) throw new Error('RETENTION_GROUP_CHANGE_PREVIEW_MISSING');
+  retentionGroupChangePreview.value = {
+    key,
+    changeType: request.changeType,
+    preview: result.preview
+  };
+  window.$message?.success(t('mine.strategy.retention.groupChangePreviewLoaded'));
+  return null;
+}
+
+function retentionGroupChangeAction(changeType: RetentionGroupChangePreviewRequest['changeType']) {
+  if (changeType === 'MEMBERSHIP') return t('mine.strategy.action.saveMembers');
+  if (changeType === 'PRIORITY') return t('mine.strategy.action.saveGroup');
+  return t('mine.strategy.action.archiveGroup');
 }
 
 function startNewDraft() {
@@ -517,6 +673,9 @@ async function runPublish() {
   if (!publishScopeId.value) return window.$message?.warning(t('mine.strategy.validation.scope'));
   if (publishForm.reason.trim().length < 4) return window.$message?.warning(t('mine.strategy.validation.reason'));
   if (isRetention.value) {
+    if (retentionDraftDirty.value) {
+      return window.$message?.warning(t('mine.strategy.validation.retentionSaveFirst'));
+    }
     if (!retentionPreview.value) {
       return window.$message?.warning(t('mine.strategy.validation.retentionPreview'));
     }
@@ -539,7 +698,10 @@ async function runPublish() {
         strategyVersionId: selectedVersion.value.id,
         scopeType: publishForm.scopeType,
         scopeId: publishScopeId.value,
-        reason: publishForm.reason.trim()
+        reason: publishForm.reason.trim(),
+        ...(isRetention.value && retentionPreview.value
+          ? { retentionPreviewToken: retentionPreview.value.previewToken }
+          : {})
       },
       publishIdempotencyKey.value
     );
@@ -549,6 +711,7 @@ async function runPublish() {
     await Promise.all([loadStrategyData(), loadEffective()]);
     if (isRetention.value) await loadRetentionExecutions();
   } catch (error) {
+    if (isRetention.value) retentionPreview.value = null;
     captureProblem(error);
   } finally {
     publishing.value = false;
@@ -556,42 +719,114 @@ async function runPublish() {
 }
 
 async function runRollback(release: StrategyRelease) {
-  if (rollbackReason.value.trim().length < 4) {
+  const reason = rollbackReason.value.trim();
+  if (reason.length < 4) {
     return window.$message?.warning(t('mine.strategy.validation.reason'));
   }
-  if (!window.confirm(t('mine.strategy.confirm.rollback'))) return;
   rollingBackId.value = release.id;
   operationProblem.value = null;
-  const key = rollbackIdempotencyKeys.get(release.id) || createIdempotencyKey(`rollback-${release.id}`);
-  rollbackIdempotencyKeys.set(release.id, key);
+  let submittingRollback = false;
   try {
-    await rollbackStrategyRelease(release.id, { reason: rollbackReason.value.trim() }, key);
+    let previewToken: string | null = null;
+    if (isRetention.value) {
+      retentionProblem.value = null;
+      const currentRollbackPreview = retentionRollbackPreview.value;
+      if (!currentRollbackPreview || !isRetentionRollbackPreviewCurrent(release, reason)) {
+        retentionRollbackPreview.value = null;
+        const preview = await previewRetentionImpact({
+          productId: release.productId,
+          strategyVersionId: release.strategyVersionId,
+          scopeType: release.scopeType,
+          scopeId: release.scopeId
+        });
+        retentionRollbackPreview.value = {
+          releaseId: release.id,
+          productId: release.productId,
+          strategyVersionId: release.strategyVersionId,
+          scopeType: release.scopeType,
+          scopeId: release.scopeId,
+          reason,
+          preview
+        };
+        window.$message?.success(t('mine.strategy.message.retentionRollbackPreviewLoaded'));
+        return;
+      }
+      const preview = currentRollbackPreview.preview;
+      previewToken = preview.previewToken;
+      if (
+        !window.confirm(
+          t('mine.strategy.confirm.retentionRollback', {
+            observedAt: preview.observedAt,
+            target: formatNumber(preview.targetDeviceCount),
+            affected: formatNumber(preview.affectedDeviceCount),
+            enabled: formatNumber(preview.enabledDeviceCount),
+            raw: eligibleRowsText(preview.rawTelemetry),
+            quality: eligibleRowsText(preview.qualityEvidence)
+          })
+        )
+      ) {
+        return;
+      }
+    } else if (!window.confirm(t('mine.strategy.confirm.rollback'))) {
+      return;
+    }
+    const key = rollbackIdempotencyKeys.get(release.id) || createIdempotencyKey(`rollback-${release.id}`);
+    rollbackIdempotencyKeys.set(release.id, key);
+    submittingRollback = true;
+    await rollbackStrategyRelease(
+      release.id,
+      {
+        reason,
+        ...(previewToken ? { retentionPreviewToken: previewToken } : {})
+      },
+      key
+    );
     rollbackIdempotencyKeys.delete(release.id);
     rollbackReason.value = '';
+    retentionRollbackPreview.value = null;
     window.$message?.success(t('mine.strategy.message.rolledBack'));
     await Promise.all([loadStrategyData(), loadEffective()]);
   } catch (error) {
-    captureProblem(error);
+    if (submittingRollback) retentionRollbackPreview.value = null;
+    if (isRetention.value) captureRetentionProblem(error);
+    else captureProblem(error);
   } finally {
     rollingBackId.value = null;
   }
+}
+
+function isRetentionRollbackPreviewCurrent(release: StrategyRelease, reason = rollbackReason.value.trim()) {
+  const current = retentionRollbackPreview.value;
+  return Boolean(
+    current &&
+      current.releaseId === release.id &&
+      current.productId === release.productId &&
+      current.strategyVersionId === release.strategyVersionId &&
+      current.scopeType === release.scopeType &&
+      current.scopeId === release.scopeId &&
+      current.reason === reason
+  );
 }
 
 async function loadRetentionPreview() {
   if (!productId.value || !publishScopeId.value) {
     return window.$message?.warning(t('mine.strategy.validation.scope'));
   }
-  const values = strategyValues();
-  if (!values || !('policy' in values) || !isRetentionPolicy(values.policy)) return;
+  if (!selectedVersion.value || selectedVersion.value.status !== 'DRAFT') {
+    return window.$message?.warning(t('mine.strategy.validation.draft'));
+  }
+  if (retentionDraftDirty.value) {
+    return window.$message?.warning(t('mine.strategy.validation.retentionSaveFirst'));
+  }
   retentionPreviewLoading.value = true;
   retentionProblem.value = null;
   retentionPreview.value = null;
   try {
     retentionPreview.value = await previewRetentionImpact({
       productId: productId.value,
+      strategyVersionId: selectedVersion.value.id,
       scopeType: publishForm.scopeType,
-      scopeId: publishScopeId.value,
-      policy: values.policy
+      scopeId: publishScopeId.value
     });
     window.$message?.success(t('mine.strategy.message.retentionPreviewLoaded'));
   } catch (error) {
@@ -1103,8 +1338,9 @@ function createIdempotencyKey(prefix: string) {
                         <NFormItem :label="t('mine.strategy.field.priority')">
                           <NInputNumber
                             v-model:value="groupForm.priority"
+                            data-field="group-priority"
                             :min="0"
-                            :max="1000000"
+                            :max="1000"
                             :placeholder="
                               t('mine.strategy.placeholder.enter', {
                                 field: t('mine.strategy.field.priority')
@@ -1126,7 +1362,11 @@ function createIdempotencyKey(prefix: string) {
                         </NFormItem>
                         <NText depth="3">{{ t('mine.strategy.help.groupPriority') }}</NText>
                         <NFlex justify="end">
-                          <NButton v-if="selectedGroup && groupMode !== 'edit'" @click="startEditGroup">
+                          <NButton
+                            v-if="selectedGroup && groupMode !== 'edit'"
+                            data-action="edit-group"
+                            @click="startEditGroup"
+                          >
                             {{ t('mine.strategy.action.editGroup') }}
                           </NButton>
                           <NButton type="primary" :loading="savingGroup" data-action="save-group" @click="saveGroup">
@@ -1160,8 +1400,33 @@ function createIdempotencyKey(prefix: string) {
                       }}
                     </NTag>
                   </NFlex>
+                  <NAlert
+                    v-if="retentionGroupChangePreview"
+                    type="warning"
+                    :title="t('mine.strategy.retention.groupChangeImpactTitle')"
+                    :data-group-change-preview="retentionGroupChangePreview.changeType"
+                  >
+                    <NFlex vertical :size="6">
+                      <NText>
+                        {{
+                          t('mine.strategy.retention.groupChangeSummary', {
+                            action: retentionGroupChangeAction(retentionGroupChangePreview.changeType),
+                            observedAt: retentionGroupChangePreview.preview.observedAt,
+                            target: formatNumber(retentionGroupChangePreview.preview.targetDeviceCount),
+                            affected: formatNumber(retentionGroupChangePreview.preview.affectedDeviceCount),
+                            enabled: formatNumber(retentionGroupChangePreview.preview.enabledDeviceCount)
+                          })
+                        }}
+                      </NText>
+                      <NText depth="3">
+                        {{ eligibleRowsText(retentionGroupChangePreview.preview.rawTelemetry) }} ·
+                        {{ eligibleRowsText(retentionGroupChangePreview.preview.qualityEvidence) }}
+                      </NText>
+                    </NFlex>
+                  </NAlert>
                   <NSelect
                     v-model:value="memberIds"
+                    data-field="group-members"
                     multiple
                     filterable
                     :disabled="!can('device:group:edit')"
@@ -1174,7 +1439,7 @@ function createIdempotencyKey(prefix: string) {
                   />
                   <NText depth="3">{{ t('mine.strategy.help.members') }}</NText>
                   <NFlex v-if="can('device:group:edit')" justify="space-between">
-                    <NButton type="error" secondary @click="archiveSelectedGroup">
+                    <NButton type="error" secondary data-action="archive-group" @click="archiveSelectedGroup">
                       {{ t('mine.strategy.action.archiveGroup') }}
                     </NButton>
                     <NButton type="primary" :loading="savingMembers" data-action="save-members" @click="saveMembers">
@@ -1497,10 +1762,24 @@ function createIdempotencyKey(prefix: string) {
                         <NDescriptionsItem :label="t('mine.strategy.field.observedAt')">
                           <NText code>{{ retentionPreview.observedAt }}</NText>
                         </NDescriptionsItem>
+                        <NDescriptionsItem :label="t('mine.strategy.field.targetDevices')">
+                          {{
+                            t('mine.strategy.text.affectedDeviceCount', {
+                              count: formatNumber(retentionPreview.targetDeviceCount)
+                            })
+                          }}
+                        </NDescriptionsItem>
                         <NDescriptionsItem :label="t('mine.strategy.field.affectedDevices')">
                           {{
                             t('mine.strategy.text.affectedDeviceCount', {
                               count: formatNumber(retentionPreview.affectedDeviceCount)
+                            })
+                          }}
+                        </NDescriptionsItem>
+                        <NDescriptionsItem :label="t('mine.strategy.field.enabledDevices')">
+                          {{
+                            t('mine.strategy.text.affectedDeviceCount', {
+                              count: formatNumber(retentionPreview.enabledDeviceCount)
                             })
                           }}
                         </NDescriptionsItem>
@@ -1619,38 +1898,95 @@ function createIdempotencyKey(prefix: string) {
                 </NFlex>
                 <NList v-if="releases.length" hoverable>
                   <NListItem v-for="release in releases" :key="release.id">
-                    <NFlex justify="space-between" align="center" :wrap="true">
-                      <NFlex vertical :size="3">
-                        <NFlex align="center">
-                          <NText strong>
-                            {{
-                              t('mine.strategy.text.sequence', {
-                                sequence: release.releaseSequence
-                              })
-                            }}
-                          </NText>
-                          <NTag
-                            :type="release.action === 'PUBLISH' ? 'success' : 'warning'"
-                            :bordered="false"
-                            size="small"
-                          >
-                            {{ releaseActionLabel(release.action) }}
-                          </NTag>
-                          <NTag :bordered="false" size="small">{{ scopeLabel(release.scopeType) }}</NTag>
+                    <NFlex vertical :size="8" class="w-full">
+                      <NFlex justify="space-between" align="center" :wrap="true">
+                        <NFlex vertical :size="3">
+                          <NFlex align="center">
+                            <NText strong>
+                              {{
+                                t('mine.strategy.text.sequence', {
+                                  sequence: release.releaseSequence
+                                })
+                              }}
+                            </NText>
+                            <NTag
+                              :type="release.action === 'PUBLISH' ? 'success' : 'warning'"
+                              :bordered="false"
+                              size="small"
+                            >
+                              {{ releaseActionLabel(release.action) }}
+                            </NTag>
+                            <NTag :bordered="false" size="small">{{ scopeLabel(release.scopeType) }}</NTag>
+                          </NFlex>
+                          <NText code class="break-all">{{ release.contentHash }}</NText>
                         </NFlex>
-                        <NText code class="break-all">{{ release.contentHash }}</NText>
+                        <NButton
+                          v-if="can('device:strategy:publish')"
+                          secondary
+                          type="warning"
+                          size="small"
+                          :loading="rollingBackId === release.id"
+                          data-action="rollback-strategy"
+                          @click="runRollback(release)"
+                        >
+                          {{
+                            isRetention && isRetentionRollbackPreviewCurrent(release)
+                              ? t('mine.strategy.action.confirmRetentionRollback')
+                              : isRetention
+                                ? t('mine.strategy.action.previewRetentionRollback')
+                                : t('mine.strategy.action.rollback')
+                          }}
+                        </NButton>
                       </NFlex>
-                      <NButton
-                        v-if="can('device:strategy:publish')"
-                        secondary
+                      <NAlert
+                        v-if="
+                          isRetention &&
+                            retentionRollbackPreview?.releaseId === release.id &&
+                            isRetentionRollbackPreviewCurrent(release)
+                        "
                         type="warning"
-                        size="small"
-                        :loading="rollingBackId === release.id"
-                        data-action="rollback-strategy"
-                        @click="runRollback(release)"
+                        :bordered="false"
+                        :title="t('mine.strategy.section.retentionRollbackImpact')"
+                        :data-preview-release="release.id"
                       >
-                        {{ t('mine.strategy.action.rollback') }}
-                      </NButton>
+                        <NFlex vertical :size="8">
+                          <NText>{{ t('mine.strategy.retention.irreversibleRisk') }}</NText>
+                          <NDescriptions :column="1" label-placement="left" bordered size="small">
+                            <NDescriptionsItem :label="t('mine.strategy.field.observedAt')">
+                              <NText code>{{ retentionRollbackPreview.preview.observedAt }}</NText>
+                            </NDescriptionsItem>
+                            <NDescriptionsItem :label="t('mine.strategy.field.targetDevices')">
+                              {{
+                                t('mine.strategy.text.affectedDeviceCount', {
+                                  count: formatNumber(retentionRollbackPreview.preview.targetDeviceCount)
+                                })
+                              }}
+                            </NDescriptionsItem>
+                            <NDescriptionsItem :label="t('mine.strategy.field.affectedDevices')">
+                              {{
+                                t('mine.strategy.text.affectedDeviceCount', {
+                                  count: formatNumber(retentionRollbackPreview.preview.affectedDeviceCount)
+                                })
+                              }}
+                            </NDescriptionsItem>
+                            <NDescriptionsItem :label="t('mine.strategy.field.enabledDevices')">
+                              {{
+                                t('mine.strategy.text.affectedDeviceCount', {
+                                  count: formatNumber(retentionRollbackPreview.preview.enabledDeviceCount)
+                                })
+                              }}
+                            </NDescriptionsItem>
+                          </NDescriptions>
+                          <NText>
+                            {{ t('mine.strategy.field.rawTelemetryDays') }} ·
+                            {{ eligibleRowsText(retentionRollbackPreview.preview.rawTelemetry) }}
+                          </NText>
+                          <NText>
+                            {{ t('mine.strategy.field.qualityEvidenceDays') }} ·
+                            {{ eligibleRowsText(retentionRollbackPreview.preview.qualityEvidence) }}
+                          </NText>
+                        </NFlex>
+                      </NAlert>
                     </NFlex>
                   </NListItem>
                 </NList>

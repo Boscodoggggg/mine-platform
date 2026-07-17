@@ -795,6 +795,7 @@ declare namespace App {
             | 'qualityRules'
             | 'alarmRules'
             | 'retentionImpact'
+            | 'retentionRollbackImpact'
             | 'retentionExecutions',
             string
           >;
@@ -840,7 +841,9 @@ declare namespace App {
             | 'rawTelemetryDays'
             | 'qualityEvidenceDays'
             | 'observedAt'
+            | 'targetDevices'
             | 'affectedDevices'
+            | 'enabledDevices'
             | 'earliestEligibleAt'
             | 'runtimeInstance',
             string
@@ -864,7 +867,9 @@ declare namespace App {
             | 'copyAlarmRule'
             | 'moveAlarmRuleUp'
             | 'moveAlarmRuleDown'
-            | 'previewRetention',
+            | 'previewRetention'
+            | 'previewRetentionRollback'
+            | 'confirmRetentionRollback',
             string
           >;
           status: Record<
@@ -908,7 +913,8 @@ declare namespace App {
             | 'alarmHysteresis'
             | 'retentionEvidence'
             | 'retentionPolicy'
-            | 'retentionPreview',
+            | 'retentionPreview'
+            | 'retentionSaveFirst',
             string
           >;
           message: Record<
@@ -920,10 +926,11 @@ declare namespace App {
             | 'draftUpdated'
             | 'published'
             | 'rolledBack'
-            | 'retentionPreviewLoaded',
+            | 'retentionPreviewLoaded'
+            | 'retentionRollbackPreviewLoaded',
             string
           >;
-          confirm: Record<'archiveGroup' | 'rollback' | 'retentionPublish', string>;
+          confirm: Record<'archiveGroup' | 'rollback' | 'retentionPublish' | 'retentionRollback', string>;
           error: Record<'title' | 'conflictTitle' | 'invalidTitle' | 'code' | 'details', string>;
           help: Record<
             | 'groupPriority'
@@ -972,6 +979,10 @@ declare namespace App {
             >;
           };
           retention: {
+            groupChangeImpactTitle: string;
+            groupChangePreviewLoaded: string;
+            groupChangeSummary: string;
+            groupChangeConfirm: string;
             presetTitle: string;
             presetHelp: string;
             class: Record<'short' | 'standard' | 'long' | 'archive', string>;

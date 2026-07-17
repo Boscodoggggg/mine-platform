@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { NSelect } from 'naive-ui';
+import { NInputNumber, NSelect } from 'naive-ui';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { i18n, setLocale } from '@/locales';
@@ -21,6 +21,7 @@ const strategyApi = vi.hoisted(() => ({
   listRetentionExecutions: vi.fn(),
   listStrategyReleases: vi.fn(),
   listStrategyVersions: vi.fn(),
+  previewRetentionGroupChange: vi.fn(),
   previewRetentionImpact: vi.fn(),
   publishStrategy: vi.fn(),
   replaceDeviceGroupMembers: vi.fn(),
@@ -194,8 +195,12 @@ const retentionEffective = {
   sources: { policy: effective.sources.offlineThresholdSeconds }
 };
 const retentionPreview = {
+  previewToken: '00000000-0000-0000-0000-000000000201',
   observedAt: '2026-07-17T02:30:00Z',
+  expiresAt: '2026-07-17T02:45:00Z',
+  targetDeviceCount: 1001,
   affectedDeviceCount: 1001,
+  enabledDeviceCount: 1001,
   policy: retentionDraft.values.policy,
   rawTelemetry: {
     eligibleRows: 1_000_000,
@@ -268,10 +273,13 @@ describe('StrategyWorkbenchPage', () => {
       )
     );
     strategyApi.previewRetentionImpact.mockResolvedValue(retentionPreview);
+    strategyApi.previewRetentionGroupChange.mockResolvedValue({ required: true, preview: retentionPreview });
     strategyApi.listRetentionExecutions.mockResolvedValue([retentionExecution]);
     strategyApi.publishStrategy.mockResolvedValue(release);
     strategyApi.createStrategyDraft.mockResolvedValue(draft);
     strategyApi.updateStrategyDraft.mockResolvedValue(draft);
+    strategyApi.updateDeviceGroup.mockResolvedValue({ ...group, priority: 800, version: 3 });
+    strategyApi.archiveDeviceGroup.mockResolvedValue(undefined);
     strategyApi.replaceDeviceGroupMembers.mockResolvedValue({
       groupId: 'group-1',
       addedDeviceIds: [],
@@ -308,6 +316,105 @@ describe('StrategyWorkbenchPage', () => {
     expect(wrapper.find('[data-action="save-draft"]').exists()).toBe(false);
     expect(wrapper.find('[data-action="publish-strategy"]').exists()).toBe(false);
     expect(wrapper.find('[data-action="rollback-strategy"]').exists()).toBe(false);
+  });
+
+  it('设备组成员变化应先展示保留影响再以凭证提交', async () => {
+    const wrapper = mountPage([
+      'device:group:view',
+      'device:group:edit',
+      'device:strategy:view',
+      'device:strategy:publish'
+    ]);
+    await flushPromises();
+    const memberSelector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'group-members');
+    memberSelector?.vm.$emit('update:value', []);
+    await flushPromises();
+
+    await wrapper.get('[data-action="save-members"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.previewRetentionGroupChange).toHaveBeenCalledWith({
+      groupId: 'group-1',
+      changeType: 'MEMBERSHIP',
+      groupVersion: 2,
+      deviceIds: []
+    });
+    expect(strategyApi.replaceDeviceGroupMembers).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-group-change-preview="MEMBERSHIP"]').text()).toContain('1,001');
+
+    await wrapper.get('[data-action="save-members"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.replaceDeviceGroupMembers).toHaveBeenCalledWith('group-1', {
+      deviceIds: [],
+      version: 2,
+      retentionPreviewToken: retentionPreview.previewToken
+    });
+  });
+
+  it('设备组优先级变化应先预览并以一次性凭证提交', async () => {
+    const wrapper = mountPage([
+      'device:group:view',
+      'device:group:edit',
+      'device:strategy:view',
+      'device:strategy:publish'
+    ]);
+    await flushPromises();
+    await wrapper.get('[data-action="edit-group"]').trigger('click');
+    const priorityInput = wrapper
+      .findAllComponents(NInputNumber)
+      .find(component => component.attributes('data-field') === 'group-priority');
+    expect(priorityInput?.props('max')).toBe(1000);
+    priorityInput?.vm.$emit('update:value', 800);
+    await flushPromises();
+
+    await wrapper.get('[data-action="save-group"]').trigger('click');
+    await flushPromises();
+    expect(strategyApi.previewRetentionGroupChange).toHaveBeenCalledWith({
+      groupId: 'group-1',
+      changeType: 'PRIORITY',
+      groupVersion: 2,
+      nextPriority: 800
+    });
+    expect(strategyApi.updateDeviceGroup).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-action="save-group"]').trigger('click');
+    await flushPromises();
+    expect(strategyApi.updateDeviceGroup).toHaveBeenCalledWith(
+      'group-1',
+      expect.objectContaining({ priority: 800, retentionPreviewToken: retentionPreview.previewToken })
+    );
+  });
+
+  it('归档有保留发布的设备组应先展示影响再确认提交', async () => {
+    const wrapper = mountPage([
+      'device:group:view',
+      'device:group:edit',
+      'device:strategy:view',
+      'device:strategy:publish'
+    ]);
+    await flushPromises();
+
+    await wrapper.get('[data-action="archive-group"]').trigger('click');
+    await flushPromises();
+    expect(strategyApi.previewRetentionGroupChange).toHaveBeenCalledWith({
+      groupId: 'group-1',
+      changeType: 'GROUP_ARCHIVE',
+      groupVersion: 2
+    });
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(strategyApi.archiveDeviceGroup).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-action="archive-group"]').trigger('click');
+    await flushPromises();
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不可恢复'));
+    expect(strategyApi.archiveDeviceGroup).toHaveBeenCalledWith(
+      'group-1',
+      2,
+      retentionPreview.previewToken
+    );
   });
 
   it('应携带业务原因和稳定幂等键发布，并刷新历史与有效值', async () => {
@@ -462,9 +569,9 @@ describe('StrategyWorkbenchPage', () => {
 
     expect(strategyApi.previewRetentionImpact).toHaveBeenCalledWith({
       productId: 'product-1',
+      strategyVersionId: 'retention-version-2',
       scopeType: 'PRODUCT',
-      scopeId: 'product-1',
-      policy: retentionDraft.values.policy
+      scopeId: 'product-1'
     });
     expect(wrapper.text()).toContain('2026-07-17');
     expect(wrapper.text()).toContain('1,000,000+');
@@ -500,7 +607,122 @@ describe('StrategyWorkbenchPage', () => {
 
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('2026-07-17'));
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不可恢复'));
-    expect(strategyApi.publishStrategy).toHaveBeenCalled();
+    expect(strategyApi.publishStrategy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        strategyVersionId: 'retention-version-2',
+        retentionPreviewToken: retentionPreview.previewToken
+      }),
+      expect.any(String)
+    );
+  });
+
+  it('保留草稿存在未保存修改时必须阻止预览和发布', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit', 'device:strategy:publish']);
+    await flushPromises();
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+    selector?.vm.$emit('update:value', 'RETENTION');
+    await flushPromises();
+
+    wrapper.getComponent(RetentionPolicyEditor).vm.$emit('update:modelValue', {
+      ...retentionDraft.values.policy,
+      rawTelemetryDays: 365,
+      qualityEvidenceDays: 365
+    });
+    await wrapper.get('[data-action="preview-retention"]').trigger('click');
+    await wrapper.get('[data-field="publish-reason"] textarea').setValue('发布未保存的保留周期');
+    await wrapper.get('[data-action="publish-strategy"]').trigger('click');
+
+    expect(strategyApi.previewRetentionImpact).not.toHaveBeenCalled();
+    expect(strategyApi.publishStrategy).not.toHaveBeenCalled();
+    expect(window.$message?.warning).toHaveBeenCalledWith(expect.stringContaining('先保存'));
+  });
+
+  it('数据保留回滚必须先展示历史版本影响再由第二次操作提交新凭证', async () => {
+    const retentionRelease = {
+      ...release,
+      id: 'retention-release-8',
+      strategyVersionId: 'retention-history-version-1',
+      strategyType: 'RETENTION' as const,
+      scopeType: 'PRODUCT' as const,
+      scopeId: 'product-1',
+      groupPriority: null
+    };
+    strategyApi.listStrategyReleases.mockImplementation(({ strategyType }: { strategyType: string }) =>
+      Promise.resolve(strategyType === 'RETENTION' ? [retentionRelease] : [release])
+    );
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:publish']);
+    await flushPromises();
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+    selector?.vm.$emit('update:value', 'RETENTION');
+    await flushPromises();
+    await wrapper.get('[data-field="rollback-reason"] textarea').setValue('恢复历史保留周期');
+
+    await wrapper.get('[data-action="rollback-strategy"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.previewRetentionImpact).toHaveBeenCalledWith({
+      productId: 'product-1',
+      strategyVersionId: 'retention-history-version-1',
+      scopeType: 'PRODUCT',
+      scopeId: 'product-1'
+    });
+    expect(window.confirm).not.toHaveBeenCalled();
+    expect(strategyApi.rollbackStrategyRelease).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-preview-release="retention-release-8"]').text()).toContain('1,001');
+    expect(wrapper.get('[data-preview-release="retention-release-8"]').text()).toContain('1,000,000+');
+
+    await wrapper.get('[data-action="rollback-strategy"]').trigger('click');
+    await flushPromises();
+
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('不可恢复'));
+    expect(strategyApi.rollbackStrategyRelease).toHaveBeenCalledWith(
+      'retention-release-8',
+      {
+        reason: '恢复历史保留周期',
+        retentionPreviewToken: retentionPreview.previewToken
+      },
+      expect.any(String)
+    );
+  });
+
+  it('修改回滚原因后应清空已展示的保留预览并要求重新预览', async () => {
+    const retentionRelease = {
+      ...release,
+      id: 'retention-release-8',
+      strategyVersionId: 'retention-history-version-1',
+      strategyType: 'RETENTION' as const,
+      scopeType: 'PRODUCT' as const,
+      scopeId: 'product-1',
+      groupPriority: null
+    };
+    strategyApi.listStrategyReleases.mockImplementation(({ strategyType }: { strategyType: string }) =>
+      Promise.resolve(strategyType === 'RETENTION' ? [retentionRelease] : [release])
+    );
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:publish']);
+    await flushPromises();
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+    selector?.vm.$emit('update:value', 'RETENTION');
+    await flushPromises();
+    await wrapper.get('[data-field="rollback-reason"] textarea').setValue('恢复历史保留周期');
+
+    await wrapper.get('[data-action="rollback-strategy"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-preview-release="retention-release-8"]').exists()).toBe(true);
+
+    await wrapper.get('[data-field="rollback-reason"] textarea').setValue('改用另一个回滚原因');
+    await flushPromises();
+    expect(wrapper.find('[data-preview-release="retention-release-8"]').exists()).toBe(false);
+
+    await wrapper.get('[data-action="rollback-strategy"]').trigger('click');
+    await flushPromises();
+    expect(strategyApi.previewRetentionImpact).toHaveBeenCalledTimes(2);
+    expect(strategyApi.rollbackStrategyRelease).not.toHaveBeenCalled();
   });
 
   it('专属入口应固定加载数据保留策略并隐藏通用策略类型选择器', async () => {

@@ -10,6 +10,7 @@ import {
   listDeviceGroups,
   listRetentionExecutions,
   listStrategyReleases,
+  previewRetentionGroupChange,
   previewRetentionImpact,
   publishStrategy,
   replaceDeviceGroupMembers,
@@ -43,10 +44,15 @@ describe('strategy api', () => {
       strategyVersionId: 'version-1',
       scopeType: 'GROUP' as const,
       scopeId: 'group-1',
-      reason: '调整离线判定窗口'
+      reason: '调整离线判定窗口',
+      retentionPreviewToken: 'preview-token-1'
     };
     publishStrategy(publishBody, 'publish-key');
-    rollbackStrategyRelease('release/1', { reason: '恢复上一稳定版本' }, 'rollback-key');
+    rollbackStrategyRelease(
+      'release/1',
+      { reason: '恢复上一稳定版本', retentionPreviewToken: 'preview-token-2' },
+      'rollback-key'
+    );
 
     expect(client.request).toHaveBeenNthCalledWith(1, '/strategy-releases', {
       method: 'POST',
@@ -56,7 +62,7 @@ describe('strategy api', () => {
     expect(client.request).toHaveBeenNthCalledWith(2, '/strategy-releases/release%2F1/rollback', {
       method: 'POST',
       headers: { 'Idempotency-Key': 'rollback-key' },
-      body: JSON.stringify({ reason: '恢复上一稳定版本' })
+      body: JSON.stringify({ reason: '恢复上一稳定版本', retentionPreviewToken: 'preview-token-2' })
     });
   });
 
@@ -85,14 +91,9 @@ describe('strategy api', () => {
   it('应原样提交保留影响预览并限制最近执行事实数量', () => {
     const body = {
       productId: 'product-1',
+      strategyVersionId: 'retention-version-2',
       scopeType: 'GROUP' as const,
-      scopeId: 'group-1',
-      policy: {
-        enabled: true,
-        retentionClass: 'STANDARD' as const,
-        rawTelemetryDays: 90,
-        qualityEvidenceDays: 180
-      }
+      scopeId: 'group-1'
     };
 
     previewRetentionImpact(body);
@@ -103,5 +104,43 @@ describe('strategy api', () => {
       body: JSON.stringify(body)
     });
     expect(client.request).toHaveBeenNthCalledWith(2, '/retention-executions?limit=20');
+  });
+
+  it('应提交设备组拟变更保留影响并透传激活凭证', () => {
+    const previewToken = '00000000-0000-0000-0000-000000000301';
+    previewRetentionGroupChange({
+      groupId: 'group-1',
+      changeType: 'MEMBERSHIP',
+      groupVersion: 3,
+      deviceIds: ['device-1']
+    });
+    replaceDeviceGroupMembers('group-1', {
+      deviceIds: ['device-1'],
+      version: 3,
+      retentionPreviewToken: previewToken
+    });
+    archiveDeviceGroup('group-1', 4, previewToken);
+
+    expect(client.request).toHaveBeenNthCalledWith(1, '/retention-group-change-previews', {
+      method: 'POST',
+      body: JSON.stringify({
+        groupId: 'group-1',
+        changeType: 'MEMBERSHIP',
+        groupVersion: 3,
+        deviceIds: ['device-1']
+      })
+    });
+    expect(client.request).toHaveBeenNthCalledWith(2, '/device-groups/group-1/members', {
+      method: 'PUT',
+      body: JSON.stringify({
+        deviceIds: ['device-1'],
+        version: 3,
+        retentionPreviewToken: previewToken
+      })
+    });
+    expect(client.request).toHaveBeenNthCalledWith(3, '/device-groups/group-1/archive', {
+      method: 'POST',
+      body: JSON.stringify({ version: 4, retentionPreviewToken: previewToken })
+    });
   });
 });

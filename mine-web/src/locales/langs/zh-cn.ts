@@ -660,6 +660,7 @@ const local: App.I18n.Schema = {
         qualityRules: '属性质量规则',
         alarmRules: '双来源告警规则',
         retentionImpact: '删除影响预览',
+        retentionRollbackImpact: '回滚删除影响',
         retentionExecutions: '最近执行事实'
       },
       field: {
@@ -704,7 +705,9 @@ const local: App.I18n.Schema = {
         rawTelemetryDays: '原始数值遥测保留时间',
         qualityEvidenceDays: '质量证据保留时间',
         observedAt: '数据库统计时点',
+        targetDevices: '目标设备',
         affectedDevices: '受影响设备',
+        enabledDevices: '仍启用删除',
         earliestEligibleAt: '最早候选数据',
         runtimeInstance: '运行实例'
       },
@@ -727,7 +730,9 @@ const local: App.I18n.Schema = {
         copyAlarmRule: '复制',
         moveAlarmRuleUp: '上移',
         moveAlarmRuleDown: '下移',
-        previewRetention: '刷新影响预览'
+        previewRetention: '刷新影响预览',
+        previewRetentionRollback: '预览回滚影响',
+        confirmRetentionRollback: '确认执行回滚'
       },
       status: {
         draft: '草稿',
@@ -786,7 +791,8 @@ const local: App.I18n.Schema = {
         alarmHysteresis: '触发或恢复阈值超出范围、精度超过 12 位小数，或没有形成合法迟滞区间',
         retentionEvidence: '质量证据保留时间不能短于原始遥测，且不得超过 3650 天',
         retentionPolicy: '保留时间必须为等级边界内的整数，质量证据不得短于原始遥测',
-        retentionPreview: '发布数据保留策略前，请先取得当前范围的影响预览'
+        retentionPreview: '发布数据保留策略前，请先取得当前范围的影响预览',
+        retentionSaveFirst: '保留策略有未保存修改，请先保存草稿再预览或发布'
       },
       message: {
         groupCreated: '设备组已创建',
@@ -797,12 +803,14 @@ const local: App.I18n.Schema = {
         draftUpdated: '策略草稿已保存',
         published: '策略已发布并开始生效',
         rolledBack: '已创建新的回滚发布',
-        retentionPreviewLoaded: '影响预览已按数据库当前时点更新'
+        retentionPreviewLoaded: '已按保存版本和最终覆盖关系生成时点影响预览',
+        retentionRollbackPreviewLoaded: '回滚影响已展示，请核对后再次确认执行'
       },
       confirm: {
         archiveGroup: '确认归档此设备组？当前成员关系将结束，历史发布事实仍会保留。',
         rollback: '确认基于此历史发布创建新的回滚发布？',
-        retentionPublish: '预览统计时点：{observedAt}。发布后到期数据会被永久删除且不可恢复，确认继续？'
+        retentionPublish: '预览统计时点：{observedAt}。发布后到期数据会被永久删除且不可恢复，确认继续？',
+        retentionRollback: '统计时点：{observedAt}；目标 {target} 台，最终变化 {affected} 台，仍启用删除 {enabled} 台；原始遥测候选 {raw}，质量证据候选 {quality}。回滚后到期数据会被永久删除且不可恢复，确认继续？'
       },
       error: {
         title: '策略操作失败',
@@ -843,6 +851,12 @@ const local: App.I18n.Schema = {
         noEligibleTime: '无候选数据'
       },
       retention: {
+        groupChangeImpactTitle: '设备组变更的保留影响',
+        groupChangePreviewLoaded: '设备组变更影响已展示，请核对后再次提交',
+        groupChangeSummary:
+          '{action}将按 {observedAt} 的统计影响 {target} 台目标设备，其中 {affected} 台最终策略变化、{enabled} 台仍启用删除。',
+        groupChangeConfirm:
+          '{action}将改变已发布的数据保留策略。统计时点：{observedAt}；目标 {target} 台，最终变化 {affected} 台，仍启用删除 {enabled} 台；原始遥测候选 {raw}，质量证据候选 {quality}。到期数据删除后不可恢复，确认继续？',
         presetTitle: '安全保留预设',
         presetHelp: '选择预设会整体替换保留等级和两类数据的保留时间，仍可在等级边界内微调。',
         class: { short: '短期', standard: '标准', long: '长期', archive: '归档' },

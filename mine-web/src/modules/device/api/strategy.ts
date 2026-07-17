@@ -26,6 +26,8 @@ export type RetentionClass = components['schemas']['RetentionClass'];
 export type RetentionPolicy = components['schemas']['RetentionPolicy'];
 export type RetentionPreviewRequest = components['schemas']['RetentionPreviewRequest'];
 export type RetentionPreview = components['schemas']['RetentionPreview'];
+export type RetentionGroupChangePreviewRequest = components['schemas']['RetentionGroupChangePreviewRequest'];
+export type RetentionGroupChangePreview = components['schemas']['RetentionGroupChangePreview'];
 export type RetentionExecution = components['schemas']['RetentionExecution'];
 
 export interface DeviceGroupQuery {
@@ -81,10 +83,10 @@ export function replaceDeviceGroupMembers(groupId: string, body: DeviceGroupMemb
 }
 
 /** 归档设备组并结束成员关系。 */
-export function archiveDeviceGroup(groupId: string, version: number) {
+export function archiveDeviceGroup(groupId: string, version: number, retentionPreviewToken?: string) {
   return request<void>(`/device-groups/${encodeURIComponent(groupId)}/archive`, {
     method: 'POST',
-    body: JSON.stringify({ version })
+    body: JSON.stringify({ version, ...(retentionPreviewToken ? { retentionPreviewToken } : {}) })
   });
 }
 
@@ -143,6 +145,14 @@ export function getEffectiveStrategy(deviceId: string, strategyType: StrategyTyp
 /** 基于数据库一致性统计时点预览保留策略的影响范围。 */
 export function previewRetentionImpact(body: RetentionPreviewRequest) {
   return request<RetentionPreview>('/retention-previews', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+}
+
+/** 预览设备组变化间接激活当前保留策略后的逐设备删除影响。 */
+export function previewRetentionGroupChange(body: RetentionGroupChangePreviewRequest) {
+  return request<RetentionGroupChangePreview>('/retention-group-change-previews', {
     method: 'POST',
     body: JSON.stringify(body)
   });

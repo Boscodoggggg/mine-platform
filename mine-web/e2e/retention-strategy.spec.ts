@@ -20,17 +20,14 @@ test('策略管理员应先预览删除影响再确认发布保留策略', async
   await page.locator('[data-action="preview-retention"]').click();
 
   await expect(page.getByText('1,000,000+ 行候选数据', { exact: true })).toBeVisible();
-  await expect(page.getByText('1,001 台设备', { exact: true })).toBeVisible();
+  await expect(page.getByRole('row', { name: '目标设备 1,001 台设备' })).toBeVisible();
+  await expect(page.getByRole('row', { name: '受影响设备 1,001 台设备' })).toBeVisible();
+  await expect(page.getByRole('row', { name: '仍启用删除 1,001 台设备' })).toBeVisible();
   expect(backend.previewBody).toMatchObject({
     productId: 'product-1',
+    strategyVersionId: 'retention-version-2',
     scopeType: 'PRODUCT',
-    scopeId: 'product-1',
-    policy: {
-      enabled: true,
-      retentionClass: 'STANDARD',
-      rawTelemetryDays: 90,
-      qualityEvidenceDays: 180
-    }
+    scopeId: 'product-1'
   });
 
   await page.locator('[data-field="publish-reason"] textarea').fill('按标准周期清理历史遥测');
@@ -42,7 +39,8 @@ test('策略管理员应先预览删除影响再确认发布保留策略', async
     strategyVersionId: 'retention-version-2',
     scopeType: 'PRODUCT',
     scopeId: 'product-1',
-    reason: '按标准周期清理历史遥测'
+    reason: '按标准周期清理历史遥测',
+    retentionPreviewToken: '00000000-0000-7000-8000-000000000201'
   });
   expect(backend.idempotencyKey).toMatch(/\S+/);
 });
@@ -241,8 +239,12 @@ async function mockRetentionWorkbench(page: import('@playwright/test').Page) {
     state.previewBody = route.request().postDataJSON() as Record<string, unknown>;
     return route.fulfill({
       json: {
+        previewToken: '00000000-0000-7000-8000-000000000201',
         observedAt: '2026-07-17T02:30:00Z',
+        expiresAt: '2026-07-17T02:45:00Z',
+        targetDeviceCount: 1001,
         affectedDeviceCount: 1001,
+        enabledDeviceCount: 1001,
         policy: retentionDraft().values.policy,
         rawTelemetry: { eligibleRows: 1_000_000, earliestEligibleAt: '2025-01-01T00:00:00Z', atLeast: true },
         qualityEvidence: { eligibleRows: 420, earliestEligibleAt: '2025-02-01T00:00:00Z', atLeast: false }
