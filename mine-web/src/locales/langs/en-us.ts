@@ -673,9 +673,18 @@ const local: App.I18n.Schema = {
     },
     strategy: {
       title: 'Strategy Workbench',
-      subtitle: 'Manage product, group, and device policies; verify target scope before release and explain each device’s final effective value.',
-      policyName: 'Online Status Policy',
-      productionHelp: 'A release immediately changes online-status evaluation. Verify the scope, final threshold, and conflict evidence, then provide an auditable business reason.',
+      subtitle:
+        'Manage product, group, and device policies; verify target scope before release and explain each device’s final effective value.',
+      type: {
+        online_status: 'Online Status Policy',
+        data_quality: 'Data Quality Policy'
+      },
+      productionHelp: {
+        online:
+          'A release immediately changes online-status evaluation. Verify the scope, final threshold, and conflict evidence, then provide an auditable business reason.',
+        quality:
+          'A release immediately changes telemetry quality evaluation and evidence. Verify time windows, property constraints, final sources, and provide an auditable business reason.'
+      },
       section: {
         context: 'Configuration Context',
         groups: 'Device Groups & Priority',
@@ -683,9 +692,11 @@ const local: App.I18n.Schema = {
         draft: 'Policy Draft',
         publish: 'Release Control',
         history: 'Immutable Release History',
-        effective: 'Final Effective Device Policy'
+        effective: 'Final Effective Device Policy',
+        qualityRules: 'Property Quality Rules'
       },
       field: {
+        strategyType: 'Policy Type',
         product: 'Product',
         device: 'Validation Device',
         group: 'Device Group',
@@ -701,7 +712,13 @@ const local: App.I18n.Schema = {
         status: 'Status',
         hash: 'Content Hash',
         release: 'Release',
-        source: 'Final Value Source'
+        source: 'Final Value Source',
+        staleAfterSeconds: 'Stale Threshold',
+        futureToleranceSeconds: 'Future Time Tolerance',
+        propertyId: 'Thing Model Property',
+        required: 'Required in Frame',
+        minimum: 'Quality Minimum',
+        maximum: 'Quality Maximum'
       },
       action: {
         newGroup: 'New Group',
@@ -713,7 +730,9 @@ const local: App.I18n.Schema = {
         saveDraft: 'Save Draft',
         publish: 'Release Policy',
         rollback: 'Roll Back to This Release',
-        refresh: 'Refresh Effective Value'
+        refresh: 'Refresh Effective Value',
+        addQualityRule: 'Add Property Rule',
+        removeQualityRule: 'Remove'
       },
       status: {
         draft: 'Draft',
@@ -725,7 +744,11 @@ const local: App.I18n.Schema = {
         publish: 'Publish',
         rollback: 'Rollback'
       },
-      scope: { product: 'Product Default', group: 'Group Override', device: 'Device Override' },
+      scope: {
+        product: 'Product Default',
+        group: 'Group Override',
+        device: 'Device Override'
+      },
       source: {
         product: 'Product Default',
         group: 'Group Override',
@@ -741,15 +764,25 @@ const local: App.I18n.Schema = {
         versions: 'No online-status policy draft exists yet',
         releases: 'No policy releases exist yet',
         effective: 'Select a device to inspect its final effective policy',
-        members: 'This group has no members'
+        members: 'This group has no members',
+        qualityRules: 'No property rules yet. Configure at least one time window or property rule.'
       },
-      placeholder: { enter: 'Enter {field}', select: 'Select {field}' },
+      placeholder: {
+        enter: 'Enter {field}',
+        select: 'Select {field}',
+        propertyId: 'For example, engine.rpm'
+      },
       validation: {
         required: 'Complete all required fields',
         threshold: 'The offline threshold must be between 30 and 86400 seconds',
         scope: 'Select a target matching the release scope',
         reason: 'Enter at least 4 characters for the business reason',
-        draft: 'Select a draft version first'
+        draft: 'Select a draft version first',
+        stale: 'The stale threshold must be between 1 and 604800 seconds',
+        future: 'Future time tolerance must be between 0 and 3600 seconds',
+        property: 'A property identifier is invalid, duplicated, or missing',
+        range: 'A property minimum cannot be greater than its maximum',
+        qualityRequired: 'Configure at least one time window or property quality rule'
       },
       message: {
         groupCreated: 'Device group created',
@@ -762,7 +795,8 @@ const local: App.I18n.Schema = {
         rolledBack: 'A new rollback release was created'
       },
       confirm: {
-        archiveGroup: 'Archive this device group? Current memberships will end while release history remains immutable.',
+        archiveGroup:
+          'Archive this device group? Current memberships will end while release history remains immutable.',
         rollback: 'Create a new rollback release from this historical release?'
       },
       error: {
@@ -774,16 +808,31 @@ const local: App.I18n.Schema = {
       },
       help: {
         groupPriority: 'Higher numbers win. Conflicting values from groups at the same priority block the release.',
-        scope: 'A product default targets all devices. Select a group or device on the left before using narrower scopes.',
-        members: 'Members must belong to this product. Optimistic locking prevents overwriting another administrator’s update.',
-        readonly: 'This account can inspect policies but cannot maintain or release them.'
+        scope:
+          'A product default targets all devices. Select a group or device on the left before using narrower scopes.',
+        members:
+          'Members must belong to this product. Optimistic locking prevents overwriting another administrator’s update.',
+        readonly: 'This account can inspect policies but cannot maintain or release them.',
+        qualityTemplate:
+          'Time windows apply to the whole telemetry frame. Property rules detect missing and out-of-range values. Unconfigured rules are ignored.',
+        qualityRules:
+          'Property identifiers must match the published thing model. Required and range rules produce auditable per-property quality evidence.'
       },
       text: {
         seconds: 'seconds',
+        enabled: 'Enabled',
+        disabled: 'Disabled',
         version: 'Version v{version}',
         sequence: 'Release #{sequence}',
         memberCount: '{count} devices',
-        priority: 'Priority {priority}'
+        priority: 'Priority {priority}',
+        onlineSummary: 'Offline after {seconds} seconds',
+        qualitySummary: '{count} property rules'
+      },
+      qualityField: {
+        required: 'Required · {property}',
+        minimum: 'Minimum · {property}',
+        maximum: 'Maximum · {property}'
       }
     },
     models: {

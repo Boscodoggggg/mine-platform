@@ -630,8 +630,12 @@ const local: App.I18n.Schema = {
     strategy: {
       title: '策略工作台',
       subtitle: '管理产品、设备组和单设备三级策略，发布前验证范围，发布后解释每台设备的最终有效值。',
-      policyName: '在线状态判定策略',
-      productionHelp: '策略发布会立即影响设备在线状态判定。请先核对目标范围、最终阈值和冲突证据，并填写可审计的业务原因。',
+      type: { online_status: '在线状态策略', data_quality: '数据质量策略' },
+      productionHelp: {
+        online: '策略发布会立即影响设备在线状态判定。请先核对目标范围、最终阈值和冲突证据，并填写可审计的业务原因。',
+        quality:
+          '策略发布会立即影响遥测质量判定和质量证据。请先核对时间窗口、属性约束、最终来源，并填写可审计的业务原因。'
+      },
       section: {
         context: '配置上下文',
         groups: '设备组与优先级',
@@ -639,9 +643,11 @@ const local: App.I18n.Schema = {
         draft: '策略草稿',
         publish: '发布控制',
         history: '不可变发布历史',
-        effective: '设备最终有效策略'
+        effective: '设备最终有效策略',
+        qualityRules: '属性质量规则'
       },
       field: {
+        strategyType: '策略类型',
         product: '产品',
         device: '验证设备',
         group: '设备组',
@@ -657,7 +663,13 @@ const local: App.I18n.Schema = {
         status: '状态',
         hash: '内容哈希',
         release: '发布记录',
-        source: '最终值来源'
+        source: '最终值来源',
+        staleAfterSeconds: '陈旧阈值',
+        futureToleranceSeconds: '未来时间容差',
+        propertyId: '物模型属性标识',
+        required: '本帧必填',
+        minimum: '质量下限',
+        maximum: '质量上限'
       },
       action: {
         newGroup: '新建设备组',
@@ -669,7 +681,9 @@ const local: App.I18n.Schema = {
         saveDraft: '保存草稿',
         publish: '发布策略',
         rollback: '回滚到此发布',
-        refresh: '刷新有效值'
+        refresh: '刷新有效值',
+        addQualityRule: '添加属性规则',
+        removeQualityRule: '移除'
       },
       status: {
         draft: '草稿',
@@ -697,15 +711,25 @@ const local: App.I18n.Schema = {
         versions: '尚未创建在线状态策略草稿',
         releases: '尚无策略发布记录',
         effective: '选择设备后查看最终有效策略',
-        members: '该设备组暂无成员'
+        members: '该设备组暂无成员',
+        qualityRules: '尚未添加属性规则；至少配置一个时间窗口或属性规则。'
       },
-      placeholder: { enter: '请输入{field}', select: '请选择{field}' },
+      placeholder: {
+        enter: '请输入{field}',
+        select: '请选择{field}',
+        propertyId: '例如 engine.rpm'
+      },
       validation: {
         required: '请完整填写必填项',
         threshold: '离线判定阈值必须在 30 至 86400 秒之间',
         scope: '请选择与发布范围匹配的目标',
         reason: '业务原因至少填写 4 个字符',
-        draft: '请先选择一个草稿版本'
+        draft: '请先选择一个草稿版本',
+        stale: '陈旧阈值必须在 1 至 604800 秒之间',
+        future: '未来时间容差必须在 0 至 3600 秒之间',
+        property: '属性标识格式不正确、存在重复项，或未填写属性标识',
+        range: '同一属性的质量下限不能大于上限',
+        qualityRequired: '至少配置一个时间窗口或属性质量规则'
       },
       message: {
         groupCreated: '设备组已创建',
@@ -732,14 +756,25 @@ const local: App.I18n.Schema = {
         groupPriority: '数值越大优先级越高；同优先级设备组对同一字段给出不同值时将阻止发布。',
         scope: '产品默认会覆盖全部设备；设备组和单设备范围需要先在左侧选中目标。',
         members: '成员只能来自当前产品，保存时使用乐观锁防止覆盖其他管理员的修改。',
-        readonly: '当前账号可查看策略，但没有维护或发布权限。'
+        readonly: '当前账号可查看策略，但没有维护或发布权限。',
+        qualityTemplate: '时间窗口适用于整帧遥测；属性规则用于判定缺失值和数值越界。未配置的规则不会参与判定。',
+        qualityRules: '属性标识应与已发布物模型一致；必填、下限和上限会生成可审计的逐属性质量证据。'
       },
       text: {
         seconds: '秒',
+        enabled: '启用',
+        disabled: '停用',
         version: '版本 v{version}',
         sequence: '发布序号 #{sequence}',
         memberCount: '{count} 台设备',
-        priority: '优先级 {priority}'
+        priority: '优先级 {priority}',
+        onlineSummary: '离线阈值 {seconds} 秒',
+        qualitySummary: '{count} 个属性规则'
+      },
+      qualityField: {
+        required: '必填 · {property}',
+        minimum: '下限 · {property}',
+        maximum: '上限 · {property}'
       }
     },
     models: {

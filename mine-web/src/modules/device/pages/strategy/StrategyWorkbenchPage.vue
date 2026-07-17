@@ -6,6 +6,7 @@ import {
   NAlert,
   NButton,
   NCard,
+  NCheckbox,
   NCollapse,
   NCollapseItem,
   NDivider,
@@ -49,6 +50,7 @@ import type {
   EffectiveStrategy,
   StrategyRelease,
   StrategyScopeType,
+  StrategyType,
   StrategyVersion
 } from '@/modules/device/api/strategy';
 import { useAuthStore } from '@/store/modules/auth';
@@ -59,6 +61,14 @@ interface StrategyProblem {
   message: string;
   traceId?: string;
   details?: Record<string, unknown>;
+}
+
+interface QualityRuleForm {
+  key: string;
+  propertyId: string;
+  required: boolean;
+  minimum: number | null;
+  maximum: number | null;
 }
 
 const { t } = useI18n();
@@ -75,6 +85,7 @@ const devices = ref<Device[]>([]);
 const groups = ref<DeviceGroup[]>([]);
 const versions = ref<StrategyVersion[]>([]);
 const releases = ref<StrategyRelease[]>([]);
+const strategyType = ref<StrategyType>('ONLINE_STATUS');
 const productId = ref<string | null>(null);
 const selectedGroupId = ref<string | null>(null);
 const selectedDeviceId = ref<string | null>(null);
@@ -87,24 +98,55 @@ const draftMode = ref<'create' | 'edit'>('create');
 const publishIdempotencyKey = ref<string | null>(null);
 const rollbackIdempotencyKeys = new Map<string, string>();
 
-const groupForm = reactive({ groupKey: '', name: '', priority: 100, description: '' });
-const draftForm = reactive({ threshold: 180, description: '' });
-const publishForm = reactive({ scopeType: 'PRODUCT' as StrategyScopeType, reason: '' });
+const groupForm = reactive({
+  groupKey: '',
+  name: '',
+  priority: 100,
+  description: ''
+});
+const draftForm = reactive({
+  threshold: 180,
+  staleAfterSeconds: 300 as number | null,
+  futureToleranceSeconds: 5 as number | null,
+  qualityRules: [] as QualityRuleForm[],
+  description: ''
+});
+const publishForm = reactive({
+  scopeType: 'PRODUCT' as StrategyScopeType,
+  reason: ''
+});
 const rollbackReason = ref('');
 
 const productOptions = computed<SelectOption[]>(() =>
-  products.value.map(item => ({ label: `${item.name} (${item.productKey})`, value: item.id }))
-);
-const deviceOptions = computed<SelectOption[]>(() =>
-  devices.value.map(item => ({ label: `${item.name} (${item.deviceCode})`, value: item.id }))
-);
-const memberOptions = computed<SelectOption[]>(() => deviceOptions.value);
-const versionOptions = computed<SelectOption[]>(() =>
-  versions.value.map(item => ({
-    label: `${t('mine.strategy.text.version', { version: item.versionNumber })} · ${statusLabel(item.status)} · ${item.values.offlineThresholdSeconds} ${t('mine.strategy.text.seconds')}`,
+  products.value.map(item => ({
+    label: `${item.name} (${item.productKey})`,
     value: item.id
   }))
 );
+const deviceOptions = computed<SelectOption[]>(() =>
+  devices.value.map(item => ({
+    label: `${item.name} (${item.deviceCode})`,
+    value: item.id
+  }))
+);
+const memberOptions = computed<SelectOption[]>(() => deviceOptions.value);
+const strategyTypeOptions = computed<SelectOption[]>(() =>
+  (['ONLINE_STATUS', 'DATA_QUALITY'] as StrategyType[]).map(value => ({
+    label: t(`mine.strategy.type.${value.toLowerCase()}`),
+    value
+  }))
+);
+const versionOptions = computed<SelectOption[]>(() =>
+  versions.value.map(item => ({
+    label: `${t('mine.strategy.text.version', { version: item.versionNumber })} · ${statusLabel(item.status)} · ${strategySummary(item.values)}`,
+    value: item.id
+  }))
+);
+const policyName = computed(() => t(`mine.strategy.type.${strategyType.value.toLowerCase()}`));
+const productionHelp = computed(() =>
+  t(`mine.strategy.productionHelp.${strategyType.value === 'DATA_QUALITY' ? 'quality' : 'online'}`)
+);
+const isDataQuality = computed(() => strategyType.value === 'DATA_QUALITY');
 const scopeOptions = computed<SelectOption[]>(() =>
   (['PRODUCT', 'GROUP', 'DEVICE'] as StrategyScopeType[]).map(value => ({
     label: scopeLabel(value),
@@ -122,7 +164,7 @@ const publishScopeId = computed(() => {
 });
 
 watch(
-  () => [selectedVersionId.value, publishForm.scopeType, publishScopeId.value, publishForm.reason],
+  () => [strategyType.value, selectedVersionId.value, publishForm.scopeType, publishScopeId.value, publishForm.reason],
   () => {
     publishIdempotencyKey.value = null;
   }
@@ -156,6 +198,14 @@ async function onProductChanged() {
   await loadProductContext();
 }
 
+async function onStrategyTypeChanged() {
+  selectedVersionId.value = null;
+  effective.value = null;
+  operationProblem.value = null;
+  resetDraftForm();
+  await Promise.all([loadStrategyData(), loadEffective()]);
+}
+
 async function loadProductContext() {
   if (!productId.value) return;
   loading.value = true;
@@ -169,7 +219,12 @@ async function loadProductContext() {
 
 async function loadGroups(preferredId?: string) {
   if (!productId.value) return;
-  const response = await listDeviceGroups({ productId: productId.value, status: 'ACTIVE', page: 1, size: 100 });
+  const response = await listDeviceGroups({
+    productId: productId.value,
+    status: 'ACTIVE',
+    page: 1,
+    size: 100
+  });
   groups.value = response.items;
   selectedGroupId.value = groups.value.some(item => item.id === (preferredId || selectedGroupId.value))
     ? preferredId || selectedGroupId.value
@@ -179,7 +234,11 @@ async function loadGroups(preferredId?: string) {
 
 async function loadDevices() {
   if (!productId.value) return;
-  const response = await getDevices({ productId: productId.value, page: 1, size: 200 });
+  const response = await getDevices({
+    productId: productId.value,
+    page: 1,
+    size: 200
+  });
   devices.value = response.items.filter(item => item.status !== 'ARCHIVED');
   selectedDeviceId.value = devices.value.some(item => item.id === selectedDeviceId.value)
     ? selectedDeviceId.value
@@ -190,8 +249,16 @@ async function loadDevices() {
 async function loadStrategyData() {
   if (!productId.value) return;
   const [nextVersions, nextReleases] = await Promise.all([
-    listStrategyVersions({ productId: productId.value, strategyType: 'ONLINE_STATUS', limit: 50 }),
-    listStrategyReleases({ productId: productId.value, strategyType: 'ONLINE_STATUS', limit: 50 })
+    listStrategyVersions({
+      productId: productId.value,
+      strategyType: strategyType.value,
+      limit: 50
+    }),
+    listStrategyReleases({
+      productId: productId.value,
+      strategyType: strategyType.value,
+      limit: 50
+    })
   ]);
   versions.value = nextVersions;
   releases.value = nextReleases;
@@ -224,7 +291,7 @@ async function loadEffective() {
   }
   effectiveLoading.value = true;
   try {
-    effective.value = await getEffectiveStrategy(selectedDeviceId.value, 'ONLINE_STATUS');
+    effective.value = await getEffectiveStrategy(selectedDeviceId.value, strategyType.value);
   } catch (error) {
     effective.value = null;
     captureProblem(error);
@@ -332,23 +399,28 @@ function syncDraftForm() {
     return;
   }
   draftMode.value = version.status === 'DRAFT' ? 'edit' : 'create';
-  Object.assign(draftForm, {
-    threshold: version.values.offlineThresholdSeconds,
-    description: version.description || ''
-  });
+  resetDraftForm();
+  draftForm.description = version.description || '';
+  if (version.strategyType === 'ONLINE_STATUS') {
+    draftForm.threshold = numericValue(version.values, 'offlineThresholdSeconds') ?? 180;
+    return;
+  }
+  draftForm.staleAfterSeconds = numericValue(version.values, 'staleAfterSeconds');
+  draftForm.futureToleranceSeconds = numericValue(version.values, 'futureToleranceSeconds');
+  draftForm.qualityRules = qualityRulesFrom(version.values);
 }
 
 async function saveDraft() {
-  if (!productId.value || draftForm.threshold < 30 || draftForm.threshold > 86400) {
-    return window.$message?.warning(t('mine.strategy.validation.threshold'));
-  }
+  if (!productId.value) return;
+  const values = strategyValues();
+  if (!values) return;
   savingDraft.value = true;
   operationProblem.value = null;
   try {
     let saved: StrategyVersion;
     if (draftMode.value === 'edit' && selectedVersion.value?.status === 'DRAFT') {
       saved = await updateStrategyDraft(selectedVersion.value.id, {
-        values: { offlineThresholdSeconds: draftForm.threshold },
+        values,
         description: draftForm.description.trim() || null,
         version: selectedVersion.value.version
       });
@@ -356,8 +428,8 @@ async function saveDraft() {
     } else {
       saved = await createStrategyDraft({
         productId: productId.value,
-        strategyType: 'ONLINE_STATUS',
-        values: { offlineThresholdSeconds: draftForm.threshold },
+        strategyType: strategyType.value,
+        values,
         description: draftForm.description.trim() || null
       });
       window.$message?.success(t('mine.strategy.message.draftCreated'));
@@ -424,11 +496,124 @@ async function runRollback(release: StrategyRelease) {
 }
 
 function resetGroupForm() {
-  Object.assign(groupForm, { groupKey: '', name: '', priority: 100, description: '' });
+  Object.assign(groupForm, {
+    groupKey: '',
+    name: '',
+    priority: 100,
+    description: ''
+  });
 }
 
 function resetDraftForm() {
-  Object.assign(draftForm, { threshold: 180, description: '' });
+  Object.assign(draftForm, {
+    threshold: 180,
+    staleAfterSeconds: 300,
+    futureToleranceSeconds: 5,
+    qualityRules: [],
+    description: ''
+  });
+}
+
+function addQualityRule() {
+  draftForm.qualityRules.push({
+    key: createIdempotencyKey('quality-rule'),
+    propertyId: '',
+    required: true,
+    minimum: null,
+    maximum: null
+  });
+}
+
+function removeQualityRule(key: string) {
+  draftForm.qualityRules = draftForm.qualityRules.filter(rule => rule.key !== key);
+}
+
+function strategyValues(): StrategyVersion['values'] | null {
+  if (!isDataQuality.value) {
+    if (draftForm.threshold < 30 || draftForm.threshold > 86400) {
+      window.$message?.warning(t('mine.strategy.validation.threshold'));
+      return null;
+    }
+    return { offlineThresholdSeconds: draftForm.threshold };
+  }
+  const values: Record<string, boolean | number> = {};
+  if (draftForm.staleAfterSeconds !== null) {
+    if (draftForm.staleAfterSeconds < 1 || draftForm.staleAfterSeconds > 604800) {
+      window.$message?.warning(t('mine.strategy.validation.stale'));
+      return null;
+    }
+    values.staleAfterSeconds = draftForm.staleAfterSeconds;
+  }
+  if (draftForm.futureToleranceSeconds !== null) {
+    if (draftForm.futureToleranceSeconds < 0 || draftForm.futureToleranceSeconds > 3600) {
+      window.$message?.warning(t('mine.strategy.validation.future'));
+      return null;
+    }
+    values.futureToleranceSeconds = draftForm.futureToleranceSeconds;
+  }
+  const propertyIds = new Set<string>();
+  for (const rule of draftForm.qualityRules) {
+    const propertyId = rule.propertyId.trim();
+    if (!/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(propertyId) || propertyIds.has(propertyId)) {
+      window.$message?.warning(t('mine.strategy.validation.property'));
+      return null;
+    }
+    if (rule.minimum !== null && rule.maximum !== null && rule.minimum > rule.maximum) {
+      window.$message?.warning(t('mine.strategy.validation.range'));
+      return null;
+    }
+    propertyIds.add(propertyId);
+    values[`required.${propertyId}`] = rule.required;
+    if (rule.minimum !== null) values[`minimum.${propertyId}`] = rule.minimum;
+    if (rule.maximum !== null) values[`maximum.${propertyId}`] = rule.maximum;
+  }
+  if (!Object.keys(values).length) {
+    window.$message?.warning(t('mine.strategy.validation.qualityRequired'));
+    return null;
+  }
+  return values;
+}
+
+function qualityRulesFrom(values: StrategyVersion['values']): QualityRuleForm[] {
+  const properties = new Map<string, QualityRuleForm>();
+  Object.entries(values).forEach(([field, value]) => {
+    const match = /^(required|minimum|maximum)\.(.+)$/.exec(field);
+    if (!match) return;
+    const [, ruleType, propertyId] = match;
+    if (!ruleType || !propertyId) return;
+    const rule = properties.get(propertyId) || {
+      key: createIdempotencyKey(`quality-rule-${propertyId}`),
+      propertyId,
+      required: false,
+      minimum: null,
+      maximum: null
+    };
+    if (ruleType === 'required') rule.required = value === true;
+    if (ruleType === 'minimum' && typeof value === 'number') rule.minimum = value;
+    if (ruleType === 'maximum' && typeof value === 'number') rule.maximum = value;
+    properties.set(propertyId, rule);
+  });
+  return [...properties.values()].sort((left, right) => left.propertyId.localeCompare(right.propertyId));
+}
+
+function numericValue(values: StrategyVersion['values'], field: string) {
+  const value = (values as Record<string, boolean | number>)[field];
+  return typeof value === 'number' ? value : null;
+}
+
+function strategySummary(values: StrategyVersion['values']) {
+  const threshold = numericValue(values, 'offlineThresholdSeconds');
+  if (threshold !== null) {
+    return t('mine.strategy.text.onlineSummary', {
+      seconds: threshold
+    });
+  }
+  const ruleCount = new Set(
+    Object.keys(values)
+      .map(field => /^(?:required|minimum|maximum)\.(.+)$/.exec(field)?.[1])
+      .filter((propertyId): propertyId is string => Boolean(propertyId))
+  ).size;
+  return t('mine.strategy.text.qualitySummary', { count: ruleCount });
 }
 
 function can(permission: string) {
@@ -458,7 +643,10 @@ function captureProblem(error: unknown) {
     window.$message?.error(error.message);
     return;
   }
-  operationProblem.value = { code: 'SYS-UNKNOWN-001', message: t('mine.common.operationFailed') };
+  operationProblem.value = {
+    code: 'SYS-UNKNOWN-001',
+    message: t('mine.common.operationFailed')
+  };
   window.$message?.error(t('mine.common.operationFailed'));
 }
 
@@ -473,11 +661,11 @@ function createIdempotencyKey(prefix: string) {
     <NFlex vertical :size="16">
       <NPageHeader :title="t('mine.strategy.title')" :subtitle="t('mine.strategy.subtitle')">
         <template #extra>
-          <NTag type="primary" :bordered="false" round>{{ t('mine.strategy.policyName') }}</NTag>
+          <NTag type="primary" :bordered="false" round>{{ policyName }}</NTag>
         </template>
       </NPageHeader>
 
-      <NAlert type="warning" :bordered="false">{{ t('mine.strategy.productionHelp') }}</NAlert>
+      <NAlert type="warning" :bordered="false">{{ productionHelp }}</NAlert>
       <NAlert
         v-if="!can('device:group:edit') && !can('device:strategy:edit') && !can('device:strategy:publish')"
         type="info"
@@ -492,12 +680,29 @@ function createIdempotencyKey(prefix: string) {
             <NFlex vertical :size="16">
               <NCard :title="t('mine.strategy.section.context')" :bordered="false" size="small">
                 <NForm label-placement="top">
+                  <NFormItem :label="t('mine.strategy.field.strategyType')">
+                    <NSelect
+                      v-model:value="strategyType"
+                      data-field="strategy-type"
+                      :options="strategyTypeOptions"
+                      :placeholder="
+                        t('mine.strategy.placeholder.select', {
+                          field: t('mine.strategy.field.strategyType')
+                        })
+                      "
+                      @update:value="onStrategyTypeChanged"
+                    />
+                  </NFormItem>
                   <NFormItem :label="t('mine.strategy.field.product')">
                     <NSelect
                       v-model:value="productId"
                       filterable
                       :options="productOptions"
-                      :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.product') })"
+                      :placeholder="
+                        t('mine.strategy.placeholder.select', {
+                          field: t('mine.strategy.field.product')
+                        })
+                      "
                       @update:value="onProductChanged"
                     />
                   </NFormItem>
@@ -506,7 +711,11 @@ function createIdempotencyKey(prefix: string) {
                       v-model:value="selectedDeviceId"
                       filterable
                       :options="deviceOptions"
-                      :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.device') })"
+                      :placeholder="
+                        t('mine.strategy.placeholder.select', {
+                          field: t('mine.strategy.field.device')
+                        })
+                      "
                       @update:value="loadEffective"
                     />
                   </NFormItem>
@@ -544,7 +753,13 @@ function createIdempotencyKey(prefix: string) {
                   >
                     <NFlex justify="space-between" class="w-full">
                       <NText>{{ group.name }}</NText>
-                      <NText depth="3">{{ t('mine.strategy.text.priority', { priority: group.priority }) }}</NText>
+                      <NText depth="3">
+                        {{
+                          t('mine.strategy.text.priority', {
+                            priority: group.priority
+                          })
+                        }}
+                      </NText>
                     </NFlex>
                   </NButton>
                 </NFlex>
@@ -565,7 +780,9 @@ function createIdempotencyKey(prefix: string) {
                             v-model:value="groupForm.groupKey"
                             :disabled="groupMode === 'edit'"
                             :placeholder="
-                              t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.groupKey') })
+                              t('mine.strategy.placeholder.enter', {
+                                field: t('mine.strategy.field.groupKey')
+                              })
                             "
                           />
                         </NFormItem>
@@ -573,7 +790,9 @@ function createIdempotencyKey(prefix: string) {
                           <NInput
                             v-model:value="groupForm.name"
                             :placeholder="
-                              t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.groupName') })
+                              t('mine.strategy.placeholder.enter', {
+                                field: t('mine.strategy.field.groupName')
+                              })
                             "
                           />
                         </NFormItem>
@@ -583,7 +802,9 @@ function createIdempotencyKey(prefix: string) {
                             :min="0"
                             :max="1000000"
                             :placeholder="
-                              t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.priority') })
+                              t('mine.strategy.placeholder.enter', {
+                                field: t('mine.strategy.field.priority')
+                              })
                             "
                           />
                         </NFormItem>
@@ -593,7 +814,9 @@ function createIdempotencyKey(prefix: string) {
                             type="textarea"
                             :autosize="{ minRows: 2, maxRows: 4 }"
                             :placeholder="
-                              t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.description') })
+                              t('mine.strategy.placeholder.enter', {
+                                field: t('mine.strategy.field.description')
+                              })
                             "
                           />
                         </NFormItem>
@@ -626,7 +849,11 @@ function createIdempotencyKey(prefix: string) {
                   <NFlex justify="space-between" align="center" :wrap="true">
                     <NText strong>{{ selectedGroup.name }}</NText>
                     <NTag :bordered="false">
-                      {{ t('mine.strategy.text.memberCount', { count: selectedGroup.memberCount }) }}
+                      {{
+                        t('mine.strategy.text.memberCount', {
+                          count: selectedGroup.memberCount
+                        })
+                      }}
                     </NTag>
                   </NFlex>
                   <NSelect
@@ -635,7 +862,11 @@ function createIdempotencyKey(prefix: string) {
                     filterable
                     :disabled="!can('device:group:edit')"
                     :options="memberOptions"
-                    :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.members') })"
+                    :placeholder="
+                      t('mine.strategy.placeholder.select', {
+                        field: t('mine.strategy.field.members')
+                      })
+                    "
                   />
                   <NText depth="3">{{ t('mine.strategy.help.members') }}</NText>
                   <NFlex v-if="can('device:group:edit')" justify="space-between">
@@ -667,11 +898,15 @@ function createIdempotencyKey(prefix: string) {
                     <NSelect
                       v-model:value="selectedVersionId"
                       :options="versionOptions"
-                      :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.version') })"
+                      :placeholder="
+                        t('mine.strategy.placeholder.select', {
+                          field: t('mine.strategy.field.version')
+                        })
+                      "
                       @update:value="syncDraftForm"
                     />
                   </NFormItem>
-                  <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
+                  <NGrid v-if="!isDataQuality" responsive="screen" cols="1 s:2" :x-gap="12">
                     <NGi>
                       <NFormItem :label="t('mine.strategy.field.threshold')">
                         <NInputNumber
@@ -680,7 +915,9 @@ function createIdempotencyKey(prefix: string) {
                           :max="86400"
                           :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
                           :placeholder="
-                            t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.threshold') })
+                            t('mine.strategy.placeholder.enter', {
+                              field: t('mine.strategy.field.threshold')
+                            })
                           "
                         >
                           <template #suffix>{{ t('mine.strategy.text.seconds') }}</template>
@@ -700,13 +937,154 @@ function createIdempotencyKey(prefix: string) {
                       </NFormItem>
                     </NGi>
                   </NGrid>
+                  <template v-else>
+                    <NAlert type="info" :bordered="false">{{ t('mine.strategy.help.qualityTemplate') }}</NAlert>
+                    <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
+                      <NGi>
+                        <NFormItem :label="t('mine.strategy.field.staleAfterSeconds')">
+                          <NInputNumber
+                            v-model:value="draftForm.staleAfterSeconds"
+                            data-field="quality-stale"
+                            clearable
+                            :min="1"
+                            :max="604800"
+                            :placeholder="
+                              t('mine.strategy.placeholder.enter', {
+                                field: t('mine.strategy.field.staleAfterSeconds')
+                              })
+                            "
+                            :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                          >
+                            <template #suffix>{{ t('mine.strategy.text.seconds') }}</template>
+                          </NInputNumber>
+                        </NFormItem>
+                      </NGi>
+                      <NGi>
+                        <NFormItem :label="t('mine.strategy.field.futureToleranceSeconds')">
+                          <NInputNumber
+                            v-model:value="draftForm.futureToleranceSeconds"
+                            data-field="quality-future"
+                            clearable
+                            :min="0"
+                            :max="3600"
+                            :placeholder="
+                              t('mine.strategy.placeholder.enter', {
+                                field: t('mine.strategy.field.futureToleranceSeconds')
+                              })
+                            "
+                            :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                          >
+                            <template #suffix>{{ t('mine.strategy.text.seconds') }}</template>
+                          </NInputNumber>
+                        </NFormItem>
+                      </NGi>
+                    </NGrid>
+                    <NFlex justify="space-between" align="center" :wrap="true">
+                      <NFlex vertical :size="2">
+                        <NText strong>{{ t('mine.strategy.section.qualityRules') }}</NText>
+                        <NText depth="3">{{ t('mine.strategy.help.qualityRules') }}</NText>
+                      </NFlex>
+                      <NButton
+                        v-if="can('device:strategy:edit') && selectedVersion?.status !== 'PUBLISHED'"
+                        secondary
+                        type="primary"
+                        size="small"
+                        data-action="add-quality-rule"
+                        @click="addQualityRule"
+                      >
+                        {{ t('mine.strategy.action.addQualityRule') }}
+                      </NButton>
+                    </NFlex>
+                    <NList v-if="draftForm.qualityRules.length" bordered>
+                      <NListItem v-for="rule in draftForm.qualityRules" :key="rule.key">
+                        <NGrid responsive="screen" cols="1 s:12" :x-gap="10" :y-gap="8" class="w-full">
+                          <NGi span="1 s:4">
+                            <NFormItem :label="t('mine.strategy.field.propertyId')" :show-feedback="false">
+                              <NInput
+                                v-model:value="rule.propertyId"
+                                data-field="quality-property"
+                                :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                                :placeholder="t('mine.strategy.placeholder.propertyId')"
+                              />
+                            </NFormItem>
+                          </NGi>
+                          <NGi span="1 s:2">
+                            <NFormItem :label="t('mine.strategy.field.required')" :show-feedback="false">
+                              <NCheckbox
+                                v-model:checked="rule.required"
+                                :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                              >
+                                {{ t('mine.strategy.text.enabled') }}
+                              </NCheckbox>
+                            </NFormItem>
+                          </NGi>
+                          <NGi span="1 s:2">
+                            <NFormItem :label="t('mine.strategy.field.minimum')" :show-feedback="false">
+                              <NInputNumber
+                                v-model:value="rule.minimum"
+                                clearable
+                                :placeholder="
+                                  t('mine.strategy.placeholder.enter', {
+                                    field: t('mine.strategy.field.minimum')
+                                  })
+                                "
+                                :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                              />
+                            </NFormItem>
+                          </NGi>
+                          <NGi span="1 s:2">
+                            <NFormItem :label="t('mine.strategy.field.maximum')" :show-feedback="false">
+                              <NInputNumber
+                                v-model:value="rule.maximum"
+                                clearable
+                                :placeholder="
+                                  t('mine.strategy.placeholder.enter', {
+                                    field: t('mine.strategy.field.maximum')
+                                  })
+                                "
+                                :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                              />
+                            </NFormItem>
+                          </NGi>
+                          <NGi span="1 s:2">
+                            <NFlex justify="end" align="end" class="h-full">
+                              <NButton
+                                v-if="can('device:strategy:edit') && selectedVersion?.status !== 'PUBLISHED'"
+                                quaternary
+                                type="error"
+                                size="small"
+                                @click="removeQualityRule(rule.key)"
+                              >
+                                {{ t('mine.strategy.action.removeQualityRule') }}
+                              </NButton>
+                            </NFlex>
+                          </NGi>
+                        </NGrid>
+                      </NListItem>
+                    </NList>
+                    <NEmpty v-else :description="t('mine.strategy.empty.qualityRules')" />
+                    <NFormItem :label="t('mine.strategy.field.status')">
+                      <NTag
+                        v-if="selectedVersion"
+                        :type="selectedVersion.status === 'DRAFT' ? 'warning' : 'success'"
+                        :bordered="false"
+                      >
+                        {{ statusLabel(selectedVersion.status) }}
+                      </NTag>
+                      <NText v-else depth="3">{{ t('mine.strategy.status.draft') }}</NText>
+                    </NFormItem>
+                  </template>
                   <NFormItem :label="t('mine.strategy.field.description')">
                     <NInput
                       v-model:value="draftForm.description"
                       type="textarea"
                       :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
                       :autosize="{ minRows: 2, maxRows: 4 }"
-                      :placeholder="t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.description') })"
+                      :placeholder="
+                        t('mine.strategy.placeholder.enter', {
+                          field: t('mine.strategy.field.description')
+                        })
+                      "
                     />
                   </NFormItem>
                   <NFlex v-if="can('device:strategy:edit')" justify="end">
@@ -733,7 +1111,11 @@ function createIdempotencyKey(prefix: string) {
                     <NSelect
                       v-model:value="publishForm.scopeType"
                       :options="scopeOptions"
-                      :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.scope') })"
+                      :placeholder="
+                        t('mine.strategy.placeholder.select', {
+                          field: t('mine.strategy.field.scope')
+                        })
+                      "
                     />
                   </NFormItem>
                   <NAlert type="info" :bordered="false">{{ t('mine.strategy.help.scope') }}</NAlert>
@@ -742,7 +1124,11 @@ function createIdempotencyKey(prefix: string) {
                       v-model:value="publishForm.reason"
                       type="textarea"
                       :autosize="{ minRows: 2, maxRows: 4 }"
-                      :placeholder="t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.reason') })"
+                      :placeholder="
+                        t('mine.strategy.placeholder.enter', {
+                          field: t('mine.strategy.field.reason')
+                        })
+                      "
                       data-field="publish-reason"
                     />
                   </NFormItem>
@@ -760,7 +1146,11 @@ function createIdempotencyKey(prefix: string) {
                     v-model:value="rollbackReason"
                     type="textarea"
                     :autosize="{ minRows: 2, maxRows: 3 }"
-                    :placeholder="t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.reason') })"
+                    :placeholder="
+                      t('mine.strategy.placeholder.enter', {
+                        field: t('mine.strategy.field.reason')
+                      })
+                    "
                     data-field="rollback-reason"
                   />
                 </NFlex>
@@ -770,7 +1160,11 @@ function createIdempotencyKey(prefix: string) {
                       <NFlex vertical :size="3">
                         <NFlex align="center">
                           <NText strong>
-                            {{ t('mine.strategy.text.sequence', { sequence: release.releaseSequence }) }}
+                            {{
+                              t('mine.strategy.text.sequence', {
+                                sequence: release.releaseSequence
+                              })
+                            }}
                           </NText>
                           <NTag
                             :type="release.action === 'PUBLISH' ? 'success' : 'warning'"

@@ -773,10 +773,14 @@ declare namespace App {
         strategy: {
           title: string;
           subtitle: string;
-          policyName: string;
-          productionHelp: string;
-          section: Record<'context' | 'groups' | 'members' | 'draft' | 'publish' | 'history' | 'effective', string>;
+          type: Record<'online_status' | 'data_quality', string>;
+          productionHelp: Record<'online' | 'quality', string>;
+          section: Record<
+            'context' | 'groups' | 'members' | 'draft' | 'publish' | 'history' | 'effective' | 'qualityRules',
+            string
+          >;
           field: Record<
+            | 'strategyType'
             | 'product'
             | 'device'
             | 'group'
@@ -792,7 +796,13 @@ declare namespace App {
             | 'status'
             | 'hash'
             | 'release'
-            | 'source',
+            | 'source'
+            | 'staleAfterSeconds'
+            | 'futureToleranceSeconds'
+            | 'propertyId'
+            | 'required'
+            | 'minimum'
+            | 'maximum',
             string
           >;
           action: Record<
@@ -805,15 +815,35 @@ declare namespace App {
             | 'saveDraft'
             | 'publish'
             | 'rollback'
-            | 'refresh',
+            | 'refresh'
+            | 'addQualityRule'
+            | 'removeQualityRule',
             string
           >;
-          status: Record<'draft' | 'published' | 'valid' | 'invalid' | 'active' | 'archived' | 'publish' | 'rollback', string>;
+          status: Record<
+            'draft' | 'published' | 'valid' | 'invalid' | 'active' | 'archived' | 'publish' | 'rollback',
+            string
+          >;
           scope: Record<'product' | 'group' | 'device', string>;
           source: Record<'product' | 'group' | 'device' | 'unknown' | 'priority' | 'release', string>;
-          empty: Record<'products' | 'groups' | 'devices' | 'versions' | 'releases' | 'effective' | 'members', string>;
-          placeholder: Record<'enter' | 'select', string>;
-          validation: Record<'required' | 'threshold' | 'scope' | 'reason' | 'draft', string>;
+          empty: Record<
+            'products' | 'groups' | 'devices' | 'versions' | 'releases' | 'effective' | 'members' | 'qualityRules',
+            string
+          >;
+          placeholder: Record<'enter' | 'select' | 'propertyId', string>;
+          validation: Record<
+            | 'required'
+            | 'threshold'
+            | 'scope'
+            | 'reason'
+            | 'draft'
+            | 'stale'
+            | 'future'
+            | 'property'
+            | 'range'
+            | 'qualityRequired',
+            string
+          >;
           message: Record<
             | 'groupCreated'
             | 'groupUpdated'
@@ -827,8 +857,20 @@ declare namespace App {
           >;
           confirm: Record<'archiveGroup' | 'rollback', string>;
           error: Record<'title' | 'conflictTitle' | 'invalidTitle' | 'code' | 'details', string>;
-          help: Record<'groupPriority' | 'scope' | 'members' | 'readonly', string>;
-          text: Record<'seconds' | 'version' | 'sequence' | 'memberCount' | 'priority', string>;
+          help: Record<'groupPriority' | 'scope' | 'members' | 'readonly' | 'qualityTemplate' | 'qualityRules', string>;
+          text: Record<
+            | 'seconds'
+            | 'enabled'
+            | 'disabled'
+            | 'version'
+            | 'sequence'
+            | 'memberCount'
+            | 'priority'
+            | 'onlineSummary'
+            | 'qualitySummary',
+            string
+          >;
+          qualityField: Record<'required' | 'minimum' | 'maximum', string>;
         };
         models: {
           title: string;

@@ -84,7 +84,7 @@ export function listStrategyVersions(query: StrategyVersionQuery) {
   return request<StrategyVersion[]>(`/strategy-versions?${queryString(query)}`);
 }
 
-/** 创建在线状态策略草稿。 */
+/** 创建指定类型的策略草稿。 */
 export function createStrategyDraft(body: StrategyDraftCreateRequest) {
   return request<StrategyVersion>('/strategy-versions', { method: 'POST', body: JSON.stringify(body) });
 }
@@ -124,7 +124,7 @@ export function rollbackStrategyRelease(
   });
 }
 
-/** 查询设备当前在线状态有效策略和逐字段来源。 */
+/** 查询设备指定类型的有效策略和逐字段来源。 */
 export function getEffectiveStrategy(deviceId: string, strategyType: StrategyType) {
   return request<EffectiveStrategy>(
     `/devices/${encodeURIComponent(deviceId)}/effective-strategies/${encodeURIComponent(strategyType)}`

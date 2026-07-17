@@ -52,7 +52,13 @@ describe('EffectiveStrategyPanel', () => {
           valid: false,
           values: {},
           sources: {},
-          conflicts: [{ field: 'offlineThresholdSeconds', groupPriority: 900, groupIds: ['group-a', 'group-b'] }],
+          conflicts: [
+            {
+              field: 'offlineThresholdSeconds',
+              groupPriority: 900,
+              groupIds: ['group-a', 'group-b']
+            }
+          ],
           contentHash: null
         },
         problem: {
@@ -70,5 +76,46 @@ describe('EffectiveStrategyPanel', () => {
     expect(wrapper.text()).toContain('trace-001');
     expect(wrapper.text()).toContain('group-a');
     expect(wrapper.text()).toContain('group-b');
+  });
+
+  it('应逐字段展示数据质量有效值及其发布来源', () => {
+    setLocale('zh-CN');
+    const source = {
+      scopeType: 'DEVICE' as const,
+      scopeId: 'device-1',
+      releaseId: 'quality-release-3',
+      groupPriority: null
+    };
+    const wrapper = mount(EffectiveStrategyPanel, {
+      props: {
+        deviceName: '北区运输车 01',
+        loading: false,
+        effective: {
+          deviceId: 'device-1',
+          productId: 'product-1',
+          strategyType: 'DATA_QUALITY',
+          valid: true,
+          values: {
+            staleAfterSeconds: 120,
+            'required.engine.rpm': true,
+            'minimum.engine.rpm': 500
+          },
+          sources: {
+            staleAfterSeconds: source,
+            'required.engine.rpm': source,
+            'minimum.engine.rpm': source
+          },
+          conflicts: [],
+          contentHash: `sha256:${'c'.repeat(64)}`
+        }
+      },
+      global: { plugins: [i18n] }
+    });
+
+    expect(wrapper.text()).toContain('陈旧阈值');
+    expect(wrapper.text()).toContain('必填 · engine.rpm');
+    expect(wrapper.text()).toContain('下限 · engine.rpm');
+    expect(wrapper.text()).toContain('单设备覆盖');
+    expect(wrapper.text()).toContain('quality-release-3');
   });
 });

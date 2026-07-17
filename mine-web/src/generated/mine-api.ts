@@ -962,7 +962,7 @@ export interface paths {
         /**
          * 冲突预检通过后原子发布策略
          * @description 计算所有受影响设备的三级有效策略。同优先级设备组对同一字段给出不同值时，
-         *     返回 STRATEGY-409-001，策略版本、发布事实、审计和 Outbox 均不提交。
+         *     返回 STRATEGY-409-001，策略版本、发布事实和审计均不提交。
          */
         post: operations["publishStrategy"];
         delete?: never;
@@ -1097,7 +1097,7 @@ export interface components {
             version: number;
         };
         /** @enum {string} */
-        StrategyType: "ONLINE_STATUS";
+        StrategyType: "ONLINE_STATUS" | "DATA_QUALITY";
         /** @enum {string} */
         StrategyScopeType: "PRODUCT" | "GROUP" | "DEVICE";
         /** @enum {string} */
@@ -1106,6 +1106,15 @@ export interface components {
             /** @description 无有效上行活动后判定设备离线的秒数。 */
             offlineThresholdSeconds: number;
         };
+        DataQualityStrategyValues: {
+            /** @description 设备发生时间早于平台接收时间超过该秒数时标记为不确定。 */
+            staleAfterSeconds?: number;
+            /** @description 设备发生时间允许超前平台接收时间的最大秒数。 */
+            futureToleranceSeconds?: number;
+        } & {
+            [key: string]: boolean | number;
+        };
+        StrategyValues: components["schemas"]["OnlineStatusStrategyValues"] | components["schemas"]["DataQualityStrategyValues"];
         StrategyVersion: {
             /** Format: uuid */
             id: string;
@@ -1115,7 +1124,7 @@ export interface components {
             /** Format: int64 */
             versionNumber: number;
             status: components["schemas"]["StrategyVersionStatus"];
-            values: components["schemas"]["OnlineStatusStrategyValues"];
+            values: components["schemas"]["StrategyValues"];
             contentHash?: string | null;
             description?: string | null;
             /** Format: date-time */
@@ -1131,11 +1140,11 @@ export interface components {
             /** Format: uuid */
             productId: string;
             strategyType: components["schemas"]["StrategyType"];
-            values: components["schemas"]["OnlineStatusStrategyValues"];
+            values: components["schemas"]["StrategyValues"];
             description?: string | null;
         };
         StrategyDraftUpdateRequest: {
-            values: components["schemas"]["OnlineStatusStrategyValues"];
+            values: components["schemas"]["StrategyValues"];
             description?: string | null;
             /** Format: int64 */
             version: number;
@@ -1197,6 +1206,10 @@ export interface components {
             valid: boolean;
             values: {
                 offlineThresholdSeconds?: number;
+                staleAfterSeconds?: number;
+                futureToleranceSeconds?: number;
+            } & {
+                [key: string]: boolean | number;
             };
             sources: {
                 [key: string]: components["schemas"]["StrategyValueSource"];

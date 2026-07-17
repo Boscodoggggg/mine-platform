@@ -9,8 +9,9 @@ import {
   NDescriptionsItem,
   NEmpty,
   NFlex,
+  NList,
+  NListItem,
   NSpin,
-  NStatistic,
   NTag,
   NText
 } from 'naive-ui';
@@ -33,8 +34,15 @@ const props = defineProps<{
 defineEmits<{ refresh: [] }>();
 
 const { t } = useI18n();
-const threshold = computed(() => props.effective?.values.offlineThresholdSeconds ?? null);
-const source = computed(() => props.effective?.sources.offlineThresholdSeconds || null);
+const valueEntries = computed(() =>
+  Object.entries(props.effective?.values || {})
+    .map(([field, value]) => ({
+      field,
+      value,
+      source: props.effective?.sources[field]
+    }))
+    .sort((left, right) => fieldOrder(left.field) - fieldOrder(right.field) || left.field.localeCompare(right.field))
+);
 const problemDetails = computed(() => formatDetails(props.problem?.details));
 const hasConflict = computed(
   () => props.problem?.code === 'STRATEGY-409-001' || Boolean(props.effective?.conflicts.length)
@@ -45,6 +53,31 @@ function sourceLabel(scopeType?: string) {
   if (scopeType === 'GROUP') return t('mine.strategy.source.group');
   if (scopeType === 'DEVICE') return t('mine.strategy.source.device');
   return t('mine.strategy.source.unknown');
+}
+
+function fieldLabel(field: string) {
+  if (field === 'offlineThresholdSeconds') return t('mine.strategy.field.threshold');
+  if (field === 'staleAfterSeconds') return t('mine.strategy.field.staleAfterSeconds');
+  if (field === 'futureToleranceSeconds') return t('mine.strategy.field.futureToleranceSeconds');
+  const match = /^(required|minimum|maximum)\.(.+)$/.exec(field);
+  if (!match?.[1] || !match[2]) return field;
+  return t(`mine.strategy.qualityField.${match[1]}`, { property: match[2] });
+}
+
+function displayValue(field: string, value: boolean | number) {
+  if (typeof value === 'boolean') {
+    return value ? t('mine.strategy.text.enabled') : t('mine.strategy.text.disabled');
+  }
+  if (['offlineThresholdSeconds', 'staleAfterSeconds', 'futureToleranceSeconds'].includes(field)) {
+    return `${value} ${t('mine.strategy.text.seconds')}`;
+  }
+  return String(value);
+}
+
+function fieldOrder(field: string) {
+  const knownFields = ['offlineThresholdSeconds', 'staleAfterSeconds', 'futureToleranceSeconds'];
+  const index = knownFields.indexOf(field);
+  return index === -1 ? knownFields.length : index;
 }
 
 function formatDetails(details?: Record<string, unknown>) {
@@ -123,26 +156,40 @@ function formatValue(value: unknown): string {
           }}
         </NAlert>
 
-        <NStatistic v-if="threshold !== null" :label="t('mine.strategy.field.threshold')" :value="threshold">
-          <template #suffix>{{ t('mine.strategy.text.seconds') }}</template>
-        </NStatistic>
-
-        <NDescriptions v-if="source" :column="1" label-placement="left" bordered size="small">
-          <NDescriptionsItem :label="t('mine.strategy.field.source')">
-            <NFlex align="center" :wrap="true">
-              <NTag type="primary" :bordered="false">{{ sourceLabel(source.scopeType) }}</NTag>
-              <NText v-if="source.groupPriority !== null && source.groupPriority !== undefined" depth="3">
-                {{ t('mine.strategy.source.priority', { priority: source.groupPriority }) }}
-              </NText>
+        <NList v-if="valueEntries.length" bordered>
+          <NListItem v-for="entry in valueEntries" :key="entry.field">
+            <NFlex vertical :size="8" class="w-full">
+              <NFlex justify="space-between" align="center" :wrap="true">
+                <NText strong>{{ fieldLabel(entry.field) }}</NText>
+                <NTag type="primary" :bordered="false">{{ displayValue(entry.field, entry.value) }}</NTag>
+              </NFlex>
+              <NDescriptions v-if="entry.source" :column="1" label-placement="left" bordered size="small">
+                <NDescriptionsItem :label="t('mine.strategy.field.source')">
+                  <NFlex align="center" :wrap="true">
+                    <NTag type="primary" :bordered="false">{{ sourceLabel(entry.source.scopeType) }}</NTag>
+                    <NText
+                      v-if="entry.source.groupPriority !== null && entry.source.groupPriority !== undefined"
+                      depth="3"
+                    >
+                      {{
+                        t('mine.strategy.source.priority', {
+                          priority: entry.source.groupPriority
+                        })
+                      }}
+                    </NText>
+                  </NFlex>
+                </NDescriptionsItem>
+                <NDescriptionsItem :label="t('mine.strategy.field.scope')">
+                  <NText code class="break-all">{{ entry.source.scopeId }}</NText>
+                </NDescriptionsItem>
+                <NDescriptionsItem :label="t('mine.strategy.field.release')">
+                  <NText code class="break-all">{{ entry.source.releaseId }}</NText>
+                </NDescriptionsItem>
+              </NDescriptions>
+              <NText v-else depth="3">{{ t('mine.strategy.source.unknown') }}</NText>
             </NFlex>
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('mine.strategy.field.scope')">
-            <NText code class="break-all">{{ source.scopeId }}</NText>
-          </NDescriptionsItem>
-          <NDescriptionsItem :label="t('mine.strategy.field.release')">
-            <NText code class="break-all">{{ source.releaseId }}</NText>
-          </NDescriptionsItem>
-        </NDescriptions>
+          </NListItem>
+        </NList>
 
         <NFlex v-if="effective?.contentHash" vertical :size="4">
           <NText depth="3">{{ t('mine.strategy.field.hash') }}</NText>

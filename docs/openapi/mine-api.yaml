@@ -1805,7 +1805,7 @@ components:
         version: { type: integer, format: int64, minimum: 0 }
     StrategyType:
       type: string
-      enum: [ONLINE_STATUS]
+      enum: [ONLINE_STATUS, DATA_QUALITY]
     StrategyScopeType:
       type: string
       enum: [PRODUCT, GROUP, DEVICE]
@@ -1822,6 +1822,40 @@ components:
           minimum: 1
           maximum: 604800
           description: 无有效上行活动后判定设备离线的秒数。
+    DataQualityStrategyValues:
+      type: object
+      minProperties: 1
+      maxProperties: 256
+      additionalProperties: false
+      properties:
+        staleAfterSeconds:
+          type: integer
+          minimum: 1
+          maximum: 604800
+          description: 设备发生时间早于平台接收时间超过该秒数时标记为不确定。
+        futureToleranceSeconds:
+          type: integer
+          minimum: 0
+          maximum: 3600
+          description: 设备发生时间允许超前平台接收时间的最大秒数。
+      patternProperties:
+        '^required\.[A-Za-z][A-Za-z0-9_.-]{0,127}$':
+          type: boolean
+          description: 指定物模型属性是否为本帧必填项。
+        '^minimum\.[A-Za-z][A-Za-z0-9_.-]{0,127}$':
+          type: number
+          minimum: -1000000000000000
+          maximum: 1000000000000000
+          description: 指定数值属性的质量下限。
+        '^maximum\.[A-Za-z][A-Za-z0-9_.-]{0,127}$':
+          type: number
+          minimum: -1000000000000000
+          maximum: 1000000000000000
+          description: 指定数值属性的质量上限。
+    StrategyValues:
+      oneOf:
+        - $ref: '#/components/schemas/OnlineStatusStrategyValues'
+        - $ref: '#/components/schemas/DataQualityStrategyValues'
     StrategyVersion:
       type: object
       required:
@@ -1840,7 +1874,7 @@ components:
         strategyType: { $ref: '#/components/schemas/StrategyType' }
         versionNumber: { type: integer, format: int64, minimum: 1 }
         status: { $ref: '#/components/schemas/StrategyVersionStatus' }
-        values: { $ref: '#/components/schemas/OnlineStatusStrategyValues' }
+        values: { $ref: '#/components/schemas/StrategyValues' }
         contentHash:
           type: [string, 'null']
           pattern: '^sha256:[0-9a-f]{64}$'
@@ -1856,14 +1890,14 @@ components:
       properties:
         productId: { type: string, format: uuid }
         strategyType: { $ref: '#/components/schemas/StrategyType' }
-        values: { $ref: '#/components/schemas/OnlineStatusStrategyValues' }
+        values: { $ref: '#/components/schemas/StrategyValues' }
         description: { type: [string, 'null'], maxLength: 500 }
     StrategyDraftUpdateRequest:
       type: object
       additionalProperties: false
       required: [values, version]
       properties:
-        values: { $ref: '#/components/schemas/OnlineStatusStrategyValues' }
+        values: { $ref: '#/components/schemas/StrategyValues' }
         description: { type: [string, 'null'], maxLength: 500 }
         version: { type: integer, format: int64, minimum: 0 }
     StrategyPublishRequest:
@@ -1942,12 +1976,24 @@ components:
         valid: { type: boolean }
         values:
           type: object
-          additionalProperties: false
+          maxProperties: 256
+          additionalProperties:
+            oneOf:
+              - type: boolean
+              - type: number
           properties:
             offlineThresholdSeconds:
               type: integer
               minimum: 1
               maximum: 604800
+            staleAfterSeconds:
+              type: integer
+              minimum: 1
+              maximum: 604800
+            futureToleranceSeconds:
+              type: integer
+              minimum: 0
+              maximum: 3600
         sources:
           type: object
           additionalProperties: { $ref: '#/components/schemas/StrategyValueSource' }

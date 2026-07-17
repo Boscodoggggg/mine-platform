@@ -1,10 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { NSelect } from 'naive-ui';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { i18n, setLocale } from '@/locales';
 import StrategyWorkbenchPage from './StrategyWorkbenchPage.vue';
 
-const deviceApi = vi.hoisted(() => ({ getDevices: vi.fn(), getProducts: vi.fn() }));
+const deviceApi = vi.hoisted(() => ({
+  getDevices: vi.fn(),
+  getProducts: vi.fn()
+}));
 const strategyApi = vi.hoisted(() => ({
   archiveDeviceGroup: vi.fn(),
   createDeviceGroup: vi.fn(),
@@ -76,6 +80,20 @@ const draft = {
   updatedAt: '2026-07-16T00:00:00Z',
   version: 1
 };
+const qualityDraft = {
+  ...draft,
+  id: 'quality-version-2',
+  strategyType: 'DATA_QUALITY' as const,
+  versionNumber: 2,
+  values: {
+    staleAfterSeconds: 120,
+    futureToleranceSeconds: 5,
+    'required.engine.rpm': true,
+    'minimum.engine.rpm': 500,
+    'maximum.engine.rpm': 2500
+  },
+  description: '运输车数据可信基线'
+};
 const release = {
   id: 'release-8',
   productId: 'product-1',
@@ -106,18 +124,47 @@ const effective = {
   conflicts: [],
   contentHash: release.contentHash
 };
+const qualityEffective = {
+  ...effective,
+  strategyType: 'DATA_QUALITY' as const,
+  values: qualityDraft.values,
+  sources: Object.fromEntries(
+    Object.keys(qualityDraft.values).map(field => [field, effective.sources.offlineThresholdSeconds])
+  )
+};
 
 describe('StrategyWorkbenchPage', () => {
   beforeEach(() => {
     setLocale('zh-CN');
     vi.clearAllMocks();
-    deviceApi.getProducts.mockResolvedValue({ items: [product], page: 1, size: 100, total: 1 });
-    deviceApi.getDevices.mockResolvedValue({ items: [device], page: 1, size: 200, total: 1 });
-    strategyApi.listDeviceGroups.mockResolvedValue({ items: [group], page: 1, size: 100, total: 1 });
+    deviceApi.getProducts.mockResolvedValue({
+      items: [product],
+      page: 1,
+      size: 100,
+      total: 1
+    });
+    deviceApi.getDevices.mockResolvedValue({
+      items: [device],
+      page: 1,
+      size: 200,
+      total: 1
+    });
+    strategyApi.listDeviceGroups.mockResolvedValue({
+      items: [group],
+      page: 1,
+      size: 100,
+      total: 1
+    });
     strategyApi.listDeviceGroupMembers.mockResolvedValue([{ ...device, effectiveFrom: '2026-07-16T01:00:00Z' }]);
-    strategyApi.listStrategyVersions.mockResolvedValue([draft]);
-    strategyApi.listStrategyReleases.mockResolvedValue([release]);
-    strategyApi.getEffectiveStrategy.mockResolvedValue(effective);
+    strategyApi.listStrategyVersions.mockImplementation(({ strategyType }: { strategyType: string }) =>
+      Promise.resolve(strategyType === 'DATA_QUALITY' ? [qualityDraft] : [draft])
+    );
+    strategyApi.listStrategyReleases.mockImplementation(({ strategyType }: { strategyType: string }) =>
+      Promise.resolve(strategyType === 'DATA_QUALITY' ? [] : [release])
+    );
+    strategyApi.getEffectiveStrategy.mockImplementation((_deviceId: string, strategyType: string) =>
+      Promise.resolve(strategyType === 'DATA_QUALITY' ? qualityEffective : effective)
+    );
     strategyApi.publishStrategy.mockResolvedValue(release);
     strategyApi.createStrategyDraft.mockResolvedValue(draft);
     strategyApi.updateStrategyDraft.mockResolvedValue(draft);
@@ -128,7 +175,11 @@ describe('StrategyWorkbenchPage', () => {
       memberCount: 1,
       version: 3
     });
-    window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
+    window.$message = {
+      success: vi.fn(),
+      error: vi.fn(),
+      warning: vi.fn()
+    } as never;
     window.confirm = vi.fn(() => true);
   });
 
@@ -190,7 +241,10 @@ describe('StrategyWorkbenchPage', () => {
           code: 'STRATEGY-409-001',
           message: '同优先级设备组配置冲突',
           traceId: 'trace-conflict-1',
-          details: { groupIds: ['group-a', 'group-b'], field: 'offlineThresholdSeconds' }
+          details: {
+            groupIds: ['group-a', 'group-b'],
+            field: 'offlineThresholdSeconds'
+          }
         },
         409
       )
@@ -208,9 +262,42 @@ describe('StrategyWorkbenchPage', () => {
     expect(wrapper.text()).toContain('group-a');
     expect(wrapper.text()).toContain('group-b');
   });
+
+  it('应切换到数据质量策略并编辑时间与属性规则', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit']);
+    await flushPromises();
+
+    const strategyTypeSelector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+    expect(strategyTypeSelector).toBeDefined();
+    strategyTypeSelector?.vm.$emit('update:value', 'DATA_QUALITY');
+    await flushPromises();
+
+    expect(strategyApi.listStrategyVersions).toHaveBeenLastCalledWith({
+      productId: 'product-1',
+      strategyType: 'DATA_QUALITY',
+      limit: 50
+    });
+    expect(strategyApi.getEffectiveStrategy).toHaveBeenLastCalledWith('device-1', 'DATA_QUALITY');
+    expect(wrapper.text()).toContain('数据质量策略');
+    expect(wrapper.text()).toContain('陈旧阈值');
+    expect(wrapper.text()).toContain('engine.rpm');
+
+    await wrapper.get('[data-action="save-draft"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.updateStrategyDraft).toHaveBeenCalledWith('quality-version-2', {
+      values: qualityDraft.values,
+      description: '运输车数据可信基线',
+      version: 1
+    });
+  });
 });
 
 function mountPage(permissions: string[]) {
   authState.userInfo.buttons = permissions;
-  return mount(StrategyWorkbenchPage, { global: { plugins: [i18n], stubs: { teleport: true } } });
+  return mount(StrategyWorkbenchPage, {
+    global: { plugins: [i18n], stubs: { teleport: true } }
+  });
 }
