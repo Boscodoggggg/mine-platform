@@ -14,6 +14,7 @@ import {
   NInput,
   NModal,
   NPageHeader,
+  NScrollbar,
   NSelect,
   NSpace,
   NTag,
@@ -58,6 +59,7 @@ const permissionModalVisible = ref(false);
 const permissionRole = ref<ManagedRole | null>(null);
 const menuTree = ref<TreeOption[]>([]);
 const checkedMenuIds = ref<Array<string | number>>([]);
+const expandedMenuIds = ref<Array<string | number>>([]);
 
 const statusOptions = computed<SelectOption[]>(() => [
   { label: t('mine.common.status.enabled'), value: 'ENABLED' },
@@ -203,6 +205,7 @@ async function openPermissions(role: ManagedRole) {
   try {
     const nodes = await getMenuTree();
     menuTree.value = nodes.map(toTreeOption);
+    expandedMenuIds.value = nodes.map(node => node.id);
   } catch (error) {
     showError(error);
   }
@@ -225,12 +228,13 @@ async function savePermissions() {
 
 function toTreeOption(node: ManagedMenuNode): TreeOption {
   const suffix = node.permission ? ` · ${node.permission}` : '';
-  return {
+  const children = node.children.map(toTreeOption);
+  const option: TreeOption = {
     key: node.id,
     label: `${node.name}${suffix}`,
-    disabled: node.status !== 'ENABLED',
-    children: node.children.map(toTreeOption)
+    disabled: node.status !== 'ENABLED'
   };
+  return children.length ? { ...option, children } : option;
 }
 
 function can(permission: string) {
@@ -384,11 +388,25 @@ defineExpose({
       v-model:show="permissionModalVisible"
       preset="card"
       :title="t('mine.roles.modal.permissions')"
-      class="w-full max-w-760px"
+      class="w-full max-w-720px"
     >
-      <NSpace vertical :size="16">
-        <NText depth="3">{{ t('mine.roles.tip.permissions', { name: permissionRole?.name || '' }) }}</NText>
-        <NTree v-model:checked-keys="checkedMenuIds" block-line cascade checkable default-expand-all :data="menuTree" />
+      <NSpace vertical :size="12">
+        <NFlex data-permission-summary align="center" justify="space-between">
+          <NText depth="3">{{ t('mine.roles.tip.permissions', { name: permissionRole?.name || '' }) }}</NText>
+          <NTag size="small" type="info" :bordered="false">
+            {{ t('mine.roles.permissionCount', { count: checkedMenuIds.length }) }}
+          </NTag>
+        </NFlex>
+        <NScrollbar data-permission-tree-scroll class="max-h-60vh pr-1">
+          <NTree
+            v-model:checked-keys="checkedMenuIds"
+            v-model:expanded-keys="expandedMenuIds"
+            block-line
+            cascade
+            checkable
+            :data="menuTree"
+          />
+        </NScrollbar>
       </NSpace>
       <template #footer>
         <NSpace justify="end">

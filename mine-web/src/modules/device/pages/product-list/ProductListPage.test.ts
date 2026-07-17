@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NButton } from 'naive-ui';
 import { i18n, setLocale } from '@/locales';
 import ProductListPage from './ProductListPage.vue';
 
@@ -57,6 +58,16 @@ describe('ProductListPage', () => {
     expect(wrapper.text()).toContain('产品管理');
     expect(wrapper.text()).toContain('矿用运输车');
     expect(wrapper.find('[data-action="create-product"]').exists()).toBe(true);
+  });
+
+  it('筛选操作按钮应保持紧凑宽度', async () => {
+    const wrapper = mountPage([]);
+    await flushPromises();
+    const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
+
+    expect(wrapper.find('[data-filter-actions]').exists()).toBe(true);
+    expect(filterButtons).toHaveLength(2);
+    expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
   });
 
   it('创建产品时应提交稳定产品编码和初始状态', async () => {

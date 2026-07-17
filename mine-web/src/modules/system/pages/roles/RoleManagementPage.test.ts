@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { NButton, NSelect } from 'naive-ui';
+import { NButton, NSelect, NTree } from 'naive-ui';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { i18n, setLocale } from '@/locales';
@@ -112,6 +112,22 @@ describe('RoleManagementPage', () => {
     page.checkedMenuIds = ['menu-1'];
     await page.savePermissions();
     expect(api.replaceRoleMenus).toHaveBeenCalledWith('role-1', ['menu-1']);
+  });
+
+  it('权限配置应使用限高树区且叶子节点不显示展开入口', async () => {
+    const wrapper = mountPage(['system:role:assign-menu']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as { openPermissions: (target: typeof role) => Promise<void> };
+
+    await page.openPermissions(role);
+    await flushPromises();
+    const tree = wrapper.findComponent(NTree);
+    const treeData = tree.props('data') as Array<{ children?: unknown[] }>;
+
+    expect(document.body.querySelector('[data-permission-summary]')?.textContent).toContain('1 项');
+    expect(document.body.querySelector('[data-permission-tree-scroll]')?.classList).toContain('max-h-60vh');
+    expect(tree.props('defaultExpandAll')).not.toBe(true);
+    expect(treeData[0]).not.toHaveProperty('children');
   });
 
   it('删除占用角色时应展示服务端冲突和链路号', async () => {

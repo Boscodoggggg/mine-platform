@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NButton } from 'naive-ui';
 import { i18n, setLocale } from '@/locales';
 import CommandCenterPage from './CommandCenterPage.vue';
 
@@ -47,6 +48,19 @@ describe('CommandCenterPage', () => {
     expect(wrapper.text()).toContain('状态查询');
     expect(wrapper.text()).toContain('执行成功');
     expect(api.getCommandTargets).toHaveBeenCalled();
+  });
+
+  it('桌面筛选条件和紧凑操作按钮应保持在同一行容器', async () => {
+    const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const filterRow = wrapper.find('[data-command-filter-row]');
+    const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
+
+    expect(filterRow.exists()).toBe(true);
+    expect(filterRow.text()).toContain('查询');
+    expect(filterRow.text()).toContain('重置');
+    expect(filterButtons).toHaveLength(2);
+    expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
   });
 
   it('下发前应显示二次确认且复用同一个幂等键提交', async () => {

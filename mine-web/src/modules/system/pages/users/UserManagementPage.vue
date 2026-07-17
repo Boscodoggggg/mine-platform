@@ -7,6 +7,7 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NFlex,
   NForm,
   NFormItem,
   NGi,
@@ -306,25 +307,26 @@ defineExpose({
     </NPageHeader>
 
     <NCard size="small">
-      <NGrid responsive="screen" cols="1 s:2 m:4" :x-gap="12" :y-gap="12">
-        <NGi>
-          <NInput v-model:value="query.keyword" clearable :placeholder="t('mine.users.search')" @keyup.enter="search" />
-        </NGi>
-        <NGi>
-          <NSelect
-            v-model:value="query.status"
-            clearable
-            :options="statusOptions"
-            :placeholder="t('mine.common.allStatus')"
-          />
-        </NGi>
-        <NGi>
-          <NButton block type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
-        </NGi>
-        <NGi>
-          <NButton block @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
-        </NGi>
-      </NGrid>
+      <NFlex align="center">
+        <NInput
+          v-model:value="query.keyword"
+          clearable
+          :placeholder="t('mine.users.search')"
+          class="min-w-60 flex-1"
+          @keyup.enter="search"
+        />
+        <NSelect
+          v-model:value="query.status"
+          clearable
+          :options="statusOptions"
+          :placeholder="t('mine.common.allStatus')"
+          class="w-52"
+        />
+        <NSpace data-filter-actions>
+          <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
+          <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+        </NSpace>
+      </NFlex>
     </NCard>
 
     <NCard size="small">

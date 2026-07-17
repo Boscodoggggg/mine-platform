@@ -11,6 +11,7 @@ import {
   NDrawer,
   NDrawerContent,
   NEmpty,
+  NFlex,
   NForm,
   NFormItem,
   NGi,
@@ -410,41 +411,36 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
       </NPageHeader>
 
       <NCard>
-        <NGrid responsive="screen" cols="1 s:2 m:4" :x-gap="12" :y-gap="12">
-          <NGi>
-            <NSelect
-              v-model:value="query.deviceId"
-              clearable
-              filterable
-              remote
-              :options="deviceOptions"
-              :placeholder="t('mine.commands.placeholder.device')"
-              @search="loadTargets"
-            />
-          </NGi>
-          <NGi>
-            <NSelect
-              v-model:value="query.templateKey"
-              clearable
-              :options="templateOptions"
-              :placeholder="t('mine.commands.placeholder.template')"
-            />
-          </NGi>
-          <NGi>
-            <NSelect
-              v-model:value="query.status"
-              clearable
-              :options="statusOptions"
-              :placeholder="t('mine.commands.placeholder.status')"
-            />
-          </NGi>
-          <NGi span="1 s:2">
-            <NSpace>
-              <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
-              <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
-            </NSpace>
-          </NGi>
-        </NGrid>
+        <NFlex data-command-filter-row align="center">
+          <NSelect
+            v-model:value="query.deviceId"
+            clearable
+            filterable
+            remote
+            :options="deviceOptions"
+            :placeholder="t('mine.commands.placeholder.device')"
+            class="min-w-56 flex-1"
+            @search="loadTargets"
+          />
+          <NSelect
+            v-model:value="query.templateKey"
+            clearable
+            :options="templateOptions"
+            :placeholder="t('mine.commands.placeholder.template')"
+            class="min-w-56 flex-1"
+          />
+          <NSelect
+            v-model:value="query.status"
+            clearable
+            :options="statusOptions"
+            :placeholder="t('mine.commands.placeholder.status')"
+            class="min-w-56 flex-1"
+          />
+          <NSpace data-filter-actions>
+            <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
+            <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+          </NSpace>
+        </NFlex>
       </NCard>
 
       <NCard>
