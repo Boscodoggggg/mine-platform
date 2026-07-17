@@ -32,6 +32,22 @@ info:
 
 mine:
   gateway:
+    tcp:
+      enabled: ${MINE_GATEWAY_TCP_ENABLED:false}
+      bind-host: ${MINE_GATEWAY_TCP_BIND_HOST:0.0.0.0}
+      port: ${MINE_GATEWAY_TCP_PORT:9000}
+      protocol-key: ${MINE_GATEWAY_TCP_PROTOCOL_KEY:}
+      worker-threads: ${MINE_GATEWAY_TCP_WORKER_THREADS:2}
+      business-threads: ${MINE_GATEWAY_TCP_BUSINESS_THREADS:4}
+      backlog: ${MINE_GATEWAY_TCP_BACKLOG:1024}
+      max-connections: ${MINE_GATEWAY_TCP_MAX_CONNECTIONS:10000}
+      max-connections-per-ip: ${MINE_GATEWAY_TCP_MAX_CONNECTIONS_PER_IP:100}
+      read-idle-seconds: ${MINE_GATEWAY_TCP_READ_IDLE_SECONDS:120}
+      shutdown-timeout: ${MINE_GATEWAY_TCP_SHUTDOWN_TIMEOUT:30s}
+      tls:
+        enabled: ${MINE_GATEWAY_TCP_TLS_ENABLED:false}
+        certificate: ${MINE_GATEWAY_TCP_TLS_CERTIFICATE:}
+        private-key: ${MINE_GATEWAY_TCP_TLS_PRIVATE_KEY:}
     configuration-distribution:
       enabled: ${MINE_GATEWAY_CONFIGURATION_DISTRIBUTION_ENABLED:false}
       server-base-url: ${MINE_GATEWAY_CONFIGURATION_SERVER_URL:http://mine-server:8080}

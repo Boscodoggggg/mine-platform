@@ -63,7 +63,7 @@
             <groupId>com.bosco</groupId>
             <artifactId>mine-protocol-example-haul-truck</artifactId>
             <version>${project.version}</version>
-            <scope>test</scope>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

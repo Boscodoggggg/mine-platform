@@ -30,6 +30,7 @@ public final class TcpDeviceChannelHandler extends SimpleChannelInboundHandler<B
     private final TcpProtocolSession session;
     private final TcpMessageNormalizer normalizer;
     private final TelemetryPublisher publisher;
+    private final TcpGatewayObserver observer;
 
     private String boundDeviceId;
 
@@ -45,12 +46,30 @@ public final class TcpDeviceChannelHandler extends SimpleChannelInboundHandler<B
             TcpMessageNormalizer normalizer,
             TelemetryPublisher publisher
     ) {
+        this(plugin, normalizer, publisher, TcpGatewayObserver.NOOP);
+    }
+
+    /**
+     * 为一个新连接创建带运行观察器的独立协议会话处理器。
+     *
+     * @param plugin 当前监听端口绑定的离线审核插件
+     * @param normalizer TCP 可信身份和统一消息转换器
+     * @param publisher 可靠平台事件发布器
+     * @param observer 固定低基数运行事件观察器
+     */
+    public TcpDeviceChannelHandler(
+            TcpProtocolPlugin plugin,
+            TcpMessageNormalizer normalizer,
+            TelemetryPublisher publisher,
+            TcpGatewayObserver observer
+    ) {
         Objects.requireNonNull(plugin, "TCP 协议插件不能为空");
         this.protocolKey = plugin.protocolKey();
         this.protocolVersion = plugin.protocolVersion();
         this.session = Objects.requireNonNull(plugin.openSession(), "TCP 插件会话不能为空");
         this.normalizer = Objects.requireNonNull(normalizer, "TCP 消息标准化器不能为空");
         this.publisher = Objects.requireNonNull(publisher, "遥测发布器不能为空");
+        this.observer = Objects.requireNonNull(observer, "TCP 运行观察器不能为空");
     }
 
     @Override
@@ -64,6 +83,7 @@ public final class TcpDeviceChannelHandler extends SimpleChannelInboundHandler<B
             String deviceId = envelope.payload().deviceId();
             if (boundDeviceId != null && !boundDeviceId.equals(deviceId)) {
                 LOGGER.warn("关闭发生设备身份切换的 TCP 连接，protocolKey={}", protocolKey);
+                observer.frameRejected("IDENTITY_SWITCH");
                 context.close();
                 return;
             }
@@ -72,16 +92,22 @@ public final class TcpDeviceChannelHandler extends SimpleChannelInboundHandler<B
             publisher.publish(envelope);
             byte[] acknowledgement = session.encodeAcknowledgement(decoded);
             context.writeAndFlush(Unpooled.wrappedBuffer(acknowledgement));
+            observer.frameSucceeded();
+            observer.acknowledgementSent();
         } catch (TcpProtocolException exception) {
             LOGGER.warn("拒绝 TCP 协议帧，protocolKey={}, reason={}",
                     protocolKey, exception.errorCode());
+            observer.frameRejected(exception.errorCode().name());
             context.close();
         } catch (InvalidDeviceMessageException | IllegalArgumentException exception) {
             LOGGER.warn("拒绝未通过可信身份或统一消息校验的 TCP 帧，protocolKey={}", protocolKey);
+            observer.frameRejected("IDENTITY_OR_MESSAGE");
             context.close();
         } catch (RuntimeException exception) {
             LOGGER.error("TCP 遥测可靠发布或确认编码失败，protocolKey={}, exceptionType={}",
                     protocolKey, exception.getClass().getSimpleName());
+            observer.publishFailed();
+            observer.frameRejected("PUBLISH_OR_ACK");
             context.close();
         }
     }
@@ -100,6 +126,7 @@ public final class TcpDeviceChannelHandler extends SimpleChannelInboundHandler<B
     public void exceptionCaught(ChannelHandlerContext context, Throwable cause) {
         LOGGER.warn("关闭 TCP pipeline 异常连接，protocolKey={}, exceptionType={}",
                 protocolKey, cause.getClass().getSimpleName());
+        observer.frameRejected("PIPELINE");
         context.close();
     }
 }
