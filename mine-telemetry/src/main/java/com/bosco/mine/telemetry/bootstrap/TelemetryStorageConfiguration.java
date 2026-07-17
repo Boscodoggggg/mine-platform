@@ -7,6 +7,10 @@ import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapObserver;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
 import com.bosco.mine.telemetry.realtime.ConfirmedRealtimePublisher;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
+import com.bosco.mine.telemetry.strategy.HttpStrategySnapshotSource;
+import com.bosco.mine.telemetry.strategy.StrategyPolicyRepository;
+import com.bosco.mine.telemetry.strategy.StrategyRuntimeConsumer;
+import com.bosco.mine.telemetry.strategy.StrategySnapshotLoader;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -26,7 +30,7 @@ import java.nio.file.Files;
  * 装配遥测服务的 RabbitMQ 批消费者、Redis 最新值仓储和 TimescaleDB 历史批写器。
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(TelemetryRabbitProperties.class)
+@EnableConfigurationProperties({TelemetryRabbitProperties.class, StrategyDistributionProperties.class})
 @ConditionalOnProperty(prefix = "mine.telemetry.rabbit", name = "enabled", havingValue = "true")
 public class TelemetryStorageConfiguration {
 
@@ -156,6 +160,69 @@ public class TelemetryStorageConfiguration {
         container.setConsumerBatchEnabled(true);
         container.setReceiveTimeout(positive(properties.resolvedReceiveTimeoutMillis(), "receiveTimeoutMillis"));
         container.setBatchReceiveTimeout(properties.resolvedReceiveTimeoutMillis());
+        container.setDefaultRequeueRejected(true);
+        container.setMissingQueuesFatal(true);
+        container.setAutoStartup(properties.resolvedAutoStartup());
+        container.setMessageListener(consumer);
+        return container;
+    }
+
+    /** 创建 TimescaleDB 数据质量策略持久镜像仓储。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.strategy-distribution", name = "enabled", havingValue = "true")
+    public StrategyPolicyRepository strategyPolicyRepository(DataSource dataSource) {
+        return new StrategyPolicyRepository(dataSource);
+    }
+
+    /** 创建使用服务令牌拉取不可变快照的控制面客户端。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.strategy-distribution", name = "enabled", havingValue = "true")
+    public HttpStrategySnapshotSource strategySnapshotSource(
+            StrategyDistributionProperties properties
+    ) {
+        return new HttpStrategySnapshotSource(properties);
+    }
+
+    /** 创建分页校验并原子切换本地策略镜像的加载器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.strategy-distribution", name = "enabled", havingValue = "true")
+    public StrategySnapshotLoader strategySnapshotLoader(
+            StrategyPolicyRepository repository,
+            HttpStrategySnapshotSource source,
+            StrategyDistributionProperties properties
+    ) {
+        return new StrategySnapshotLoader(repository, source, properties.resolvedPageSize());
+    }
+
+    /** 创建策略运行变更消息消费者。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.strategy-distribution", name = "enabled", havingValue = "true")
+    public StrategyRuntimeConsumer strategyRuntimeConsumer(StrategySnapshotLoader loader) {
+        return new StrategyRuntimeConsumer(loader);
+    }
+
+    /**
+     * 创建单消息手工确认的策略监听容器，按产品修订顺序逐条原子应用。
+     */
+    @Bean(destroyMethod = "destroy")
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.strategy-distribution", name = "enabled", havingValue = "true")
+    public SimpleMessageListenerContainer strategyMessageListenerContainer(
+            CachingConnectionFactory telemetryConnectionFactory,
+            StrategyRuntimeConsumer consumer,
+            TelemetryRabbitProperties properties
+    ) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(
+                telemetryConnectionFactory);
+        container.setQueueNames(MineTopology.TELEMETRY_STRATEGY_QUEUE);
+        container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+        container.setPrefetchCount(1);
+        container.setConcurrentConsumers(1);
+        container.setMaxConcurrentConsumers(1);
         container.setDefaultRequeueRejected(true);
         container.setMissingQueuesFatal(true);
         container.setAutoStartup(properties.resolvedAutoStartup());

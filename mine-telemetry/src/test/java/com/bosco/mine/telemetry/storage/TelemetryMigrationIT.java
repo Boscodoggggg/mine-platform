@@ -123,6 +123,36 @@ class TelemetryMigrationIT {
                 """))
                 .hasSize(59)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
+        assertThat(queryStrings("""
+                SELECT COALESCE(obj_description(table_name::regclass, 'pg_class'), '')
+                FROM unnest(ARRAY[
+                    'telemetry_strategy_snapshot_stage',
+                    'telemetry_strategy_runtime_revision',
+                    'telemetry_data_quality_policy',
+                    'telemetry_strategy_event_inbox'
+                ]) AS table_name
+                ORDER BY table_name
+                """))
+                .hasSize(4)
+                .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
+        assertThat(queryStrings("""
+                SELECT COALESCE(col_description(table_class.oid, attribute.attnum), '')
+                FROM pg_class table_class
+                JOIN pg_namespace namespace ON namespace.oid = table_class.relnamespace
+                JOIN pg_attribute attribute ON attribute.attrelid = table_class.oid
+                WHERE namespace.nspname = 'public'
+                  AND table_class.relname IN (
+                    'telemetry_strategy_snapshot_stage',
+                    'telemetry_strategy_runtime_revision',
+                    'telemetry_data_quality_policy',
+                    'telemetry_strategy_event_inbox'
+                  )
+                  AND attribute.attnum > 0
+                  AND NOT attribute.attisdropped
+                ORDER BY table_class.relname, attribute.attnum
+                """))
+                .hasSize(22)
+                .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
 
         assertThat(queryStrings("""
                 SELECT current_boot_id || ':' || highest_sequence
@@ -202,6 +232,24 @@ class TelemetryMigrationIT {
                         "telemetry_latest_state",
                         "telemetry_numeric",
                         "telemetry_retired_boot"
+                );
+        assertThat(queryStrings("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name IN (
+                    'telemetry_strategy_snapshot_stage',
+                    'telemetry_strategy_runtime_revision',
+                    'telemetry_data_quality_policy',
+                    'telemetry_strategy_event_inbox'
+                  )
+                ORDER BY table_name
+                """))
+                .containsExactly(
+                        "telemetry_data_quality_policy",
+                        "telemetry_strategy_event_inbox",
+                        "telemetry_strategy_runtime_revision",
+                        "telemetry_strategy_snapshot_stage"
                 );
     }
 
