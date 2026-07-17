@@ -20,6 +20,108 @@ public final class RetentionExecutionRepository implements RetentionExecutor.Sto
     private static final String UNLOCK_SQL =
             "SELECT pg_advisory_unlock(hashtextextended('mine:telemetry:retention', 0))";
 
+    /** 设备当前任意聚合规则尚未成熟或缺少同版本有效聚合事实时判定为阻塞。 */
+    private static final String AGGREGATION_COVERAGE_BLOCKED_PREDICATE = """
+            EXISTS (
+                SELECT 1
+                  FROM telemetry_aggregation_policy aggregation_policy
+                  CROSS JOIN LATERAL jsonb_array_elements(
+                      aggregation_policy.values_json -> 'policy' -> 'rules'
+                  ) aggregation_rule(value)
+                  CROSS JOIN LATERAL (
+                      SELECT (aggregation_rule.value ->> 'bucketSeconds')::INTEGER
+                             AS bucket_seconds
+                  ) rule_config
+                  CROSS JOIN LATERAL (
+                      SELECT to_timestamp(
+                                 floor(extract(epoch FROM numeric.time)
+                                     / rule_config.bucket_seconds)
+                                 * rule_config.bucket_seconds
+                             ) AS bucket_start
+                  ) bucket
+                 WHERE aggregation_policy.device_id = numeric.device_id
+                   AND aggregation_policy.enabled
+                   AND aggregation_rule.value ->> 'propertyId' = numeric.property_id
+                   AND (
+                       CURRENT_TIMESTAMP < bucket.bucket_start
+                           + make_interval(secs => rule_config.bucket_seconds)
+                           + make_interval(
+                               secs => aggregation_policy.correction_window_seconds)
+                       OR NOT EXISTS (
+                           SELECT 1
+                             FROM telemetry_numeric_rollup rollup
+                             JOIN telemetry_aggregation_execution aggregation_execution
+                               ON aggregation_execution.execution_id = rollup.execution_id
+                            WHERE rollup.device_id = numeric.device_id
+                              AND rollup.property_id = numeric.property_id
+                              AND rollup.bucket_seconds = rule_config.bucket_seconds
+                              AND rollup.bucket_start = bucket.bucket_start
+                              AND rollup.runtime_revision =
+                                  aggregation_policy.runtime_revision
+                              AND rollup.snapshot_id = aggregation_policy.snapshot_id
+                              AND rollup.policy_content_hash =
+                                  aggregation_policy.content_hash
+                              AND rollup.source_watermark >= numeric.ingest_id
+                              AND aggregation_execution.status IN ('SUCCEEDED', 'PARTIAL')
+                       )
+                   )
+            )
+            """;
+
+    /** 保留策略和全局最短保留期共同判定原始遥测已过期。 */
+    private static final String RAW_TELEMETRY_EXPIRED_PREDICATE = """
+            policy.enabled
+            AND numeric.time < CURRENT_TIMESTAMP - make_interval(days => (
+                SELECT MIN(global_policy.raw_telemetry_days)
+                  FROM telemetry_retention_policy global_policy
+                 WHERE global_policy.enabled
+            ))
+            AND numeric.time < CURRENT_TIMESTAMP
+                - make_interval(days => policy.raw_telemetry_days)
+            AND numeric.received_at < CURRENT_TIMESTAMP
+                - make_interval(days => policy.raw_telemetry_days)
+            """;
+
+    /** 有界观察下一批过期原始遥测中的聚合覆盖阻塞量。 */
+    private static final String COUNT_AGGREGATION_BLOCKED_SQL = """
+            WITH expired AS MATERIALIZED (
+                SELECT numeric.time, numeric.event_id, numeric.property_id,
+                       numeric.device_id, numeric.ingest_id
+                  FROM telemetry_numeric numeric
+                  JOIN telemetry_retention_policy policy
+                    ON policy.device_id = numeric.device_id
+                 WHERE %s
+                 ORDER BY numeric.time, numeric.event_id, numeric.property_id
+                 LIMIT ?
+            )
+            SELECT COUNT(*)
+              FROM expired numeric
+             WHERE %s
+            """.formatted(
+            RAW_TELEMETRY_EXPIRED_PREDICATE,
+            AGGREGATION_COVERAGE_BLOCKED_PREDICATE);
+
+    /** 只选取已过期且通过当前聚合覆盖门禁的原始遥测执行删除。 */
+    private static final String DELETE_RAW_TELEMETRY_SQL = """
+            WITH expired AS MATERIALIZED (
+                SELECT numeric.time, numeric.event_id, numeric.property_id
+                  FROM telemetry_numeric numeric
+                  JOIN telemetry_retention_policy policy
+                    ON policy.device_id = numeric.device_id
+                 WHERE %s
+                   AND NOT %s
+                 ORDER BY numeric.time, numeric.event_id, numeric.property_id
+                 LIMIT ?
+            )
+            DELETE FROM telemetry_numeric numeric
+            USING expired
+             WHERE numeric.time = expired.time
+               AND numeric.event_id = expired.event_id
+               AND numeric.property_id = expired.property_id
+            """.formatted(
+            RAW_TELEMETRY_EXPIRED_PREDICATE,
+            AGGREGATION_COVERAGE_BLOCKED_PREDICATE);
+
     private final DataSource dataSource;
 
     /**
@@ -135,6 +237,24 @@ public final class RetentionExecutionRepository implements RetentionExecutor.Sto
 
         /** {@inheritDoc} */
         @Override
+        public long countAggregationBlockedRawRows(int scanLimit) {
+            if (scanLimit < 1 || scanLimit > 100_000) {
+                throw new IllegalArgumentException("聚合覆盖阻塞观察批次必须在 1 到 100000 之间");
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    COUNT_AGGREGATION_BLOCKED_SQL)) {
+                statement.setInt(1, scanLimit);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    resultSet.next();
+                    return resultSet.getLong(1);
+                }
+            } catch (SQLException exception) {
+                throw storageFailure("无法统计聚合覆盖阻塞的原始遥测", exception);
+            }
+        }
+
+        /** {@inheritDoc} */
+        @Override
         public int deleteRawTelemetryBatch(
                 UUID executionId,
                 int limit,
@@ -143,31 +263,9 @@ public final class RetentionExecutionRepository implements RetentionExecutor.Sto
                 int batchCount
         ) {
             return inBatchTransaction(() -> {
-                int deleted = update("""
-                        WITH expired AS MATERIALIZED (
-                            SELECT numeric.time, numeric.event_id, numeric.property_id
-                              FROM telemetry_numeric numeric
-                              JOIN telemetry_retention_policy policy
-                                ON policy.device_id = numeric.device_id
-                             WHERE policy.enabled
-                               AND numeric.time < CURRENT_TIMESTAMP - make_interval(days => (
-                                   SELECT MIN(global_policy.raw_telemetry_days)
-                                     FROM telemetry_retention_policy global_policy
-                                    WHERE global_policy.enabled
-                               ))
-                               AND numeric.time < CURRENT_TIMESTAMP
-                                   - make_interval(days => policy.raw_telemetry_days)
-                               AND numeric.received_at < CURRENT_TIMESTAMP
-                                   - make_interval(days => policy.raw_telemetry_days)
-                             ORDER BY numeric.time, numeric.event_id, numeric.property_id
-                             LIMIT ?
-                        )
-                        DELETE FROM telemetry_numeric numeric
-                        USING expired
-                         WHERE numeric.time = expired.time
-                           AND numeric.event_id = expired.event_id
-                           AND numeric.property_id = expired.property_id
-                        """, statement -> statement.setInt(1, limit));
+                int deleted = update(
+                        DELETE_RAW_TELEMETRY_SQL,
+                        statement -> statement.setInt(1, limit));
                 if (deleted > 0) {
                     checkpointExecution(
                             executionId,

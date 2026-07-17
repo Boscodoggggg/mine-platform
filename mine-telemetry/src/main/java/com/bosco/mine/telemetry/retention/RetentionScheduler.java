@@ -93,8 +93,9 @@ public final class RetentionScheduler implements ApplicationRunner, AutoCloseabl
             RetentionExecutor.RunResult result = executor.runOnce();
             metrics.recordResult(result);
             LOGGER.info(
-                    "数据保留调度完成: executionId={}, status={}, policies={}, rawDeleted={}, qualityDeleted={}, batches={}",
+                    "数据保留调度完成: executionId={}, status={}, policies={}, aggregationBlocked={}, rawDeleted={}, qualityDeleted={}, batches={}",
                     result.executionId(), result.status(), result.policyCount(),
+                    result.aggregationBlockedRows(),
                     result.rawRowsDeleted(), result.qualityRowsDeleted(), result.batchCount());
         } catch (RuntimeException exception) {
             metrics.recordUnhandledFailure();

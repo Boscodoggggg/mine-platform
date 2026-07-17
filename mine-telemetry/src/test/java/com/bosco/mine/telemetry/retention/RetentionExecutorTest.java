@@ -35,6 +35,7 @@ class RetentionExecutorTest {
     void 两个数据集扫描完成时应累计删除量并完成执行事实() {
         FakeSession session = new FakeSession();
         session.policyCount = 3;
+        session.aggregationBlockedRows = 4;
         session.rawDeletes.add(100);
         session.rawDeletes.add(20);
         session.evidenceDeletes.add(100);
@@ -46,11 +47,13 @@ class RetentionExecutorTest {
         assertThat(result.status()).isEqualTo(RetentionExecutor.RunStatus.SUCCEEDED);
         assertThat(result.executionId()).isEqualTo(EXECUTION_ID);
         assertThat(result.policyCount()).isEqualTo(3);
+        assertThat(result.aggregationBlockedRows()).isEqualTo(4);
         assertThat(result.rawRowsDeleted()).isEqualTo(120);
         assertThat(result.qualityRowsDeleted()).isEqualTo(100);
         assertThat(result.batchCount()).isEqualTo(3);
         assertThat(session.completedStatus).isEqualTo(RetentionExecutor.RunStatus.SUCCEEDED);
         assertThat(session.recoverCalls).isOne();
+        assertThat(session.blockedCountCalls).isOne();
         assertThat(session.checkpointCalls).isEqualTo(3);
     }
 
@@ -168,7 +171,9 @@ class RetentionExecutorTest {
         private final Queue<Integer> rawDeletes = new ArrayDeque<>();
         private final Queue<Integer> evidenceDeletes = new ArrayDeque<>();
         private int policyCount;
+        private long aggregationBlockedRows;
         private int recoverCalls;
+        private int blockedCountCalls;
         private int checkpointCalls;
         private RuntimeException failure;
         private RuntimeException evidenceFailure;
@@ -192,6 +197,12 @@ class RetentionExecutorTest {
         @Override
         public void startExecution(UUID executionId, String instanceId, int enabledPolicyCount) {
             startedExecutionId = executionId;
+        }
+
+        @Override
+        public long countAggregationBlockedRawRows(int scanLimit) {
+            blockedCountCalls++;
+            return aggregationBlockedRows;
         }
 
         @Override

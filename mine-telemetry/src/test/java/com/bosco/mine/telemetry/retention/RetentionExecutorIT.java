@@ -16,7 +16,10 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -47,6 +50,16 @@ class RetentionExecutorIT {
     private static final UUID UNMANAGED_DEVICE_ID = uuid(604);
     private static final UUID STALE_EXECUTION_ID = uuid(605);
     private static final UUID ROLLBACK_DEVICE_ID = uuid(606);
+    private static final UUID COVERED_DEVICE_ID = uuid(651);
+    private static final UUID MISSING_DEVICE_ID = uuid(652);
+    private static final UUID FAILED_DEVICE_ID = uuid(653);
+    private static final UUID OLD_VERSION_DEVICE_ID = uuid(654);
+    private static final UUID CORRECTION_WINDOW_DEVICE_ID = uuid(655);
+    private static final UUID UNRULED_PROPERTY_DEVICE_ID = uuid(656);
+    private static final UUID AGGREGATION_SNAPSHOT_ID = uuid(657);
+    private static final UUID OLD_AGGREGATION_SNAPSHOT_ID = uuid(658);
+    private static final String AGGREGATION_HASH = "sha256:" + "c".repeat(64);
+    private static final String OLD_AGGREGATION_HASH = "sha256:" + "d".repeat(64);
     private static DataSource dataSource;
     private static JdbcTemplate jdbcTemplate;
     private static RetentionExecutor executor;
@@ -193,6 +206,77 @@ class RetentionExecutorIT {
     }
 
     @Test
+    void 聚合覆盖缺失失败旧版本或未过修正窗口时应阻止原始数据清理() {
+        Instant oldBucket = Instant.now().minus(100, ChronoUnit.DAYS)
+                .truncatedTo(ChronoUnit.MINUTES);
+        Instant correctionBucket = Instant.now().truncatedTo(ChronoUnit.MINUTES)
+                .minus(7, ChronoUnit.DAYS);
+        List<UUID> managedDevices = List.of(
+                COVERED_DEVICE_ID,
+                MISSING_DEVICE_ID,
+                FAILED_DEVICE_ID,
+                OLD_VERSION_DEVICE_ID,
+                CORRECTION_WINDOW_DEVICE_ID,
+                UNRULED_PROPERTY_DEVICE_ID
+        );
+        managedDevices.forEach(deviceId -> insertPolicy(deviceId, true, 7));
+        insertAggregationPolicy(COVERED_DEVICE_ID, 2, "engine.rpm", 60, 300);
+        insertAggregationPolicy(MISSING_DEVICE_ID, 2, "engine.rpm", 60, 300);
+        insertAggregationPolicy(FAILED_DEVICE_ID, 2, "engine.rpm", 60, 300);
+        insertAggregationPolicy(OLD_VERSION_DEVICE_ID, 2, "engine.rpm", 60, 300);
+        insertAggregationPolicy(
+                CORRECTION_WINDOW_DEVICE_ID, 2, "engine.rpm", 60, 604800);
+        insertAggregationPolicy(
+                UNRULED_PROPERTY_DEVICE_ID, 2, "hydraulic.pressure", 60, 300);
+
+        insertRaw(uuid(671), COVERED_DEVICE_ID, 201, oldBucket, "engine.rpm");
+        insertRaw(uuid(672), MISSING_DEVICE_ID, 202, oldBucket, "engine.rpm");
+        insertRaw(uuid(673), FAILED_DEVICE_ID, 203, oldBucket, "engine.rpm");
+        insertRaw(uuid(674), OLD_VERSION_DEVICE_ID, 204, oldBucket, "engine.rpm");
+        insertRaw(uuid(675), CORRECTION_WINDOW_DEVICE_ID, 205,
+                correctionBucket, "engine.rpm");
+        insertRaw(uuid(676), UNRULED_PROPERTY_DEVICE_ID, 206,
+                oldBucket, "engine.rpm");
+        insertRollup(COVERED_DEVICE_ID, 201, oldBucket, 2,
+                AGGREGATION_SNAPSHOT_ID, AGGREGATION_HASH, "SUCCEEDED", uuid(681));
+        insertRollup(FAILED_DEVICE_ID, 203, oldBucket, 2,
+                AGGREGATION_SNAPSHOT_ID, AGGREGATION_HASH, "FAILED", uuid(682));
+        insertRollup(OLD_VERSION_DEVICE_ID, 204, oldBucket, 1,
+                OLD_AGGREGATION_SNAPSHOT_ID, OLD_AGGREGATION_HASH,
+                "SUCCEEDED", uuid(683));
+        insertRollup(CORRECTION_WINDOW_DEVICE_ID, 205, correctionBucket, 2,
+                AGGREGATION_SNAPSHOT_ID, AGGREGATION_HASH, "SUCCEEDED", uuid(684));
+        RetentionExecutor coverageExecutor = new RetentionExecutor(
+                new RetentionExecutionRepository(dataSource),
+                "telemetry-retention-coverage-it", 100, 3, Duration.ofHours(2));
+
+        RetentionExecutor.RunResult blocked = coverageExecutor.runOnce();
+
+        assertThat(blocked.aggregationBlockedRows()).isEqualTo(4);
+        assertThat(rawExists(uuid(671))).isFalse();
+        assertThat(rawExists(uuid(676))).isFalse();
+        assertThat(rawExists(uuid(672))).isTrue();
+        assertThat(rawExists(uuid(673))).isTrue();
+        assertThat(rawExists(uuid(674))).isTrue();
+        assertThat(rawExists(uuid(675))).isTrue();
+
+        insertRollup(MISSING_DEVICE_ID, 202, oldBucket, 2,
+                AGGREGATION_SNAPSHOT_ID, AGGREGATION_HASH, "SUCCEEDED", uuid(685));
+        insertRollup(FAILED_DEVICE_ID, 203, oldBucket, 2,
+                AGGREGATION_SNAPSHOT_ID, AGGREGATION_HASH, "PARTIAL", uuid(686));
+        insertRollup(OLD_VERSION_DEVICE_ID, 204, oldBucket, 2,
+                AGGREGATION_SNAPSHOT_ID, AGGREGATION_HASH, "SUCCEEDED", uuid(687));
+
+        RetentionExecutor.RunResult covered = coverageExecutor.runOnce();
+
+        assertThat(covered.aggregationBlockedRows()).isOne();
+        assertThat(rawExists(uuid(672))).isFalse();
+        assertThat(rawExists(uuid(673))).isFalse();
+        assertThat(rawExists(uuid(674))).isFalse();
+        assertThat(rawExists(uuid(675))).isTrue();
+    }
+
+    @Test
     void 进度写入失败时应回滚同批原始遥测删除() {
         UUID executionId = uuid(607);
         UUID eventId = uuid(617);
@@ -223,6 +307,11 @@ class RetentionExecutorIT {
     }
 
     private static void insertPolicy(UUID deviceId, boolean enabled) {
+        insertPolicy(deviceId, enabled, 90);
+    }
+
+    private static void insertPolicy(UUID deviceId, boolean enabled, int rawTelemetryDays) {
+        String retentionClass = rawTelemetryDays <= 30 ? "SHORT" : "STANDARD";
         jdbcTemplate.update("""
                 INSERT INTO telemetry_retention_policy (
                     device_id, product_id, runtime_revision, snapshot_id,
@@ -232,11 +321,12 @@ class RetentionExecutorIT {
                 """
                 {"policy":{
                   "enabled":%s,
-                  "retentionClass":"STANDARD",
-                  "rawTelemetryDays":90,
+                  "retentionClass":"%s",
+                  "rawTelemetryDays":%d,
                   "qualityEvidenceDays":180
                 }}
-                """.formatted(enabled), "sha256:" + "a".repeat(64));
+                """.formatted(enabled, retentionClass, rawTelemetryDays),
+                "sha256:" + "a".repeat(64));
     }
 
     private static void insertRaw(UUID eventId, UUID deviceId, long ingestId, String age) {
@@ -261,6 +351,84 @@ class RetentionExecutorIT {
                     CURRENT_TIMESTAMP - CAST(? AS INTERVAL), ?
                 )
                 """, timeAge, timeAge, deviceId, eventId, receivedAge, ingestId);
+    }
+
+    private static void insertRaw(
+            UUID eventId,
+            UUID deviceId,
+            long ingestId,
+            Instant effectiveAt,
+            String propertyId
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_numeric (
+                    time, occurred_at, device_id, product_key, property_id, value_double,
+                    quality, event_id, received_at, ingest_id
+                ) VALUES (?, ?, ?, 'haul-truck', ?, 1200, 0, ?, ?, ?)
+                """, Timestamp.from(effectiveAt), Timestamp.from(effectiveAt),
+                deviceId, propertyId, eventId, Timestamp.from(effectiveAt), ingestId);
+    }
+
+    private static void insertAggregationPolicy(
+            UUID deviceId,
+            long runtimeRevision,
+            String propertyId,
+            int bucketSeconds,
+            int correctionWindowSeconds
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_aggregation_policy (
+                    device_id, product_id, runtime_revision, snapshot_id,
+                    values_json, content_hash
+                ) VALUES (?, ?, ?, ?, CAST(? AS JSONB), ?)
+                """, deviceId, PRODUCT_ID, runtimeRevision, AGGREGATION_SNAPSHOT_ID, """
+                {"policy":{
+                  "enabled":true,
+                  "correctionWindowSeconds":%d,
+                  "rules":[{"propertyId":"%s","bucketSeconds":%d}]
+                }}
+                """.formatted(correctionWindowSeconds, propertyId, bucketSeconds),
+                AGGREGATION_HASH);
+    }
+
+    private static void insertRollup(
+            UUID deviceId,
+            long sourceWatermark,
+            Instant bucketStart,
+            long runtimeRevision,
+            UUID snapshotId,
+            String contentHash,
+            String status,
+            UUID executionId
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_aggregation_execution (
+                    execution_id, instance_id, status, policy_count, rule_count,
+                    source_watermark, bucket_count, rollup_watermark,
+                    started_at, completed_at, last_error
+                ) VALUES (?, 'retention-coverage-it', ?, 1, 1, ?, 1, 1,
+                    CURRENT_TIMESTAMP - INTERVAL '1 second', CURRENT_TIMESTAMP,
+                    CASE WHEN ? = 'FAILED' THEN '测试聚合失败' ELSE NULL END)
+                """, executionId, status, sourceWatermark, status);
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_numeric_rollup (
+                    device_id, product_key, property_id, bucket_seconds,
+                    bucket_start, bucket_end, average_value, minimum_value,
+                    maximum_value, sample_count, worst_quality, latest_received_at,
+                    source_watermark, runtime_revision, snapshot_id,
+                    policy_content_hash, execution_id
+                ) VALUES (?, 'haul-truck', 'engine.rpm', 60, ?, ?,
+                    1200, 1200, 1200, 1, 0, ?, ?, ?, ?, ?, ?)
+                """, deviceId, Timestamp.from(bucketStart),
+                Timestamp.from(bucketStart.plusSeconds(60)),
+                Timestamp.from(bucketStart),
+                sourceWatermark, runtimeRevision, snapshotId, contentHash, executionId);
+    }
+
+    private static boolean rawExists(UUID eventId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM telemetry_numeric WHERE event_id = ?)",
+                Boolean.class, eventId);
     }
 
     private static void insertInbox(UUID eventId, UUID deviceId, long ingestId) {

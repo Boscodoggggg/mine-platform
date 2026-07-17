@@ -188,6 +188,15 @@ groups:
           summary: "数据保留任务持续未完成"
           description: "{{ $labels.job }} 已连续至少 3 轮达到有界批次上限，请评估积压、批次参数和 TimescaleDB 执行计划。"
 
+      - alert: MineTelemetryRetentionAggregationCoverageBlocked
+        expr: max by (job) (mine_telemetry_retention_aggregation_coverage_blocked_rows) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "聚合覆盖持续阻塞原始数据清理"
+          description: "{{ $labels.job }} 连续 15 分钟发现已过保留期但尚未满足当前聚合策略覆盖门禁的原始遥测，请检查聚合失败、积压、策略版本和修正窗口。"
+
   - name: mine-telemetry-aggregation
     rules:
       - alert: MineTelemetryAggregationConsecutiveFailures

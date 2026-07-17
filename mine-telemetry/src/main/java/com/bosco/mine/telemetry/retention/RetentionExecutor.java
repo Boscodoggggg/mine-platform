@@ -91,6 +91,7 @@ public final class RetentionExecutor {
         UUID executionId = Objects.requireNonNull(
                 executionIds.get(), "执行标识生成器不得返回空值");
         session.startExecution(executionId, instanceId, policyCount);
+        long aggregationBlockedRows = 0;
         long rawRowsDeleted = 0;
         long qualityRowsDeleted = 0;
         int batchCount = 0;
@@ -99,8 +100,10 @@ public final class RetentionExecutor {
                 session.completeExecution(
                         executionId, RunStatus.SUCCEEDED, 0, 0, 0, null);
                 return new RunResult(
-                        executionId, RunStatus.SUCCEEDED, 0, 0, 0, 0, null);
+                        executionId, RunStatus.SUCCEEDED, 0, 0, 0, 0, 0, null);
             }
+            aggregationBlockedRows = requireBlockedCount(
+                    session.countAggregationBlockedRawRows(batchSize));
             boolean moreRaw = false;
             boolean moreQuality = false;
             for (int cycle = 0; cycle < maxCycles; cycle++) {
@@ -131,7 +134,7 @@ public final class RetentionExecutor {
             session.completeExecution(
                     executionId, status, rawRowsDeleted, qualityRowsDeleted, batchCount, null);
             return new RunResult(
-                    executionId, status, policyCount, rawRowsDeleted,
+                    executionId, status, policyCount, aggregationBlockedRows, rawRowsDeleted,
                     qualityRowsDeleted, batchCount, null);
         } catch (RuntimeException exception) {
             String error = safeError(exception);
@@ -139,9 +142,17 @@ public final class RetentionExecutor {
                     executionId, RunStatus.FAILED, rawRowsDeleted,
                     qualityRowsDeleted, batchCount, error);
             return new RunResult(
-                    executionId, RunStatus.FAILED, policyCount, rawRowsDeleted,
+                    executionId, RunStatus.FAILED, policyCount, aggregationBlockedRows,
+                    rawRowsDeleted,
                     qualityRowsDeleted, batchCount, error);
         }
+    }
+
+    private long requireBlockedCount(long value) {
+        if (value < 0 || value > batchSize) {
+            throw new IllegalStateException("数据保留仓储返回了非法聚合覆盖阻塞行数");
+        }
+        return value;
     }
 
     private int requireBatchCount(int value) {
@@ -186,6 +197,7 @@ public final class RetentionExecutor {
      * @param executionId 持久执行标识，锁忙跳过时为空
      * @param status 稳定运行结果
      * @param policyCount 本轮启用策略数
+     * @param aggregationBlockedRows 下一批过期候选中被聚合覆盖门禁阻塞的原始行数
      * @param rawRowsDeleted 删除的原始遥测行数
      * @param qualityRowsDeleted 删除的质量证据行数
      * @param batchCount 实际产生删除的批次数
@@ -195,6 +207,7 @@ public final class RetentionExecutor {
             UUID executionId,
             RunStatus status,
             int policyCount,
+            long aggregationBlockedRows,
             long rawRowsDeleted,
             long qualityRowsDeleted,
             int batchCount,
@@ -202,7 +215,7 @@ public final class RetentionExecutor {
     ) {
         /** 创建数据库锁忙的无副作用结果。 */
         private static RunResult skippedLocked() {
-            return new RunResult(null, RunStatus.SKIPPED_LOCKED, 0, 0, 0, 0, null);
+            return new RunResult(null, RunStatus.SKIPPED_LOCKED, 0, 0, 0, 0, 0, null);
         }
     }
 
@@ -235,6 +248,9 @@ public final class RetentionExecutor {
 
         /** 创建一条运行中执行事实。 */
         void startExecution(UUID executionId, String instanceId, int enabledPolicyCount);
+
+        /** 有界统计下一批过期候选中尚未满足聚合覆盖门禁的原始行数。 */
+        long countAggregationBlockedRawRows(int scanLimit);
 
         /** 在同一事务中删除一批原始数值遥测并持久化提交后的累计进度。 */
         int deleteRawTelemetryBatch(

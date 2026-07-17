@@ -24,6 +24,7 @@ public final class RetentionMetrics {
     private final AtomicInteger consecutiveFailures = new AtomicInteger();
     private final AtomicInteger consecutivePartial = new AtomicInteger();
     private final AtomicInteger policyCount = new AtomicInteger();
+    private final AtomicLong aggregationCoverageBlockedRows = new AtomicLong();
     private final AtomicLong startedEpochSeconds = new AtomicLong();
     private final AtomicLong lastSuccessEpochSeconds = new AtomicLong();
     private final AtomicLong lastCompletionEpochSeconds = new AtomicLong();
@@ -59,6 +60,10 @@ public final class RetentionMetrics {
                 "当前实例连续部分完成的数据保留轮次数", consecutivePartial);
         registerGauge(registry, "mine.telemetry.retention.policy.count",
                 "最近一轮观察到的启用数据保留策略数", policyCount);
+        registerGauge(registry,
+                "mine.telemetry.retention.aggregation.coverage.blocked.rows",
+                "最近成功或部分完成轮次的有界候选中被聚合覆盖门禁阻塞的原始遥测行数",
+                aggregationCoverageBlockedRows);
         registerGauge(registry, "mine.telemetry.retention.started.epoch.seconds",
                 "当前实例数据保留指标初始化时间", startedEpochSeconds);
         registerGauge(registry, "mine.telemetry.retention.last.success.epoch.seconds",
@@ -87,6 +92,10 @@ public final class RetentionMetrics {
             qualityRowsDeleted.increment(result.qualityRowsDeleted());
         }
         policyCount.set(result.policyCount());
+        if (result.status() == RetentionExecutor.RunStatus.SUCCEEDED
+                || result.status() == RetentionExecutor.RunStatus.PARTIAL) {
+            aggregationCoverageBlockedRows.set(result.aggregationBlockedRows());
+        }
         lastCompletionEpochSeconds.set(clock.instant().getEpochSecond());
         switch (result.status()) {
             case SUCCEEDED -> {

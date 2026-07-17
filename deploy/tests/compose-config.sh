@@ -111,6 +111,10 @@ grep -q 'MineTelemetryRetentionNoRecentSuccess' "${rules_file}" \
   || { echo "FAIL: 缺少数据保留长时间无成功告警" >&2; exit 1; }
 grep -q 'MineTelemetryRetentionPersistentlyPartial' "${rules_file}" \
   || { echo "FAIL: 缺少数据保留持续未完成告警" >&2; exit 1; }
+grep -q 'MineTelemetryRetentionAggregationCoverageBlocked' "${rules_file}" \
+  || { echo "FAIL: 缺少聚合覆盖阻塞原始数据清理告警" >&2; exit 1; }
+grep -q 'mine_telemetry_retention_aggregation_coverage_blocked_rows' "${rules_file}" \
+  || { echo "FAIL: 聚合覆盖阻塞告警未引用低基数阻塞量指标" >&2; exit 1; }
 grep -q 'mine_telemetry_retention_consecutive_failures' "${rules_file}" \
   || { echo "FAIL: 数据保留告警未引用低基数失败指标" >&2; exit 1; }
 grep -q 'MineTelemetryAggregationConsecutiveFailures' "${rules_file}" \

@@ -63,6 +63,8 @@ class RetentionSchedulerTest {
         assertThat(registry.get("mine.telemetry.retention.rows.deleted")
                 .tag("dataset", "quality").counter().count()).isEqualTo(7.0d);
         assertThat(registry.get("mine.telemetry.retention.running").gauge().value()).isZero();
+        assertThat(registry.get("mine.telemetry.retention.aggregation.coverage.blocked.rows")
+                .gauge().value()).isEqualTo(5.0d);
         assertThat(registry.get("mine.telemetry.retention.last.success.epoch.seconds")
                 .gauge().value()).isEqualTo((double) NOW.getEpochSecond());
         assertThat(registry.getMeters()).allSatisfy(meter ->
@@ -110,6 +112,6 @@ class RetentionSchedulerTest {
     ) {
         return new RetentionExecutor.RunResult(
                 UUID.fromString("019f6e00-0000-7000-8000-000000000701"),
-                status, 2, rawRows, qualityRows, batches, null);
+                status, 2, 5, rawRows, qualityRows, batches, null);
     }
 }
