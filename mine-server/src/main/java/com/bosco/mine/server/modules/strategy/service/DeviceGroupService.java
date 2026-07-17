@@ -6,6 +6,7 @@ import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
 import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
+import com.bosco.mine.model.strategy.RetentionStrategyDefinition;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.strategy.repository.StrategyScopeMapper;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
@@ -48,6 +49,7 @@ public class DeviceGroupService {
     private final StrategyConflictGuard conflictGuard;
     private final EffectiveStrategyCacheInvalidator cacheInvalidator;
     private final StrategyRuntimeSnapshotService runtimeSnapshotService;
+    private final RetentionGroupChangeGuard retentionGroupChangeGuard;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -58,19 +60,22 @@ public class DeviceGroupService {
      * @param conflictGuard 策略冲突门禁
      * @param cacheInvalidator 有效策略缓存失效器
      * @param runtimeSnapshotService 运行策略增量快照服务
+     * @param retentionGroupChangeGuard 数据保留设备组变化守卫
      */
     public DeviceGroupService(
             StrategyScopeMapper mapper,
             OperationAuditService auditService,
             StrategyConflictGuard conflictGuard,
             EffectiveStrategyCacheInvalidator cacheInvalidator,
-            StrategyRuntimeSnapshotService runtimeSnapshotService
+            StrategyRuntimeSnapshotService runtimeSnapshotService,
+            RetentionGroupChangeGuard retentionGroupChangeGuard
     ) {
         this.mapper = mapper;
         this.auditService = auditService;
         this.conflictGuard = conflictGuard;
         this.cacheInvalidator = cacheInvalidator;
         this.runtimeSnapshotService = runtimeSnapshotService;
+        this.retentionGroupChangeGuard = retentionGroupChangeGuard;
     }
 
     /**
@@ -182,18 +187,32 @@ public class DeviceGroupService {
             affectedDeviceIds = mapper.findActiveMemberIds(groupId);
             conflictGuard.verifyPriorityChange(locked, command.priority(), affectedDeviceIds);
         }
+        UUID operatorId = currentOperatorId();
+        boolean retentionPreviewRequired = false;
+        if (locked.priority() != command.priority()) {
+            retentionPreviewRequired = retentionGroupChangeGuard.verify(
+                    new RetentionGroupChangeGuard.ActivationCommand(
+                            command.retentionPreviewToken(),
+                            RetentionGroupChangeGuard.ChangeType.PRIORITY,
+                            groupId, locked.productId(), locked.version(), locked.priority(),
+                            command.priority(), List.of(), List.of(), affectedDeviceIds, operatorId));
+        }
         int affected = mapper.updateGroup(
                 groupId,
                 command.name().strip(),
                 command.priority(),
                 normalize(command.description()),
                 command.version(),
-                currentOperatorId()
+                operatorId
         );
         if (affected == 0) {
             throw versionConflict(groupId);
         }
         DeviceGroupView updated = toView(requireGroup(groupId));
+        if (retentionPreviewRequired) {
+            retentionGroupChangeGuard.markGroupChangeActivated(
+                    command.retentionPreviewToken(), groupId);
+        }
         auditService.recordSuccess(
                 "DEVICE_STRATEGY", "UPDATE_DEVICE_GROUP", "device:group:edit",
                 "DEVICE_GROUP", groupId, summary(before), summary(updated)
@@ -220,6 +239,25 @@ public class DeviceGroupService {
      */
     @Transactional
     public MembershipChange replaceMembers(UUID groupId, List<UUID> deviceIds, long version) {
+        return replaceMembers(groupId, deviceIds, version, null);
+    }
+
+    /**
+     * 以精确保留预览凭证差异化替换设备组当前成员。
+     *
+     * @param groupId 设备组标识
+     * @param deviceIds 目标成员设备标识
+     * @param version 设备组期望版本号
+     * @param retentionPreviewToken 数据保留影响预览凭证
+     * @return 成员变化摘要
+     */
+    @Transactional
+    public MembershipChange replaceMembers(
+            UUID groupId,
+            List<UUID> deviceIds,
+            long version,
+            UUID retentionPreviewToken
+    ) {
         StrategyScopeMapper.DeviceGroupRecord initial = requireActiveGroup(groupId);
         mapper.lockProduct(initial.productId());
         StrategyScopeMapper.DeviceGroupRecord group = requireActiveGroupForUpdate(groupId);
@@ -251,6 +289,14 @@ public class DeviceGroupService {
         conflictGuard.verifyMembershipChange(group, added);
 
         UUID operatorId = currentOperatorId();
+        List<UUID> affectedDeviceIds = new ArrayList<>(added.size() + removed.size());
+        affectedDeviceIds.addAll(added);
+        affectedDeviceIds.addAll(removed);
+        boolean retentionPreviewRequired = retentionGroupChangeGuard.verify(
+                new RetentionGroupChangeGuard.ActivationCommand(
+                        retentionPreviewToken, RetentionGroupChangeGuard.ChangeType.MEMBERSHIP,
+                        groupId, group.productId(), group.version(), group.priority(), group.priority(),
+                        added, removed, affectedDeviceIds, operatorId));
         if (!removed.isEmpty()) {
             mapper.closeMemberships(groupId, removed, operatorId);
         }
@@ -262,6 +308,9 @@ public class DeviceGroupService {
         }
         if (mapper.touchGroup(groupId, version, operatorId) == 0) {
             throw versionConflict(groupId);
+        }
+        if (retentionPreviewRequired) {
+            retentionGroupChangeGuard.markGroupChangeActivated(retentionPreviewToken, groupId);
         }
         MembershipChange change = new MembershipChange(
                 groupId, added, removed, desiredList.size(), version + 1
@@ -276,9 +325,6 @@ public class DeviceGroupService {
                         "removedCount", removed.size()
                 )
         );
-        List<UUID> affectedDeviceIds = new ArrayList<>(added.size() + removed.size());
-        affectedDeviceIds.addAll(added);
-        affectedDeviceIds.addAll(removed);
         captureRuntimeDeltas(
                 group.productId(), affectedDeviceIds,
                 StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP);
@@ -297,6 +343,18 @@ public class DeviceGroupService {
      */
     @Transactional
     public void archiveGroup(UUID groupId, long version) {
+        archiveGroup(groupId, version, null);
+    }
+
+    /**
+     * 使用精确保留影响凭证归档设备组并结束全部成员关系。
+     *
+     * @param groupId 设备组标识
+     * @param version 设备组期望版本号
+     * @param retentionPreviewToken 数据保留影响预览凭证
+     */
+    @Transactional
+    public void archiveGroup(UUID groupId, long version, UUID retentionPreviewToken) {
         StrategyScopeMapper.DeviceGroupRecord initial = requireActiveGroup(groupId);
         mapper.lockProduct(initial.productId());
         DeviceGroupView before = toView(requireActiveGroupForUpdate(groupId));
@@ -305,9 +363,17 @@ public class DeviceGroupService {
         }
         List<UUID> affectedDeviceIds = mapper.findActiveMemberIds(groupId);
         UUID operatorId = currentOperatorId();
+        boolean retentionPreviewRequired = retentionGroupChangeGuard.verify(
+                new RetentionGroupChangeGuard.ActivationCommand(
+                        retentionPreviewToken, RetentionGroupChangeGuard.ChangeType.GROUP_ARCHIVE,
+                        groupId, initial.productId(), before.version(), before.priority(), before.priority(),
+                        List.of(), List.of(), affectedDeviceIds, operatorId));
         mapper.closeAllActiveMemberships(groupId, operatorId);
         if (mapper.archiveGroup(groupId, version, operatorId) == 0) {
             throw versionConflict(groupId);
+        }
+        if (retentionPreviewRequired) {
+            retentionGroupChangeGuard.markGroupChangeActivated(retentionPreviewToken, groupId);
         }
         auditService.recordSuccess(
                 "DEVICE_STRATEGY", "ARCHIVE_DEVICE_GROUP", "device:group:edit",
@@ -336,6 +402,8 @@ public class DeviceGroupService {
                 productId, DataQualityStrategyDefinition.TYPE, affectedDeviceIds, reason);
         runtimeSnapshotService.captureDelta(
                 productId, AlarmStrategyDefinition.TYPE, affectedDeviceIds, reason);
+        runtimeSnapshotService.captureDelta(
+                productId, RetentionStrategyDefinition.TYPE, affectedDeviceIds, reason);
     }
 
     private StrategyScopeMapper.DeviceGroupRecord requireActiveGroup(UUID groupId) {
@@ -415,8 +483,26 @@ public class DeviceGroupService {
      * @param priority    策略优先级
      * @param description 用途说明
      * @param version     乐观锁版本号
+     * @param retentionPreviewToken 数据保留影响预览凭证
      */
-    public record UpdateGroupCommand(String name, int priority, String description, long version) {
+    public record UpdateGroupCommand(
+            String name,
+            int priority,
+            String description,
+            long version,
+            UUID retentionPreviewToken
+    ) {
+        /**
+         * 创建不含保留预览凭证的兼容命令。
+         *
+         * @param name 设备组名称
+         * @param priority 策略优先级
+         * @param description 用途说明
+         * @param version 乐观锁版本号
+         */
+        public UpdateGroupCommand(String name, int priority, String description, long version) {
+            this(name, priority, description, version, null);
+        }
     }
 
     /**

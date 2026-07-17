@@ -62,9 +62,9 @@ public final class RetentionMetrics {
         registerGauge(registry, "mine.telemetry.retention.started.epoch.seconds",
                 "当前实例数据保留指标初始化时间", startedEpochSeconds);
         registerGauge(registry, "mine.telemetry.retention.last.success.epoch.seconds",
-                "最近完整扫描成功的数据库时间戳秒数", lastSuccessEpochSeconds);
+                "最近完整扫描成功的当前实例 JVM 观测时间戳秒数", lastSuccessEpochSeconds);
         registerGauge(registry, "mine.telemetry.retention.last.completion.epoch.seconds",
-                "最近一轮调度完成的数据库时间戳秒数", lastCompletionEpochSeconds);
+                "最近一轮调度完成的当前实例 JVM 观测时间戳秒数", lastCompletionEpochSeconds);
     }
 
     /** 标记调度线程已经进入一轮数据保留执行。 */

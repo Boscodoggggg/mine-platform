@@ -169,7 +169,7 @@ public class StrategyConfigurationController {
         StrategyConfigurationService.StrategyReleaseView release = service.publish(
                 new StrategyConfigurationService.PublishCommand(
                         request.strategyVersionId(), request.scopeType(), request.scopeId(),
-                        request.reason(), idempotencyKey
+                        request.reason(), idempotencyKey, request.retentionPreviewToken()
                 )
         );
         return createdRelease(release);
@@ -190,7 +190,8 @@ public class StrategyConfigurationController {
             @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 128) String idempotencyKey,
             @Valid @RequestBody RollbackRequest request
     ) {
-        return createdRelease(service.rollback(releaseId, request.reason(), idempotencyKey));
+        return createdRelease(service.rollback(
+                releaseId, request.reason(), idempotencyKey, request.retentionPreviewToken()));
     }
 
     /**
@@ -254,12 +255,14 @@ public class StrategyConfigurationController {
      * @param scopeType        作用范围类型
      * @param scopeId          作用范围标识
      * @param reason           发布原因
+     * @param retentionPreviewToken 数据保留影响预览凭证
      */
     public record PublishRequest(
             @NotNull UUID strategyVersionId,
             @NotNull StrategyScopeType scopeType,
             @NotNull UUID scopeId,
-            @NotBlank @Size(max = 500) String reason
+            @NotBlank @Size(max = 500) String reason,
+            UUID retentionPreviewToken
     ) {
     }
 
@@ -267,7 +270,11 @@ public class StrategyConfigurationController {
      * 策略回滚请求。
      *
      * @param reason 回滚原因
+     * @param retentionPreviewToken 数据保留影响预览凭证
      */
-    public record RollbackRequest(@NotBlank @Size(max = 500) String reason) {
+    public record RollbackRequest(
+            @NotBlank @Size(max = 500) String reason,
+            UUID retentionPreviewToken
+    ) {
     }
 }

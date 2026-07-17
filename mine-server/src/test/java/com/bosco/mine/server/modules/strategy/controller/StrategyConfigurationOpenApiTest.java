@@ -51,6 +51,17 @@ class StrategyConfigurationOpenApiTest {
                 .containsExactly("RUNNING", "SUCCEEDED", "PARTIAL", "FAILED");
         assertThat(list(map(schemas.get("RetentionDatasetImpact")).get("required")))
                 .containsExactly("eligibleRows", "atLeast");
+        assertThat(list(map(schemas.get("RetentionPreviewRequest")).get("required")))
+                .containsExactly("productId", "strategyVersionId", "scopeType", "scopeId");
+        assertThat(map(map(schemas.get("RetentionPreviewRequest")).get("properties")))
+                .containsKey("strategyVersionId")
+                .doesNotContainKey("policy");
+        assertThat(list(map(schemas.get("RetentionPreview")).get("required")))
+                .contains("previewToken", "expiresAt", "targetDeviceCount", "enabledDeviceCount");
+        assertThat(map(map(schemas.get("StrategyPublishRequest")).get("properties")))
+                .containsKey("retentionPreviewToken");
+        assertThat(map(map(schemas.get("StrategyRollbackRequest")).get("properties")))
+                .containsKey("retentionPreviewToken");
     }
 
     private Path contractPath() {

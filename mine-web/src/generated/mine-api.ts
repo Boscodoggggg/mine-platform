@@ -938,7 +938,7 @@ export interface paths {
         get: operations["getDeviceGroup"];
         /**
          * 修改设备组和策略优先级
-         * @description 优先级变化会对当前成员执行策略冲突预检，存在同级异值时整笔拒绝。
+         * @description 优先级变化会对当前成员执行策略冲突预检；若设备组已有 RETENTION 发布，还必须提交拟变更影响预览凭证。
          */
         put: operations["updateDeviceGroup"];
         post?: never;
@@ -962,7 +962,7 @@ export interface paths {
         get: operations["listDeviceGroupMembers"];
         /**
          * 差异化替换设备组当前成员
-         * @description 新增成员前执行策略冲突预检，历史成员关系以生效区间保留。
+         * @description 新增成员前执行策略冲突预检；若设备组已有 RETENTION 发布，还必须提交拟变更影响预览凭证。历史成员关系以生效区间保留。
          */
         put: operations["replaceDeviceGroupMembers"];
         post?: never;
@@ -981,7 +981,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 归档设备组并结束当前成员关系 */
+        /**
+         * 归档设备组并结束当前成员关系
+         * @description 若设备组已有 RETENTION 发布，必须提交归档后的逐设备影响预览凭证。
+         */
         post: operations["archiveDeviceGroup"];
         delete?: never;
         options?: never;
@@ -1041,7 +1044,8 @@ export interface paths {
         /**
          * 冲突预检通过后原子发布策略
          * @description 计算所有受影响设备的三级有效策略。同优先级设备组对同一字段给出不同值时，
-         *     返回 STRATEGY-409-001，策略版本、发布事实和审计均不提交。
+         *     返回 STRATEGY-409-001，策略版本、发布事实和审计均不提交。RETENTION 还必须携带
+         *     服务端签发且绑定已保存版本、作用域、成员和最终解析状态的一次性预览凭证。
          */
         post: operations["publishStrategy"];
         delete?: never;
@@ -1076,7 +1080,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 复用历史版本创建更高序号的回滚发布 */
+        /**
+         * 复用历史版本创建更高序号的回滚发布
+         * @description RETENTION 回滚必须重新预览历史发布的版本和作用域并提交新的一次性凭证。
+         */
         post: operations["rollbackStrategyRelease"];
         delete?: never;
         options?: never;
@@ -1095,11 +1102,34 @@ export interface paths {
         put?: never;
         /**
          * 预览拟发布数据保留策略的不可逆影响
-         * @description 使用数据库当前时间和 TimescaleDB 只读连接，按目标作用域分批统计原始数值遥测与
-         *     质量证据达到删除年龄的行数。统计达到一百万行时返回封顶值并将 atLeast 置为 true。
-         *     预览不是删除承诺，从统计时点到策略激活期间数据仍会变化。
+         * @description 读取已保存策略版本，按产品、设备组和单设备覆盖关系计算发布后的逐设备最终策略，
+         *     再使用 TimescaleDB 只读连接统计原始数值遥测与质量证据的删除候选。统计达到一百万行
+         *     时返回封顶值并将 atLeast 置为 true。若所有最终策略均禁用，则不依赖 TimescaleDB 即可
+         *     签发停删凭证。预览是数据库时点估算而非上下限或删除承诺。
          */
         post: operations["previewRetentionImpact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/retention-group-change-previews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 预览设备组变化间接激活数据保留策略的不可逆影响
+         * @description 根据成员替换、优先级修改或设备组归档的拟变更，在不落库的情况下重新解析每台受影响设备的
+         *     最终 RETENTION 策略。仅当设备组存在当前 RETENTION 发布且有受影响设备时签发十五分钟一次性凭证；
+         *     预览要求同时具备设备组编辑和策略发布权限。
+         */
+        post: operations["previewRetentionGroupChange"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1192,6 +1222,11 @@ export interface components {
             description?: string | null;
             /** Format: int64 */
             version: number;
+            /**
+             * Format: uuid
+             * @description 当前设备组已有 RETENTION 发布且优先级变化时必填。
+             */
+            retentionPreviewToken?: string;
         };
         DeviceGroupMember: {
             /** Format: uuid */
@@ -1207,6 +1242,20 @@ export interface components {
             deviceIds: string[];
             /** Format: int64 */
             version: number;
+            /**
+             * Format: uuid
+             * @description 当前设备组已有 RETENTION 发布且成员变化时必填。
+             */
+            retentionPreviewToken?: string;
+        };
+        DeviceGroupArchiveRequest: {
+            /** Format: int64 */
+            version: number;
+            /**
+             * Format: uuid
+             * @description 当前设备组已有 RETENTION 发布且仍有成员时必填。
+             */
+            retentionPreviewToken?: string;
         };
         DeviceGroupMembershipChange: {
             /** Format: uuid */
@@ -1292,13 +1341,35 @@ export interface components {
         RetentionPreviewRequest: {
             /** Format: uuid */
             productId: string;
+            /**
+             * Format: uuid
+             * @description 必须是同产品下已经保存的 RETENTION 草稿或历史不可变版本。
+             */
+            strategyVersionId: string;
             scopeType: components["schemas"]["StrategyScopeType"];
             /**
              * Format: uuid
              * @description 必须是同产品的活动产品、活动设备组或未归档设备。
              */
             scopeId: string;
-            policy: components["schemas"]["RetentionPolicy"];
+        };
+        /** @enum {string} */
+        RetentionGroupChangeType: "MEMBERSHIP" | "PRIORITY" | "GROUP_ARCHIVE";
+        RetentionGroupChangePreviewRequest: {
+            /** Format: uuid */
+            groupId: string;
+            changeType: components["schemas"]["RetentionGroupChangeType"];
+            /** Format: int64 */
+            groupVersion: number;
+            /** @description MEMBERSHIP 时为变化后的完整成员集合。 */
+            deviceIds?: string[];
+            /** @description PRIORITY 时为变化后的优先级。 */
+            nextPriority?: number;
+        };
+        RetentionGroupChangePreview: {
+            /** @description true 表示设备组变化必须在同一事务消费 preview 中的凭证。 */
+            required: boolean;
+            preview: components["schemas"]["RetentionPreview"] | null;
         };
         RetentionDatasetImpact: {
             /**
@@ -1313,12 +1384,32 @@ export interface components {
         };
         RetentionPreview: {
             /**
+             * Format: uuid
+             * @description 仅能由同一管理员用于一次精确匹配的发布或回滚。
+             */
+            previewToken: string;
+            /**
              * Format: date-time
-             * @description TimescaleDB 只读事务使用的数据库统计时点。
+             * @description TimescaleDB 统计时点；纯停删预览为服务端生成时点。
              */
             observedAt: string;
-            /** Format: int64 */
+            /** Format: date-time */
+            expiresAt: string;
+            /**
+             * Format: int64
+             * @description 作用域内参与最终策略解析的设备数。
+             */
+            targetDeviceCount: number;
+            /**
+             * Format: int64
+             * @description 发布后最终保留策略值发生变化的设备数。
+             */
             affectedDeviceCount: number;
+            /**
+             * Format: int64
+             * @description 发布后最终策略仍启用删除的设备数，包含更具体作用域覆盖。
+             */
+            enabledDeviceCount: number;
             policy: components["schemas"]["RetentionPolicy"];
             rawTelemetry: components["schemas"]["RetentionDatasetImpact"];
             qualityEvidence: components["schemas"]["RetentionDatasetImpact"];
@@ -1387,9 +1478,19 @@ export interface components {
              */
             scopeId: string;
             reason: string;
+            /**
+             * Format: uuid
+             * @description RETENTION 发布必填；其他策略忽略。
+             */
+            retentionPreviewToken?: string | null;
         };
         StrategyRollbackRequest: {
             reason: string;
+            /**
+             * Format: uuid
+             * @description RETENTION 回滚必填，且必须针对历史版本与原作用域重新签发。
+             */
+            retentionPreviewToken?: string | null;
         };
         StrategyRelease: {
             /** Format: uuid */
@@ -4295,6 +4396,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["StrategyNotFound"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
         };
     };
     listDeviceGroupMembers: {
@@ -4368,7 +4470,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ArchiveRequest"];
+                "application/json": components["schemas"]["DeviceGroupArchiveRequest"];
             };
         };
         responses: {
@@ -4384,6 +4486,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["StrategyNotFound"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
         };
     };
     listStrategyVersions: {
@@ -4634,7 +4737,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 带数据库统计时点和封顶标记的影响预览。 */
+            /** @description 带统计时点、最终覆盖摘要和十五分钟一次性凭证的影响预览。 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4646,6 +4749,36 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            503: components["responses"]["RetentionRuntimeUnavailable"];
+        };
+    };
+    previewRetentionGroupChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionGroupChangePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description 是否需要不可逆激活凭证，以及需要时的删除影响。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionGroupChangePreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
             503: components["responses"]["RetentionRuntimeUnavailable"];
         };

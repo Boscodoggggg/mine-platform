@@ -6,6 +6,7 @@ import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
 import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
+import com.bosco.mine.model.strategy.RetentionStrategyDefinition;
 import com.bosco.mine.server.modules.device.dto.DeviceResponse;
 import com.bosco.mine.server.modules.device.dto.ProductResponse;
 import com.bosco.mine.server.modules.device.model.Device;
@@ -263,6 +264,8 @@ public class DeviceCommandService {
                 productId, DataQualityStrategyDefinition.TYPE, deviceIds, reason);
         runtimeSnapshotService.captureDelta(
                 productId, AlarmStrategyDefinition.TYPE, deviceIds, reason);
+        runtimeSnapshotService.captureDelta(
+                productId, RetentionStrategyDefinition.TYPE, deviceIds, reason);
     }
 
     private ProductResponse productById(UUID productId) {

@@ -65,6 +65,7 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
     private final ObjectMapper objectMapper;
     private final EffectiveStrategyCacheInvalidator cacheInvalidator;
     private final StrategyRuntimeSnapshotService runtimeSnapshotService;
+    private final RetentionActivationGuard retentionActivationGuard;
     private final EffectiveStrategyResolver resolver = new EffectiveStrategyResolver();
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
@@ -77,6 +78,7 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
      * @param objectMapper   JSON 序列化器
      * @param cacheInvalidator 有效策略缓存失效器
      * @param runtimeSnapshotService 运行策略增量快照服务
+     * @param retentionActivationGuard 数据保留不可逆激活守卫
      */
     public StrategyConfigurationService(
             StrategyConfigurationMapper mapper,
@@ -84,7 +86,8 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
             OperationAuditService auditService,
             ObjectMapper objectMapper,
             EffectiveStrategyCacheInvalidator cacheInvalidator,
-            StrategyRuntimeSnapshotService runtimeSnapshotService
+            StrategyRuntimeSnapshotService runtimeSnapshotService,
+            RetentionActivationGuard retentionActivationGuard
     ) {
         this.mapper = mapper;
         this.scopeMapper = scopeMapper;
@@ -92,6 +95,7 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
         this.objectMapper = objectMapper;
         this.cacheInvalidator = cacheInvalidator;
         this.runtimeSnapshotService = runtimeSnapshotService;
+        this.retentionActivationGuard = retentionActivationGuard;
     }
 
     /**
@@ -240,6 +244,9 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
                 version.productId(), version.strategyType(), target, values, releaseId,
                 affectedDeviceIds
         );
+        verifyRetentionActivation(
+                command.retentionPreviewToken(), version.id(), version.productId(),
+                version.strategyType(), target, values, affectedDeviceIds, operatorId);
         String contentHash = contentHash(version.productId(), values, releaseId);
         if (mapper.publishVersion(
                 version.id(), contentHash, version.version(), operatorId
@@ -251,6 +258,7 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
                 "PUBLISH", null, reason, idempotencyKey,
                 contentHash, operatorId, releaseId
         );
+        markRetentionActivated(version.strategyType(), command.retentionPreviewToken(), release.id());
         runtimeSnapshotService.captureDelta(
                 version.productId(), version.strategyType(), affectedDeviceIds,
                 StrategyRuntimeSnapshotService.ChangeReason.PUBLISH
@@ -275,6 +283,25 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
             UUID historicalReleaseId,
             String reason,
             String idempotencyKey
+    ) {
+        return rollback(historicalReleaseId, reason, idempotencyKey, null);
+    }
+
+    /**
+     * 复用历史不可变策略版本创建回滚发布，并为数据保留校验精确预览凭证。
+     *
+     * @param historicalReleaseId 历史发布标识
+     * @param reason              回滚原因
+     * @param idempotencyKey      幂等键
+     * @param retentionPreviewToken 数据保留影响预览凭证
+     * @return 新回滚发布
+     */
+    @Transactional
+    public StrategyReleaseView rollback(
+            UUID historicalReleaseId,
+            String reason,
+            String idempotencyKey,
+            UUID retentionPreviewToken
     ) {
         requireText(reason, "reason", 500);
         requireText(idempotencyKey, "idempotencyKey", 128);
@@ -302,11 +329,15 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
                 historical.productId(), historical.strategyType(), target, values, releaseId,
                 affectedDeviceIds
         );
+        verifyRetentionActivation(
+                retentionPreviewToken, historical.strategyVersionId(), historical.productId(),
+                historical.strategyType(), target, values, affectedDeviceIds, operatorId);
         StrategyReleaseView release = createRelease(
                 historical.productId(), historical.strategyVersionId(), historical.strategyType(), target,
                 "ROLLBACK", historicalReleaseId, normalizedReason, normalizedIdempotencyKey,
                 historical.contentHash(), operatorId, releaseId
         );
+        markRetentionActivated(historical.strategyType(), retentionPreviewToken, release.id());
         runtimeSnapshotService.captureDelta(
                 historical.productId(), historical.strategyType(), affectedDeviceIds,
                 StrategyRuntimeSnapshotService.ChangeReason.ROLLBACK
@@ -636,6 +667,30 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
         requireText(command.idempotencyKey(), "idempotencyKey", 128);
     }
 
+    private void verifyRetentionActivation(
+            UUID previewToken,
+            UUID strategyVersionId,
+            UUID productId,
+            String strategyType,
+            Target target,
+            Map<String, Object> values,
+            List<UUID> affectedDeviceIds,
+            UUID operatorId
+    ) {
+        if (!RetentionStrategyDefinition.TYPE.equals(strategyType)) {
+            return;
+        }
+        retentionActivationGuard.verify(new RetentionActivationGuard.ActivationCommand(
+                previewToken, strategyVersionId, productId, target.scopeType(), target.scopeId(),
+                target.groupPriority(), values, affectedDeviceIds, operatorId));
+    }
+
+    private void markRetentionActivated(String strategyType, UUID previewToken, UUID releaseId) {
+        if (RetentionStrategyDefinition.TYPE.equals(strategyType)) {
+            retentionActivationGuard.markActivated(previewToken, releaseId);
+        }
+    }
+
     private void verifySamePublishRequest(
             StrategyConfigurationMapper.StrategyReleaseRecord existing,
             PublishCommand command,
@@ -777,14 +832,34 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
      * @param scopeId          作用范围标识
      * @param reason           发布原因
      * @param idempotencyKey   幂等键
+     * @param retentionPreviewToken 数据保留影响预览凭证，其他策略为空
      */
     public record PublishCommand(
             UUID strategyVersionId,
             StrategyScopeType scopeType,
             UUID scopeId,
             String reason,
-            String idempotencyKey
+            String idempotencyKey,
+            UUID retentionPreviewToken
     ) {
+        /**
+         * 创建不需要数据保留预览凭证的普通策略发布命令。
+         *
+         * @param strategyVersionId 策略版本标识
+         * @param scopeType         作用范围类型
+         * @param scopeId           作用范围标识
+         * @param reason            发布原因
+         * @param idempotencyKey    幂等键
+         */
+        public PublishCommand(
+                UUID strategyVersionId,
+                StrategyScopeType scopeType,
+                UUID scopeId,
+                String reason,
+                String idempotencyKey
+        ) {
+            this(strategyVersionId, scopeType, scopeId, reason, idempotencyKey, null);
+        }
     }
 
     /**

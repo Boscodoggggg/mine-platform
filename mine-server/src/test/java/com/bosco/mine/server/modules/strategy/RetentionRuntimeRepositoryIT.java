@@ -88,16 +88,42 @@ class RetentionRuntimeRepositoryIT {
         insertQuality(LAST_DEVICE, now.minus(20, ChronoUnit.DAYS), 13);
 
         RetentionRuntimeRepository.PreviewSnapshot preview =
-                repository.preview(deviceIds, 90, 180, 2);
+                repository.preview(deviceIds.stream().map(deviceId ->
+                        new RetentionRuntimeRepository.DeviceRetentionPolicy(
+                                deviceId, true, 90, 180)).toList(), 2);
 
         assertThat(preview.observedAt()).isBetween(now.minusSeconds(1), databaseNow().plusSeconds(1));
         assertThat(preview.rawTelemetry())
                 .isEqualTo(new RetentionRuntimeRepository.DatasetImpact(2, rawEarliest, true));
         assertThat(preview.qualityEvidence())
                 .isEqualTo(new RetentionRuntimeRepository.DatasetImpact(2, qualityEarliest, false));
-        assertThat(repository.preview(deviceIds, 90, 180, 10).rawTelemetry().eligibleRows())
+        assertThat(repository.preview(deviceIds.stream().map(deviceId ->
+                        new RetentionRuntimeRepository.DeviceRetentionPolicy(
+                                deviceId, true, 90, 180)).toList(), 10)
+                .rawTelemetry().eligibleRows())
                 .as("设备声明时间很旧但平台刚接收的数据不得进入删除预览")
                 .isEqualTo(3);
+    }
+
+    @Test
+    void 应按每设备最终保留周期统计并排除禁用设备() {
+        Instant now = databaseNow();
+        UUID disabledDevice = UUID.randomUUID();
+        insertRaw(FIRST_DEVICE, now.minus(45, ChronoUnit.DAYS), 21);
+        insertRaw(LAST_DEVICE, now.minus(45, ChronoUnit.DAYS), 22);
+        insertRaw(disabledDevice, now.minus(300, ChronoUnit.DAYS), 23);
+        insertQuality(FIRST_DEVICE, now.minus(75, ChronoUnit.DAYS), 24);
+        insertQuality(LAST_DEVICE, now.minus(75, ChronoUnit.DAYS), 25);
+        insertQuality(disabledDevice, now.minus(300, ChronoUnit.DAYS), 26);
+
+        RetentionRuntimeRepository.PreviewSnapshot preview = repository.preview(List.of(
+                new RetentionRuntimeRepository.DeviceRetentionPolicy(FIRST_DEVICE, true, 30, 60),
+                new RetentionRuntimeRepository.DeviceRetentionPolicy(LAST_DEVICE, true, 90, 180),
+                new RetentionRuntimeRepository.DeviceRetentionPolicy(disabledDevice, false, 30, 60)
+        ), 100);
+
+        assertThat(preview.rawTelemetry().eligibleRows()).isOne();
+        assertThat(preview.qualityEvidence().eligibleRows()).isOne();
     }
 
     @Test

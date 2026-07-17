@@ -137,7 +137,8 @@ public class DeviceGroupController {
             @Valid @RequestBody UpdateRequest request
     ) {
         return service.updateGroup(groupId, new DeviceGroupService.UpdateGroupCommand(
-                request.name(), request.priority(), request.description(), request.version()
+                request.name(), request.priority(), request.description(), request.version(),
+                request.retentionPreviewToken()
         ));
     }
 
@@ -157,7 +158,8 @@ public class DeviceGroupController {
         if (new HashSet<>(request.deviceIds()).size() != request.deviceIds().size()) {
             throw new MineException(MEMBER_DUPLICATED, Map.of("groupId", groupId));
         }
-        return service.replaceMembers(groupId, request.deviceIds(), request.version());
+        return service.replaceMembers(
+                groupId, request.deviceIds(), request.version(), request.retentionPreviewToken());
     }
 
     /**
@@ -173,7 +175,7 @@ public class DeviceGroupController {
             @PathVariable("id") UUID groupId,
             @Valid @RequestBody ArchiveRequest request
     ) {
-        service.archiveGroup(groupId, request.version());
+        service.archiveGroup(groupId, request.version(), request.retentionPreviewToken());
         return ResponseEntity.noContent().build();
     }
 
@@ -203,12 +205,14 @@ public class DeviceGroupController {
      * @param priority    策略优先级
      * @param description 用途说明
      * @param version     乐观锁版本号
+     * @param retentionPreviewToken 数据保留影响预览凭证
      */
     public record UpdateRequest(
             @NotBlank @Size(max = 128) String name,
             @Min(0) @Max(1000) int priority,
             @Size(max = 500) String description,
-            @Min(0) long version
+            @Min(0) long version,
+            UUID retentionPreviewToken
     ) {
     }
 
@@ -217,10 +221,12 @@ public class DeviceGroupController {
      *
      * @param deviceIds 目标成员设备标识
      * @param version   乐观锁版本号
+     * @param retentionPreviewToken 数据保留影响预览凭证
      */
     public record ReplaceMembersRequest(
             @NotNull @Size(max = 5000) List<@NotNull UUID> deviceIds,
-            @Min(0) long version
+            @Min(0) long version,
+            UUID retentionPreviewToken
     ) {
     }
 
@@ -228,7 +234,8 @@ public class DeviceGroupController {
      * 设备组归档请求。
      *
      * @param version 乐观锁版本号
+     * @param retentionPreviewToken 数据保留影响预览凭证
      */
-    public record ArchiveRequest(@Min(0) long version) {
+    public record ArchiveRequest(@Min(0) long version, UUID retentionPreviewToken) {
     }
 }

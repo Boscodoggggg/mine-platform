@@ -2,12 +2,11 @@ package com.bosco.mine.server.modules.strategy.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.model.strategy.StrategyScopeType;
+import com.bosco.mine.server.modules.strategy.service.RetentionGroupChangeGuard;
 import com.bosco.mine.server.modules.strategy.service.RetentionRuntimeService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.validation.annotation.Validated;
@@ -19,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -53,7 +51,24 @@ public class RetentionRuntimeController {
             @Valid @RequestBody RetentionPreviewRequest request
     ) {
         return service.preview(new RetentionRuntimeService.PreviewCommand(
-                request.productId(), request.scopeType(), request.scopeId(), request.policy()));
+                request.productId(), request.strategyVersionId(),
+                request.scopeType(), request.scopeId()));
+    }
+
+    /**
+     * 预览设备组成员、优先级或归档变化间接激活保留策略后的删除影响。
+     *
+     * @param request 设备组拟变更请求
+     * @return 是否需要一次性凭证及逐设备影响
+     */
+    @PostMapping("/retention-group-change-previews")
+    @SaCheckPermission({"device:group:edit", "device:strategy:publish"})
+    public RetentionRuntimeService.GroupChangePreviewView previewGroupChange(
+            @Valid @RequestBody GroupChangePreviewRequest request
+    ) {
+        return service.previewGroupChange(new RetentionRuntimeService.GroupChangePreviewCommand(
+                request.groupId(), request.changeType(), request.groupVersion(),
+                request.deviceIds(), request.nextPriority()));
     }
 
     /**
@@ -74,16 +89,33 @@ public class RetentionRuntimeController {
      * 数据保留影响预览请求。
      *
      * @param productId 产品标识
-     * @param scopeType 作用域类型
-     * @param scopeId   作用域标识
-     * @param policy    拟发布的原子保留策略对象
+     * @param strategyVersionId 已保存策略版本标识
+     * @param scopeType         作用域类型
+     * @param scopeId           作用域标识
      */
     public record RetentionPreviewRequest(
             @NotNull UUID productId,
+            @NotNull UUID strategyVersionId,
             @NotNull StrategyScopeType scopeType,
-            @NotNull UUID scopeId,
-            @NotEmpty @Size(max = 4)
-            Map<@NotBlank @Size(max = 64) String, Object> policy
+            @NotNull UUID scopeId
+    ) {
+    }
+
+    /**
+     * 设备组拟变更保留影响预览请求。
+     *
+     * @param groupId      设备组标识
+     * @param changeType   成员、优先级或归档变化
+     * @param groupVersion 设备组乐观锁版本
+     * @param deviceIds    成员变化后的完整设备集合
+     * @param nextPriority 优先级变化后的值
+     */
+    public record GroupChangePreviewRequest(
+            @NotNull UUID groupId,
+            @NotNull RetentionGroupChangeGuard.ChangeType changeType,
+            @Min(0) long groupVersion,
+            @Size(max = 5000) List<@NotNull UUID> deviceIds,
+            @Min(0) @Max(1000) Integer nextPriority
     ) {
     }
 }

@@ -16,7 +16,9 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -64,42 +66,57 @@ public class RetentionRuntimeRepository {
     /**
      * 在同一个数据库可重复读快照中统计两个受控数据集的过期候选。
      *
-     * @param deviceIds          受影响设备标识
-     * @param rawTelemetryDays   原始数值遥测保留天数
-     * @param qualityEvidenceDays 质量证据保留天数
+     * @param devicePolicies     每台目标设备发布后的最终保留策略
      * @param countLimit         每个数据集最大精确统计行数
      * @return 数据库统计时点和两个数据集影响
      */
     public PreviewSnapshot preview(
-            List<UUID> deviceIds,
-            int rawTelemetryDays,
-            int qualityEvidenceDays,
+            List<DeviceRetentionPolicy> devicePolicies,
             long countLimit
     ) {
-        validatePreview(deviceIds, rawTelemetryDays, qualityEvidenceDays, countLimit);
-        List<UUID> stableDeviceIds = List.copyOf(deviceIds);
+        validatePreview(devicePolicies, countLimit);
+        List<DeviceRetentionPolicy> stablePolicies = List.copyOf(devicePolicies);
         return executeReadOnly(jdbcTemplate -> {
             Instant observedAt = databaseNow(jdbcTemplate);
-            if (stableDeviceIds.isEmpty()) {
+            if (stablePolicies.stream().noneMatch(DeviceRetentionPolicy::enabled)) {
                 DatasetImpact empty = new DatasetImpact(0, null, false);
                 return new PreviewSnapshot(observedAt, empty, empty);
             }
-            DatasetImpact rawTelemetry = summarize(
-                    jdbcTemplate,
-                    stableDeviceIds,
-                    observedAt.minus(rawTelemetryDays, ChronoUnit.DAYS),
-                    countLimit,
-                    Dataset.RAW_TELEMETRY
-            );
-            DatasetImpact qualityEvidence = summarize(
-                    jdbcTemplate,
-                    stableDeviceIds,
-                    observedAt.minus(qualityEvidenceDays, ChronoUnit.DAYS),
-                    countLimit,
-                    Dataset.QUALITY_EVIDENCE
-            );
+            DatasetImpact rawTelemetry = summarizePolicies(
+                    jdbcTemplate, stablePolicies, observedAt, countLimit, Dataset.RAW_TELEMETRY);
+            DatasetImpact qualityEvidence = summarizePolicies(
+                    jdbcTemplate, stablePolicies, observedAt, countLimit, Dataset.QUALITY_EVIDENCE);
             return new PreviewSnapshot(observedAt, rawTelemetry, qualityEvidence);
         });
+    }
+
+    private DatasetImpact summarizePolicies(
+            JdbcTemplate jdbcTemplate,
+            List<DeviceRetentionPolicy> policies,
+            Instant observedAt,
+            long countLimit,
+            Dataset dataset
+    ) {
+        Map<Integer, List<UUID>> deviceIdsByDays = new TreeMap<>();
+        policies.stream().filter(DeviceRetentionPolicy::enabled).forEach(policy ->
+                deviceIdsByDays.computeIfAbsent(
+                        dataset.days(policy), ignored -> new java.util.ArrayList<>())
+                        .add(policy.deviceId()));
+        long eligibleRows = 0;
+        Instant earliestEligibleAt = null;
+        boolean atLeast = false;
+        for (Map.Entry<Integer, List<UUID>> entry : deviceIdsByDays.entrySet()) {
+            long remaining = Math.max(1, countLimit - eligibleRows);
+            DatasetImpact impact = summarize(
+                    jdbcTemplate, entry.getValue(),
+                    observedAt.minus(entry.getKey(), ChronoUnit.DAYS),
+                    remaining, dataset);
+            earliestEligibleAt = earlier(earliestEligibleAt, impact.earliestEligibleAt());
+            long accepted = Math.min(impact.eligibleRows(), countLimit - eligibleRows);
+            eligibleRows += accepted;
+            atLeast = atLeast || impact.atLeast() || impact.eligibleRows() > accepted;
+        }
+        return new DatasetImpact(eligibleRows, earliestEligibleAt, atLeast);
     }
 
     /**
@@ -237,15 +254,16 @@ public class RetentionRuntimeRepository {
     }
 
     private void validatePreview(
-            List<UUID> deviceIds,
-            int rawTelemetryDays,
-            int qualityEvidenceDays,
+            List<DeviceRetentionPolicy> devicePolicies,
             long countLimit
     ) {
-        if (deviceIds == null || deviceIds.stream().anyMatch(Objects::isNull)
-                || rawTelemetryDays < 7 || rawTelemetryDays > 3_650
-                || qualityEvidenceDays < rawTelemetryDays
-                || qualityEvidenceDays > 3_650
+        if (devicePolicies == null || devicePolicies.stream().anyMatch(Objects::isNull)
+                || devicePolicies.stream().map(DeviceRetentionPolicy::deviceId).distinct().count()
+                != devicePolicies.size()
+                || devicePolicies.stream().anyMatch(policy -> policy.deviceId() == null
+                || policy.rawTelemetryDays() < 7 || policy.rawTelemetryDays() > 3_650
+                || policy.qualityEvidenceDays() < policy.rawTelemetryDays()
+                || policy.qualityEvidenceDays() > 3_650)
                 || countLimit < 1 || countLimit > Integer.MAX_VALUE - 1L) {
             throw new IllegalArgumentException("数据保留预览参数超出安全范围");
         }
@@ -285,6 +303,11 @@ public class RetentionRuntimeRepository {
         private String query() {
             return query;
         }
+
+        private int days(DeviceRetentionPolicy policy) {
+            return this == RAW_TELEMETRY
+                    ? policy.rawTelemetryDays() : policy.qualityEvidenceDays();
+        }
     }
 
     private record BatchImpact(long rows, Instant earliestEligibleAt) {
@@ -315,6 +338,22 @@ public class RetentionRuntimeRepository {
             long eligibleRows,
             Instant earliestEligibleAt,
             boolean atLeast
+    ) {
+    }
+
+    /**
+     * 一台设备发布后的最终保留策略。
+     *
+     * @param deviceId           设备标识
+     * @param enabled            是否仍启用删除
+     * @param rawTelemetryDays   原始数值遥测保留天数
+     * @param qualityEvidenceDays 质量证据保留天数
+     */
+    public record DeviceRetentionPolicy(
+            UUID deviceId,
+            boolean enabled,
+            int rawTelemetryDays,
+            int qualityEvidenceDays
     ) {
     }
 

@@ -36,6 +36,7 @@ class DeviceGroupServiceTest {
     private StrategyConflictGuard conflictGuard;
     private EffectiveStrategyCacheInvalidator cacheInvalidator;
     private StrategyRuntimeSnapshotService runtimeSnapshotService;
+    private RetentionGroupChangeGuard retentionGroupChangeGuard;
     private DeviceGroupService service;
 
     @BeforeEach
@@ -45,8 +46,10 @@ class DeviceGroupServiceTest {
         conflictGuard = mock(StrategyConflictGuard.class);
         cacheInvalidator = mock(EffectiveStrategyCacheInvalidator.class);
         runtimeSnapshotService = mock(StrategyRuntimeSnapshotService.class);
+        retentionGroupChangeGuard = mock(RetentionGroupChangeGuard.class);
         service = new DeviceGroupService(
-                mapper, auditService, conflictGuard, cacheInvalidator, runtimeSnapshotService);
+                mapper, auditService, conflictGuard, cacheInvalidator, runtimeSnapshotService,
+                retentionGroupChangeGuard);
     }
 
     @Test
@@ -151,9 +154,11 @@ class DeviceGroupServiceTest {
         when(mapper.findActiveMemberIds(groupId)).thenReturn(List.of(retainedDeviceId, removedDeviceId));
         when(mapper.countEligibleDevices(productId, List.of(retainedDeviceId, addedDeviceId))).thenReturn(2L);
         when(mapper.touchGroup(groupId, 2, null)).thenReturn(1);
+        UUID previewToken = UUID.randomUUID();
+        when(retentionGroupChangeGuard.verify(any())).thenReturn(true);
 
         DeviceGroupService.MembershipChange result = service.replaceMembers(
-                groupId, List.of(retainedDeviceId, addedDeviceId), 2
+                groupId, List.of(retainedDeviceId, addedDeviceId), 2, previewToken
         );
 
         assertThat(result.addedDeviceIds()).containsExactly(addedDeviceId);
@@ -181,6 +186,12 @@ class DeviceGroupServiceTest {
                 productId, "ALARM", List.of(addedDeviceId, removedDeviceId),
                 StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
         );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "RETENTION", List.of(addedDeviceId, removedDeviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
+        );
+        verify(retentionGroupChangeGuard).verify(any(RetentionGroupChangeGuard.ActivationCommand.class));
+        verify(retentionGroupChangeGuard).markGroupChangeActivated(previewToken, groupId);
     }
 
     @Test
@@ -220,8 +231,10 @@ class DeviceGroupServiceTest {
         UUID memberId = UUID.randomUUID();
         when(mapper.findActiveMemberIds(groupId)).thenReturn(List.of(memberId));
         when(mapper.archiveGroup(groupId, 4, null)).thenReturn(1);
+        UUID previewToken = UUID.randomUUID();
+        when(retentionGroupChangeGuard.verify(any())).thenReturn(true);
 
-        service.archiveGroup(groupId, 4);
+        service.archiveGroup(groupId, 4, previewToken);
 
         InOrder order = inOrder(mapper);
         order.verify(mapper).closeAllActiveMemberships(groupId, null);
@@ -239,6 +252,40 @@ class DeviceGroupServiceTest {
                 productId, "ALARM", List.of(memberId),
                 StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
         );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "RETENTION", List.of(memberId),
+                StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
+        );
+        verify(retentionGroupChangeGuard).markGroupChangeActivated(previewToken, groupId);
+    }
+
+    @Test
+    void 修改优先级应为当前成员生成保留策略增量快照() {
+        UUID productId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID memberId = UUID.randomUUID();
+        StrategyScopeMapper.DeviceGroupRecord before = group(
+                groupId, productId, "haul-team", "运输一组", 800, "ACTIVE", 3
+        );
+        StrategyScopeMapper.DeviceGroupRecord after = group(
+                groupId, productId, "haul-team", "运输一组", 900, "ACTIVE", 4
+        );
+        when(mapper.findGroupById(groupId)).thenReturn(Optional.of(before), Optional.of(after));
+        when(mapper.findGroupByIdForUpdate(groupId)).thenReturn(Optional.of(before));
+        when(mapper.findActiveMemberIds(groupId)).thenReturn(List.of(memberId));
+        when(mapper.updateGroup(groupId, "运输一组", 900, null, 3, null)).thenReturn(1);
+        UUID previewToken = UUID.randomUUID();
+        when(retentionGroupChangeGuard.verify(any())).thenReturn(true);
+
+        service.updateGroup(groupId,
+                new DeviceGroupService.UpdateGroupCommand(
+                        "运输一组", 900, null, 3, previewToken));
+
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "RETENTION", List.of(memberId),
+                StrategyRuntimeSnapshotService.ChangeReason.PRIORITY
+        );
+        verify(retentionGroupChangeGuard).markGroupChangeActivated(previewToken, groupId);
     }
 
     @Test

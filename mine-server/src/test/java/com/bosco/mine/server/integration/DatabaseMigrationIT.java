@@ -1,6 +1,7 @@
 package com.bosco.mine.server.integration;
 
 import com.bosco.mine.server.MineServerApplication;
+import com.bosco.mine.server.modules.strategy.repository.RetentionPreviewEvidenceMapper;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +10,8 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -17,6 +20,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -57,6 +61,7 @@ class DatabaseMigrationIT {
             "dev_device_group_membership",
             "dev_strategy_version",
             "dev_strategy_release",
+            "dev_retention_preview_evidence",
             "dev_strategy_runtime_snapshot",
             "dev_strategy_runtime_snapshot_item",
             "sys_login_log",
@@ -80,6 +85,12 @@ class DatabaseMigrationIT {
 
     @Autowired
     private Flyway flyway;
+
+    @Autowired
+    private RetentionPreviewEvidenceMapper retentionPreviewEvidenceMapper;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @Test
     void 应创建权限审计和消息一致性表() {
@@ -115,6 +126,98 @@ class DatabaseMigrationIT {
                 """, Long.class)).isZero();
         assertThat(constraintColumns("uk_cmd_instance_creator_idempotency"))
                 .containsExactly("created_by", "idempotency_key");
+    }
+
+    @Test
+    void 保留预览凭证表必须完整注释并约束一次性激活语义() {
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT obj_description('dev_retention_preview_evidence'::regclass, 'pg_class')",
+                String.class
+        )).matches(".*[\\u4e00-\\u9fff].*");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid = 'dev_retention_preview_evidence'::regclass
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("fk_dev_retention_preview_version"))
+                .containsExactly("strategy_version_id");
+        assertThat(constraintColumns("fk_dev_retention_preview_release"))
+                .containsExactly("activated_release_id");
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'dev_retention_preview_evidence'
+                """, String.class)).contains("idx_dev_retention_preview_expiry");
+    }
+
+    @Test
+    void 保留预览凭证必须在真实数据库中一次消费并支持事务回滚() {
+        UUID productId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID strategyVersionId = UUID.randomUUID();
+        UUID consumedToken = UUID.randomUUID();
+        UUID expiredToken = UUID.randomUUID();
+        UUID rollbackToken = UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbcTemplate.update("""
+                INSERT INTO dev_product (id, product_key, name, device_type, status)
+                VALUES (?, ?, '保留凭证测试产品', 'SENSOR', 'ACTIVE')
+                """, productId, "retention-evidence-" + productId.toString().substring(0, 8));
+        jdbcTemplate.update("""
+                INSERT INTO dev_device_group (id, product_id, group_key, name, priority)
+                VALUES (?, ?, ?, '保留凭证测试设备组', 800)
+                """, groupId, productId, "evidence-" + groupId.toString().substring(0, 8));
+        jdbcTemplate.update("""
+                INSERT INTO dev_strategy_version (
+                    id, product_id, strategy_type, version_number, values_json
+                ) VALUES (
+                    ?, ?, 'RETENTION', 1,
+                    '{"policy":{"enabled":true,"retentionClass":"STANDARD",'
+                    '"rawTelemetryDays":90,"qualityEvidenceDays":180}}'::jsonb
+                )
+                """, strategyVersionId, productId);
+        try {
+            assertThat(retentionPreviewEvidenceMapper.insert(groupChangeEvidence(
+                    consumedToken, strategyVersionId, productId, groupId,
+                    now, now.plusSeconds(60)))).isOne();
+            assertThat(retentionPreviewEvidenceMapper.markGroupChangeActivated(
+                    consumedToken, groupId)).isOne();
+            assertThat(retentionPreviewEvidenceMapper.markGroupChangeActivated(
+                    consumedToken, groupId)).isZero();
+
+            assertThat(retentionPreviewEvidenceMapper.insert(groupChangeEvidence(
+                    expiredToken, strategyVersionId, productId, groupId,
+                    now.minusSeconds(120), now.minusSeconds(60)))).isOne();
+            assertThat(retentionPreviewEvidenceMapper.markGroupChangeActivated(
+                    expiredToken, groupId)).isZero();
+
+            assertThat(retentionPreviewEvidenceMapper.insert(groupChangeEvidence(
+                    rollbackToken, strategyVersionId, productId, groupId,
+                    now, now.plusSeconds(60)))).isOne();
+            TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+            assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
+                assertThat(retentionPreviewEvidenceMapper.markGroupChangeActivated(
+                        rollbackToken, groupId)).isOne();
+                throw new IllegalStateException("rollback-retention-token");
+            })).isInstanceOf(IllegalStateException.class)
+                    .hasMessage("rollback-retention-token");
+            assertThat(jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM dev_retention_preview_evidence
+                    WHERE id = ? AND activated_at IS NULL
+                    """, Long.class, rollbackToken)).isOne();
+            assertThat(retentionPreviewEvidenceMapper.markGroupChangeActivated(
+                    rollbackToken, groupId)).isOne();
+        } finally {
+            jdbcTemplate.update("DELETE FROM dev_retention_preview_evidence WHERE product_id = ?", productId);
+            jdbcTemplate.update("DELETE FROM dev_strategy_version WHERE id = ?", strategyVersionId);
+            jdbcTemplate.update("DELETE FROM dev_device_group WHERE id = ?", groupId);
+            jdbcTemplate.update("DELETE FROM dev_product WHERE id = ?", productId);
+        }
     }
 
     @Test
@@ -844,6 +947,21 @@ class DatabaseMigrationIT {
                   AND table_constraints.constraint_name = ?
                 ORDER BY key_column_usage.ordinal_position
                 """, String.class, constraintName);
+    }
+
+    private RetentionPreviewEvidenceMapper.PreviewEvidence groupChangeEvidence(
+            UUID token,
+            UUID strategyVersionId,
+            UUID productId,
+            UUID groupId,
+            Instant observedAt,
+            Instant expiresAt
+    ) {
+        return new RetentionPreviewEvidenceMapper.PreviewEvidence(
+                token, null, "GROUP_CHANGE", "MEMBERSHIP", 0L,
+                strategyVersionId, productId, "GROUP", groupId, 800,
+                "sha256:" + "a".repeat(64), "sha256:" + "b".repeat(64),
+                observedAt, expiresAt, null, null);
     }
 
     private void assertRejected(String sql, Object... arguments) {

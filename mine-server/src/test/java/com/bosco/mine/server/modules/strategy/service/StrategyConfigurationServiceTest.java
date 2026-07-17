@@ -38,6 +38,7 @@ class StrategyConfigurationServiceTest {
     private OperationAuditService auditService;
     private EffectiveStrategyCacheInvalidator cacheInvalidator;
     private StrategyRuntimeSnapshotService runtimeSnapshotService;
+    private RetentionActivationGuard retentionActivationGuard;
     private StrategyConfigurationService service;
 
     @BeforeEach
@@ -47,13 +48,15 @@ class StrategyConfigurationServiceTest {
         auditService = mock(OperationAuditService.class);
         cacheInvalidator = mock(EffectiveStrategyCacheInvalidator.class);
         runtimeSnapshotService = mock(StrategyRuntimeSnapshotService.class);
+        retentionActivationGuard = mock(RetentionActivationGuard.class);
         service = new StrategyConfigurationService(
                 mapper,
                 scopeMapper,
                 auditService,
                 JsonMapper.builder().findAndAddModules().build(),
                 cacheInvalidator,
-                runtimeSnapshotService
+                runtimeSnapshotService,
+                retentionActivationGuard
         );
     }
 
@@ -319,6 +322,42 @@ class StrategyConfigurationServiceTest {
     }
 
     @Test
+    void 数据保留发布必须携带精确预览凭证并在同一事务绑定发布事实() {
+        UUID previewToken = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        StrategyConfigurationMapper.StrategyVersionRecord draft = retentionVersion("DRAFT", 1);
+        when(mapper.findReleaseByIdempotency(null, "retention-publish-001"))
+                .thenReturn(Optional.empty());
+        when(mapper.findVersionById(versionId)).thenReturn(Optional.of(draft));
+        when(mapper.findVersionForUpdate(versionId)).thenReturn(Optional.of(draft));
+        when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
+        when(mapper.findUnarchivedDeviceIds(productId)).thenReturn(List.of(deviceId));
+        when(mapper.findCurrentFragmentsForDevices(
+                productId, "RETENTION", List.of(deviceId)
+        )).thenReturn(List.of());
+        when(mapper.publishVersion(eq(versionId), any(), eq(1L), eq(null))).thenReturn(1);
+        when(mapper.nextReleaseSequence(productId)).thenReturn(10L);
+
+        StrategyConfigurationService.StrategyReleaseView published = service.publish(
+                new StrategyConfigurationService.PublishCommand(
+                        versionId, StrategyScopeType.PRODUCT, productId,
+                        "启用受控数据保留", "retention-publish-001", previewToken
+                )
+        );
+
+        verify(retentionActivationGuard).verify(new RetentionActivationGuard.ActivationCommand(
+                previewToken, versionId, productId, StrategyScopeType.PRODUCT, productId,
+                null, Map.of("policy", Map.of(
+                        "enabled", true,
+                        "retentionClass", "STANDARD",
+                        "rawTelemetryDays", 90,
+                        "qualityEvidenceDays", 180
+                )), List.of(deviceId), null
+        ));
+        verify(retentionActivationGuard).markActivated(previewToken, published.id());
+    }
+
+    @Test
     void 继承后的数据质量下限大于上限时必须阻止发布() {
         UUID groupId = UUID.randomUUID();
         UUID deviceId = UUID.randomUUID();
@@ -480,6 +519,46 @@ class StrategyConfigurationServiceTest {
     }
 
     @Test
+    void 数据保留回滚也必须重新校验目标版本的精确预览凭证() {
+        UUID historicalReleaseId = UUID.randomUUID();
+        UUID previewToken = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        StrategyConfigurationMapper.StrategyReleaseRecord historical =
+                new StrategyConfigurationMapper.StrategyReleaseRecord(
+                        historicalReleaseId, productId, versionId, "RETENTION", 6,
+                        "PRODUCT", productId, null, "PUBLISH", null, "历史保留发布",
+                        "sha256:" + "2".repeat(64),
+                        "{\"policy\":{\"enabled\":true,\"retentionClass\":\"STANDARD\","
+                                + "\"rawTelemetryDays\":90,\"qualityEvidenceDays\":180}}",
+                        Instant.parse("2026-07-16T00:00:00Z")
+                );
+        when(mapper.findReleaseByIdempotency(null, "retention-rollback-001"))
+                .thenReturn(Optional.empty());
+        when(mapper.findRelease(historicalReleaseId)).thenReturn(Optional.of(historical));
+        when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
+        when(mapper.findUnarchivedDeviceIds(productId)).thenReturn(List.of(deviceId));
+        when(mapper.findCurrentFragmentsForDevices(
+                productId, "RETENTION", List.of(deviceId)
+        )).thenReturn(List.of());
+        when(mapper.nextReleaseSequence(productId)).thenReturn(11L);
+
+        StrategyConfigurationService.StrategyReleaseView rolledBack = service.rollback(
+                historicalReleaseId, "恢复历史保留周期", "retention-rollback-001", previewToken
+        );
+
+        verify(retentionActivationGuard).verify(new RetentionActivationGuard.ActivationCommand(
+                previewToken, versionId, productId, StrategyScopeType.PRODUCT, productId,
+                null, Map.of("policy", Map.of(
+                        "enabled", true,
+                        "retentionClass", "STANDARD",
+                        "rawTelemetryDays", 90,
+                        "qualityEvidenceDays", 180
+                )), List.of(deviceId), null
+        ));
+        verify(retentionActivationGuard).markActivated(previewToken, rolledBack.id());
+    }
+
+    @Test
     void 回滚幂等键不得复用普通发布或其他历史发布() {
         UUID historicalReleaseId = UUID.randomUUID();
         StrategyConfigurationMapper.StrategyReleaseRecord existing = release(
@@ -541,6 +620,28 @@ class StrategyConfigurationServiceTest {
                 valuesJson,
                 "PUBLISHED".equals(status) ? "sha256:" + "0".repeat(64) : null,
                 "数据质量规则",
+                "PUBLISHED".equals(status) ? now : null,
+                now,
+                now,
+                version
+        );
+    }
+
+    private StrategyConfigurationMapper.StrategyVersionRecord retentionVersion(
+            String status,
+            long version
+    ) {
+        Instant now = Instant.parse("2026-07-16T00:00:00Z");
+        return new StrategyConfigurationMapper.StrategyVersionRecord(
+                versionId,
+                productId,
+                "RETENTION",
+                1,
+                status,
+                "{\"policy\":{\"enabled\":true,\"retentionClass\":\"STANDARD\","
+                        + "\"rawTelemetryDays\":90,\"qualityEvidenceDays\":180}}",
+                "PUBLISHED".equals(status) ? "sha256:" + "0".repeat(64) : null,
+                "数据保留规则",
                 "PUBLISHED".equals(status) ? now : null,
                 now,
                 now,

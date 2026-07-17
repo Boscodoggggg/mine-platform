@@ -17,6 +17,8 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -99,7 +101,8 @@ class DeviceGroupControllerTest {
         UUID groupId = UUID.randomUUID();
         UUID first = UUID.randomUUID();
         UUID second = UUID.randomUUID();
-        when(service.replaceMembers(groupId, List.of(first, second), 3))
+        UUID previewToken = UUID.randomUUID();
+        when(service.replaceMembers(groupId, List.of(first, second), 3, previewToken))
                 .thenReturn(new DeviceGroupService.MembershipChange(
                         groupId, List.of(second), List.of(), 2, 4
                 ));
@@ -107,8 +110,8 @@ class DeviceGroupControllerTest {
         mockMvc.perform(put("/api/v1/device-groups/{id}/members", groupId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"deviceIds":["%s","%s"],"version":3}
-                                """.formatted(first, second)))
+                                {"deviceIds":["%s","%s"],"version":3,"retentionPreviewToken":"%s"}
+                                """.formatted(first, second, previewToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.addedDeviceIds[0]").value(second.toString()))
                 .andExpect(jsonPath("$.memberCount").value(2))
@@ -126,13 +129,39 @@ class DeviceGroupControllerTest {
     @Test
     void 归档设备组应返回无内容响应() throws Exception {
         UUID groupId = UUID.randomUUID();
+        UUID previewToken = UUID.randomUUID();
 
         mockMvc.perform(post("/api/v1/device-groups/{id}/archive", groupId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"version\":3}"))
+                        .content("{\"version\":3,\"retentionPreviewToken\":\"%s\"}"
+                                .formatted(previewToken)))
                 .andExpect(status().isNoContent());
 
-        verify(service).archiveGroup(groupId, 3);
+        verify(service).archiveGroup(groupId, 3, previewToken);
+    }
+
+    @Test
+    void 修改优先级应向设备组服务传递保留预览凭证() throws Exception {
+        UUID productId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        UUID previewToken = UUID.randomUUID();
+        when(service.updateGroup(eq(groupId), any())).thenReturn(group(groupId, productId));
+
+        mockMvc.perform(put("/api/v1/device-groups/{id}", groupId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name":"运输一组",
+                                  "priority":900,
+                                  "description":"高优先级",
+                                  "version":3,
+                                  "retentionPreviewToken":"%s"
+                                }
+                                """.formatted(previewToken)))
+                .andExpect(status().isOk());
+
+        verify(service).updateGroup(eq(groupId), argThat(command ->
+                previewToken.equals(command.retentionPreviewToken())));
     }
 
     @Test
