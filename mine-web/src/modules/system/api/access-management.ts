@@ -47,14 +47,14 @@ export type MenuSavePayload = components['schemas']['MenuSaveRequest'];
 
 export interface UserQuery {
   keyword?: string;
-  status?: UserStatus | '';
+  status?: UserStatus | null;
   page: number;
   size: number;
 }
 
 export interface RoleQuery {
   keyword?: string;
-  status?: RoleStatus | '';
+  status?: RoleStatus | null;
   page: number;
   size: number;
 }

@@ -3,6 +3,7 @@ import type { RouteRecordRaw } from 'vue-router';
 import type { RouteKey, RoutePath } from '@elegant-router/types';
 import BaseLayout from '@/layouts/base-layout/index.vue';
 import { useSvgIcon } from '@/hooks/common/icon';
+import { resolveMenuIcon } from '@/utils/menu-icon';
 import { $t } from '@/locales';
 import type { NavigationMenuNode } from '@/modules/system/api/auth';
 
@@ -84,6 +85,7 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
 
     const routeName = createRouteName('dynamic', node.id);
     const i18nKey = resolveNavigationI18nKey(node);
+    const routeIcon = resolveMenuIcon(node.icon);
     routes.push({
       path: node.path,
       name: `${routeName}-layout`,
@@ -92,7 +94,7 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
       meta: {
         title: node.name,
         i18nKey,
-        icon: node.icon || undefined,
+        ...routeIcon,
         hideInMenu: true,
         componentKey: node.componentKey,
         componentFallback
@@ -105,7 +107,7 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
           meta: {
             title: node.name,
             i18nKey,
-            icon: node.icon || undefined,
+            ...routeIcon,
             componentKey: node.componentKey,
             componentFallback
           }
@@ -141,6 +143,8 @@ function createMenu(node: NavigationMenuNode, children?: App.Global.Menu[]): App
   const { SvgIconVNode } = useSvgIcon();
   const routeName = createRouteName(node.type === 'DIRECTORY' ? 'dynamic-group' : 'dynamic', node.id);
   const i18nKey = resolveNavigationI18nKey(node);
+  const resolvedIcon = resolveMenuIcon(node.icon);
+  const icon = resolvedIcon.icon || resolvedIcon.localIcon ? resolvedIcon : { icon: import.meta.env.VITE_MENU_ICON || 'mdi:menu' };
 
   return {
     key: routeName,
@@ -148,7 +152,7 @@ function createMenu(node: NavigationMenuNode, children?: App.Global.Menu[]): App
     i18nKey,
     routeKey: routeName as RouteKey,
     routePath: (node.path || '/') as RoutePath,
-    icon: SvgIconVNode({ icon: node.icon || import.meta.env.VITE_MENU_ICON || 'mdi:menu', fontSize: 20 }),
+    icon: SvgIconVNode({ ...icon, fontSize: 20 }),
     children
   };
 }

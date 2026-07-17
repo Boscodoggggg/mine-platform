@@ -373,7 +373,13 @@ function showError(error: unknown) {
     <NPageHeader :title="t('mine.models.title')" :subtitle="t('mine.models.subtitle')" />
     <NCard :bordered="false">
       <NFormItem :label="t('mine.models.product')">
-        <NSelect v-model:value="productId" filterable :options="productOptions" @update:value="loadConfiguration" />
+        <NSelect
+          v-model:value="productId"
+          filterable
+          :options="productOptions"
+          :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.product') })"
+          @update:value="loadConfiguration"
+        />
       </NFormItem>
       <NAlert type="info" :bordered="false">{{ t('mine.models.publishHelp') }}</NAlert>
     </NCard>
@@ -508,25 +514,44 @@ function showError(error: unknown) {
         <NGrid :cols="2" :x-gap="16">
           <NGi>
             <NFormItem :label="t('mine.models.field.identifier')">
-              <NInput v-model:value="modelFieldForm.identifier" />
+              <NInput
+                v-model:value="modelFieldForm.identifier"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.identifier') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.nameZh')">
-              <NInput v-model:value="modelFieldForm.nameZh" />
+              <NInput
+                v-model:value="modelFieldForm.nameZh"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.nameZh') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.dataType')">
-              <NSelect v-model:value="modelFieldForm.dataType" :options="modelTypeOptions" />
+              <NSelect
+                v-model:value="modelFieldForm.dataType"
+                :options="modelTypeOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.dataType') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
-            <NFormItem :label="t('mine.models.field.unit')"><NInput v-model:value="modelFieldForm.unit" /></NFormItem>
+            <NFormItem :label="t('mine.models.field.unit')">
+              <NInput
+                v-model:value="modelFieldForm.unit"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.unit') })"
+              />
+            </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.access')">
-              <NSelect v-model:value="modelFieldForm.accessMode" :options="accessOptions" />
+              <NSelect
+                v-model:value="modelFieldForm.accessMode"
+                :options="accessOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.access') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
@@ -536,12 +561,18 @@ function showError(error: unknown) {
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.minimum')">
-              <NInputNumber v-model:value="modelFieldForm.minimumValue" />
+              <NInputNumber
+                v-model:value="modelFieldForm.minimumValue"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.minimum') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.maximum')">
-              <NInputNumber v-model:value="modelFieldForm.maximumValue" />
+              <NInputNumber
+                v-model:value="modelFieldForm.maximumValue"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.maximum') })"
+              />
             </NFormItem>
           </NGi>
         </NGrid>
@@ -564,27 +595,44 @@ function showError(error: unknown) {
         <NGrid :cols="2" :x-gap="16">
           <NGi>
             <NFormItem :label="t('mine.models.field.profileKey')">
-              <NInput v-model:value="protocolDraftForm.profileKey" />
+              <NInput
+                v-model:value="protocolDraftForm.profileKey"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.profileKey') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.profileName')">
-              <NInput v-model:value="protocolDraftForm.name" />
+              <NInput
+                v-model:value="protocolDraftForm.name"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.profileName') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.protocolType')">
-              <NSelect v-model:value="protocolDraftForm.protocolType" :options="protocolTypeOptions" />
+              <NSelect
+                v-model:value="protocolDraftForm.protocolType"
+                :options="protocolTypeOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.protocolType') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.messageType')">
-              <NSelect v-model:value="protocolDraftForm.messageType" :options="messageTypeOptions" />
+              <NSelect
+                v-model:value="protocolDraftForm.messageType"
+                :options="messageTypeOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.messageType') })"
+              />
             </NFormItem>
           </NGi>
           <NGi :span="2">
             <NFormItem :label="t('mine.models.field.topicOrFrame')">
-              <NInput v-model:value="protocolDraftForm.topicOrFrame" />
+              <NInput
+                v-model:value="protocolDraftForm.topicOrFrame"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.topicOrFrame') })"
+              />
             </NFormItem>
           </NGi>
         </NGrid>
@@ -607,12 +655,19 @@ function showError(error: unknown) {
         <NGrid :cols="2" :x-gap="16">
           <NGi>
             <NFormItem :label="t('mine.models.field.sourcePath')">
-              <NInput v-model:value="protocolFieldForm.sourcePath" />
+              <NInput
+                v-model:value="protocolFieldForm.sourcePath"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.sourcePath') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.sourceType')">
-              <NSelect v-model:value="protocolFieldForm.sourceDataType" :options="sourceTypeOptions" />
+              <NSelect
+                v-model:value="protocolFieldForm.sourceDataType"
+                :options="sourceTypeOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.sourceType') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
@@ -621,27 +676,41 @@ function showError(error: unknown) {
                 v-model:value="protocolFieldForm.targetIdentifier"
                 filterable
                 :options="publishedTargetOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.target') })"
               />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.models.field.transform')">
-              <NSelect v-model:value="protocolFieldForm.transformType" :options="transformOptions" />
+              <NSelect
+                v-model:value="protocolFieldForm.transformType"
+                :options="transformOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.transform') })"
+              />
             </NFormItem>
           </NGi>
           <NGi v-if="protocolFieldForm.transformType.includes('SCALE')">
             <NFormItem :label="t('mine.models.field.scale')">
-              <NInputNumber v-model:value="protocolFieldForm.scaleFactor" />
+              <NInputNumber
+                v-model:value="protocolFieldForm.scaleFactor"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.scale') })"
+              />
             </NFormItem>
           </NGi>
           <NGi v-if="protocolFieldForm.transformType.includes('OFFSET')">
             <NFormItem :label="t('mine.models.field.offset')">
-              <NInputNumber v-model:value="protocolFieldForm.offsetValue" />
+              <NInputNumber
+                v-model:value="protocolFieldForm.offsetValue"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.offset') })"
+              />
             </NFormItem>
           </NGi>
           <NGi v-if="protocolFieldForm.transformType === 'EXPRESSION'" :span="2">
             <NFormItem :label="t('mine.models.field.expression')">
-              <NInput v-model:value="protocolFieldForm.expression" />
+              <NInput
+                v-model:value="protocolFieldForm.expression"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.expression') })"
+              />
             </NFormItem>
           </NGi>
         </NGrid>

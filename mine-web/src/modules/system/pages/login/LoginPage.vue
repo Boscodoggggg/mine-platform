@@ -258,6 +258,7 @@ function toDisplayError(reason: unknown): DisplayError {
                     type="password"
                     show-password-on="click"
                     :input-props="{ name: 'currentPassword', autocomplete: 'current-password' }"
+                    :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.login.field.currentPassword') })"
                   />
                 </NFormItem>
                 <NFormItem
@@ -270,6 +271,7 @@ function toDisplayError(reason: unknown): DisplayError {
                     type="password"
                     show-password-on="click"
                     :input-props="{ name: 'newPassword', autocomplete: 'new-password' }"
+                    :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.login.field.newPassword') })"
                   />
                 </NFormItem>
                 <NFormItem
@@ -282,6 +284,7 @@ function toDisplayError(reason: unknown): DisplayError {
                     type="password"
                     show-password-on="click"
                     :input-props="{ name: 'confirmPassword', autocomplete: 'new-password' }"
+                    :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.login.field.confirmPassword') })"
                   />
                 </NFormItem>
               </template>

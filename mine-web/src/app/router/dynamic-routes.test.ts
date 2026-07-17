@@ -81,6 +81,23 @@ describe('buildDynamicNavigation', () => {
     expect(result.menus[0]?.children?.some(menu => menu.label === '查看详情')).toBe(false);
   });
 
+  it('本地图标标记应按本地图标渲染', () => {
+    const result = buildDynamicNavigation([
+      {
+        ...nodes[0],
+        icon: 'local:activity',
+        children: [{ ...nodes[0].children[0], icon: 'local:activity', children: [] }]
+      }
+    ]);
+    const iconRenderer = result.menus[0]?.icon as (() => { props?: Record<string, unknown> }) | undefined;
+
+    expect(iconRenderer?.().props).toMatchObject({ localIcon: 'activity' });
+    expect(result.routes[0]?.meta).toMatchObject({ localIcon: 'activity' });
+    expect(result.routes[0]?.meta?.icon).toBeUndefined();
+    expect(result.routes[0]?.children?.[0]?.meta).toMatchObject({ localIcon: 'activity' });
+    expect(result.routes[0]?.children?.[0]?.meta?.icon).toBeUndefined();
+  });
+
   it('系统用户角色和运行监控组件键应命中本地白名单', () => {
     const systemNodes: NavigationMenuNode[] = [
       {

@@ -10,9 +10,9 @@ export type CommandPage = components['schemas']['CommandPage'];
 export type CommandCreateRequest = components['schemas']['CommandCreateRequest'];
 
 export interface CommandQuery {
-  deviceId?: string;
-  status?: CommandStatus | '';
-  templateKey?: string;
+  deviceId?: string | null;
+  status?: CommandStatus | null;
+  templateKey?: string | null;
   page?: number;
   size?: number;
 }

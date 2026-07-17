@@ -74,6 +74,8 @@ const local: App.I18n.Schema = {
       delete: 'Delete',
       empty: '—',
       allStatus: 'All statuses',
+      enterPlaceholder: 'Enter {field}',
+      selectPlaceholder: 'Select {field}',
       search: 'Search',
       reset: 'Reset',
       cancel: 'Cancel',
@@ -154,6 +156,7 @@ const local: App.I18n.Schema = {
       attention: {
         title: 'Needs Attention',
         count: '{count} devices',
+        column: { device: 'Device', status: 'Current status', lastReported: 'Last reported' },
         empty: 'No devices need attention',
         emptyHint: 'If a device stops reporting, investigate it from the device registry',
         unavailable: 'Attention status cannot be confirmed',
@@ -370,6 +373,8 @@ const local: App.I18n.Schema = {
         allStatuses: 'All Statuses'
       },
       modal: { create: 'Add Menu', edit: 'Edit Menu' },
+      iconType: { iconify: 'Iconify Icon', local: 'Local Icon' },
+      iconPicker: { choose: 'Select an icon', search: 'Search icon names', empty: 'No matching icons' },
       field: {
         name: 'Node Name',
         type: 'Node Type',
@@ -377,6 +382,7 @@ const local: App.I18n.Schema = {
         path: 'Route Path',
         component: 'Page Component',
         permission: 'Permission',
+        iconType: 'Icon Type',
         icon: 'Icon Key',
         sort: 'Sort Order',
         visible: 'Visible in Navigation',
@@ -392,7 +398,8 @@ const local: App.I18n.Schema = {
         path: 'Frontend route starting with /, for example /system/menus. It must be unique across the platform.',
         component: 'Choose from the frontend compile-time component registry. Arbitrary file paths are not allowed.',
         permission: 'Must match backend Sa-Token annotations and frontend action checks, such as system:menu:view.',
-        icon: 'Icon key used by navigation. Button nodes usually need no icon; blank values use the platform fallback.',
+        iconType: 'Use Iconify for general navigation or a bundled SVG local icon. Switching type clears the selection.',
+        icon: 'Choose the navigation icon from the library. Button nodes usually need no icon; blank values use the fallback.',
         i18nKey: 'Stable key present in both locale files, such as mine.menu.menus. The node name is used when blank.',
         status:
           'Disabled nodes are excluded from navigation and authorization results, making descendants unavailable.',
@@ -847,7 +854,8 @@ const local: App.I18n.Schema = {
       confirmPublishProtocol: 'Publish this protocol mapping? All target fields will be validated.',
       samples: {
         title: 'Protocol Golden Samples',
-        subtitle: 'Lock parsing behavior with real vendor payloads and replay them through the Gateway engine before release.',
+        subtitle:
+          'Lock parsing behavior with real vendor payloads and replay them through the Gateway engine before release.',
         unsaved: 'Sample changes are not saved. Save them before running the release gate.',
         empty: 'Add the first real payload to establish a repeatable protocol baseline',
         editorTitle: 'Sample Draft',
@@ -907,8 +915,15 @@ const local: App.I18n.Schema = {
         node: { id: 'Node', type: 'Node Type', status: 'Load Status', hash: 'Actual Hash', updatedAt: 'Last Report' },
         nodeType: { gateway: 'Gateway', telemetry: 'Telemetry', server: 'Management Server' },
         nodeStatus: { pending: 'Pending', loaded: 'Loaded', failed: 'Failed' },
-        validation: { reason: 'Enter a release reason', rollbackReason: 'Enter a rollback reason', publishProtocol: 'Publish the protocol version first' },
-        message: { published: 'Configuration release created; waiting for runtime nodes', rolledBack: 'Rollback release created' }
+        validation: {
+          reason: 'Enter a release reason',
+          rollbackReason: 'Enter a rollback reason',
+          publishProtocol: 'Publish the protocol version first'
+        },
+        message: {
+          published: 'Configuration release created; waiting for runtime nodes',
+          rolledBack: 'Rollback release created'
+        }
       }
     },
     monitor: {

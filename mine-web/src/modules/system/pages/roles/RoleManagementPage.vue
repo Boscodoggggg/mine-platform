@@ -6,6 +6,7 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NFlex,
   NForm,
   NFormItem,
   NGi,
@@ -38,9 +39,9 @@ const loading = ref(false);
 const saving = ref(false);
 const roles = ref<ManagedRole[]>([]);
 const total = ref(0);
-const query = reactive<{ keyword: string; status: RoleStatus | ''; page: number; size: number }>({
+const query = reactive<{ keyword: string; status: RoleStatus | null; page: number; size: number }>({
   keyword: '',
-  status: '',
+  status: null,
   page: 1,
   size: 20
 });
@@ -131,7 +132,7 @@ function search() {
 }
 
 function resetQuery() {
-  Object.assign(query, { keyword: '', status: '', page: 1 });
+  Object.assign(query, { keyword: '', status: null, page: 1 });
   return loadRoles();
 }
 
@@ -269,25 +270,26 @@ defineExpose({
     </NPageHeader>
 
     <NCard size="small">
-      <NGrid responsive="screen" cols="1 s:2 m:4" :x-gap="12" :y-gap="12">
-        <NGi>
-          <NInput v-model:value="query.keyword" clearable :placeholder="t('mine.roles.search')" @keyup.enter="search" />
-        </NGi>
-        <NGi>
-          <NSelect
-            v-model:value="query.status"
-            clearable
-            :options="statusOptions"
-            :placeholder="t('mine.common.allStatus')"
-          />
-        </NGi>
-        <NGi>
-          <NButton block type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
-        </NGi>
-        <NGi>
-          <NButton block @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
-        </NGi>
-      </NGrid>
+      <NFlex align="center">
+        <NInput
+          v-model:value="query.keyword"
+          clearable
+          :placeholder="t('mine.roles.search')"
+          class="min-w-60 flex-1"
+          @keyup.enter="search"
+        />
+        <NSelect
+          v-model:value="query.status"
+          clearable
+          :options="statusOptions"
+          :placeholder="t('mine.common.allStatus')"
+          class="w-52"
+        />
+        <NSpace>
+          <NButton type="primary" @click="search">{{ t('mine.common.search') }}</NButton>
+          <NButton @click="resetQuery">{{ t('mine.common.reset') }}</NButton>
+        </NSpace>
+      </NFlex>
     </NCard>
 
     <NCard size="small">
@@ -339,17 +341,31 @@ defineExpose({
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.roles.field.name')">
-              <NInput v-model:value="roleForm.name" maxlength="128" />
+              <NInput
+                v-model:value="roleForm.name"
+                maxlength="128"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.roles.field.name') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.roles.field.status')">
-              <NSelect v-model:value="roleForm.status" :options="statusOptions" />
+              <NSelect
+                v-model:value="roleForm.status"
+                :options="statusOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.roles.field.status') })"
+              />
             </NFormItem>
           </NGi>
           <NGi :span="2">
             <NFormItem :label="t('mine.roles.field.description')">
-              <NInput v-model:value="roleForm.description" type="textarea" maxlength="500" show-count />
+              <NInput
+                v-model:value="roleForm.description"
+                type="textarea"
+                maxlength="500"
+                show-count
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.roles.field.description') })"
+              />
             </NFormItem>
           </NGi>
         </NGrid>

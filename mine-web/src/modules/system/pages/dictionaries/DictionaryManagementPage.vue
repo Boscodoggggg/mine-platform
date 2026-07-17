@@ -348,14 +348,7 @@ function showError(error: unknown) {
     </NPageHeader>
 
     <NCard data-dictionary-workspace :bordered="false">
-      <NGrid
-        data-dictionary-layout
-        data-cols="1 l:20"
-        responsive="screen"
-        cols="1 l:20"
-        :x-gap="24"
-        :y-gap="24"
-      >
+      <NGrid data-dictionary-layout data-cols="1 l:20" responsive="screen" cols="1 l:20" :x-gap="24" :y-gap="24">
         <NGi data-dictionary-panel data-span="1 l:7" span="1 l:7" class="h-full">
           <NSpace vertical :size="16" class="h-full">
             <NText strong>{{ t('mine.dictionaries.typeList') }}</NText>
@@ -400,14 +393,31 @@ function showError(error: unknown) {
     >
       <NForm label-placement="top">
         <NFormItem :label="t('mine.dictionaries.field.code')">
-          <NInput v-model:value="typeForm.code" :disabled="Boolean(editingTypeId)" />
+          <NInput
+            v-model:value="typeForm.code"
+            :disabled="Boolean(editingTypeId)"
+            :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.code') })"
+          />
         </NFormItem>
-        <NFormItem :label="t('mine.dictionaries.field.name')"><NInput v-model:value="typeForm.name" /></NFormItem>
+        <NFormItem :label="t('mine.dictionaries.field.name')">
+          <NInput
+            v-model:value="typeForm.name"
+            :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.name') })"
+          />
+        </NFormItem>
         <NFormItem :label="t('mine.dictionaries.field.status')">
-          <NSelect v-model:value="typeForm.status" :options="statusOptions" />
+          <NSelect
+            v-model:value="typeForm.status"
+            :options="statusOptions"
+            :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.dictionaries.field.status') })"
+          />
         </NFormItem>
         <NFormItem :label="t('mine.dictionaries.field.description')">
-          <NInput v-model:value="typeForm.description" type="textarea" />
+          <NInput
+            v-model:value="typeForm.description"
+            type="textarea"
+            :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.description') })"
+          />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -428,32 +438,54 @@ function showError(error: unknown) {
         <NGrid :cols="2" :x-gap="16">
           <NGi>
             <NFormItem :label="t('mine.dictionaries.field.value')">
-              <NInput v-model:value="itemForm.value" :disabled="Boolean(editingItemId)" />
+              <NInput
+                v-model:value="itemForm.value"
+                :disabled="Boolean(editingItemId)"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.value') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.dictionaries.field.labelZh')">
-              <NInput v-model:value="itemForm.labelZh" />
+              <NInput
+                v-model:value="itemForm.labelZh"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.labelZh') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.dictionaries.field.labelEn')">
-              <NInput v-model:value="itemForm.labelEn" />
+              <NInput
+                v-model:value="itemForm.labelEn"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.labelEn') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.dictionaries.field.semantic')">
-              <NSelect v-model:value="itemForm.semanticType" :options="semanticOptions" />
+              <NSelect
+                v-model:value="itemForm.semanticType"
+                :options="semanticOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.dictionaries.field.semantic') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.dictionaries.field.sort')">
-              <NInputNumber v-model:value="itemForm.sortOrder" :min="0" />
+              <NInputNumber
+                v-model:value="itemForm.sortOrder"
+                :min="0"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.dictionaries.field.sort') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.dictionaries.field.status')">
-              <NSelect v-model:value="itemForm.status" :options="statusOptions" />
+              <NSelect
+                v-model:value="itemForm.status"
+                :options="statusOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.dictionaries.field.status') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>

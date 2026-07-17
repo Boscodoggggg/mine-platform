@@ -68,17 +68,23 @@ const devices = ref<Device[]>([]);
 const deviceStatusItems = ref<DictionaryItem[]>([]);
 const products = ref<Product[]>([]);
 const total = ref(0);
-const query = reactive<{ productId: string; keyword: string; status: DeviceStatus | ''; page: number; size: number }>({
-  productId: '',
+const query = reactive<{
+  productId: string | null;
+  keyword: string;
+  status: DeviceStatus | null;
+  page: number;
+  size: number;
+}>({
+  productId: null,
   keyword: '',
-  status: '',
+  status: null,
   page: 1,
   size: 20
 });
 const modalVisible = ref(false);
 const editingId = ref<string | null>(null);
 const deviceForm = reactive({
-  productId: '',
+  productId: null as string | null,
   deviceCode: '',
   name: '',
   status: 'ENABLED' as 'ENABLED' | 'DISABLED',
@@ -295,13 +301,13 @@ function search() {
   return loadDevices();
 }
 function resetQuery() {
-  Object.assign(query, { productId: '', keyword: '', status: '', page: 1 });
+  Object.assign(query, { productId: null, keyword: '', status: null, page: 1 });
   return loadDevices();
 }
 
 function openCreate() {
   editingId.value = null;
-  Object.assign(deviceForm, { productId: '', deviceCode: '', name: '', status: 'ENABLED', version: 0 });
+  Object.assign(deviceForm, { productId: null, deviceCode: '', name: '', status: 'ENABLED', version: 0 });
   modalVisible.value = true;
 }
 
@@ -318,8 +324,9 @@ function openEdit(device: Device) {
 }
 
 async function saveDevice() {
+  const productId = deviceForm.productId;
   if (
-    !deviceForm.productId ||
+    !productId ||
     !/^[A-Za-z0-9][A-Za-z0-9._:-]{1,127}$/.test(deviceForm.deviceCode) ||
     !deviceForm.name.trim()
   ) {
@@ -335,7 +342,7 @@ async function saveDevice() {
       });
     } else {
       await createDevice({
-        productId: deviceForm.productId,
+        productId,
         deviceCode: deviceForm.deviceCode,
         name: deviceForm.name.trim(),
         status: deviceForm.status
@@ -699,12 +706,20 @@ defineExpose({
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.devices.field.name')">
-              <NInput v-model:value="deviceForm.name" maxlength="128" />
+              <NInput
+                v-model:value="deviceForm.name"
+                maxlength="128"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.devices.field.name') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.devices.field.status')">
-              <NSelect v-model:value="deviceForm.status" :options="editableStatusOptions" />
+              <NSelect
+                v-model:value="deviceForm.status"
+                :options="editableStatusOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.devices.field.status') })"
+              />
             </NFormItem>
           </NGi>
         </NGrid>
@@ -738,6 +753,9 @@ defineExpose({
                         :value="connectionForm.connectionMode"
                         :disabled="!can('device:connection:update')"
                         :options="connectionModeOptions"
+                        :placeholder="
+                          t('mine.common.selectPlaceholder', { field: t('mine.devices.connection.field.mode') })
+                        "
                         @update:value="switchConnectionMode"
                       />
                     </NFormItem>
@@ -763,6 +781,7 @@ defineExpose({
                         :disabled="!can('device:connection:update')"
                         :min="1"
                         :max="65535"
+                        :placeholder="t('mine.common.enterPlaceholder', { field: connectionPresentation.portLabel })"
                         class="w-full"
                       />
                     </NFormItem>
@@ -788,6 +807,7 @@ defineExpose({
                         :disabled="!can('device:connection:update')"
                         :min="250"
                         :max="30000"
+                        :placeholder="t('mine.common.enterPlaceholder', { field: connectionPresentation.timeoutLabel })"
                         class="w-full"
                       />
                     </NFormItem>
@@ -799,6 +819,9 @@ defineExpose({
                         :disabled="!can('device:connection:update')"
                         :min="0"
                         :max="86400"
+                        :placeholder="
+                          t('mine.common.enterPlaceholder', { field: connectionPresentation.keepAliveLabel })
+                        "
                         class="w-full"
                       />
                     </NFormItem>
@@ -810,6 +833,11 @@ defineExpose({
                         :disabled="!can('device:connection:update')"
                         :min="1"
                         :max="604800"
+                        :placeholder="
+                          t('mine.common.enterPlaceholder', {
+                            field: t('mine.devices.connection.field.offlineThreshold')
+                          })
+                        "
                         class="w-full"
                       />
                     </NFormItem>

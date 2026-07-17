@@ -54,21 +54,21 @@ const cancelReason = ref('');
 const selectedCommand = ref<Command | null>(null);
 const currentIdempotencyKey = ref('');
 const query = reactive<{
-  deviceId: string;
-  status: CommandStatus | '';
-  templateKey: string;
+  deviceId: string | null;
+  status: CommandStatus | null;
+  templateKey: string | null;
   page: number;
   size: number;
 }>({
-  deviceId: '',
-  status: '',
-  templateKey: '',
+  deviceId: null,
+  status: null,
+  templateKey: null,
   page: 1,
   size: 20
 });
 const commandForm = reactive({
-  deviceId: '',
-  templateKey: '',
+  deviceId: null as string | null,
+  templateKey: null as string | null,
   parameters: {} as Record<string, unknown>,
   reason: '',
   workOrderNo: '',
@@ -207,15 +207,15 @@ function search() {
 }
 
 function resetQuery() {
-  Object.assign(query, { deviceId: '', status: '', templateKey: '', page: 1 });
+  Object.assign(query, { deviceId: null, status: null, templateKey: null, page: 1 });
   return loadCommands();
 }
 
 function openCreate() {
   const template = templates.value[0];
   Object.assign(commandForm, {
-    deviceId: targets.value[0]?.id || '',
-    templateKey: template?.key || '',
+    deviceId: targets.value[0]?.id || null,
+    templateKey: template?.key || null,
     parameters: {},
     reason: '',
     workOrderNo: '',
@@ -261,12 +261,14 @@ function requestSubmit() {
 }
 
 async function submitCommand() {
+  const { deviceId, templateKey } = commandForm;
+  if (!deviceId || !templateKey) return;
   saving.value = true;
   try {
     await createCommand(
       {
-        deviceId: commandForm.deviceId,
-        templateKey: commandForm.templateKey,
+        deviceId,
+        templateKey,
         parameters: commandForm.parameters,
         reason: commandForm.reason.trim() || undefined,
         workOrderNo: commandForm.workOrderNo.trim() || undefined,
@@ -483,6 +485,7 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
           <NSelect
             v-model:value="commandForm.templateKey"
             :options="templateOptions"
+            :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.commands.field.template') })"
             @update:value="syncTemplateDefaults"
           />
         </NFormItem>
@@ -497,35 +500,57 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
             :value="getNumberParameter(field.key)"
             :min="field.minimum"
             :max="field.maximum"
+            :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field.key) })"
             @update:value="value => setParameter(field.key, value)"
           />
           <NInput
             v-else
             :value="getStringParameter(field.key)"
+            :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field.key) })"
             @update:value="value => setParameter(field.key, value)"
           />
         </NFormItem>
         <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
           <NGi>
             <NFormItem :label="t('mine.commands.field.reason')" :required="selectedTemplate?.requiresReason">
-              <NInput v-model:value="commandForm.reason" type="textarea" :maxlength="1000" show-count />
+              <NInput
+                v-model:value="commandForm.reason"
+                type="textarea"
+                :maxlength="1000"
+                show-count
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.reason') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.commands.field.workOrderNo')">
-              <NInput v-model:value="commandForm.workOrderNo" :maxlength="128" />
+              <NInput
+                v-model:value="commandForm.workOrderNo"
+                :maxlength="128"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.workOrderNo') })"
+              />
             </NFormItem>
           </NGi>
         </NGrid>
         <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
           <NGi>
             <NFormItem :label="t('mine.commands.field.ttl')">
-              <NInputNumber v-model:value="commandForm.ttlSeconds" :min="1" :max="86400" />
+              <NInputNumber
+                v-model:value="commandForm.ttlSeconds"
+                :min="1"
+                :max="86400"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.ttl') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.commands.field.timeout')">
-              <NInputNumber v-model:value="commandForm.timeoutSeconds" :min="1" :max="86400" />
+              <NInputNumber
+                v-model:value="commandForm.timeoutSeconds"
+                :min="1"
+                :max="86400"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.timeout') })"
+              />
             </NFormItem>
           </NGi>
         </NGrid>
@@ -599,7 +624,13 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
     >
       <NForm label-placement="top">
         <NFormItem :label="t('mine.commands.field.cancelReason')" required>
-          <NInput v-model:value="cancelReason" type="textarea" :maxlength="500" show-count />
+          <NInput
+            v-model:value="cancelReason"
+            type="textarea"
+            :maxlength="500"
+            show-count
+            :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.cancelReason') })"
+          />
         </NFormItem>
       </NForm>
       <template #footer>

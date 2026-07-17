@@ -21,15 +21,15 @@ export type DeviceAccessTestResult = components['schemas']['DeviceAccessTestResu
 
 export interface ProductQuery {
   keyword?: string;
-  status?: ProductStatus | '';
+  status?: ProductStatus | null;
   page?: number;
   size?: number;
 }
 
 export interface DeviceQuery {
-  productId?: string;
+  productId?: string | null;
   keyword?: string;
-  status?: DeviceStatus | '';
+  status?: DeviceStatus | null;
   page?: number;
   size?: number;
 }

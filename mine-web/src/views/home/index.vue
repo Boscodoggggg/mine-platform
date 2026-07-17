@@ -1,25 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, h, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
+import type { DataTableColumns } from 'naive-ui';
 import {
   NAlert,
   NButton,
   NCard,
+  NDataTable,
   NEmpty,
   NFlex,
   NGi,
   NGrid,
-  NList,
-  NListItem,
   NPageHeader,
   NProgress,
   NSkeleton,
   NSpace,
   NStatistic,
   NTag,
-  NText,
-  NThing
+  NText
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
@@ -106,6 +105,40 @@ const quickActions = computed(() =>
     { key: 'commands', permission: 'command:instance:view', path: '/command/center', icon: 'carbon:code' }
   ].filter(item => hasPermission(authStore.userInfo.buttons, item.permission))
 );
+
+const attentionColumns = computed<DataTableColumns<DashboardAttentionDevice>>(() => [
+  {
+    title: t('mine.home.attention.column.device'),
+    key: 'device',
+    minWidth: 220,
+    render: device =>
+      h(NSpace, { vertical: true, size: 0 }, () => [
+        h(NText, { strong: true }, () => device.name),
+        h(NText, { depth: 3 }, () => device.deviceCode)
+      ])
+  },
+  {
+    title: t('mine.home.attention.column.status'),
+    key: 'state',
+    width: 130,
+    render: device =>
+      h(NTag, { type: attentionType(device), size: 'small', bordered: false }, () => attentionState(device))
+  },
+  {
+    title: t('mine.home.attention.column.lastReported'),
+    key: 'lastSeenAt',
+    minWidth: 210,
+    render: device =>
+      h(
+        NText,
+        { depth: 3 },
+        () =>
+          device.lastSeenAt
+            ? t('mine.home.attention.lastSeen', { time: formatTime(device.lastSeenAt) })
+            : t('mine.home.attention.noTelemetry')
+      )
+  }
+]);
 
 onMounted(loadOverview);
 
@@ -198,33 +231,23 @@ function showError(error: unknown) {
 
       <NGrid responsive="screen" cols="1 l:5" :x-gap="16" :y-gap="16">
         <NGi span="1 l:3">
-          <NCard :title="t('mine.home.attention.title')" class="h-full" data-testid="home-attention">
+          <NCard :title="t('mine.home.attention.title')" data-testid="home-attention">
             <template #header-extra>
               <NTag v-if="overview?.attentionDevices.length" type="warning" :bordered="false">
                 {{ t('mine.home.attention.count', { count: overview.attentionDevices.length }) }}
               </NTag>
             </template>
             <NSkeleton v-if="loading && !overview" text :repeat="5" />
-            <NList v-else-if="overview?.attentionDevices.length" hoverable>
-              <NListItem v-for="device in overview.attentionDevices" :key="device.deviceId">
-                <NThing :title="device.name" :description="device.deviceCode">
-                  <template #header-extra>
-                    <NTag :type="attentionType(device)" size="small" :bordered="false">
-                      {{ attentionState(device) }}
-                    </NTag>
-                  </template>
-                </NThing>
-                <template #suffix>
-                  <NText depth="3">
-                    {{
-                      device.lastSeenAt
-                        ? t('mine.home.attention.lastSeen', { time: formatTime(device.lastSeenAt) })
-                        : t('mine.home.attention.noTelemetry')
-                    }}
-                  </NText>
-                </template>
-              </NListItem>
-            </NList>
+            <NDataTable
+              v-else-if="overview?.attentionDevices.length"
+              data-testid="attention-device-table"
+              :columns="attentionColumns"
+              :data="overview.attentionDevices"
+              :row-key="device => device.deviceId"
+              :scroll-x="560"
+              :single-line="false"
+              size="small"
+            />
             <NFlex
               v-else-if="loadError || dataUnavailable"
               vertical

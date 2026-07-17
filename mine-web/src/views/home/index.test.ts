@@ -45,6 +45,20 @@ describe('HomePage', () => {
     expect(wrapper.text()).not.toContain('待建设');
   });
 
+  it('需要关注设备应使用规整的三列表格展示', async () => {
+    const wrapper = mount(HomePage, { global: { plugins: [i18n] } });
+    await flushPromises();
+
+    const table = wrapper.get('[data-testid="attention-device-table"]');
+    const headers = table.findAll('th').map(header => header.text());
+
+    expect(headers).toEqual(['设备信息', '当前状态', '最后上报']);
+    expect(table.text()).toContain('九号矿卡');
+    expect(table.text()).toContain('truck-009');
+    expect(table.text()).toContain('从未上报');
+    expect(table.text()).toContain('尚未收到遥测数据');
+  });
+
   it('遥测不可用时应明确显示未知而不是伪造零值', async () => {
     api.getOperationsDashboard.mockResolvedValue({
       ...availableOverview(),

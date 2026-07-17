@@ -9,12 +9,15 @@ const businessPages = [
   'src/modules/system/pages/roles/RoleManagementPage.vue',
   'src/modules/system/pages/operations/SystemOperationsPage.vue',
   'src/modules/system/pages/menus/MenuManagementPage.vue',
+  'src/modules/system/components/MenuIconSelect.vue',
   'src/modules/system/pages/dictionaries/DictionaryManagementPage.vue',
   'src/modules/device/pages/product-list/ProductListPage.vue',
   'src/modules/device/pages/device-list/DeviceListPage.vue',
   'src/modules/device/pages/model-management/DeviceModelManagementPage.vue',
   'src/modules/device/pages/strategy/StrategyWorkbenchPage.vue',
   'src/modules/device/components/strategy/EffectiveStrategyPanel.vue',
+  'src/modules/device/components/protocol/ProtocolSampleWorkbench.vue',
+  'src/modules/device/components/protocol/ConfigReleasePanel.vue',
   'src/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue',
   'src/modules/monitoring/components/NumericCard.vue',
   'src/modules/command/pages/command-center/CommandCenterPage.vue',
@@ -25,6 +28,30 @@ const businessPages = [
 
 function readPage(relativePath: string) {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
+}
+
+function findControlsWithoutPlaceholder(relativePath: string) {
+  const source = readPage(relativePath);
+  const { descriptor } = parse(source);
+  const missing: string[] = [];
+  const controlTags = new Set(['NInput', 'NInputNumber', 'NSelect']);
+
+  function visit(node: any) {
+    if (node.type === 1 && controlTags.has(node.tag)) {
+      const hasPlaceholder = node.props.some(
+        (prop: any) =>
+          (prop.type === 6 && prop.name === 'placeholder') ||
+          (prop.type === 7 && prop.arg?.type === 4 && prop.arg.content === 'placeholder')
+      );
+
+      if (!hasPlaceholder) missing.push(`${relativePath}:${node.loc.start.line} <${node.tag}>`);
+    }
+
+    node.children?.forEach(visit);
+  }
+
+  descriptor.template?.ast?.children.forEach(visit);
+  return missing;
 }
 
 describe('前端主题与国际化治理', () => {
@@ -44,6 +71,10 @@ describe('前端主题与国际化治理', () => {
     expect(source).not.toMatch(/[\u3400-\u9fff]/u);
   });
 
+  it('业务页面的输入框和下拉框应提供明确的占位提示', () => {
+    expect(businessPages.flatMap(findControlsWithoutPlaceholder)).toEqual([]);
+  });
+
   it('登录页应复用全局主题模式，不维护页面私有主题状态', () => {
     const source = readPage('src/modules/system/pages/login/LoginPage.vue');
 
@@ -56,10 +87,11 @@ describe('前端主题与国际化治理', () => {
   it('运行监控页在全局路由过渡下应只有一个元素根节点', () => {
     const source = readPage('src/modules/system/pages/operations/SystemOperationsPage.vue');
     const { descriptor } = parse(source);
-    const meaningfulRoots = descriptor.template?.ast?.children.filter(node => {
-      if (node.type === 3) return false;
-      return node.type !== 2 || node.content.trim().length > 0;
-    }) || [];
+    const meaningfulRoots =
+      descriptor.template?.ast?.children.filter(node => {
+        if (node.type === 3) return false;
+        return node.type !== 2 || node.content.trim().length > 0;
+      }) || [];
 
     expect(meaningfulRoots).toHaveLength(1);
     expect(meaningfulRoots[0]).toMatchObject({ type: 1, tag: 'div' });

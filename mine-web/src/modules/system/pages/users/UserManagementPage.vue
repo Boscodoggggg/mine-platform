@@ -38,9 +38,9 @@ const loading = ref(false);
 const saving = ref(false);
 const users = ref<ManagedUser[]>([]);
 const total = ref(0);
-const query = reactive<{ keyword: string; status: UserStatus | ''; page: number; size: number }>({
+const query = reactive<{ keyword: string; status: UserStatus | null; page: number; size: number }>({
   keyword: '',
-  status: '',
+  status: null,
   page: 1,
   size: 20
 });
@@ -139,7 +139,7 @@ function search() {
 }
 
 function resetQuery() {
-  Object.assign(query, { keyword: '', status: '', page: 1 });
+  Object.assign(query, { keyword: '', status: null, page: 1 });
   return loadUsers();
 }
 
@@ -367,22 +367,39 @@ defineExpose({
         <NGrid responsive="screen" cols="1 s:2" :x-gap="16">
           <NGi>
             <NFormItem :label="t('mine.users.field.username')">
-              <NInput v-model:value="userForm.username" :disabled="Boolean(editingUserId)" />
+              <NInput
+                v-model:value="userForm.username"
+                :disabled="Boolean(editingUserId)"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.users.field.username') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.users.field.displayName')">
-              <NInput v-model:value="userForm.displayName" maxlength="128" />
+              <NInput
+                v-model:value="userForm.displayName"
+                maxlength="128"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.users.field.displayName') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.users.field.status')">
-              <NSelect v-model:value="userForm.status" :options="editableStatusOptions" />
+              <NSelect
+                v-model:value="userForm.status"
+                :options="editableStatusOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.users.field.status') })"
+              />
             </NFormItem>
           </NGi>
           <NGi v-if="!editingUserId">
             <NFormItem :label="t('mine.users.field.temporaryPassword')">
-              <NInput v-model:value="userForm.temporaryPassword" type="password" show-password-on="click" />
+              <NInput
+                v-model:value="userForm.temporaryPassword"
+                type="password"
+                show-password-on="click"
+                :placeholder="t('mine.users.placeholder.temporaryPassword')"
+              />
             </NFormItem>
           </NGi>
         </NGrid>

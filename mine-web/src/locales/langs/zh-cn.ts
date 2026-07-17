@@ -74,6 +74,8 @@ const local: App.I18n.Schema = {
       delete: '删除',
       empty: '—',
       allStatus: '全部状态',
+      enterPlaceholder: '请输入{field}',
+      selectPlaceholder: '请选择{field}',
       search: '查询',
       reset: '重置',
       cancel: '取消',
@@ -168,6 +170,7 @@ const local: App.I18n.Schema = {
       attention: {
         title: '需要关注',
         count: '{count} 台设备',
+        column: { device: '设备信息', status: '当前状态', lastReported: '最后上报' },
         empty: '当前没有异常设备',
         emptyHint: '如发现未上报的设备，可前往设备台账进行排查',
         unavailable: '异常状态暂不可确认',
@@ -359,6 +362,8 @@ const local: App.I18n.Schema = {
         allStatuses: '全部状态'
       },
       modal: { create: '新增菜单', edit: '编辑菜单' },
+      iconType: { iconify: 'Iconify 图标', local: '本地图标' },
+      iconPicker: { choose: '请选择图标', search: '搜索图标名称', empty: '没有匹配的图标' },
       field: {
         name: '节点名称',
         type: '节点类型',
@@ -366,6 +371,7 @@ const local: App.I18n.Schema = {
         path: '路由地址',
         component: '页面组件',
         permission: '权限码',
+        iconType: '图标类型',
         icon: '图标键',
         sort: '排序',
         visible: '导航可见',
@@ -381,7 +387,8 @@ const local: App.I18n.Schema = {
         path: '页面的前端访问地址，必须以 / 开头，例如 /system/menus，并在全平台保持唯一。',
         component: '从前端编译期注册的组件白名单中选择，不能填写任意文件路径。',
         permission: '与后端 Sa-Token 权限注解及前端按钮权限一致，例如 system:menu:view；目录不填写。',
-        icon: '侧边导航使用的图标键；按钮节点通常无需图标，留空时使用平台默认展示。',
+        iconType: 'Iconify 图标适合平台通用导航；本地图标来自项目内置 SVG 资源。切换类型会清空原选择。',
+        icon: '从图标库中选择侧边导航图标；按钮节点通常无需图标，留空时使用平台默认展示。',
         i18nKey: '对应中英文资源中的稳定键，例如 mine.menu.menus；留空时使用节点名称。',
         status: '停用后该节点不会进入用户的导航和授权结果，子节点也将无法正常访问。',
         visible: '只控制是否出现在侧边导航，不等于权限停用；隐藏页面仍可通过路由和权限访问。',

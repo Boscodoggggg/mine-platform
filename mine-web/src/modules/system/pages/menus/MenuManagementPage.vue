@@ -19,6 +19,8 @@ import {
   NPageHeader,
   NPagination,
   NPopover,
+  NRadio,
+  NRadioGroup,
   NSelect,
   NSpace,
   NSwitch,
@@ -28,6 +30,8 @@ import {
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
 import { hasPermission } from '@/app/permission/permission';
+import SvgIcon from '@/components/custom/svg-icon.vue';
+import MenuIconSelect from '@/modules/system/components/MenuIconSelect.vue';
 import {
   createMenu,
   deleteMenu,
@@ -46,6 +50,8 @@ import type {
   MenuSavePayload
 } from '@/modules/system/api/access-management';
 import { useAuthStore } from '@/store/modules/auth';
+import { encodeMenuIcon, resolveMenuIcon, resolveMenuIconType } from '@/utils/menu-icon';
+import type { MenuIconType } from '@/utils/menu-icon';
 
 type MenuListRow = ManagedMenuListItem & {
   isLeaf: boolean;
@@ -53,17 +59,7 @@ type MenuListRow = ManagedMenuListItem & {
   children?: MenuListRow[];
 };
 
-type MenuColumnKey =
-  | 'id'
-  | 'type'
-  | 'name'
-  | 'icon'
-  | 'path'
-  | 'permission'
-  | 'status'
-  | 'visible'
-  | 'parent'
-  | 'sort';
+type MenuColumnKey = 'id' | 'type' | 'name' | 'icon' | 'path' | 'permission' | 'status' | 'visible' | 'parent' | 'sort';
 
 const { t } = useI18n();
 const authStore = useAuthStore();
@@ -96,13 +92,18 @@ const visibleColumnKeys = ref<MenuColumnKey[]>([
   'parent',
   'sort'
 ]);
-const filters = reactive<{ name: string; type: Exclude<MenuNodeType, 'BUTTON'> | null; status: 'ENABLED' | 'DISABLED' | null }>({
+const filters = reactive<{
+  name: string;
+  type: Exclude<MenuNodeType, 'BUTTON'> | null;
+  status: 'ENABLED' | 'DISABLED' | null;
+}>({
   name: '',
   type: null,
   status: null
 });
 const form = reactive<MenuSavePayload>(emptyMenuForm());
 const buttonForm = reactive<MenuSavePayload>(emptyButtonForm());
+const menuIconType = ref<MenuIconType>('iconify');
 
 const pagedRows = computed(() => rootRows.value);
 const descendantIds = computed(() =>
@@ -126,6 +127,15 @@ const parentOptions = computed<SelectOption[]>(() =>
 const pageOptions = computed<SelectOption[]>(() =>
   componentOptions.value.map(option => ({ label: option.name, value: option.key }))
 );
+const selectedMenuIcon = computed({
+  get() {
+    const resolved = resolveMenuIcon(form.icon);
+    return menuIconType.value === 'local' ? resolved.localIcon || null : resolved.icon || null;
+  },
+  set(value: string | null) {
+    form.icon = encodeMenuIcon(menuIconType.value, value);
+  }
+});
 const columnOptions = computed(() => [
   { key: 'id' as const, label: t('mine.menus.column.id') },
   { key: 'type' as const, label: t('mine.menus.column.type') },
@@ -151,8 +161,7 @@ const columns = computed<DataTableColumns<MenuListRow>>(() => {
         title: t('mine.menus.column.type'),
         key: 'type',
         width: 100,
-        render: row =>
-          h(NTag, { size: 'small', bordered: false }, () => t(`mine.menus.type.${row.type.toLowerCase()}`))
+        render: row => h(NTag, { size: 'small', bordered: false }, () => t(`mine.menus.type.${row.type.toLowerCase()}`))
       }
     },
     {
@@ -171,9 +180,9 @@ const columns = computed<DataTableColumns<MenuListRow>>(() => {
       column: {
         title: t('mine.menus.column.icon'),
         key: 'icon',
-        minWidth: 120,
-        ellipsis: { tooltip: true },
-        render: row => row.icon || t('mine.common.empty')
+        width: 72,
+        align: 'center',
+        render: row => renderMenuIcon(row.icon)
       }
     },
     {
@@ -279,14 +288,10 @@ const buttonColumns = computed<DataTableColumns<ManagedMenuNode>>(() => [
     render: row =>
       h(NSpace, { size: 8, wrap: false }, () => [
         can('system:menu:update')
-          ? h(NButton, { text: true, type: 'primary', onClick: () => openButtonEdit(row) }, () =>
-              t('mine.common.edit')
-            )
+          ? h(NButton, { text: true, type: 'primary', onClick: () => openButtonEdit(row) }, () => t('mine.common.edit'))
           : null,
         can('system:menu:delete') && !row.protectedNode
-          ? h(NButton, { text: true, type: 'error', onClick: () => removeButton(row) }, () =>
-              t('mine.common.delete')
-            )
+          ? h(NButton, { text: true, type: 'error', onClick: () => removeButton(row) }, () => t('mine.common.delete'))
           : null
       ])
   }
@@ -424,6 +429,7 @@ async function ensureMenuTree() {
 function openCreate(type: Exclude<MenuNodeType, 'BUTTON'> = 'DIRECTORY') {
   editingId.value = null;
   buttonEditorVisible.value = false;
+  menuIconType.value = 'iconify';
   Object.assign(form, emptyMenuForm(type));
   modalVisible.value = true;
   void ensureMenuTree();
@@ -433,12 +439,13 @@ function openEdit(row: MenuListRow | ManagedMenuNode) {
   editingId.value = row.id;
   buttonEditorVisible.value = false;
   buttonRows.value = [];
+  menuIconType.value = resolveMenuIconType(row.icon);
   Object.assign(form, {
     parentId: row.parentId,
     name: row.name,
     type: row.type,
     path: row.path || '',
-    componentKey: row.componentKey || '',
+    componentKey: row.componentKey || undefined,
     permission: row.permission || '',
     icon: row.icon || '',
     sortOrder: row.sortOrder,
@@ -465,7 +472,8 @@ async function loadButtons(menuId: string) {
 
 async function save() {
   const menuRequiredMissing =
-    form.type === 'MENU' && (!form.parentId || !form.path?.trim() || !form.componentKey?.trim() || !form.permission?.trim());
+    form.type === 'MENU' &&
+    (!form.parentId || !form.path?.trim() || !form.componentKey?.trim() || !form.permission?.trim());
   if (!form.name.trim() || menuRequiredMissing) {
     return window.$message?.warning(t('mine.menus.validation.required'));
   }
@@ -533,7 +541,7 @@ function openButtonEdit(row: ManagedMenuNode) {
     name: row.name,
     type: 'BUTTON',
     path: '',
-    componentKey: '',
+    componentKey: undefined,
     permission: row.permission || '',
     icon: '',
     sortOrder: row.sortOrder,
@@ -583,7 +591,7 @@ function emptyMenuForm(type: Exclude<MenuNodeType, 'BUTTON'> = 'DIRECTORY'): Men
     name: '',
     type,
     path: '',
-    componentKey: '',
+    componentKey: undefined,
     permission: '',
     icon: '',
     sortOrder: 10,
@@ -661,6 +669,34 @@ function collectDescendantIds(nodes: ManagedMenuNode[]): Set<string> {
     collectDescendantIds(node.children).forEach(id => ids.add(id));
   });
   return ids;
+}
+
+function updateMenuIconType(value: MenuIconType) {
+  if (menuIconType.value === value) return;
+  menuIconType.value = value;
+  form.icon = undefined;
+}
+
+function renderMenuIcon(value?: string | null) {
+  const { icon, localIcon } = resolveMenuIcon(value);
+  if (!icon && !localIcon) return t('mine.common.empty');
+  return h(
+    NTooltip,
+    { trigger: 'hover' },
+    {
+      trigger: () =>
+        h(
+          'span',
+          {
+            class: 'inline-flex items-center text-20px',
+            'data-menu-icon-value': value,
+            'aria-label': value
+          },
+          [h(SvgIcon, { icon, localIcon })]
+        ),
+      default: () => value
+    }
+  );
 }
 
 function can(permission: string) {
@@ -787,7 +823,11 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.type" help-key="mine.menus.help.type" />
               </template>
-              <NSelect v-model:value="form.type" :options="menuTypeOptions" />
+              <NSelect
+                v-model:value="form.type"
+                :options="menuTypeOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.menus.field.type') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
@@ -795,7 +835,10 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.name" help-key="mine.menus.help.name" />
               </template>
-              <NInput v-model:value="form.name" />
+              <NInput
+                v-model:value="form.name"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.menus.field.name') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
@@ -803,7 +846,12 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.parent" help-key="mine.menus.help.parent" />
               </template>
-              <NSelect v-model:value="form.parentId" clearable :options="parentOptions" />
+              <NSelect
+                v-model:value="form.parentId"
+                clearable
+                :options="parentOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.menus.field.parent') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
@@ -811,7 +859,11 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.sort" help-key="mine.menus.help.sort" />
               </template>
-              <NInputNumber v-model:value="form.sortOrder" :min="0" />
+              <NInputNumber
+                v-model:value="form.sortOrder"
+                :min="0"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.menus.field.sort') })"
+              />
             </NFormItem>
           </NGi>
           <NGi v-if="form.type === 'MENU'">
@@ -819,7 +871,10 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.path" help-key="mine.menus.help.path" />
               </template>
-              <NInput v-model:value="form.path" />
+              <NInput
+                v-model:value="form.path"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.menus.field.path') })"
+              />
             </NFormItem>
           </NGi>
           <NGi v-if="form.type === 'MENU'">
@@ -827,7 +882,12 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.component" help-key="mine.menus.help.component" />
               </template>
-              <NSelect v-model:value="form.componentKey" filterable :options="pageOptions" />
+              <NSelect
+                v-model:value="form.componentKey"
+                filterable
+                :options="pageOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.menus.field.component') })"
+              />
             </NFormItem>
           </NGi>
           <NGi v-if="form.type === 'MENU'">
@@ -835,7 +895,27 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.permission" help-key="mine.menus.help.permission" />
               </template>
-              <NInput v-model:value="form.permission" />
+              <NInput
+                v-model:value="form.permission"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.menus.field.permission') })"
+              />
+            </NFormItem>
+          </NGi>
+          <NGi>
+            <NFormItem data-menu-field>
+              <template #label>
+                <MenuFieldLabel label-key="mine.menus.field.iconType" help-key="mine.menus.help.iconType" />
+              </template>
+              <NRadioGroup
+                data-menu-icon-type
+                :value="menuIconType"
+                @update:value="updateMenuIconType($event as MenuIconType)"
+              >
+                <NSpace>
+                  <NRadio value="iconify">{{ t('mine.menus.iconType.iconify') }}</NRadio>
+                  <NRadio value="local">{{ t('mine.menus.iconType.local') }}</NRadio>
+                </NSpace>
+              </NRadioGroup>
             </NFormItem>
           </NGi>
           <NGi>
@@ -843,7 +923,7 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.icon" help-key="mine.menus.help.icon" />
               </template>
-              <NInput v-model:value="form.icon" />
+              <MenuIconSelect v-model:value="selectedMenuIcon" :type="menuIconType" />
             </NFormItem>
           </NGi>
           <NGi>
@@ -851,7 +931,10 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.i18nKey" help-key="mine.menus.help.i18nKey" />
               </template>
-              <NInput v-model:value="form.i18nKey" />
+              <NInput
+                v-model:value="form.i18nKey"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.menus.field.i18nKey') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
@@ -859,7 +942,11 @@ function showError(error: unknown) {
               <template #label>
                 <MenuFieldLabel label-key="mine.menus.field.status" help-key="mine.menus.help.status" />
               </template>
-              <NSelect v-model:value="form.status" :options="statusOptions" />
+              <NSelect
+                v-model:value="form.status"
+                :options="statusOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.menus.field.status') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
@@ -895,7 +982,10 @@ function showError(error: unknown) {
                   <template #label>
                     <MenuFieldLabel label-key="mine.menus.field.name" help-key="mine.menus.help.buttonName" />
                   </template>
-                  <NInput v-model:value="buttonForm.name" />
+                  <NInput
+                    v-model:value="buttonForm.name"
+                    :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.menus.field.name') })"
+                  />
                 </NFormItem>
               </NGi>
               <NGi>
@@ -906,7 +996,10 @@ function showError(error: unknown) {
                       help-key="mine.menus.help.buttonPermission"
                     />
                   </template>
-                  <NInput v-model:value="buttonForm.permission" />
+                  <NInput
+                    v-model:value="buttonForm.permission"
+                    :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.menus.field.permission') })"
+                  />
                 </NFormItem>
               </NGi>
               <NGi>
@@ -914,7 +1007,11 @@ function showError(error: unknown) {
                   <template #label>
                     <MenuFieldLabel label-key="mine.menus.field.sort" help-key="mine.menus.help.sort" />
                   </template>
-                  <NInputNumber v-model:value="buttonForm.sortOrder" :min="0" />
+                  <NInputNumber
+                    v-model:value="buttonForm.sortOrder"
+                    :min="0"
+                    :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.menus.field.sort') })"
+                  />
                 </NFormItem>
               </NGi>
               <NGi>
@@ -922,7 +1019,11 @@ function showError(error: unknown) {
                   <template #label>
                     <MenuFieldLabel label-key="mine.menus.field.status" help-key="mine.menus.help.status" />
                   </template>
-                  <NSelect v-model:value="buttonForm.status" :options="statusOptions" />
+                  <NSelect
+                    v-model:value="buttonForm.status"
+                    :options="statusOptions"
+                    :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.menus.field.status') })"
+                  />
                 </NFormItem>
               </NGi>
               <NGi :span="2">

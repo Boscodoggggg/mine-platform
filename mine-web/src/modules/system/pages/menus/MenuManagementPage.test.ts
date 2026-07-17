@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import MenuIconSelect from '@/modules/system/components/MenuIconSelect.vue';
 import { i18n, setLocale } from '@/locales';
+import { menuIconifyOptions } from '@/modules/system/components/menu-icon-options';
 import MenuManagementPage from './MenuManagementPage.vue';
 
 const api = vi.hoisted(() => ({
@@ -22,8 +24,23 @@ const authState = vi.hoisted(() => ({
 
 vi.mock('@/modules/system/api/access-management', () => api);
 vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
+vi.mock('@/components/custom/svg-icon.vue', () => ({
+  default: {
+    name: 'SvgIcon',
+    props: ['icon', 'localIcon'],
+    template: '<svg :data-icon="icon || localIcon" />'
+  }
+}));
 
 describe('MenuManagementPage', () => {
+  const wrappers: Array<ReturnType<typeof mount>> = [];
+
+  function mountPage() {
+    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    wrappers.push(wrapper);
+    return wrapper;
+  }
+
   beforeEach(() => {
     setLocale('zh-CN');
     Object.values(api).forEach(mock => mock.mockReset());
@@ -49,8 +66,28 @@ describe('MenuManagementPage', () => {
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
   });
 
+  afterEach(() => {
+    wrappers.splice(0).forEach(wrapper => wrapper.unmount());
+    document.body.innerHTML = '';
+  });
+
+  it('图标选择器应覆盖平台已发布的菜单图标', () => {
+    expect(menuIconifyOptions).toEqual(
+      expect.arrayContaining([
+        'mdi:account-multiple-outline',
+        'mdi:book-open-variant',
+        'mdi:console-network-outline',
+        'mdi:menu-open',
+        'mdi:package-variant-closed',
+        'mdi:send-clock-outline',
+        'mdi:server-network-outline',
+        'mdi:vector-polyline-edit'
+      ])
+    );
+  });
+
   it('主表应只展示目录和页面并隐藏按钮权限节点', async () => {
-    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    const wrapper = mountPage();
     await flushPromises();
     const page = wrapper.vm as unknown as {
       pagedRows: Array<{ name: string; children?: Array<{ name: string }> }>;
@@ -74,7 +111,7 @@ describe('MenuManagementPage', () => {
   });
 
   it('首次应只展示根节点并等待展开加载子节点', async () => {
-    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    const wrapper = mountPage();
     await flushPromises();
     const page = wrapper.vm as unknown as { pagedRows: Array<{ name: string }> };
 
@@ -91,7 +128,7 @@ describe('MenuManagementPage', () => {
   });
 
   it('应提供筛选、分页、刷新和列设置', async () => {
-    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    const wrapper = mountPage();
     await flushPromises();
 
     expect(wrapper.find('[data-filter="menu-name"]').exists()).toBe(true);
@@ -115,7 +152,7 @@ describe('MenuManagementPage', () => {
       const start = (query.page - 1) * query.size;
       return Promise.resolve({ items: roots.slice(start, start + query.size), page: query.page, size: query.size, total: 12 });
     });
-    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    const wrapper = mountPage();
     await flushPromises();
     const page = wrapper.vm as unknown as { pagedRows: unknown[]; page: number };
 
@@ -128,7 +165,7 @@ describe('MenuManagementPage', () => {
   it('批量删除应一次提交选中的菜单标识', async () => {
     window.confirm = vi.fn(() => true);
     api.deleteMenus.mockResolvedValue(undefined);
-    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    const wrapper = mountPage();
     await flushPromises();
     const page = wrapper.vm as unknown as {
       checkedRowKeys: string[];
@@ -143,7 +180,7 @@ describe('MenuManagementPage', () => {
   });
 
   it('编辑页面时应在独立区域维护按钮权限', async () => {
-    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    const wrapper = mountPage();
     await flushPromises();
     const page = wrapper.vm as unknown as {
       openEdit: (row: ReturnType<typeof menuTree>[number]['children'][number]) => void;
@@ -164,7 +201,7 @@ describe('MenuManagementPage', () => {
   });
 
   it('创建菜单时每个当前可见字段都应提供说明入口', async () => {
-    const wrapper = mount(MenuManagementPage, { global: { plugins: [i18n] } });
+    const wrapper = mountPage();
     await flushPromises();
     const page = wrapper.vm as unknown as { openCreate: () => void };
 
@@ -174,6 +211,80 @@ describe('MenuManagementPage', () => {
     const formItems = document.body.querySelectorAll('[data-menu-field]');
     expect(formItems.length).toBeGreaterThan(0);
     formItems.forEach(item => expect(item.querySelector('[data-field-help]')).not.toBeNull());
+  });
+
+  it('菜单图标应通过带预览的选择器维护', async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const page = wrapper.vm as unknown as { openCreate: () => void };
+
+    page.openCreate();
+    await flushPromises();
+
+    expect(document.body.querySelector('[data-menu-icon-type]')).not.toBeNull();
+    const picker = document.body.querySelector('[data-menu-icon-select]');
+    expect(picker).not.toBeNull();
+    expect(picker?.querySelector('input')?.hasAttribute('readonly')).toBe(true);
+  });
+
+  it('选择本地图标后应使用兼容前缀保存', async () => {
+    api.createMenu.mockResolvedValue(undefined);
+    const wrapper = mountPage();
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      form: { name: string };
+      openCreate: () => void;
+      save: () => Promise<void>;
+      updateMenuIconType: (value: 'iconify' | 'local') => void;
+    };
+
+    page.openCreate();
+    await flushPromises();
+    page.form.name = '本地图标目录';
+    page.updateMenuIconType('local');
+    await flushPromises();
+    wrapper.findComponent(MenuIconSelect).vm.$emit('update:value', 'activity');
+    await page.save();
+
+    expect(api.createMenu).toHaveBeenCalledWith(expect.objectContaining({ icon: 'local:activity' }));
+  });
+
+  it('编辑本地图标菜单时应恢复图标类型和选择值', async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      menuIconType: 'iconify' | 'local';
+      openEdit: (row: ReturnType<typeof menuTree>[number]) => void;
+    };
+
+    page.openEdit({ ...menuTree()[0], icon: 'local:activity' });
+    await flushPromises();
+
+    expect(page.menuIconType).toBe('local');
+    expect(wrapper.findComponent(MenuIconSelect).props()).toMatchObject({ type: 'local', value: 'activity' });
+  });
+
+  it('选择 Iconify 图标时应原样保存图标键', async () => {
+    api.createMenu.mockResolvedValue(undefined);
+    const wrapper = mountPage();
+    await flushPromises();
+    const page = wrapper.vm as unknown as { form: { name: string }; openCreate: () => void; save: () => Promise<void> };
+
+    page.openCreate();
+    await flushPromises();
+    page.form.name = 'Iconify 图标目录';
+    wrapper.findComponent(MenuIconSelect).vm.$emit('update:value', 'mdi:factory');
+    await page.save();
+
+    expect(api.createMenu).toHaveBeenCalledWith(expect.objectContaining({ icon: 'mdi:factory' }));
+  });
+
+  it('菜单表格应渲染图标而不是显示图标键文本', async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-menu-icon-value="mdi:factory"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('mdi:factory');
   });
 });
 
@@ -187,7 +298,7 @@ function menuTree() {
       path: '/device',
       componentKey: null,
       permission: null,
-      icon: 'factory',
+      icon: 'mdi:factory',
       sortOrder: 10,
       visible: true,
       status: 'ENABLED',
@@ -203,7 +314,7 @@ function menuTree() {
           path: '/device/products',
           componentKey: 'device-product-list',
           permission: 'device:product:view',
-          icon: 'list',
+          icon: 'mdi:format-list-bulleted',
           sortOrder: 10,
           visible: true,
           status: 'ENABLED',

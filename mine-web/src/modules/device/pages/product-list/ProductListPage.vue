@@ -35,9 +35,9 @@ const products = ref<Product[]>([]);
 const deviceTypeItems = ref<DictionaryItem[]>([]);
 const productStatusItems = ref<DictionaryItem[]>([]);
 const total = ref(0);
-const query = reactive<{ keyword: string; status: ProductStatus | ''; page: number; size: number }>({
+const query = reactive<{ keyword: string; status: ProductStatus | null; page: number; size: number }>({
   keyword: '',
-  status: '',
+  status: null,
   page: 1,
   size: 20
 });
@@ -46,7 +46,7 @@ const editingId = ref<string | null>(null);
 const productForm = reactive({
   productKey: '',
   name: '',
-  deviceType: '',
+  deviceType: null as string | null,
   status: 'DRAFT' as 'DRAFT' | 'ACTIVE',
   version: 0
 });
@@ -107,9 +107,7 @@ async function loadDictionaries() {
       getEnabledDictionaryItems('product_status')
     ]);
     deviceTypeItems.value = types;
-    productStatusItems.value = statuses.filter(item =>
-      ['DRAFT', 'ACTIVE', 'ARCHIVED'].includes(item.value)
-    );
+    productStatusItems.value = statuses.filter(item => ['DRAFT', 'ACTIVE', 'ARCHIVED'].includes(item.value));
   } catch (error) {
     showError(error);
   }
@@ -136,13 +134,13 @@ function search() {
 }
 
 function resetQuery() {
-  Object.assign(query, { keyword: '', status: '', page: 1 });
+  Object.assign(query, { keyword: '', status: null, page: 1 });
   return loadProducts();
 }
 
 function openCreate() {
   editingId.value = null;
-  Object.assign(productForm, { productKey: '', name: '', deviceType: '', status: 'DRAFT', version: 0 });
+  Object.assign(productForm, { productKey: '', name: '', deviceType: null, status: 'DRAFT', version: 0 });
   modalVisible.value = true;
 }
 
@@ -159,10 +157,11 @@ function openEdit(product: Product) {
 }
 
 async function saveProduct() {
+  const deviceType = productForm.deviceType?.trim();
   if (
     !/^[a-z][a-z0-9-]{2,63}$/.test(productForm.productKey) ||
     !productForm.name.trim() ||
-    !productForm.deviceType.trim()
+    !deviceType
   ) {
     return window.$message?.warning(t('mine.products.validation.required'));
   }
@@ -171,7 +170,7 @@ async function saveProduct() {
     if (editingId.value) {
       await updateProduct(editingId.value, {
         name: productForm.name.trim(),
-        deviceType: productForm.deviceType.trim(),
+        deviceType,
         status: productForm.status,
         version: productForm.version
       });
@@ -179,7 +178,7 @@ async function saveProduct() {
       await createProduct({
         productKey: productForm.productKey,
         name: productForm.name.trim(),
-        deviceType: productForm.deviceType.trim(),
+        deviceType,
         status: productForm.status
       });
     }
@@ -359,7 +358,11 @@ defineExpose({
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.products.field.name')">
-              <NInput v-model:value="productForm.name" maxlength="128" />
+              <NInput
+                v-model:value="productForm.name"
+                maxlength="128"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.products.field.name') })"
+              />
             </NFormItem>
           </NGi>
           <NGi>
@@ -373,7 +376,11 @@ defineExpose({
           </NGi>
           <NGi>
             <NFormItem :label="t('mine.products.field.status')">
-              <NSelect v-model:value="productForm.status" :options="editableStatusOptions" />
+              <NSelect
+                v-model:value="productForm.status"
+                :options="editableStatusOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.products.field.status') })"
+              />
             </NFormItem>
           </NGi>
         </NGrid>

@@ -387,6 +387,8 @@ declare namespace App {
           delete: string;
           empty: string;
           allStatus: string;
+          enterPlaceholder: string;
+          selectPlaceholder: string;
           search: string;
           reset: string;
           cancel: string;
@@ -440,6 +442,7 @@ declare namespace App {
           attention: {
             title: string;
             count: string;
+            column: Record<'device' | 'status' | 'lastReported', string>;
             empty: string;
             emptyHint: string;
             unavailable: string;
@@ -561,6 +564,8 @@ declare namespace App {
           action: Record<'create' | 'batchDelete' | 'refresh' | 'columns' | 'addButton', string>;
           filter: Record<'name' | 'namePlaceholder' | 'type' | 'allTypes' | 'status' | 'allStatuses', string>;
           modal: Record<'create' | 'edit', string>;
+          iconType: Record<'iconify' | 'local', string>;
+          iconPicker: Record<'choose' | 'search' | 'empty', string>;
           field: Record<
             | 'name'
             | 'type'
@@ -568,6 +573,7 @@ declare namespace App {
             | 'path'
             | 'component'
             | 'permission'
+            | 'iconType'
             | 'icon'
             | 'sort'
             | 'visible'
@@ -584,6 +590,7 @@ declare namespace App {
             | 'path'
             | 'component'
             | 'permission'
+            | 'iconType'
             | 'icon'
             | 'i18nKey'
             | 'status'

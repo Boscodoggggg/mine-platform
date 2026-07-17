@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { NButton, NSelect } from 'naive-ui';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
 import { i18n, setLocale } from '@/locales';
@@ -65,6 +66,24 @@ describe('RoleManagementPage', () => {
     expect(api.getRoles).toHaveBeenCalled();
     expect(wrapper.text()).toContain('角色与权限');
     expect(wrapper.find('[data-action="create-role"]').exists()).toBe(true);
+  });
+
+  it('筛选操作按钮应保持紧凑宽度', async () => {
+    const wrapper = mountPage([]);
+    await flushPromises();
+    const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
+
+    expect(filterButtons).toHaveLength(2);
+    expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
+  });
+
+  it('未选择状态时应展示筛选占位提示', async () => {
+    const wrapper = mountPage([]);
+    await flushPromises();
+    const statusFilter = wrapper.findAllComponents(NSelect)[0];
+
+    expect(statusFilter.props('value')).toBeNull();
+    expect(statusFilter.props('placeholder')).toBe('全部状态');
   });
 
   it('应创建角色并发布菜单权限', async () => {

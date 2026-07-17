@@ -354,12 +354,21 @@ function showError(error: unknown) {
           <NGrid responsive="screen" cols="1 m:2" :x-gap="16">
             <NGi>
               <NFormItem :label="t('mine.models.samples.field.name')">
-                <NInput v-model:value="editor.name" data-field="sample-name" />
+                <NInput
+                  v-model:value="editor.name"
+                  data-field="sample-name"
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.samples.field.name') })"
+                />
               </NFormItem>
             </NGi>
             <NGi>
               <NFormItem :label="t('mine.models.samples.field.sortOrder')">
-                <NInputNumber v-model:value="editor.sortOrder" class="w-full" :min="0" />
+                <NInputNumber
+                  v-model:value="editor.sortOrder"
+                  class="w-full"
+                  :min="0"
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.samples.field.sortOrder') })"
+                />
               </NFormItem>
             </NGi>
             <NGi>
@@ -369,6 +378,7 @@ function showError(error: unknown) {
                   data-field="raw-payload"
                   type="textarea"
                   :autosize="{ minRows: 8, maxRows: 16 }"
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.samples.field.rawPayload') })"
                 />
               </NFormItem>
             </NGi>
@@ -379,6 +389,7 @@ function showError(error: unknown) {
                   data-field="expected-properties"
                   type="textarea"
                   :autosize="{ minRows: 8, maxRows: 16 }"
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.samples.field.expectedProperties') })"
                 />
               </NFormItem>
             </NGi>
@@ -389,7 +400,10 @@ function showError(error: unknown) {
             </NGi>
             <NGi v-if="!editor.expectedSuccess">
               <NFormItem :label="t('mine.models.samples.field.expectedErrorCode')">
-                <NInput v-model:value="editor.expectedErrorCode" />
+                <NInput
+                  v-model:value="editor.expectedErrorCode"
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.samples.field.expectedErrorCode') })"
+                />
               </NFormItem>
             </NGi>
           </NGrid>
