@@ -67,18 +67,20 @@ class AggregationExecutionRepositoryIT {
         AggregationExecutionRepository.RollupWrite corrected = rollup(43, 1320D);
 
         repository.withLock(session -> {
-            session.startExecution(FIRST_EXECUTION_ID, "aggregation-it-a", 1, 1, 42);
+            session.startExecution(FIRST_EXECUTION_ID, "aggregation-it-a",
+                    new AggregationExecutor.Plan(42, 0, 1, 1));
             assertThat(session.writeRollupBatch(FIRST_EXECUTION_ID, List.of(first))).isOne();
             assertThat(session.writeRollupBatch(FIRST_EXECUTION_ID, List.of(first))).isZero();
             session.completeExecution(FIRST_EXECUTION_ID,
-                    AggregationExecutionRepository.RunStatus.SUCCEEDED, 0, null);
+                    AggregationExecutor.RunStatus.SUCCEEDED, 0, null);
             return true;
         });
         repository.withLock(session -> {
-            session.startExecution(SECOND_EXECUTION_ID, "aggregation-it-b", 1, 1, 43);
+            session.startExecution(SECOND_EXECUTION_ID, "aggregation-it-b",
+                    new AggregationExecutor.Plan(43, 42, 1, 1));
             assertThat(session.writeRollupBatch(SECOND_EXECUTION_ID, List.of(corrected))).isOne();
             session.completeExecution(SECOND_EXECUTION_ID,
-                    AggregationExecutionRepository.RunStatus.SUCCEEDED, 0, null);
+                    AggregationExecutor.RunStatus.SUCCEEDED, 0, null);
             return true;
         });
 
@@ -128,10 +130,11 @@ class AggregationExecutionRepositoryIT {
     @Test
     void 应拒绝篡改聚合版本和终态执行事实() {
         repository.withLock(session -> {
-            session.startExecution(PROTECTED_EXECUTION_ID, "aggregation-it-protected", 1, 1, 44);
+            session.startExecution(PROTECTED_EXECUTION_ID, "aggregation-it-protected",
+                    new AggregationExecutor.Plan(44, 43, 1, 1));
             session.writeRollupBatch(PROTECTED_EXECUTION_ID, List.of(rollup(44, 1330D)));
             session.completeExecution(PROTECTED_EXECUTION_ID,
-                    AggregationExecutionRepository.RunStatus.SUCCEEDED, 0, null);
+                    AggregationExecutor.RunStatus.SUCCEEDED, 0, null);
             return true;
         });
 

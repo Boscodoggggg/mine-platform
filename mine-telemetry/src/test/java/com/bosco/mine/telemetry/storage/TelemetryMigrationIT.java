@@ -185,7 +185,10 @@ class TelemetryMigrationIT {
                 WHERE schemaname = 'public'
                   AND tablename = 'telemetry_numeric'
                 ORDER BY indexname
-                """)).contains("idx_tn_retention_device_time");
+                """)).contains(
+                        "idx_tn_retention_device_time",
+                        "idx_tn_aggregation_ingest_time"
+                );
 
         assertThat(queryStrings("""
                 SELECT current_boot_id || ':' || highest_sequence

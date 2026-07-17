@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -17,7 +18,7 @@ import java.util.regex.Pattern;
 /**
  * 使用同一 TimescaleDB 会话持有聚合单实例锁，并原子追加聚合版本和执行进度。
  */
-public final class AggregationExecutionRepository {
+public final class AggregationExecutionRepository implements AggregationExecutor.Store {
 
     private static final String LOCK_SQL =
             "SELECT pg_try_advisory_lock(hashtextextended('mine:telemetry:aggregation', 0))";
@@ -46,7 +47,8 @@ public final class AggregationExecutionRepository {
      * @param <T> 工作结果类型
      * @return 锁忙时为空，否则为工作结果
      */
-    public <T> Optional<T> withLock(LockedWork<T> work) {
+    @Override
+    public <T> Optional<T> withLock(AggregationExecutor.LockedWork<T> work) {
         Objects.requireNonNull(work, "数值聚合锁内工作不能为空");
         try (Connection connection = dataSource.getConnection()) {
             enableAutoCommit(connection);
@@ -91,7 +93,7 @@ public final class AggregationExecutionRepository {
     /**
      * 持有数据库会话级聚合锁期间使用的 JDBC 操作集合。
      */
-    private static final class JdbcSession implements Session {
+    private static final class JdbcSession implements AggregationExecutor.Session {
         private final Connection connection;
 
         private JdbcSession(Connection connection) {
@@ -100,18 +102,72 @@ public final class AggregationExecutionRepository {
 
         /** {@inheritDoc} */
         @Override
+        public int recoverStaleExecutions(Duration timeout) {
+            long seconds;
+            try {
+                seconds = timeout.toSeconds();
+            } catch (ArithmeticException exception) {
+                throw new IllegalArgumentException("数值聚合失联超时过大", exception);
+            }
+            if (seconds < 1) {
+                throw new IllegalArgumentException("数值聚合失联超时必须至少一秒");
+            }
+            return update("""
+                    UPDATE telemetry_aggregation_execution
+                       SET status = 'FAILED',
+                           completed_at = CURRENT_TIMESTAMP,
+                           last_error = '运行实例超过失联超时，已由后续执行收敛'
+                     WHERE status = 'RUNNING'
+                       AND started_at < CURRENT_TIMESTAMP - make_interval(secs => ?)
+                    """, statement -> statement.setLong(1, seconds));
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public AggregationExecutor.Plan loadPlan() {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT watermark.committed_ingest_id,
+                           COALESCE((
+                               SELECT MAX(execution.source_watermark)
+                                 FROM telemetry_aggregation_execution execution
+                                WHERE execution.status = 'SUCCEEDED'
+                           ), 0) AS previous_success_watermark,
+                           (SELECT COUNT(*)
+                              FROM telemetry_aggregation_policy policy
+                             WHERE policy.enabled) AS policy_count,
+                           COALESCE((
+                               SELECT SUM(jsonb_array_length(
+                                   policy.values_json -> 'policy' -> 'rules'))
+                                 FROM telemetry_aggregation_policy policy
+                                WHERE policy.enabled
+                           ), 0) AS rule_count
+                      FROM telemetry_ingestion_watermark watermark
+                     WHERE watermark.singleton_id = 1
+                    """); ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    throw new AggregationStorageException("原始遥测摄取水位单例不存在");
+                }
+                return new AggregationExecutor.Plan(
+                        resultSet.getLong("committed_ingest_id"),
+                        resultSet.getLong("previous_success_watermark"),
+                        Math.toIntExact(resultSet.getLong("policy_count")),
+                        Math.toIntExact(resultSet.getLong("rule_count"))
+                );
+            } catch (SQLException exception) {
+                throw storageFailure("无法固定数值聚合执行计划", exception);
+            }
+        }
+
+        /** {@inheritDoc} */
+        @Override
         public void startExecution(
                 UUID executionId,
                 String instanceId,
-                int policyCount,
-                int ruleCount,
-                long sourceWatermark
+                AggregationExecutor.Plan executionPlan
         ) {
             Objects.requireNonNull(executionId, "数值聚合执行标识不能为空");
+            Objects.requireNonNull(executionPlan, "数值聚合执行计划不能为空");
             String normalizedInstance = requireText(instanceId, "数值聚合实例标识", 128);
-            if (policyCount < 0 || ruleCount < 0 || sourceWatermark < 0) {
-                throw new IllegalArgumentException("数值聚合执行计数和源水位不得为负数");
-            }
             int updated = update("""
                     INSERT INTO telemetry_aggregation_execution (
                         execution_id, instance_id, status, policy_count,
@@ -120,11 +176,277 @@ public final class AggregationExecutionRepository {
                     """, statement -> {
                 statement.setObject(1, executionId);
                 statement.setString(2, normalizedInstance);
-                statement.setInt(3, policyCount);
-                statement.setInt(4, ruleCount);
-                statement.setLong(5, sourceWatermark);
+                statement.setInt(3, executionPlan.policyCount());
+                statement.setInt(4, executionPlan.ruleCount());
+                statement.setLong(5, executionPlan.sourceWatermark());
             });
             requireSingleUpdate(updated, "创建数值聚合执行事实");
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public int aggregateNextBatch(UUID executionId, int limit) {
+            Objects.requireNonNull(executionId, "数值聚合执行标识不能为空");
+            if (limit < 1 || limit > 10_000) {
+                throw new IllegalArgumentException("数值聚合查询批次必须在 1 到 10000 之间");
+            }
+            return writeRollupBatch(executionId, selectRollups(executionId, limit));
+        }
+
+        /**
+         * 在单条数据库快照查询中选取需要首次计算或迟到修正的下一批闭合桶。
+         */
+        private List<RollupWrite> selectRollups(UUID executionId, int limit) {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    WITH execution AS (
+                        SELECT execution_id, source_watermark, started_at
+                          FROM telemetry_aggregation_execution
+                         WHERE execution_id = ?
+                           AND status = 'RUNNING'
+                    ), rules AS (
+                        SELECT policy.device_id,
+                               policy.runtime_revision,
+                               policy.snapshot_id,
+                               policy.content_hash,
+                               policy.correction_window_seconds,
+                               (rule.value ->> 'propertyId') AS property_id,
+                               (rule.value ->> 'bucketSeconds')::INTEGER AS bucket_seconds
+                          FROM telemetry_aggregation_policy policy
+                          CROSS JOIN LATERAL jsonb_array_elements(
+                              policy.values_json -> 'policy' -> 'rules'
+                          ) AS rule(value)
+                         WHERE policy.enabled
+                    ), raw_buckets AS (
+                        SELECT DISTINCT
+                               numeric.device_id,
+                               rules.property_id,
+                               rules.bucket_seconds,
+                               rules.runtime_revision,
+                               rules.snapshot_id,
+                               rules.content_hash,
+                               rules.correction_window_seconds,
+                               to_timestamp(
+                                   floor(extract(epoch FROM numeric.time)
+                                       / rules.bucket_seconds)
+                                   * rules.bucket_seconds
+                               ) AS bucket_start,
+                               to_timestamp(
+                                   (floor(extract(epoch FROM numeric.time)
+                                       / rules.bucket_seconds) + 1)
+                                   * rules.bucket_seconds
+                               ) AS bucket_end
+                          FROM telemetry_numeric numeric
+                          JOIN rules
+                            ON rules.device_id = numeric.device_id
+                           AND rules.property_id = numeric.property_id
+                          CROSS JOIN execution
+                         WHERE numeric.ingest_id <= execution.source_watermark
+                           AND numeric.value_double IS NOT NULL
+                           AND to_timestamp(
+                               (floor(extract(epoch FROM numeric.time)
+                                   / rules.bucket_seconds) + 1)
+                               * rules.bucket_seconds
+                           ) <= execution.started_at
+                           AND numeric.received_at <=
+                               to_timestamp(
+                                   (floor(extract(epoch FROM numeric.time)
+                                       / rules.bucket_seconds) + 1)
+                                   * rules.bucket_seconds
+                               ) + make_interval(
+                                   secs => rules.correction_window_seconds)
+                    ), candidates AS MATERIALIZED (
+                        SELECT raw_buckets.*
+                          FROM raw_buckets
+                          CROSS JOIN execution
+                          LEFT JOIN LATERAL (
+                              SELECT rollup.source_watermark
+                                FROM telemetry_numeric_rollup rollup
+                                JOIN telemetry_aggregation_execution completed
+                                  ON completed.execution_id = rollup.execution_id
+                               WHERE rollup.device_id = raw_buckets.device_id
+                                 AND rollup.property_id = raw_buckets.property_id
+                                 AND rollup.bucket_seconds = raw_buckets.bucket_seconds
+                                 AND rollup.bucket_start = raw_buckets.bucket_start
+                                 AND rollup.runtime_revision = raw_buckets.runtime_revision
+                                 AND rollup.snapshot_id = raw_buckets.snapshot_id
+                                 AND rollup.policy_content_hash = raw_buckets.content_hash
+                                 AND completed.status IN ('SUCCEEDED', 'PARTIAL')
+                               ORDER BY rollup.source_watermark DESC,
+                                        rollup.rollup_revision DESC
+                               LIMIT 1
+                          ) latest ON TRUE
+                         WHERE NOT EXISTS (
+                               SELECT 1
+                                 FROM telemetry_numeric_rollup current_rollup
+                                WHERE current_rollup.execution_id = execution.execution_id
+                                  AND current_rollup.device_id = raw_buckets.device_id
+                                  AND current_rollup.property_id = raw_buckets.property_id
+                                  AND current_rollup.bucket_seconds = raw_buckets.bucket_seconds
+                                  AND current_rollup.bucket_start = raw_buckets.bucket_start
+                           )
+                           AND (
+                               latest.source_watermark IS NULL
+                               OR EXISTS (
+                                   SELECT 1
+                                     FROM telemetry_numeric changed
+                                    WHERE changed.device_id = raw_buckets.device_id
+                                      AND changed.property_id = raw_buckets.property_id
+                                      AND changed.time >= raw_buckets.bucket_start
+                                      AND changed.time < raw_buckets.bucket_end
+                                      AND changed.ingest_id > latest.source_watermark
+                                      AND changed.ingest_id <= execution.source_watermark
+                                      AND changed.value_double IS NOT NULL
+                                      AND changed.received_at <= raw_buckets.bucket_end
+                                          + make_interval(secs =>
+                                              raw_buckets.correction_window_seconds)
+                               )
+                           )
+                         ORDER BY raw_buckets.bucket_start,
+                                  raw_buckets.device_id,
+                                  raw_buckets.property_id,
+                                  raw_buckets.bucket_seconds
+                         LIMIT ?
+                    )
+                    SELECT candidates.device_id,
+                           (array_agg(
+                               numeric.product_key
+                               ORDER BY numeric.time DESC, numeric.ingest_id DESC
+                           ))[1] AS product_key,
+                           candidates.property_id,
+                           candidates.bucket_seconds,
+                           candidates.bucket_start,
+                           candidates.bucket_end,
+                           AVG(numeric.value_double) AS average_value,
+                           MIN(numeric.value_double) AS minimum_value,
+                           MAX(numeric.value_double) AS maximum_value,
+                           COUNT(*) AS sample_count,
+                           MAX(numeric.quality) AS worst_quality,
+                           MAX(numeric.received_at) AS latest_received_at,
+                           execution.source_watermark,
+                           candidates.runtime_revision,
+                           candidates.snapshot_id,
+                           candidates.content_hash
+                      FROM candidates
+                      CROSS JOIN execution
+                      JOIN telemetry_numeric numeric
+                        ON numeric.device_id = candidates.device_id
+                       AND numeric.property_id = candidates.property_id
+                       AND numeric.time >= candidates.bucket_start
+                       AND numeric.time < candidates.bucket_end
+                     WHERE numeric.ingest_id <= execution.source_watermark
+                       AND numeric.value_double IS NOT NULL
+                       AND numeric.received_at <= candidates.bucket_end
+                           + make_interval(secs => candidates.correction_window_seconds)
+                     GROUP BY candidates.device_id,
+                              candidates.property_id,
+                              candidates.bucket_seconds,
+                              candidates.bucket_start,
+                              candidates.bucket_end,
+                              execution.source_watermark,
+                              candidates.runtime_revision,
+                              candidates.snapshot_id,
+                              candidates.content_hash
+                     ORDER BY candidates.bucket_start,
+                              candidates.device_id,
+                              candidates.property_id,
+                              candidates.bucket_seconds
+                    """)) {
+                statement.setObject(1, executionId);
+                statement.setInt(2, limit);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    java.util.ArrayList<RollupWrite> rollups = new java.util.ArrayList<>();
+                    while (resultSet.next()) {
+                        rollups.add(mapRollup(resultSet));
+                    }
+                    return List.copyOf(rollups);
+                }
+            } catch (SQLException exception) {
+                throw storageFailure("无法查询下一批闭合数值聚合桶", exception);
+            }
+        }
+
+        /**
+         * 把数据库聚合结果映射为经过应用层二次校验的追加事实。
+         */
+        private RollupWrite mapRollup(ResultSet resultSet) throws SQLException {
+            return new RollupWrite(
+                    resultSet.getObject("device_id", UUID.class),
+                    resultSet.getString("product_key"),
+                    resultSet.getString("property_id"),
+                    resultSet.getInt("bucket_seconds"),
+                    resultSet.getTimestamp("bucket_start").toInstant(),
+                    resultSet.getTimestamp("bucket_end").toInstant(),
+                    resultSet.getDouble("average_value"),
+                    resultSet.getDouble("minimum_value"),
+                    resultSet.getDouble("maximum_value"),
+                    resultSet.getLong("sample_count"),
+                    resultSet.getShort("worst_quality"),
+                    resultSet.getTimestamp("latest_received_at").toInstant(),
+                    resultSet.getLong("source_watermark"),
+                    resultSet.getLong("runtime_revision"),
+                    resultSet.getObject("snapshot_id", UUID.class),
+                    resultSet.getString("content_hash")
+            );
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public long countIgnoredLateRows(
+                UUID executionId,
+                AggregationExecutor.Plan executionPlan
+        ) {
+            Objects.requireNonNull(executionId, "数值聚合执行标识不能为空");
+            Objects.requireNonNull(executionPlan, "数值聚合执行计划不能为空");
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    WITH execution AS (
+                        SELECT started_at
+                          FROM telemetry_aggregation_execution
+                         WHERE execution_id = ?
+                           AND status = 'RUNNING'
+                    ), rules AS (
+                        SELECT policy.device_id,
+                               policy.correction_window_seconds,
+                               (rule.value ->> 'propertyId') AS property_id,
+                               (rule.value ->> 'bucketSeconds')::INTEGER AS bucket_seconds
+                          FROM telemetry_aggregation_policy policy
+                          CROSS JOIN LATERAL jsonb_array_elements(
+                              policy.values_json -> 'policy' -> 'rules'
+                          ) AS rule(value)
+                         WHERE policy.enabled
+                    )
+                    SELECT COUNT(DISTINCT (
+                               numeric.time, numeric.event_id, numeric.property_id
+                           ))
+                      FROM telemetry_numeric numeric
+                      JOIN rules
+                        ON rules.device_id = numeric.device_id
+                       AND rules.property_id = numeric.property_id
+                      CROSS JOIN execution
+                     WHERE numeric.ingest_id > ?
+                       AND numeric.ingest_id <= ?
+                       AND numeric.value_double IS NOT NULL
+                       AND to_timestamp(
+                           (floor(extract(epoch FROM numeric.time)
+                               / rules.bucket_seconds) + 1)
+                           * rules.bucket_seconds
+                       ) <= execution.started_at
+                       AND numeric.received_at >
+                           to_timestamp(
+                               (floor(extract(epoch FROM numeric.time)
+                                   / rules.bucket_seconds) + 1)
+                               * rules.bucket_seconds
+                           ) + make_interval(secs => rules.correction_window_seconds)
+                    """)) {
+                statement.setObject(1, executionId);
+                statement.setLong(2, executionPlan.previousSuccessWatermark());
+                statement.setLong(3, executionPlan.sourceWatermark());
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    resultSet.next();
+                    return resultSet.getLong(1);
+                }
+            } catch (SQLException exception) {
+                throw storageFailure("无法统计超窗口迟到原始遥测", exception);
+            }
         }
 
         /** {@inheritDoc} */
@@ -222,7 +544,7 @@ public final class AggregationExecutionRepository {
         @Override
         public void completeExecution(
                 UUID executionId,
-                RunStatus status,
+                AggregationExecutor.RunStatus status,
                 long lateRowsIgnored,
                 String errorSummary
         ) {
@@ -252,8 +574,11 @@ public final class AggregationExecutionRepository {
         /**
          * 校验失败终态必须携带错误，而成功和部分完成不得伪装为失败。
          */
-        private String normalizeError(RunStatus status, String errorSummary) {
-            if (status == RunStatus.FAILED) {
+        private String normalizeError(
+                AggregationExecutor.RunStatus status,
+                String errorSummary
+        ) {
+            if (status == AggregationExecutor.RunStatus.FAILED) {
                 return requireText(errorSummary, "数值聚合失败摘要", 2_000);
             }
             if (errorSummary != null) {
@@ -334,64 +659,6 @@ public final class AggregationExecutionRepository {
             throw new IllegalArgumentException(label + "不能为空且长度不能超过" + maximumLength);
         }
         return value.strip();
-    }
-
-    /**
-     * 数据库锁生命周期内的聚合工作函数。
-     *
-     * @param <T> 工作结果类型
-     */
-    @FunctionalInterface
-    public interface LockedWork<T> {
-        /**
-         * 使用锁定会话执行聚合工作。
-         */
-        T execute(Session session);
-    }
-
-    /**
-     * 只允许在持有数据库聚合单实例锁期间使用的会话。
-     */
-    public interface Session {
-        /**
-         * 创建一条运行中聚合执行事实。
-         */
-        void startExecution(
-                UUID executionId,
-                String instanceId,
-                int policyCount,
-                int ruleCount,
-                long sourceWatermark
-        );
-
-        /**
-         * 原子追加一批聚合版本并增加已提交进度。
-         *
-         * @return 本次实际插入的版本数量
-         */
-        int writeRollupBatch(UUID executionId, List<RollupWrite> rollups);
-
-        /**
-         * 把运行中事实收敛为不可变终态。
-         */
-        void completeExecution(
-                UUID executionId,
-                RunStatus status,
-                long lateRowsIgnored,
-                String errorSummary
-        );
-    }
-
-    /**
-     * 聚合任务可持久化的终态。
-     */
-    public enum RunStatus {
-        /** 已扫描完本轮全部候选桶。 */
-        SUCCEEDED,
-        /** 达到本轮有界上限，后续轮次继续。 */
-        PARTIAL,
-        /** 执行失败并留下脱敏摘要。 */
-        FAILED
     }
 
     /**

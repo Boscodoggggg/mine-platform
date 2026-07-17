@@ -187,3 +187,47 @@ groups:
         annotations:
           summary: "数据保留任务持续未完成"
           description: "{{ $labels.job }} 已连续至少 3 轮达到有界批次上限，请评估积压、批次参数和 TimescaleDB 执行计划。"
+
+  - name: mine-telemetry-aggregation
+    rules:
+      - alert: MineTelemetryAggregationConsecutiveFailures
+        expr: max by (job) (mine_telemetry_aggregation_consecutive_failures) >= 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "数值聚合任务连续失败"
+          description: "{{ $labels.job }} 数值聚合任务已连续失败至少 3 轮，请检查 TimescaleDB、执行事实和最近脱敏错误。"
+
+      - alert: MineTelemetryAggregationNoRecentSuccess
+        expr: >-
+          ((max by (job) (mine_telemetry_aggregation_last_success_epoch_seconds) > 0)
+          and on (job) (time() - max by (job)
+          (mine_telemetry_aggregation_last_success_epoch_seconds) > 1800))
+          or ((max by (job) (mine_telemetry_aggregation_last_success_epoch_seconds) == 0)
+          and on (job) (time() - min by (job)
+          (mine_telemetry_aggregation_started_epoch_seconds) > 1800))
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数值聚合任务长时间没有完整成功"
+          description: "{{ $labels.job }} 超过 30 分钟没有完成一次固定水位闭合桶扫描，请检查失败、锁竞争或持续部分完成状态。"
+
+      - alert: MineTelemetryAggregationPersistentlyPartial
+        expr: max by (job) (mine_telemetry_aggregation_consecutive_partial) >= 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数值聚合任务持续未完成"
+          description: "{{ $labels.job }} 已连续至少 3 轮达到有界聚合上限，请评估桶积压、批次参数和 TimescaleDB 查询计划。"
+
+      - alert: MineTelemetryAggregationLateRowsIgnored
+        expr: sum by (job) (increase(mine_telemetry_aggregation_late_rows_ignored_total[15m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "遥测到达延迟超过聚合修正窗口"
+          description: "{{ $labels.job }} 最近 15 分钟存在未纳入聚合的超窗口迟到遥测，请检查边缘网络、设备时钟和修正窗口策略。"
