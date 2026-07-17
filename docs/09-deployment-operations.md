@@ -149,7 +149,7 @@ Compose profiles：
 边界：
 
 - 数据库地址、线程数、JVM、监听端口属于部署配置。
-- 物模型、协议、映射、告警和保留属于平台策略。
+- 物模型、协议、映射、告警、保留和数值聚合属于平台策略。
 - secret 只能由 secret 文件/受控环境注入。
 - gateway 访问 RabbitMQ 使用两个独立密码文件：`rabbitmq_gateway_device_password` 只读设备上行队列，
   `rabbitmq_gateway_platform_password` 只写平台遥测交换机；不得复用 RabbitMQ 管理员密码。
@@ -200,6 +200,24 @@ Compose profiles：
 
 批次和周期上限是数据库保护参数，不是吞吐承诺。调整前必须结合候选积压、磁盘、WAL、锁等待、查询计划和备份窗口；不得为追赶积压直接提高到最大值。标准操作、暂停和恢复步骤见 [数据保留运行手册](runbooks/retention-runtime.md)。
 
+### 7.2 数值聚合与显式重算参数
+
+数值聚合和显式重算在应用默认配置中关闭，单机 Compose 显式开启。多 Telemetry 实例必须使用不同实例标识；常规物化与显式重算共用数据库 advisory lock。每轮常规物化退出后最多认领一个重算请求，避免历史修复挤占实时遥测资源。
+
+| 环境变量 | 默认值 | 安全边界与说明 |
+|---|---:|---|
+| `MINE_TELEMETRY_AGGREGATION_ENABLED` | 应用 `false`；单机 Compose `true` | 是否创建聚合调度器；关闭后同时停止常规物化和重算消费 |
+| `MINE_TELEMETRY_AGGREGATION_INSTANCE_ID` | Telemetry 实例/主机名 | 1～128 字符，写入不可变执行事实和控制面租约 |
+| `MINE_TELEMETRY_AGGREGATION_BATCH_SIZE` | `1000` | 单批最多提交 1～10000 个聚合桶 |
+| `MINE_TELEMETRY_AGGREGATION_MAX_CYCLES` | `10` | 单轮最多 1～1000 个批次周期 |
+| `MINE_TELEMETRY_AGGREGATION_INITIAL_DELAY` | `30s` | 0～24 小时 |
+| `MINE_TELEMETRY_AGGREGATION_INTERVAL` | `1m` | 固定延迟 10 秒～24 小时 |
+| `MINE_TELEMETRY_AGGREGATION_STALE_TIMEOUT` | `2h` | 计划执行失联收敛阈值 1 分钟～7 天 |
+| `MINE_TELEMETRY_AGGREGATION_RECOMPUTE_ENABLED` | 应用 `false`；单机 Compose `true` | 是否从管理服务认领显式重算；依赖策略分发 server URL、请求超时和 service token 文件 |
+| `MINE_TELEMETRY_AGGREGATION_RECOMPUTE_LEASE` | `10m` | 单次租约 1 分钟～1 小时；执行超过租约会由稳定执行标识恢复，不得手工改 token 或终态 |
+
+批次、周期、间隔和租约是资源保护参数，不是性能承诺。生产调整前必须使用真实数据分布验证桶积压、查询计划、WAL/IO、磁盘、并发历史查询和重算时长。操作、告警、暂停和恢复见 [数值聚合运行手册](runbooks/aggregation-runtime.md)。
+
 ## 8. 服务发现
 
 - 单机：Compose service name。
@@ -230,6 +248,7 @@ Compose profiles：
 | node-1 故障 | VIP 到 node-2，浏览器/设备重连 |
 | 单个 gateway 故障 | MQTT Broker 保持，其他 gateway 消费 |
 | 单个 telemetry 故障 | RabbitMQ 未 ACK 消息重新投递 |
+| 数值聚合执行实例故障 | advisory lock 随会话释放；常规失联事实由后续实例收敛，显式重算租约到期后复用稳定执行标识恢复 |
 | 数据保留执行实例故障 | 数据库锁随会话释放，超时 `RUNNING` 事实由后续实例收敛为失败并重新扫描 |
 | 一个 RabbitMQ 节点故障 | 剩余两个多数派继续 |
 | PostgreSQL 主库故障 | 人工提升备库并切换连接 |

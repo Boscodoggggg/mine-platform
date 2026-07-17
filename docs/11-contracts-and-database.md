@@ -125,9 +125,8 @@ POST             /api/v1/thing-model-versions/{id}/validate
 - 两个接口均需要 `device:telemetry:view`；该权限由隐藏的“设备监控”菜单节点承载，页面交付后再切换为可见。
 - latest 必须显式传入 1 至 100 个 `propertyIds`，优先读取 Redis；缓存缺失时按设备和属性合并并发回源 TimescaleDB，回填不得覆盖并发到达的新值。
 - history 每次只查询一个数值属性，时间范围采用 `[from, to)`；`RAW` 最多 7 天，`AVG/MIN/MAX` 最多 366 天。
-- history 首页返回已提交事件的 `watermark` 摄取水位，后续页必须原样传回；历史查询使用
-  `ingest_id <= watermark` 固定数据集，确保弱网迟到、MQ 积压和数据库重试期间跨请求分页稳定；客户端传入的
-  水位不得超过服务端当前已提交水位。
+- history 首页返回已提交事件的 `watermark` 摄取水位和当前 `rollupWatermark` 聚合版本水位，后续页必须同时原样传回；历史查询使用
+  `ingest_id <= watermark` 固定原始数据集，并为每个桶选择 `rollup_revision <= rollupWatermark` 的最新聚合版本，确保弱网迟到、MQ 积压、数据库重试和后台重算期间跨请求分页稳定；客户端传入的水位不得超过服务端当前已提交水位。
 - 聚合查询必须传 1 分钟至 24 小时且为整秒精度的 ISO-8601 `bucket`，单次最多形成 10000 个时间桶；每页最多 1000 条，分页 offset 不得超过 1000000。
 - 聚合质量取桶内最差值，响应必须同时给出样本数；完整契约见 `docs/openapi/mine-api.yaml`。
 
@@ -179,6 +178,8 @@ POST             /api/v1/strategy-releases/{id}/rollback
 GET              /api/v1/devices/{id}/effective-strategies/{type}
 POST             /api/v1/retention-previews
 GET              /api/v1/retention-executions?limit=20
+GET              /api/v1/aggregation-executions?limit=20
+GET/POST         /api/v1/aggregation-recomputations
 
 GET/POST         /api/v1/config-releases
 GET              /api/v1/config-releases/{id}
@@ -186,13 +187,17 @@ POST             /api/v1/config-releases/{id}/rollback
 
 GET              /internal/v1/config-releases/{id}
 POST             /internal/v1/config-releases/{id}/nodes/{nodeId}
+POST             /internal/v1/aggregation-recomputations/claim
+POST             /internal/v1/aggregation-recomputations/{requestId}/complete
 ~~~
 
 样本、测试、发布、回滚和查看发布历史分别使用 `device:protocol:sample:view`、`device:protocol:sample:edit`、`device:protocol:test`、`device:configuration:publish`、`device:configuration:rollback`、`device:configuration:view` 权限。发布和回滚必须携带 `Idempotency-Key`；内部接口不使用用户会话，必须携带从只读 secret 文件加载的 `X-Mine-Service-Token`，且响应不包含任何凭据。
 
-设备组查看/维护分别使用 `device:group:view`、`device:group:edit`，策略查看/编辑/发布分别使用 `device:strategy:view`、`device:strategy:edit`、`device:strategy:publish`。设备组成员、优先级和归档变更采用乐观锁；发布和回滚要求 `Idempotency-Key` 与原因。当前策略白名单包含 `ONLINE_STATUS`、`DATA_QUALITY`、`ALARM` 和 `RETENTION`：前两类按字段继承，`ALARM.rules` 和 `RETENTION.policy` 分别作为原子集合/对象整组覆盖。有效值查询返回最终字段、作用范围/发布来源、稳定内容哈希和冲突详情。同优先级设备组异值冲突返回 `409 / STRATEGY-409-001`，策略版本、发布事实和审计均不提交。
+设备组查看/维护分别使用 `device:group:view`、`device:group:edit`，策略查看/编辑/发布分别使用 `device:strategy:view`、`device:strategy:edit`、`device:strategy:publish`。设备组成员、优先级和归档变更采用乐观锁；发布和回滚要求 `Idempotency-Key` 与原因。当前策略白名单包含 `ONLINE_STATUS`、`DATA_QUALITY`、`ALARM`、`RETENTION` 和 `AGGREGATION`：前两类按字段继承，`ALARM.rules`、`RETENTION.policy` 和 `AGGREGATION.policy` 分别作为原子集合/对象整组覆盖。有效值查询返回最终字段、作用范围/发布来源、稳定内容哈希和冲突详情。同优先级设备组异值冲突返回 `409 / STRATEGY-409-001`，策略版本、发布事实和审计均不提交。
 
 保留影响预览与执行历史是只读运行接口，要求 `device:strategy:view`。预览请求提交 `strategyVersionId + productId + scopeType + scopeId`，不接受浏览器提供的任意策略对象；服务端按发布后的逐设备最终策略统计，每数据集最多精确统计 100 万行，达到上限时返回 `atLeast=true`。响应的一次性凭证绑定管理员、确切版本内容、作用域、成员、组优先级和最终解析哈希；`RETENTION` 发布与回滚必须提交该凭证，过期、复用或状态变化返回 `RETENTION-409-001`。已有当前 `RETENTION` 组发布时，成员、优先级和归档变更使用独立的设备组变化预览，绑定变化类型、设备组版本、成员差异和目标优先级；最终设备组写事务重新检查 `device:strategy:publish` 并一次消费凭证。独立菜单使用 `governance:retention:view`，授予该菜单时后端自动补齐产品、设备和策略三项只读菜单依赖，不补齐编辑、发布、归档或凭据权限。V28 会为升级前已拥有策略查看菜单的角色补齐相同只读集合。
+
+数值聚合治理查询使用 `governance:aggregation:view`，显式重算使用独立的 `governance:aggregation:execute`。重算必须携带稳定 `Idempotency-Key` 和原因，目标为单设备、单属性、当前启用精确桶规则，时间范围按 UTC 桶边界对齐，最长 31 天且最多 10000 个桶；HTTP `202` 只表示创建或幂等重放 `PENDING` 请求。内部认领/完成接口只接受外部 service token：认领使用有界租约，完成必须同时匹配请求、稳定 executionId 和当前 claim token，旧租约返回冲突且不得覆盖新持有者。
 
 ### 2.4 矿山业务
 
@@ -678,6 +683,15 @@ CREATE TABLE location_point (
 - `telemetry_retention_execution`：不可删除的单轮执行事实，保存实例、状态、启用策略数、两个数据集删除量、批次数、数据库开始/完成时间和脱敏错误；触发器只允许运行进度单向增加及 `RUNNING` 收敛到终态。
 
 V15 创建策略镜像并扩展运行修订白名单，V16 创建执行事实和候选索引。所有表和字段使用中文注释，TimescaleDB 集成测试校验注释完整、约束、索引、终态保护及有界删除边界。
+
+数值聚合运行新增：
+
+- 业务 PostgreSQL `dev_aggregation_recompute_request`：显式重算控制面事实，保存目标、UTC 范围、原因、操作人幂等键、状态、稳定执行标识、当前认领实例/token/租约、尝试次数、完成时间和脱敏错误。
+- TimescaleDB `telemetry_aggregation_policy`：单设备最后正确 `AGGREGATION.policy` 镜像，保存运行修订、快照、规范化 JSON、内容哈希，并用生成列暴露启用状态和修正窗口。
+- TimescaleDB `telemetry_aggregation_execution`：不可删除的常规或显式重算执行事实，保存固定源摄取水位、策略/规则数、桶产量、聚合水位、迟到量；重算还保存请求、目标范围和精确策略证据。
+- TimescaleDB `telemetry_numeric_rollup`：按设备、属性、固定桶宽、UTC 桶起点和全局 `rollup_revision` 追加的 AVG/MIN/MAX/样本数/最差质量/最晚接收时间事实。
+
+管理服务 V30 开放策略类型，V31 创建重算请求和治理权限，V32 增加 `FOR UPDATE SKIP LOCKED` 所需的可恢复租约字段与索引；Telemetry V17～V20 依次创建策略镜像、版本化事实、源查询索引和显式重算身份。所有新增表和字段均使用中文注释，PostgreSQL/TimescaleDB 集成测试校验空库与升级迁移、注释、约束、索引、不可变触发器、旧 token 拒绝和稳定执行重放。
 
 ## 13. 当前值
 
