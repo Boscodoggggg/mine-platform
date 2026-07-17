@@ -162,6 +162,11 @@ legend span { color: var(--accent); font: 700 10px ui-monospace, monospace; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
 label { display: grid; gap: 7px; color: #555b67; font-size: 11px; font-weight: 600; }
 label.wide { grid-column: 1 / -1; }
+.field-label { display: inline-flex; align-items: center; gap: 6px; width: fit-content; }
+.help-tooltip { position: relative; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--muted); background: var(--surface); cursor: help; font-size: 10px; font-weight: 700; line-height: 1; }
+.help-tooltip:hover, .help-tooltip:focus { border-color: #aeb3ff; color: var(--accent-dark); background: var(--accent-soft); outline: none; }
+.help-tooltip::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 9px); left: 50%; z-index: 30; width: max-content; max-width: 260px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--surface); box-shadow: 0 8px 24px rgba(40, 44, 65, .14); font-size: 10px; font-weight: 500; line-height: 1.55; text-align: left; white-space: normal; opacity: 0; transform: translate(-50%, 4px); pointer-events: none; transition: opacity .15s, transform .15s; }
+.help-tooltip:hover::after, .help-tooltip:focus::after { opacity: 1; transform: translate(-50%, 0); }
 input, select, textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: #fff; }
 input, select { height: 39px; padding: 0 11px; }
 textarea { resize: vertical; padding: 11px; font: 11px/1.6 ui-monospace, "SFMono-Regular", Consolas, monospace; }

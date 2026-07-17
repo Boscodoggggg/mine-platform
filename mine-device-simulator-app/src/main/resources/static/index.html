@@ -113,25 +113,25 @@
           <legend><span>01</span> 基础信息</legend>
           <div class="form-grid">
             <label class="wide">设备名称<input name="name" required maxlength="80" placeholder="例如：东采区 01 号矿卡"></label>
-            <label>传输模式
+            <label><span class="field-label">传输模式<button class="help-tooltip" type="button" data-tooltip="决定模拟器主动连接平台，还是监听端口等待平台接入。切换后会自动替换推荐参数和报文模板。" aria-label="帮助：传输模式决定连接方向，切换后自动替换推荐参数">?</button></span>
               <select name="transportMode" id="transportMode">
                 <option value="MQTT">MQTT 客户端</option>
                 <option value="TCP_CLIENT">TCP 客户端</option>
                 <option value="TCP_SERVER">TCP 服务端</option>
               </select>
             </label>
-            <label class="checkbox-label"><input name="tlsEnabled" type="checkbox"><span>启用 TLS / MQTTS</span></label>
+            <label class="checkbox-label mqtt-field"><input name="tlsEnabled" type="checkbox"><span class="field-label">启用 TLS / MQTTS<button class="help-tooltip" type="button" data-tooltip="启用后使用加密连接。证书由 JVM trustStore 校验，不支持跳过证书验证。" aria-label="帮助：启用加密连接并校验证书">?</button></span></label>
           </div>
         </fieldset>
         <fieldset>
           <legend><span>02</span> 连接参数</legend>
           <p class="field-help" id="transportHelp">模拟器作为 MQTT 客户端，主动连接平台 Broker。</p>
           <div class="form-grid">
-            <label class="wide">主机或监听地址<input name="host" required value="127.0.0.1" placeholder="127.0.0.1"></label>
-            <label>端口<input name="port" required type="number" min="1" max="65535" value="1883"></label>
-            <label class="mqtt-field">Client ID<input name="clientId" placeholder="sim-truck-001"></label>
-            <label class="mqtt-field">用户名<input name="username" placeholder="设备用户名"></label>
-            <label class="mqtt-field wide">发布 Topic<input name="publishTopic" placeholder="mine/v1/{productKey}/{clientId}/up/telemetry"></label>
+            <label class="wide"><span class="field-label"><span id="endpointHostLabel">Broker 地址</span><button class="help-tooltip" id="endpointHostHelp" type="button" data-tooltip="平台 MQTT Broker 的主机名或 IP，例如 127.0.0.1。" aria-label="帮助：填写平台 MQTT Broker 的主机名或 IP">?</button></span><input name="host" required value="127.0.0.1" placeholder="例如：127.0.0.1"></label>
+            <label><span class="field-label"><span id="endpointPortLabel">Broker 端口</span><button class="help-tooltip" id="endpointPortHelp" type="button" data-tooltip="由平台 Broker 提供，常用端口为 1883；启用 MQTTS 时通常使用 8883。" aria-label="帮助：填写平台 Broker 提供的连接端口">?</button></span><input name="port" required type="number" min="1" max="65535" value="1883"></label>
+            <label class="mqtt-field"><span class="field-label">Client ID<button class="help-tooltip" type="button" data-tooltip="MQTT 连接的唯一客户端标识，同一 Broker 上不能与在线客户端重复。" aria-label="帮助：填写 MQTT 唯一客户端标识">?</button></span><input name="clientId" placeholder="例如：sim-truck-001"></label>
+            <label class="mqtt-field"><span class="field-label">用户名<button class="help-tooltip" type="button" data-tooltip="平台分配的 MQTT 认证用户名；Broker 未启用认证时可以留空。" aria-label="帮助：填写平台分配的 MQTT 用户名，可留空">?</button></span><input name="username" placeholder="例如：truck-001"></label>
+            <label class="mqtt-field wide"><span class="field-label">发布 Topic<button class="help-tooltip" type="button" data-tooltip="设备向平台上报数据的主题，需与平台订阅规则一致，可使用 productKey 和 clientId 占位符。" aria-label="帮助：填写与平台订阅规则一致的发布主题">?</button></span><input name="publishTopic" placeholder="mine/v1/{productKey}/{clientId}/up/telemetry"></label>
           </div>
         </fieldset>
         <fieldset>

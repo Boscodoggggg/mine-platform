@@ -54,6 +54,30 @@ class StaticInteractionContractTest {
                 ".workspace.log-view .device-panel");
     }
 
+    @Test
+    void 传输模式应切换连接参数并提供可访问帮助() throws Exception {
+        String html = resource("/static/index.html");
+        String script = resource("/static/app.js");
+        String styles = resource("/static/styles.css");
+
+        assertThat(html).contains(
+                "id=\"endpointHostLabel\"",
+                "id=\"endpointPortLabel\"",
+                "class=\"help-tooltip\"",
+                "data-tooltip=",
+                "aria-label=\"帮助：");
+        assertThat(script).contains(
+                "const transportPresets",
+                "hostLabel: \"Broker 地址\"",
+                "hostLabel: \"平台地址\"",
+                "hostLabel: \"监听地址\"",
+                "form.elements.host.value = preset.host",
+                "form.elements.payloadTemplate.value = templates[mode]");
+        assertThat(styles).contains(
+                ".help-tooltip:hover::after",
+                ".help-tooltip:focus::after");
+    }
+
     private String resource(String path) throws IOException {
         try (InputStream input = getClass().getResourceAsStream(path)) {
             if (input == null) {

@@ -30,6 +30,30 @@ const templates = {
   TCP_SERVER: "68 01 00 08 10 20 30 40 16"
 };
 
+const transportPresets = {
+  MQTT: {
+    hostLabel: "Broker 地址", host: "127.0.0.1", hostPlaceholder: "例如：127.0.0.1 或 mqtt.example.com",
+    hostHelp: "平台 MQTT Broker 的主机名或 IP，例如 127.0.0.1。",
+    portLabel: "Broker 端口", port: 1883,
+    portHelp: "由平台 Broker 提供，常用端口为 1883；启用 MQTTS 时通常使用 8883。",
+    payloadFormat: "JSON"
+  },
+  TCP_CLIENT: {
+    hostLabel: "平台地址", host: "127.0.0.1", hostPlaceholder: "例如：127.0.0.1 或 platform.example.com",
+    hostHelp: "平台开放 TCP 接入服务的主机名或 IP，模拟器会主动连接该地址。",
+    portLabel: "平台 TCP 端口", port: 9000,
+    portHelp: "平台提供的设备接入端口，必须与平台 TCP 服务监听端口一致。",
+    payloadFormat: "JSON"
+  },
+  TCP_SERVER: {
+    hostLabel: "监听地址", host: "127.0.0.1", hostPlaceholder: "127.0.0.1 或 0.0.0.0",
+    hostHelp: "模拟器等待平台接入的本地地址。127.0.0.1 仅本机可访问，0.0.0.0 可接受外部连接。",
+    portLabel: "监听端口", port: 9000,
+    portHelp: "模拟器在本机监听的端口，平台需要主动连接到该端口。",
+    payloadFormat: "HEX"
+  }
+};
+
 const statusText = {
   CONNECTED: "已连接",
   CONNECTING: "连接中",
@@ -230,6 +254,7 @@ function openProfile(profile = null) {
 
 function updateTransportFields(resetDefaults = true) {
   const mode = form.elements.transportMode.value;
+  const preset = transportPresets[mode];
   $$(".mqtt-field", form).forEach(field => field.hidden = mode !== "MQTT");
   const helps = {
     MQTT: "模拟器作为 MQTT 客户端，主动连接平台 Broker；密码在启动时临时输入。",
@@ -237,9 +262,17 @@ function updateTransportFields(resetDefaults = true) {
     TCP_SERVER: "模拟器在本机监听端口，等待平台主动连接，适合模拟 PLC 或厂商服务端。"
   };
   $("#transportHelp").textContent = helps[mode];
+  $("#endpointHostLabel").textContent = preset.hostLabel;
+  $("#endpointPortLabel").textContent = preset.portLabel;
+  form.elements.host.placeholder = preset.hostPlaceholder;
+  $("#endpointHostHelp").dataset.tooltip = preset.hostHelp;
+  $("#endpointHostHelp").setAttribute("aria-label", `帮助：${preset.hostHelp}`);
+  $("#endpointPortHelp").dataset.tooltip = preset.portHelp;
+  $("#endpointPortHelp").setAttribute("aria-label", `帮助：${preset.portHelp}`);
   if (resetDefaults) {
-    form.elements.port.value = mode === "MQTT" ? "1883" : "9000";
-    form.elements.payloadFormat.value = mode === "TCP_SERVER" ? "HEX" : "JSON";
+    form.elements.host.value = preset.host;
+    form.elements.port.value = String(preset.port);
+    form.elements.payloadFormat.value = preset.payloadFormat;
     form.elements.payloadTemplate.value = templates[mode];
   }
 }
