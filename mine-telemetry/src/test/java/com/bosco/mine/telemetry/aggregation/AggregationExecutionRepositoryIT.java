@@ -247,7 +247,7 @@ class AggregationExecutionRepositoryIT {
                    AND NOT attribute.attisdropped
                  ORDER BY table_class.relname, attribute.attnum
                 """, String.class))
-                .hasSize(31)
+                .hasSize(41)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(jdbcTemplate.queryForList("""
                 SELECT indexname

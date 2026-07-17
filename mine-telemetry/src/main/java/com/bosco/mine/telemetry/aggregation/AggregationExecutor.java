@@ -272,6 +272,26 @@ public final class AggregationExecutor {
      * 只允许在持有数据库聚合单实例锁期间使用的会话。
      */
     public interface Session {
+        /**
+         * 创建、恢复或重放具有稳定执行标识的显式重算事实。
+         */
+        default AggregationRecomputeExecutor.Preparation prepareRecomputation(
+                String instanceId,
+                AggregationRecomputeExecutor.Request request
+        ) {
+            throw new UnsupportedOperationException("当前聚合仓储不支持显式重算准备");
+        }
+
+        /**
+         * 在固定水位和当前策略证据下追加尚未提交的显式重算版本桶。
+         */
+        default int recompute(
+                AggregationRecomputeExecutor.Request request,
+                int limit
+        ) {
+            throw new UnsupportedOperationException("当前聚合仓储不支持显式重算");
+        }
+
         /** 把超过失联超时的运行事实收敛为失败。 */
         int recoverStaleExecutions(Duration timeout);
 
