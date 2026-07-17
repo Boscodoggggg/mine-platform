@@ -54,7 +54,7 @@
 
 **Steps:**
 1. 写黄金帧失败测试，覆盖字段解析、十进制缩放、ACK、CRC、截断、魔数、版本、类型、声明长度、ASCII 身份和字段范围。
-2. 运行 `./mvnw -pl mine-protocol-example-haul-truck -am test`，确认 RED。
+2. 运行 `./mvnw -pl examples/protocol-plugins/haul-truck -am test`，确认 RED。
 3. 实现 CRC16-CCITT-FALSE、严格解码、ACK 编码和 ServiceLoader 文件。
 4. 在 README 固化示例 HEX、字段表、模拟器发送步骤和非厂商协议声明。
 5. 运行模块与 SPI 加载测试，确认 GREEN。

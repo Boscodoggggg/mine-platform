@@ -33,6 +33,7 @@
         <module>mine-messaging</module>
         <module>mine-protocol-sdk</module>
         <module>mine-protocol-engine</module>
+        <module>examples/protocol-plugins/haul-truck</module>
         <module>mine-gateway</module>
         <module>mine-telemetry</module>
         <module>mine-server</module>
