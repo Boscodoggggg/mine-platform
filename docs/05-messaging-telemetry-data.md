@@ -272,6 +272,18 @@ Rabbit消费
 
 一个消息可以部分字段有效、部分无效。质量结果应按属性记录，避免一个坏字段丢弃整帧。
 
+`DATA_QUALITY` 的已实现运行语义如下：
+
+- 未来时间命中 `FUTURE_TIMESTAMP`，数值属性降级为 `TIME_UNTRUSTED`，排序时间使用 `receivedAt`。
+- 陈旧时间命中 `STALE_TIMESTAMP`，数值属性降级为 `UNCERTAIN`。
+- 必填属性缺失命中 `REQUIRED_MISSING` 并生成 `BAD` 证据；缺失属性本身不伪造历史样本。
+- 数值低于下限或高于上限分别命中 `BELOW_MINIMUM`、`ABOVE_MAXIMUM`，对应属性降级为 `BAD`。
+- 同一属性命中多条规则时取最差质量；其他正常属性继续入库，原始观测值不因质量降级而静默丢弃。
+
+`telemetry_quality_evidence` 以 `event_id + property_id + rule_code` 为主键，保存观测值、阈值、运行修订、不可变快照标识和策略哈希。Inbox、数值历史、持久最新值、摄取水位和质量证据在同一 TimescaleDB 事务提交；事务成功后才刷新 Redis 和发布实时事件。RabbitMQ 重投会读取已提交的同一事件样本和属性质量，不因期间策略变化分叉出另一套缓存或 WebSocket 结果。
+
+实时事件同时携带整帧最差质量和 `qualities` 逐属性质量映射。WebSocket 权限过滤属性值时必须同步过滤 `qualities`，并基于剩余可见属性重新计算整帧质量；旧事件缺少 `qualities` 时仍按兼容路径读取。
+
 ## 9. TimescaleDB 数据布局
 
 ### 9.1 通用历史
@@ -381,3 +393,5 @@ mine:ws:subscription:{sessionId}   短期订阅信息
 - 批写大小、耗时、失败、Timescale 延迟。
 - Redis 写入失败和 latest 拒绝覆盖次数。
 - 每个 pipeline 阶段耗时，但 deviceId 不作为 Prometheus 标签。
+- 数据质量规则命中数，标签仅允许稳定 `rule` 和 `result` 枚举。
+- 数据质量策略分发结果、解码/拉取/校验/暂存/激活阶段和处理耗时，不携带产品、设备或快照标识。

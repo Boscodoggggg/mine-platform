@@ -53,6 +53,8 @@
 阶段验收结果位于 `reports/`。当前 [Phase 0 工程底座验收报告](reports/phase-0-acceptance.md) 为待复验状态；
 [Phase 1 弱网补传自动化验证报告](reports/phase-1-weak-network.md) 已通过确定性自动化基线；
 [Phase 1 首个真实设备闭环验收报告](reports/phase-1-acceptance.md) 因缺少真实设备和现场窗口保持阻塞，未闭环项不得按生产就绪处理。
+Phase 2 的 [数据质量策略运行消费验收报告](reports/phase-2-data-quality-acceptance.md) 已通过非现场自动化基线；生产排障与回退遵循
+[数据质量策略运行手册](runbooks/data-quality-runtime.md)，该结论不替代真实设备、矿区网络、容量、HA 或 24/72 小时长稳验收。
 现场执行必须遵循 [MQTT 真实设备现场接入与 24 小时验收手册](runbooks/device-onboarding.md)，并按
 [Phase 1 真实设备验收记录契约](contracts/phase-1-device-acceptance-v1.schema.json) 留存结构化证据。
 
