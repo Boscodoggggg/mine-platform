@@ -13,6 +13,7 @@ import java.util.UUID;
  * @param aggregation 聚合方式
  * @param bucket 聚合时间桶，原始查询为空
  * @param watermark 分页数据集的全局摄取水位上限
+ * @param rollupWatermark 分页数据集的全局聚合版本水位上限
  * @param items 当前页数据
  * @param page 页码
  * @param size 每页数量
@@ -24,6 +25,7 @@ public record TelemetryHistoryResponse(
         String aggregation,
         Duration bucket,
         long watermark,
+        long rollupWatermark,
         List<TelemetryHistoryPointResponse> items,
         int page,
         int size,
@@ -38,7 +40,7 @@ public record TelemetryHistoryResponse(
         propertyId = Objects.requireNonNull(propertyId, "属性标识不能为空");
         aggregation = Objects.requireNonNull(aggregation, "聚合方式不能为空");
         items = List.copyOf(Objects.requireNonNull(items, "历史数据不能为空"));
-        if (watermark < 0 || page < 1 || size < 1 || total < 0) {
+        if (watermark < 0 || rollupWatermark < 0 || page < 1 || size < 1 || total < 0) {
             throw new IllegalArgumentException("历史分页参数不合法");
         }
     }

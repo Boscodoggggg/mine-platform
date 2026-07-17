@@ -894,8 +894,10 @@ export interface paths {
          * @description 需要 `device:telemetry:view` 权限。时间范围采用 `[from, to)`；RAW 最多查询 7 天且不能传 bucket；
          *     AVG、MIN、MAX 最多查询 366 天，bucket 必须在 1 分钟至 24 小时之间且最多产生 10000 个桶。
          *     bucket 只接受整秒精度。聚合结果的 quality 取桶内最差质量，sampleCount 表示桶内样本数；
-         *     分页 offset 不得超过 1000000。首页可省略 watermark，响应会返回数据库已提交事件的摄取水位；
-         *     后续页必须原样传回，以排除 RabbitMQ 积压、数据库重试和弱网迟到点在翻页期间造成的重复或遗漏。
+         *     分页 offset 不得超过 1000000。首页必须同时省略 watermark 和 rollupWatermark，响应会返回数据库已提交
+         *     事件的摄取水位与已完成聚合事实的版本水位；后续页必须同时原样传回双水位，以排除 RabbitMQ 积压、
+         *     数据库重试、弱网迟到点和新聚合版本在翻页期间造成的重复、遗漏或来源漂移。完整且已超过修正窗口的
+         *     冷区桶优先读取版本化 ROLLUP，热区、边界桶和聚合覆盖缺口按相同摄取水位回退 RAW。
          */
         get: operations["getDeviceTelemetryHistory"];
         put?: never;
@@ -1156,6 +1158,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/aggregation-recomputations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询最近显式聚合重算请求
+         * @description 需要 `governance:aggregation:view` 权限，返回业务控制面中的请求生命周期事实。
+         */
+        get: operations["listAggregationRecomputations"];
+        put?: never;
+        /**
+         * 登记有界且幂等的显式聚合重算请求
+         * @description 需要 `governance:aggregation:execute` 权限。目标必须匹配当前启用的精确聚合规则；时间范围按 UTC
+         *     桶边界对齐，最长 31 天且最多 10000 个桶。接口只写入不可覆盖的 PENDING 控制面事实并返回 202，
+         *     不在 HTTP 请求线程内执行重算。相同操作人和幂等键只能重放完全相同的请求。
+         */
+        post: operations["createAggregationRecomputation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/aggregation-executions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询最近数值聚合执行事实
+         * @description 需要 `governance:aggregation:view` 权限，直接读取 Telemetry 持久化的自动聚合执行历史。
+         */
+        get: operations["listAggregationExecutions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/devices/{deviceId}/effective-strategies/{strategyType}": {
         parameters: {
             query?: never;
@@ -1267,7 +1315,7 @@ export interface components {
             version: number;
         };
         /** @enum {string} */
-        StrategyType: "ONLINE_STATUS" | "DATA_QUALITY" | "ALARM" | "RETENTION";
+        StrategyType: "ONLINE_STATUS" | "DATA_QUALITY" | "ALARM" | "RETENTION" | "AGGREGATION";
         /** @enum {string} */
         StrategyScopeType: "PRODUCT" | "GROUP" | "DEVICE";
         /** @enum {string} */
@@ -1432,6 +1480,70 @@ export interface components {
             /** Format: date-time */
             completedAt?: string | null;
             /** @description Telemetry 写入的脱敏截断失败摘要。 */
+            lastError?: string | null;
+        };
+        AggregationRecomputeRequest: {
+            /** Format: uuid */
+            deviceId: string;
+            propertyId: components["schemas"]["PropertyId"];
+            /**
+             * Format: duration
+             * @enum {string}
+             */
+            bucket: "PT1M" | "PT5M" | "PT15M" | "PT1H" | "PT6H" | "P1D";
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            reason: string;
+        };
+        /** @enum {string} */
+        AggregationRecomputeStatus: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED";
+        AggregationRecompute: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            deviceId: string;
+            propertyId: components["schemas"]["PropertyId"];
+            /** Format: duration */
+            bucket: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            reason: string;
+            idempotencyKey: string;
+            status: components["schemas"]["AggregationRecomputeStatus"];
+            /** Format: uuid */
+            requestedBy: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            completedAt?: string | null;
+            /** Format: uuid */
+            executionId?: string | null;
+            lastError?: string | null;
+        };
+        /** @enum {string} */
+        AggregationExecutionStatus: "RUNNING" | "SUCCEEDED" | "PARTIAL" | "FAILED";
+        AggregationExecution: {
+            /** Format: uuid */
+            executionId: string;
+            instanceId: string;
+            status: components["schemas"]["AggregationExecutionStatus"];
+            policyCount: number;
+            ruleCount: number;
+            /** Format: int64 */
+            sourceWatermark: number;
+            bucketCount: number;
+            /** Format: int64 */
+            rollupWatermark?: number | null;
+            /** Format: int64 */
+            lateRowsIgnored: number;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            completedAt?: string | null;
             lastError?: string | null;
         };
         StrategyVersion: {
@@ -2389,6 +2501,11 @@ export interface components {
              * @description 本次分页数据集固定使用的数据库摄取水位上限。
              */
             watermark: number;
+            /**
+             * Format: int64
+             * @description 本次分页数据集固定使用的聚合版本水位上限。
+             */
+            rollupWatermark: number;
             items: components["schemas"]["TelemetryHistoryPoint"][];
             page: number;
             size: number;
@@ -2407,6 +2524,8 @@ export interface components {
             eventId?: string | null;
             /** Format: int64 */
             sampleCount: number;
+            /** @enum {string} */
+            source: "RAW" | "ROLLUP";
         };
         ApiError: {
             code: string;
@@ -4255,6 +4374,8 @@ export interface operations {
                 bucket?: string;
                 /** @description 分页数据集的全局摄取水位上限；首页省略，后续页传回首页响应中的 watermark，不得大于服务端当前已提交水位。 */
                 watermark?: number;
+                /** @description 分页数据集的聚合版本水位上限；必须与 watermark 同时省略或同时传入。 */
+                rollupWatermark?: number;
                 page?: number;
                 size?: number;
             };
@@ -4807,6 +4928,90 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             503: components["responses"]["RetentionRuntimeUnavailable"];
+        };
+    };
+    listAggregationRecomputations: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按创建时间倒序排列的重算请求。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AggregationRecompute"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createAggregationRecomputation: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AggregationRecomputeRequest"];
+            };
+        };
+        responses: {
+            /** @description 重算请求已接受或完成幂等重放。 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AggregationRecompute"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["DeviceNotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["TelemetryBusy"];
+        };
+    };
+    listAggregationExecutions: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按开始时间倒序排列的聚合执行事实。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AggregationExecution"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["TelemetryBusy"];
         };
     };
     getEffectiveDeviceStrategy: {

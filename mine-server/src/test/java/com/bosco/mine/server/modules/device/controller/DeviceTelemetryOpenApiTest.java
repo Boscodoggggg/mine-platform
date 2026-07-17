@@ -42,7 +42,14 @@ class DeviceTelemetryOpenApiTest {
         );
         assertThat(list(historyGet.get("parameters")))
                 .anySatisfy(parameter -> assertThat(map(parameter))
-                        .containsEntry("name", "watermark"));
+                        .containsEntry("name", "watermark"))
+                .anySatisfy(parameter -> assertThat(map(parameter))
+                        .containsEntry("name", "rollupWatermark"));
+        Map<String, Object> schemas = map(map(root.get("components")).get("schemas"));
+        assertThat(map(map(schemas.get("TelemetryHistory")).get("properties")))
+                .containsKeys("watermark", "rollupWatermark");
+        assertThat(map(map(schemas.get("TelemetryHistoryPoint")).get("properties")))
+                .containsKey("source");
         Map<String, Object> securitySchemes = map(map(
                 root.get("components")
         ).get("securitySchemes"));

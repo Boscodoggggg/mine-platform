@@ -72,6 +72,7 @@ public class DeviceTelemetryController {
      * @param aggregation 聚合方式
      * @param bucket 聚合时间桶
      * @param watermark 分页摄取水位；首页为空时由服务端生成，后续页原样传回
+     * @param rollupWatermark 分页聚合水位；首页为空时由服务端生成，后续页原样传回
      * @param page 页码
      * @param size 每页数量
      * @return 历史分页结果
@@ -87,11 +88,13 @@ public class DeviceTelemetryController {
             @Pattern(regexp = "RAW|AVG|MIN|MAX") String aggregation,
             @RequestParam(required = false) Duration bucket,
             @RequestParam(required = false) @Min(0) Long watermark,
+            @RequestParam(required = false) @Min(0) Long rollupWatermark,
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "100") @Min(1) @Max(1000) int size
     ) {
         return queryService.findHistory(
-                deviceId, propertyId, from, to, aggregation, bucket, watermark, page, size
+                deviceId, propertyId, from, to, aggregation, bucket,
+                watermark, rollupWatermark, page, size
         );
     }
 }

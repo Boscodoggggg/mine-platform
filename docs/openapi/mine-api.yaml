@@ -28,6 +28,8 @@ tags:
     description: 设备组、三级策略作用域、冲突预检、发布回滚与有效值追踪
   - name: DeviceTelemetry
     description: 设备最新值与数值遥测历史
+  - name: DataGovernance
+    description: 数值聚合、数据保留和显式修复的受控运行入口
   - name: CommandCenter
     description: 设备命令下发与可靠状态时间线
   - name: AlarmCenter
@@ -1325,8 +1327,10 @@ paths:
         需要 `device:telemetry:view` 权限。时间范围采用 `[from, to)`；RAW 最多查询 7 天且不能传 bucket；
         AVG、MIN、MAX 最多查询 366 天，bucket 必须在 1 分钟至 24 小时之间且最多产生 10000 个桶。
         bucket 只接受整秒精度。聚合结果的 quality 取桶内最差质量，sampleCount 表示桶内样本数；
-        分页 offset 不得超过 1000000。首页可省略 watermark，响应会返回数据库已提交事件的摄取水位；
-        后续页必须原样传回，以排除 RabbitMQ 积压、数据库重试和弱网迟到点在翻页期间造成的重复或遗漏。
+        分页 offset 不得超过 1000000。首页必须同时省略 watermark 和 rollupWatermark，响应会返回数据库已提交
+        事件的摄取水位与已完成聚合事实的版本水位；后续页必须同时原样传回双水位，以排除 RabbitMQ 积压、
+        数据库重试、弱网迟到点和新聚合版本在翻页期间造成的重复、遗漏或来源漂移。完整且已超过修正窗口的
+        冷区桶优先读取版本化 ROLLUP，热区、边界桶和聚合覆盖缺口按相同摄取水位回退 RAW。
       parameters:
         - $ref: '#/components/parameters/DeviceId'
         - name: propertyId
@@ -1363,6 +1367,13 @@ paths:
         - name: watermark
           in: query
           description: 分页数据集的全局摄取水位上限；首页省略，后续页传回首页响应中的 watermark，不得大于服务端当前已提交水位。
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: rollupWatermark
+          in: query
+          description: 分页数据集的聚合版本水位上限；必须与 watermark 同时省略或同时传入。
           schema:
             type: integer
             format: int64
@@ -1796,6 +1807,76 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/RetentionRuntimeUnavailable' }
+  /aggregation-recomputations:
+    post:
+      tags: [DataGovernance]
+      operationId: createAggregationRecomputation
+      summary: 登记有界且幂等的显式聚合重算请求
+      description: |
+        需要 `governance:aggregation:execute` 权限。目标必须匹配当前启用的精确聚合规则；时间范围按 UTC
+        桶边界对齐，最长 31 天且最多 10000 个桶。接口只写入不可覆盖的 PENDING 控制面事实并返回 202，
+        不在 HTTP 请求线程内执行重算。相同操作人和幂等键只能重放完全相同的请求。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AggregationRecomputeRequest' }
+      responses:
+        '202':
+          description: 重算请求已接受或完成幂等重放。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AggregationRecompute' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/DeviceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/TelemetryBusy' }
+    get:
+      tags: [DataGovernance]
+      operationId: listAggregationRecomputations
+      summary: 查询最近显式聚合重算请求
+      description: 需要 `governance:aggregation:view` 权限，返回业务控制面中的请求生命周期事实。
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: 按创建时间倒序排列的重算请求。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AggregationRecompute' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /aggregation-executions:
+    get:
+      tags: [DataGovernance]
+      operationId: listAggregationExecutions
+      summary: 查询最近数值聚合执行事实
+      description: 需要 `governance:aggregation:view` 权限，直接读取 Telemetry 持久化的自动聚合执行历史。
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: 按开始时间倒序排列的聚合执行事实。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AggregationExecution' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/TelemetryBusy' }
   /devices/{deviceId}/effective-strategies/{strategyType}:
     get:
       tags: [DeviceStrategy]
@@ -2330,6 +2411,79 @@ components:
           type: [string, 'null']
           maxLength: 2000
           description: Telemetry 写入的脱敏截断失败摘要。
+    AggregationRecomputeRequest:
+      type: object
+      required: [deviceId, propertyId, bucket, from, to, reason]
+      properties:
+        deviceId: { type: string, format: uuid }
+        propertyId: { $ref: '#/components/schemas/PropertyId' }
+        bucket:
+          type: string
+          format: duration
+          enum: [PT1M, PT5M, PT15M, PT1H, PT6H, P1D]
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    AggregationRecomputeStatus:
+      type: string
+      enum: [PENDING, RUNNING, SUCCEEDED, FAILED]
+    AggregationRecompute:
+      type: object
+      required:
+        - requestId
+        - deviceId
+        - propertyId
+        - bucket
+        - from
+        - to
+        - reason
+        - idempotencyKey
+        - status
+        - requestedBy
+        - createdAt
+      properties:
+        requestId: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        propertyId: { $ref: '#/components/schemas/PropertyId' }
+        bucket: { type: string, format: duration }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 128 }
+        status: { $ref: '#/components/schemas/AggregationRecomputeStatus' }
+        requestedBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        executionId: { type: [string, 'null'], format: uuid }
+        lastError: { type: [string, 'null'], maxLength: 2000 }
+    AggregationExecutionStatus:
+      type: string
+      enum: [RUNNING, SUCCEEDED, PARTIAL, FAILED]
+    AggregationExecution:
+      type: object
+      required:
+        - executionId
+        - instanceId
+        - status
+        - policyCount
+        - ruleCount
+        - sourceWatermark
+        - bucketCount
+        - lateRowsIgnored
+        - startedAt
+      properties:
+        executionId: { type: string, format: uuid }
+        instanceId: { type: string, minLength: 1, maxLength: 128 }
+        status: { $ref: '#/components/schemas/AggregationExecutionStatus' }
+        policyCount: { type: integer, minimum: 0 }
+        ruleCount: { type: integer, minimum: 0 }
+        sourceWatermark: { type: integer, format: int64, minimum: 0 }
+        bucketCount: { type: integer, minimum: 0 }
+        rollupWatermark: { type: [integer, 'null'], format: int64, minimum: 0 }
+        lateRowsIgnored: { type: integer, format: int64, minimum: 0 }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        lastError: { type: [string, 'null'], maxLength: 2000 }
     StrategyVersion:
       type: object
       required:
@@ -3495,7 +3649,7 @@ components:
           enum: [REDIS, TIMESCALEDB]
     TelemetryHistory:
       type: object
-      required: [deviceId, propertyId, aggregation, watermark, items, page, size, total]
+      required: [deviceId, propertyId, aggregation, watermark, rollupWatermark, items, page, size, total]
       properties:
         deviceId:
           type: string
@@ -3513,6 +3667,11 @@ components:
           format: int64
           minimum: 0
           description: 本次分页数据集固定使用的数据库摄取水位上限。
+        rollupWatermark:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 本次分页数据集固定使用的聚合版本水位上限。
         items:
           type: array
           items:
@@ -3530,7 +3689,7 @@ components:
           minimum: 0
     TelemetryHistoryPoint:
       type: object
-      required: [occurredAt, receivedAt, value, quality, sampleCount]
+      required: [occurredAt, receivedAt, value, quality, sampleCount, source]
       properties:
         occurredAt:
           type: string
@@ -3550,6 +3709,9 @@ components:
           type: integer
           format: int64
           minimum: 1
+        source:
+          type: string
+          enum: [RAW, ROLLUP]
     ApiError:
       type: object
       required: [code, message, traceId, timestamp, details]

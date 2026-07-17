@@ -11,6 +11,7 @@ import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.Aggregation;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistoryPage;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistoryQuery;
+import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistoryWatermarks;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.TelemetryValue;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessException;
@@ -150,6 +151,7 @@ public class DeviceTelemetryQueryService {
      * @param aggregation 聚合方式
      * @param bucket 聚合时间桶
      * @param watermark 分页摄取水位；为空时读取当前已提交水位
+     * @param rollupWatermark 分页聚合版本水位；为空时与摄取水位一同生成
      * @param page 页码
      * @param size 每页数量
      * @return 历史分页结果
@@ -162,6 +164,7 @@ public class DeviceTelemetryQueryService {
             String aggregation,
             Duration bucket,
             Long watermark,
+            Long rollupWatermark,
             int page,
             int size
     ) {
@@ -169,8 +172,13 @@ public class DeviceTelemetryQueryService {
         requireProperty(propertyId);
         Aggregation resolvedAggregation = resolveAggregation(aggregation);
         validateHistoryRange(from, to, resolvedAggregation, bucket);
-        if (watermark != null && watermark < 0) {
-            throw new MineException(TIME_RANGE_INVALID, Map.of("watermark", watermark));
+        if ((watermark == null) != (rollupWatermark == null)
+                || (watermark != null && watermark < 0)
+                || (rollupWatermark != null && rollupWatermark < 0)) {
+            throw new MineException(TIME_RANGE_INVALID, Map.of(
+                    "watermark", String.valueOf(watermark),
+                    "rollupWatermark", String.valueOf(rollupWatermark)
+            ));
         }
         if (page < 1 || size < 1 || size > 1000) {
             throw new MineException(TIME_RANGE_INVALID, Map.of("page", page, "size", size));
@@ -186,15 +194,28 @@ public class DeviceTelemetryQueryService {
                     "page", page, "size", size, "maxOffset", MAX_OFFSET
             ));
         }
+        if (page > 1 && watermark == null) {
+            throw new MineException(TIME_RANGE_INVALID, Map.of(
+                    "page", page,
+                    "requiredWatermarks", List.of("watermark", "rollupWatermark")
+            ));
+        }
         HistoryPage result;
         long resolvedWatermark;
+        long resolvedRollupWatermark;
         try {
-            long currentWatermark = repository.currentIngestionWatermark();
-            resolvedWatermark = watermark == null ? currentWatermark : watermark;
-            if (resolvedWatermark > currentWatermark) {
+            HistoryWatermarks current = repository.currentHistoryWatermarks();
+            resolvedWatermark = watermark == null
+                    ? current.ingestionWatermark() : watermark;
+            resolvedRollupWatermark = rollupWatermark == null
+                    ? current.rollupWatermark() : rollupWatermark;
+            if (resolvedWatermark > current.ingestionWatermark()
+                    || resolvedRollupWatermark > current.rollupWatermark()) {
                 throw new MineException(TIME_RANGE_INVALID, Map.of(
                         "watermark", resolvedWatermark,
-                        "currentWatermark", currentWatermark
+                        "currentWatermark", current.ingestionWatermark(),
+                        "rollupWatermark", resolvedRollupWatermark,
+                        "currentRollupWatermark", current.rollupWatermark()
                 ));
             }
             result = repository.findHistory(new HistoryQuery(
@@ -205,6 +226,7 @@ public class DeviceTelemetryQueryService {
                     resolvedAggregation,
                     resolvedAggregation == Aggregation.RAW ? null : bucket,
                     resolvedWatermark,
+                    resolvedRollupWatermark,
                     offset,
                     size
             ));
@@ -218,7 +240,8 @@ public class DeviceTelemetryQueryService {
                         point.value(),
                         point.quality(),
                         point.eventId(),
-                        point.sampleCount()
+                        point.sampleCount(),
+                        point.source().name()
                 ))
                 .toList();
         return new TelemetryHistoryResponse(
@@ -227,6 +250,7 @@ public class DeviceTelemetryQueryService {
                 resolvedAggregation.name(),
                 resolvedAggregation == Aggregation.RAW ? null : bucket,
                 resolvedWatermark,
+                resolvedRollupWatermark,
                 items,
                 page,
                 size,

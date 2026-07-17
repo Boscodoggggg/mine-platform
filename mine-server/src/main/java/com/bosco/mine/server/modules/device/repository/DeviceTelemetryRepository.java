@@ -65,6 +65,19 @@ public interface DeviceTelemetryRepository {
     long currentIngestionWatermark();
 
     /**
+     * 在同一数据库快照中读取历史分页需要固定的原始摄取和聚合版本双水位。
+     *
+     * @return 当前可见的历史双水位
+     */
+    HistoryWatermarks currentHistoryWatermarks();
+
+    /** 判断设备属性是否存在指定桶宽的当前启用聚合规则。 */
+    boolean hasAggregationRule(UUID deviceId, String propertyId, int bucketSeconds);
+
+    /** 查询最近的聚合执行事实。 */
+    List<AggregationExecution> findRecentAggregationExecutions(int limit);
+
+    /**
      * 查询原始或聚合历史分页。
      *
      * @param query 历史查询条件
@@ -84,6 +97,61 @@ public interface DeviceTelemetryRepository {
         MIN,
         /** 最大值。 */
         MAX
+    }
+
+    /** 历史点使用的持久数据来源。 */
+    enum HistorySource {
+        /** 仍由原始遥测直接读取或临时计算。 */
+        RAW,
+        /** 由版本化长期聚合事实读取。 */
+        ROLLUP
+    }
+
+    /**
+     * 历史分页快照的双水位。
+     *
+     * @param ingestionWatermark 原始遥测最大摄取水位
+     * @param rollupWatermark 已收敛聚合执行中的最大聚合版本水位
+     */
+    record HistoryWatermarks(long ingestionWatermark, long rollupWatermark) {
+        /** 创建并校验非负双水位。 */
+        public HistoryWatermarks {
+            if (ingestionWatermark < 0 || rollupWatermark < 0) {
+                throw new IllegalArgumentException("历史查询双水位不能为负数");
+            }
+        }
+    }
+
+    /**
+     * Telemetry 已持久化的单轮聚合执行事实。
+     *
+     * @param executionId 执行标识
+     * @param instanceId 运行实例标识
+     * @param status 终态或运行中状态
+     * @param policyCount 策略数量
+     * @param ruleCount 规则数量
+     * @param sourceWatermark 原始摄取水位
+     * @param bucketCount 已提交桶数
+     * @param rollupWatermark 最大聚合版本水位
+     * @param lateRowsIgnored 超窗口忽略行数
+     * @param startedAt 开始时间
+     * @param completedAt 完成时间
+     * @param lastError 脱敏错误摘要
+     */
+    record AggregationExecution(
+            UUID executionId,
+            String instanceId,
+            String status,
+            int policyCount,
+            int ruleCount,
+            long sourceWatermark,
+            int bucketCount,
+            Long rollupWatermark,
+            long lateRowsIgnored,
+            Instant startedAt,
+            Instant completedAt,
+            String lastError
+    ) {
     }
 
     /**
@@ -137,6 +205,7 @@ public interface DeviceTelemetryRepository {
      * @param aggregation 聚合方式
      * @param bucket 聚合时间桶，原始查询为空
      * @param watermark 分页数据集的全局摄取水位上限
+     * @param rollupWatermark 分页数据集的全局聚合版本水位上限
      * @param offset 分页偏移
      * @param limit 最大返回数量
      */
@@ -148,6 +217,7 @@ public interface DeviceTelemetryRepository {
             Aggregation aggregation,
             Duration bucket,
             long watermark,
+            long rollupWatermark,
             int offset,
             int limit
     ) {
@@ -162,6 +232,7 @@ public interface DeviceTelemetryRepository {
      * @param quality 数据质量或桶内最差质量
      * @param eventId 原始事件标识，聚合结果为空
      * @param sampleCount 样本数量
+     * @param source 原始数据或长期聚合事实来源
      */
     record HistoryPoint(
             Instant occurredAt,
@@ -169,7 +240,8 @@ public interface DeviceTelemetryRepository {
             double value,
             Quality quality,
             UUID eventId,
-            long sampleCount
+            long sampleCount,
+            HistorySource source
     ) {
     }
 

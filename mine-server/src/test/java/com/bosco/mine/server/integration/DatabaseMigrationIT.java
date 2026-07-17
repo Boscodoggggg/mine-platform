@@ -1,6 +1,7 @@
 package com.bosco.mine.server.integration;
 
 import com.bosco.mine.server.MineServerApplication;
+import com.bosco.mine.server.modules.aggregation.repository.AggregationRecomputeRepository;
 import com.bosco.mine.server.modules.strategy.repository.RetentionPreviewEvidenceMapper;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -62,6 +63,7 @@ class DatabaseMigrationIT {
             "dev_strategy_version",
             "dev_strategy_release",
             "dev_retention_preview_evidence",
+            "dev_aggregation_recompute_request",
             "dev_strategy_runtime_snapshot",
             "dev_strategy_runtime_snapshot_item",
             "sys_login_log",
@@ -88,6 +90,9 @@ class DatabaseMigrationIT {
 
     @Autowired
     private RetentionPreviewEvidenceMapper retentionPreviewEvidenceMapper;
+
+    @Autowired
+    private AggregationRecomputeRepository aggregationRecomputeRepository;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -152,6 +157,70 @@ class DatabaseMigrationIT {
                 WHERE schemaname = 'public'
                   AND tablename = 'dev_retention_preview_evidence'
                 """, String.class)).contains("idx_dev_retention_preview_expiry");
+    }
+
+    @Test
+    void 聚合重算请求表必须完整注释并约束幂等与有界范围() {
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT obj_description('dev_aggregation_recompute_request'::regclass, 'pg_class')",
+                String.class
+        )).matches(".*[\\u4e00-\\u9fff].*");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid = 'dev_aggregation_recompute_request'::regclass
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_dev_aggregation_recompute_request_idempotency"))
+                .containsExactly("requested_by", "idempotency_key");
+    }
+
+    @Test
+    void 聚合重算仓储应持久化幂等请求并稳定返回最近事实() {
+        UUID userId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        UUID requestId = UUID.randomUUID();
+        Instant from = Instant.parse("2026-07-01T00:00:00Z");
+        Instant to = Instant.parse("2026-07-02T00:00:00Z");
+        try {
+            jdbcTemplate.update("""
+                    INSERT INTO sys_user (
+                        id, username, password_hash, display_name, password_change_required
+                    ) VALUES (?, ?, ?, ?, FALSE)
+                    """, userId, "aggregation-" + userId, "bcrypt:test", "聚合测试用户");
+            jdbcTemplate.update("""
+                    INSERT INTO dev_product (id, product_key, name, device_type, status)
+                    VALUES (?, ?, '聚合测试产品', 'TEST', 'ACTIVE')
+                    """, productId, "aggregation-" + productId.toString().substring(0, 8));
+            jdbcTemplate.update("""
+                    INSERT INTO dev_device (id, product_id, device_code, name, status)
+                    VALUES (?, ?, ?, '聚合测试设备', 'ENABLED')
+                    """, deviceId, productId, "aggregation-" + deviceId);
+            AggregationRecomputeRepository.RequestRecord record =
+                    new AggregationRecomputeRepository.RequestRecord(
+                            requestId, deviceId, "engine.rpm", 300, from, to,
+                            "补算历史", "repository-it", userId,
+                            "PENDING", Instant.now(), null, null, null);
+
+            assertThat(aggregationRecomputeRepository.insert(record)).isTrue();
+            assertThat(aggregationRecomputeRepository.insert(record)).isFalse();
+            assertThat(aggregationRecomputeRepository.findByIdempotency(userId, "repository-it"))
+                    .get()
+                    .extracting(AggregationRecomputeRepository.RequestRecord::requestId)
+                    .isEqualTo(requestId);
+            assertThat(aggregationRecomputeRepository.findRecent(20))
+                    .extracting(AggregationRecomputeRepository.RequestRecord::requestId)
+                    .contains(requestId);
+        } finally {
+            jdbcTemplate.update(
+                    "DELETE FROM dev_aggregation_recompute_request WHERE request_id = ?", requestId);
+            jdbcTemplate.update("DELETE FROM dev_device WHERE id = ?", deviceId);
+            jdbcTemplate.update("DELETE FROM dev_product WHERE id = ?", productId);
+            jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", userId);
+        }
     }
 
     @Test
@@ -319,6 +388,7 @@ class DatabaseMigrationIT {
                 WHERE component_key IS NOT NULL
                 ORDER BY component_key
                 """, String.class)).containsExactly(
+                "aggregation-governance",
                 "alarm-center",
                 "command-center",
                 "device-device-list",
@@ -421,7 +491,11 @@ class DatabaseMigrationIT {
                 FROM sys_menu
                 WHERE permission LIKE 'governance:%'
                 ORDER BY permission
-                """, String.class)).containsExactly("governance:retention:view");
+                """, String.class)).containsExactly(
+                "governance:aggregation:execute",
+                "governance:aggregation:view",
+                "governance:retention:view"
+        );
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu child
@@ -487,6 +561,20 @@ class DatabaseMigrationIT {
                 .containsEntry("permission", "governance:retention:view")
                 .containsEntry("visible", true)
                 .containsEntry("i18n_key", "mine.menu.retention");
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT parent.name AS directory_name,
+                       aggregation.path,
+                       aggregation.permission,
+                       aggregation.visible,
+                       aggregation.i18n_key
+                FROM sys_menu aggregation
+                JOIN sys_menu parent ON parent.id = aggregation.parent_id
+                WHERE aggregation.component_key = 'aggregation-governance'
+                """)).containsEntry("directory_name", "数据治理")
+                .containsEntry("path", "/governance/aggregation")
+                .containsEntry("permission", "governance:aggregation:view")
+                .containsEntry("visible", true)
+                .containsEntry("i18n_key", "mine.menu.aggregation");
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu
@@ -928,6 +1016,7 @@ class DatabaseMigrationIT {
                             "device:device:view",
                             "device:product:view",
                             "device:strategy:view",
+                            "governance:aggregation:view",
                             "governance:retention:view"
                     );
                 }

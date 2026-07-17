@@ -76,15 +76,16 @@ class DeviceTelemetryControllerTest {
         Instant to = Instant.parse("2026-07-15T01:00:00Z");
         Duration bucket = Duration.ofMinutes(5);
         when(queryService.findHistory(
-                deviceId, "speed", from, to, "AVG", bucket, null, 1, 100
+                deviceId, "speed", from, to, "AVG", bucket, null, null, 1, 100
         )).thenReturn(new TelemetryHistoryResponse(
                 deviceId,
                 "speed",
                 "AVG",
                 bucket,
                 42L,
+                9L,
                 List.of(new TelemetryHistoryPointResponse(
-                        from, to, 10.25D, Quality.UNCERTAIN, null, 12L
+                        from, to, 10.25D, Quality.UNCERTAIN, null, 12L, "ROLLUP"
                 )),
                 1,
                 100,
@@ -101,7 +102,9 @@ class DeviceTelemetryControllerTest {
                 .andExpect(jsonPath("$.aggregation").value("AVG"))
                 .andExpect(jsonPath("$.bucket").value("PT5M"))
                 .andExpect(jsonPath("$.watermark").value(42))
+                .andExpect(jsonPath("$.rollupWatermark").value(9))
                 .andExpect(jsonPath("$.items[0].sampleCount").value(12))
+                .andExpect(jsonPath("$.items[0].source").value("ROLLUP"))
                 .andExpect(jsonPath("$.items[0].quality").value("UNCERTAIN"))
                 .andExpect(jsonPath("$.total").value(1));
     }
@@ -119,7 +122,7 @@ class DeviceTelemetryControllerTest {
                 UUID.class, List.class);
         assertPermission("findHistory", "device:telemetry:view",
                 UUID.class, String.class, Instant.class, Instant.class,
-                String.class, Duration.class, Long.class, int.class, int.class);
+                String.class, Duration.class, Long.class, Long.class, int.class, int.class);
     }
 
     private void assertPermission(String methodName, String permission, Class<?>... parameterTypes)

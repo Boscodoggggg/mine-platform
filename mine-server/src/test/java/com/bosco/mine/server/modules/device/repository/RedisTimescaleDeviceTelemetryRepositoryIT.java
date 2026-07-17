@@ -3,6 +3,8 @@ package com.bosco.mine.server.modules.device.repository;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.Aggregation;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistoryQuery;
+import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistorySource;
+import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistoryWatermarks;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.TelemetryValue;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -24,6 +26,7 @@ import java.nio.file.Path;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.List;
 import java.util.Map;
@@ -89,8 +92,10 @@ class RedisTimescaleDeviceTelemetryRepositoryIT {
     void 准备遥测样本() {
         connectionFactory.getConnection().serverCommands().flushDb();
         jdbcTemplate.update("""
-                TRUNCATE TABLE telemetry_inbox, telemetry_numeric, telemetry_latest_numeric,
-                               telemetry_latest_state, telemetry_retired_boot
+                TRUNCATE TABLE telemetry_numeric_rollup, telemetry_aggregation_execution,
+                               telemetry_aggregation_policy, telemetry_inbox, telemetry_numeric,
+                               telemetry_latest_numeric, telemetry_latest_state,
+                               telemetry_retired_boot
                 """);
         insert("speed", START, 10D, (short) 0, 1);
         insert("speed", START.plusSeconds(60), 20D, (short) 1, 2);
@@ -174,6 +179,7 @@ class RedisTimescaleDeviceTelemetryRepositoryIT {
                 Aggregation.RAW,
                 null,
                 repository.currentIngestionWatermark(),
+                0,
                 1,
                 1
         ));
@@ -202,6 +208,7 @@ class RedisTimescaleDeviceTelemetryRepositoryIT {
                 null,
                 watermark,
                 0,
+                0,
                 100
         ));
         DeviceTelemetryRepository.HistoryPage current = repository.findHistory(new HistoryQuery(
@@ -212,6 +219,7 @@ class RedisTimescaleDeviceTelemetryRepositoryIT {
                 Aggregation.RAW,
                 null,
                 repository.currentIngestionWatermark(),
+                0,
                 0,
                 100
         ));
@@ -233,6 +241,7 @@ class RedisTimescaleDeviceTelemetryRepositoryIT {
                 Duration.ofMinutes(2),
                 repository.currentIngestionWatermark(),
                 0,
+                0,
                 10
         ));
 
@@ -246,6 +255,75 @@ class RedisTimescaleDeviceTelemetryRepositoryIT {
             assertThat(point.eventId()).isNull();
         });
         assertThat(page.items().getLast().quality()).isEqualTo(Quality.BAD);
+    }
+
+    @Test
+    void 冷热历史应固定双水位并在后台重算后保持旧分页稳定() {
+        Instant base = Instant.now().truncatedTo(ChronoUnit.MINUTES);
+        Instant coldBucket = base.minus(10, ChronoUnit.MINUTES);
+        Instant hotBucket = base.minus(2, ChronoUnit.MINUTES);
+        insert("temperature", coldBucket.plusSeconds(10), 10D, (short) 0, 10);
+        insert("temperature", coldBucket.plusSeconds(20), 20D, (short) 1, 11);
+        insert("temperature", hotBucket.plusSeconds(10), 30D, (short) 0, 12);
+        insert("temperature", hotBucket.plusSeconds(20), 50D, (short) 2, 13);
+        insertAggregationPolicy("temperature", 60, 300);
+        long sourceWatermark = repository.currentIngestionWatermark();
+        insertRollup(coldBucket, sourceWatermark, 15D, 10D, 20D,
+                2, (short) 1, UUID.fromString("019f7000-0000-7000-8000-000000000001"));
+        HistoryWatermarks firstWatermarks = repository.currentHistoryWatermarks();
+
+        DeviceTelemetryRepository.HistoryPage mixed = repository.findHistory(new HistoryQuery(
+                DEVICE_ID, "temperature", coldBucket, base, Aggregation.AVG,
+                Duration.ofMinutes(1), firstWatermarks.ingestionWatermark(),
+                firstWatermarks.rollupWatermark(), 0, 100
+        ));
+
+        assertThat(mixed.items()).hasSize(2);
+        assertThat(mixed.items().getFirst()).satisfies(point -> {
+            assertThat(point.occurredAt()).isEqualTo(coldBucket);
+            assertThat(point.value()).isEqualTo(15D);
+            assertThat(point.sampleCount()).isEqualTo(2);
+            assertThat(point.quality()).isEqualTo(Quality.UNCERTAIN);
+            assertThat(point.source()).isEqualTo(HistorySource.ROLLUP);
+        });
+        assertThat(mixed.items().getLast()).satisfies(point -> {
+            assertThat(point.occurredAt()).isEqualTo(hotBucket);
+            assertThat(point.value()).isEqualTo(40D);
+            assertThat(point.sampleCount()).isEqualTo(2);
+            assertThat(point.quality()).isEqualTo(Quality.BAD);
+            assertThat(point.source()).isEqualTo(HistorySource.RAW);
+        });
+
+        insertRollup(coldBucket, sourceWatermark, 999D, 999D, 999D,
+                2, (short) 0, UUID.fromString("019f7000-0000-7000-8000-000000000002"));
+        DeviceTelemetryRepository.HistoryPage stable = repository.findHistory(new HistoryQuery(
+                DEVICE_ID, "temperature", coldBucket, hotBucket, Aggregation.AVG,
+                Duration.ofMinutes(1), firstWatermarks.ingestionWatermark(),
+                firstWatermarks.rollupWatermark(), 0, 100
+        ));
+        HistoryWatermarks latestWatermarks = repository.currentHistoryWatermarks();
+        DeviceTelemetryRepository.HistoryPage latest = repository.findHistory(new HistoryQuery(
+                DEVICE_ID, "temperature", coldBucket, hotBucket, Aggregation.AVG,
+                Duration.ofMinutes(1), latestWatermarks.ingestionWatermark(),
+                latestWatermarks.rollupWatermark(), 0, 100
+        ));
+
+        assertThat(stable.items()).singleElement()
+                .extracting(DeviceTelemetryRepository.HistoryPoint::value).isEqualTo(15D);
+        assertThat(latest.items()).singleElement()
+                .extracting(DeviceTelemetryRepository.HistoryPoint::value).isEqualTo(999D);
+
+        DeviceTelemetryRepository.HistoryPage boundary = repository.findHistory(new HistoryQuery(
+                DEVICE_ID, "temperature", coldBucket.plusSeconds(15),
+                coldBucket.plusSeconds(60), Aggregation.AVG, Duration.ofMinutes(1),
+                latestWatermarks.ingestionWatermark(), latestWatermarks.rollupWatermark(),
+                0, 100
+        ));
+        assertThat(boundary.items()).singleElement().satisfies(point -> {
+            assertThat(point.value()).isEqualTo(20D);
+            assertThat(point.sampleCount()).isOne();
+            assertThat(point.source()).isEqualTo(HistorySource.RAW);
+        });
     }
 
     @Test
@@ -438,6 +516,63 @@ class RedisTimescaleDeviceTelemetryRepositoryIT {
                 10L,
                 UUID.fromString(eventId)
         );
+    }
+
+    private static void insertAggregationPolicy(
+            String propertyId,
+            int bucketSeconds,
+            int correctionWindowSeconds
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_aggregation_policy (
+                    device_id, product_id, runtime_revision, snapshot_id,
+                    values_json, content_hash
+                ) VALUES (?, ?, 3, ?, CAST(? AS JSONB), ?)
+                """, DEVICE_ID,
+                UUID.fromString("019f7000-0000-7000-8000-000000000010"),
+                UUID.fromString("019f7000-0000-7000-8000-000000000011"),
+                """
+                {"policy":{
+                  "enabled":true,
+                  "correctionWindowSeconds":%d,
+                  "rules":[{"propertyId":"%s","bucketSeconds":%d}]
+                }}
+                """.formatted(correctionWindowSeconds, propertyId, bucketSeconds),
+                "sha256:" + "e".repeat(64));
+    }
+
+    private static void insertRollup(
+            Instant bucketStart,
+            long sourceWatermark,
+            double average,
+            double minimum,
+            double maximum,
+            long samples,
+            short quality,
+            UUID executionId
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_aggregation_execution (
+                    execution_id, instance_id, status, policy_count, rule_count,
+                    source_watermark, bucket_count, started_at, completed_at
+                ) VALUES (?, 'server-query-it', 'SUCCEEDED', 1, 1, ?, 1,
+                    CURRENT_TIMESTAMP - INTERVAL '1 second', CURRENT_TIMESTAMP)
+                """, executionId, sourceWatermark);
+        jdbcTemplate.update("""
+                INSERT INTO telemetry_numeric_rollup (
+                    device_id, product_key, property_id, bucket_seconds,
+                    bucket_start, bucket_end, average_value, minimum_value,
+                    maximum_value, sample_count, worst_quality, latest_received_at,
+                    source_watermark, runtime_revision, snapshot_id,
+                    policy_content_hash, execution_id
+                ) VALUES (?, 'haul-truck', 'temperature', 60, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, 3, ?, ?, ?)
+                """, DEVICE_ID, Timestamp.from(bucketStart),
+                Timestamp.from(bucketStart.plusSeconds(60)), average, minimum, maximum,
+                samples, quality, Timestamp.from(bucketStart.plusSeconds(20)),
+                sourceWatermark,
+                UUID.fromString("019f7000-0000-7000-8000-000000000011"),
+                "sha256:" + "e".repeat(64), executionId);
     }
 
     private static void publishWatermark() {

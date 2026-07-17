@@ -119,7 +119,7 @@ public class RedisTimescaleDeviceTelemetryRepository implements DeviceTelemetryR
             OFFSET ? LIMIT ?
             """;
     private static final String BUCKET_EXPRESSION =
-            "date_bin(CAST(? AS interval), occurred_at, TIMESTAMPTZ '1970-01-01 00:00:00Z')";
+            "date_bin(CAST(? AS interval), time, TIMESTAMPTZ '1970-01-01 00:00:00Z')";
 
     private final StringRedisTemplate redisTemplate;
     private final JdbcTemplate telemetryJdbcTemplate;
@@ -329,6 +329,87 @@ public class RedisTimescaleDeviceTelemetryRepository implements DeviceTelemetryR
      * {@inheritDoc}
      */
     @Override
+    public HistoryWatermarks currentHistoryWatermarks() {
+        HistoryWatermarks result = readOnlyTransaction.execute(status ->
+                telemetryJdbcTemplate.queryForObject("""
+                        SELECT watermark.committed_ingest_id AS ingestion_watermark,
+                               COALESCE((
+                                   SELECT MAX(rollup.rollup_revision)
+                                     FROM telemetry_numeric_rollup rollup
+                                     JOIN telemetry_aggregation_execution execution
+                                       ON execution.execution_id = rollup.execution_id
+                                    WHERE execution.status IN ('SUCCEEDED', 'PARTIAL')
+                               ), 0) AS rollup_watermark
+                          FROM telemetry_ingestion_watermark watermark
+                         WHERE watermark.singleton_id = 1
+                        """, (resultSet, rowNumber) -> new HistoryWatermarks(
+                        resultSet.getLong("ingestion_watermark"),
+                        resultSet.getLong("rollup_watermark")
+                )));
+        return Objects.requireNonNull(result, "历史查询双水位不能为空");
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public boolean hasAggregationRule(UUID deviceId, String propertyId, int bucketSeconds) {
+        Boolean exists = telemetryJdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1
+                      FROM telemetry_aggregation_policy policy
+                      CROSS JOIN LATERAL jsonb_array_elements(
+                          policy.values_json -> 'policy' -> 'rules'
+                      ) rule(value)
+                     WHERE policy.device_id = ?
+                       AND policy.enabled
+                       AND rule.value ->> 'propertyId' = ?
+                       AND (rule.value ->> 'bucketSeconds')::INTEGER = ?
+                )
+                """, Boolean.class, deviceId, propertyId, bucketSeconds);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public List<AggregationExecution> findRecentAggregationExecutions(int limit) {
+        if (limit < 1 || limit > 100) {
+            throw new IllegalArgumentException("聚合执行历史数量必须在 1 到 100 之间");
+        }
+        return telemetryJdbcTemplate.query("""
+                SELECT execution_id, instance_id, status, policy_count, rule_count,
+                       source_watermark, bucket_count, rollup_watermark,
+                       late_rows_ignored, started_at, completed_at, last_error
+                  FROM telemetry_aggregation_execution
+                 ORDER BY started_at DESC, execution_id DESC
+                 LIMIT ?
+                """, (resultSet, rowNumber) -> {
+            long rawRollupWatermark = resultSet.getLong("rollup_watermark");
+            Long rollupWatermark = resultSet.wasNull() ? null : rawRollupWatermark;
+            Timestamp completedAt = resultSet.getTimestamp("completed_at");
+            return new AggregationExecution(
+                    resultSet.getObject("execution_id", UUID.class),
+                    resultSet.getString("instance_id"),
+                    resultSet.getString("status"),
+                    resultSet.getInt("policy_count"),
+                    resultSet.getInt("rule_count"),
+                    resultSet.getLong("source_watermark"),
+                    resultSet.getInt("bucket_count"),
+                    rollupWatermark,
+                    resultSet.getLong("late_rows_ignored"),
+                    resultSet.getTimestamp("started_at").toInstant(),
+                    completedAt == null ? null : completedAt.toInstant(),
+                    resultSet.getString("last_error")
+            );
+        }, limit);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
     public HistoryPage findHistory(HistoryQuery query) {
         HistoryPage result = readOnlyTransaction.execute(status ->
                 query.aggregation() == Aggregation.RAW
@@ -356,7 +437,8 @@ public class RedisTimescaleDeviceTelemetryRepository implements DeviceTelemetryR
                         resultSet.getDouble("value_double"),
                         qualityOf(resultSet.getShort("quality")),
                         resultSet.getObject("event_id", UUID.class),
-                        1L
+                        1L,
+                        HistorySource.RAW
                 ),
                 query.deviceId(),
                 query.propertyId(),
@@ -371,53 +453,30 @@ public class RedisTimescaleDeviceTelemetryRepository implements DeviceTelemetryR
 
     private HistoryPage findAggregatedHistory(HistoryQuery query) {
         String interval = intervalLiteral(query.bucket());
-        String countSql = """
-                SELECT COUNT(*)
-                FROM (
-                    SELECT %s AS bucket_start
-                    FROM telemetry_numeric
-                    WHERE device_id = ?
-                      AND property_id = ?
-                      AND occurred_at >= ?
-                      AND occurred_at < ?
-                      AND ingest_id <= ?
-                      AND value_double IS NOT NULL
-                    GROUP BY bucket_start
-                ) buckets
-                """.formatted(BUCKET_EXPRESSION);
+        String datasetSql = aggregatedDatasetSql();
+        List<Object> arguments = aggregatedHistoryArguments(query, interval);
+        String countSql = datasetSql + " SELECT COUNT(*) FROM selected";
         Long total = telemetryJdbcTemplate.queryForObject(
                 countSql,
                 Long.class,
-                interval,
-                query.deviceId(),
-                query.propertyId(),
-                Timestamp.from(query.from()),
-                Timestamp.from(query.to()),
-                query.watermark()
+                arguments.toArray()
         );
-        String valueExpression = switch (query.aggregation()) {
-            case AVG -> "AVG(value_double)";
-            case MIN -> "MIN(value_double)";
-            case MAX -> "MAX(value_double)";
+        String valueColumn = switch (query.aggregation()) {
+            case AVG -> "average_value";
+            case MIN -> "minimum_value";
+            case MAX -> "maximum_value";
             case RAW -> throw new IllegalArgumentException("原始查询不能进入聚合 SQL");
         };
-        String selectSql = """
-                SELECT %s AS bucket_start,
-                       MAX(received_at) AS received_at,
-                       %s AS value_result,
-                       MAX(quality) AS quality,
-                       COUNT(*) AS sample_count
-                FROM telemetry_numeric
-                WHERE device_id = ?
-                  AND property_id = ?
-                  AND occurred_at >= ?
-                  AND occurred_at < ?
-                  AND ingest_id <= ?
-                  AND value_double IS NOT NULL
-                GROUP BY bucket_start
-                ORDER BY bucket_start
-                OFFSET ? LIMIT ?
-                """.formatted(BUCKET_EXPRESSION, valueExpression);
+        String selectSql = datasetSql + """
+                SELECT bucket_start, received_at, %s AS value_result,
+                       quality, sample_count, source
+                  FROM selected
+                 ORDER BY bucket_start
+                 OFFSET ? LIMIT ?
+                """.formatted(valueColumn);
+        List<Object> pageArguments = new ArrayList<>(arguments);
+        pageArguments.add(query.offset());
+        pageArguments.add(query.limit());
         List<HistoryPoint> items = telemetryJdbcTemplate.query(
                 selectSql,
                 (resultSet, rowNumber) -> new HistoryPoint(
@@ -426,18 +485,155 @@ public class RedisTimescaleDeviceTelemetryRepository implements DeviceTelemetryR
                         resultSet.getDouble("value_result"),
                         qualityOf(resultSet.getShort("quality")),
                         null,
-                        resultSet.getLong("sample_count")
+                        resultSet.getLong("sample_count"),
+                        HistorySource.valueOf(resultSet.getString("source"))
                 ),
+                pageArguments.toArray()
+        );
+        return new HistoryPage(items, total == null ? 0L : total);
+    }
+
+    /**
+     * 构造冷热桶合并数据集；只有完整、成熟且匹配当前策略证据的桶读取长期聚合事实。
+     */
+    private String aggregatedDatasetSql() {
+        return """
+                WITH current_rule AS MATERIALIZED (
+                    SELECT policy.runtime_revision,
+                           policy.snapshot_id,
+                           policy.content_hash,
+                           policy.correction_window_seconds
+                      FROM telemetry_aggregation_policy policy
+                      CROSS JOIN LATERAL jsonb_array_elements(
+                          policy.values_json -> 'policy' -> 'rules'
+                      ) rule(value)
+                     WHERE policy.device_id = ?
+                       AND policy.enabled
+                       AND rule.value ->> 'propertyId' = ?
+                       AND (rule.value ->> 'bucketSeconds')::INTEGER = ?
+                     LIMIT 1
+                ), raw_buckets AS MATERIALIZED (
+                    SELECT %s AS bucket_start,
+                           MAX(received_at) AS received_at,
+                           AVG(value_double) AS average_value,
+                           MIN(value_double) AS minimum_value,
+                           MAX(value_double) AS maximum_value,
+                           MAX(quality) AS quality,
+                           COUNT(*) AS sample_count
+                      FROM telemetry_numeric
+                     WHERE device_id = ?
+                       AND property_id = ?
+                       AND time >= ?
+                       AND time < ?
+                       AND ingest_id <= ?
+                       AND value_double IS NOT NULL
+                     GROUP BY bucket_start
+                ), rollup_versions AS MATERIALIZED (
+                    SELECT DISTINCT ON (rollup.bucket_start)
+                           rollup.bucket_start,
+                           rollup.bucket_end,
+                           rollup.latest_received_at AS received_at,
+                           rollup.average_value,
+                           rollup.minimum_value,
+                           rollup.maximum_value,
+                           rollup.worst_quality AS quality,
+                           rollup.sample_count,
+                           current_rule.correction_window_seconds
+                      FROM telemetry_numeric_rollup rollup
+                      JOIN telemetry_aggregation_execution execution
+                        ON execution.execution_id = rollup.execution_id
+                      CROSS JOIN current_rule
+                     WHERE rollup.device_id = ?
+                       AND rollup.property_id = ?
+                       AND rollup.bucket_seconds = ?
+                       AND rollup.bucket_start >= ?
+                       AND rollup.bucket_end <= ?
+                       AND rollup.rollup_revision <= ?
+                       AND rollup.source_watermark <= ?
+                       AND rollup.runtime_revision = current_rule.runtime_revision
+                       AND rollup.snapshot_id = current_rule.snapshot_id
+                       AND rollup.policy_content_hash = current_rule.content_hash
+                       AND execution.status IN ('SUCCEEDED', 'PARTIAL')
+                     ORDER BY rollup.bucket_start, rollup.rollup_revision DESC
+                ), bucket_keys AS (
+                    SELECT bucket_start FROM raw_buckets
+                    UNION
+                    SELECT bucket_start FROM rollup_versions
+                ), selected AS (
+                    SELECT bucket_keys.bucket_start,
+                           CASE WHEN rollup_versions.bucket_start IS NOT NULL
+                                     AND CURRENT_TIMESTAMP >= rollup_versions.bucket_end
+                                         + make_interval(secs =>
+                                             rollup_versions.correction_window_seconds)
+                                THEN rollup_versions.received_at
+                                ELSE raw_buckets.received_at END AS received_at,
+                           CASE WHEN rollup_versions.bucket_start IS NOT NULL
+                                     AND CURRENT_TIMESTAMP >= rollup_versions.bucket_end
+                                         + make_interval(secs =>
+                                             rollup_versions.correction_window_seconds)
+                                THEN rollup_versions.average_value
+                                ELSE raw_buckets.average_value END AS average_value,
+                           CASE WHEN rollup_versions.bucket_start IS NOT NULL
+                                     AND CURRENT_TIMESTAMP >= rollup_versions.bucket_end
+                                         + make_interval(secs =>
+                                             rollup_versions.correction_window_seconds)
+                                THEN rollup_versions.minimum_value
+                                ELSE raw_buckets.minimum_value END AS minimum_value,
+                           CASE WHEN rollup_versions.bucket_start IS NOT NULL
+                                     AND CURRENT_TIMESTAMP >= rollup_versions.bucket_end
+                                         + make_interval(secs =>
+                                             rollup_versions.correction_window_seconds)
+                                THEN rollup_versions.maximum_value
+                                ELSE raw_buckets.maximum_value END AS maximum_value,
+                           CASE WHEN rollup_versions.bucket_start IS NOT NULL
+                                     AND CURRENT_TIMESTAMP >= rollup_versions.bucket_end
+                                         + make_interval(secs =>
+                                             rollup_versions.correction_window_seconds)
+                                THEN rollup_versions.quality
+                                ELSE raw_buckets.quality END AS quality,
+                           CASE WHEN rollup_versions.bucket_start IS NOT NULL
+                                     AND CURRENT_TIMESTAMP >= rollup_versions.bucket_end
+                                         + make_interval(secs =>
+                                             rollup_versions.correction_window_seconds)
+                                THEN rollup_versions.sample_count
+                                ELSE raw_buckets.sample_count END AS sample_count,
+                           CASE WHEN rollup_versions.bucket_start IS NOT NULL
+                                     AND CURRENT_TIMESTAMP >= rollup_versions.bucket_end
+                                         + make_interval(secs =>
+                                             rollup_versions.correction_window_seconds)
+                                THEN 'ROLLUP' ELSE 'RAW' END AS source
+                      FROM bucket_keys
+                      LEFT JOIN raw_buckets USING (bucket_start)
+                      LEFT JOIN rollup_versions USING (bucket_start)
+                     WHERE raw_buckets.bucket_start IS NOT NULL
+                        OR (rollup_versions.bucket_start IS NOT NULL
+                            AND CURRENT_TIMESTAMP >= rollup_versions.bucket_end
+                                + make_interval(secs =>
+                                    rollup_versions.correction_window_seconds))
+                )
+                """.formatted(BUCKET_EXPRESSION);
+    }
+
+    /** 生成冷热历史公共数据集的固定顺序预编译参数。 */
+    private List<Object> aggregatedHistoryArguments(HistoryQuery query, String interval) {
+        return List.of(
+                query.deviceId(),
+                query.propertyId(),
+                Math.toIntExact(query.bucket().toSeconds()),
                 interval,
                 query.deviceId(),
                 query.propertyId(),
                 Timestamp.from(query.from()),
                 Timestamp.from(query.to()),
                 query.watermark(),
-                query.offset(),
-                query.limit()
+                query.deviceId(),
+                query.propertyId(),
+                Math.toIntExact(query.bucket().toSeconds()),
+                Timestamp.from(query.from()),
+                Timestamp.from(query.to()),
+                query.rollupWatermark(),
+                query.watermark()
         );
-        return new HistoryPage(items, total == null ? 0L : total);
     }
 
     private TelemetryValue mapTelemetryValue(ResultSet resultSet) throws SQLException {

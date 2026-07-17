@@ -10,6 +10,8 @@ import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.Aggregation;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistoryPage;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistoryPoint;
+import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistorySource;
+import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.HistoryWatermarks;
 import com.bosco.mine.server.modules.device.repository.DeviceTelemetryRepository.TelemetryValue;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.QueryTimeoutException;
@@ -237,7 +239,7 @@ class DeviceTelemetryQueryServiceTest {
 
         assertThatThrownBy(() -> service.findHistory(
                 deviceId, "speed", from, from.plus(Duration.ofDays(8)),
-                "RAW", null, null, 1, 100
+                "RAW", null, null, null, 1, 100
         )).isInstanceOfSatisfying(MineException.class, exception ->
                 assertThat(exception.errorCode().code()).isEqualTo("TELEMETRY-400-001"));
     }
@@ -253,39 +255,67 @@ class DeviceTelemetryQueryServiceTest {
         Instant to = from.plus(Duration.ofHours(1));
 
         assertThatThrownBy(() -> service.findHistory(
-                deviceId, "speed", from, to, "AVG", null, null, 1, 100
+                deviceId, "speed", from, to, "AVG", null, null, null, 1, 100
         )).isInstanceOfSatisfying(MineException.class, exception ->
                 assertThat(exception.errorCode().code()).isEqualTo("TELEMETRY-400-002"));
         assertThatThrownBy(() -> service.findHistory(
                 deviceId, "speed", from, to, "AVG",
-                Duration.ofSeconds(60).plusMillis(500), null, 1, 100
+                Duration.ofSeconds(60).plusMillis(500), null, null, 1, 100
         )).isInstanceOfSatisfying(MineException.class, exception ->
                 assertThat(exception.errorCode().code()).isEqualTo("TELEMETRY-400-002"));
 
         HistoryPoint point = new HistoryPoint(
-                from, to, 10.5D, Quality.BAD, null, 20L
+                from, to, 10.5D, Quality.BAD, null, 20L, HistorySource.ROLLUP
         );
         when(repository.findHistory(any())).thenReturn(new HistoryPage(List.of(point), 1));
-        when(repository.currentIngestionWatermark()).thenReturn(42L);
+        when(repository.currentHistoryWatermarks()).thenReturn(new HistoryWatermarks(42L, 9L));
         TelemetryHistoryResponse response = service.findHistory(
-                deviceId, "speed", from, to, "AVG", Duration.ofMinutes(5), null, 2, 10
+                deviceId, "speed", from, to, "AVG", Duration.ofMinutes(5),
+                42L, 9L, 2, 10
         );
 
         assertThat(response.page()).isEqualTo(2);
         assertThat(response.size()).isEqualTo(10);
         assertThat(response.total()).isOne();
         assertThat(response.watermark()).isEqualTo(42L);
+        assertThat(response.rollupWatermark()).isEqualTo(9L);
         assertThat(response.items()).singleElement().satisfies(item -> {
             assertThat(item.quality()).isEqualTo(Quality.BAD);
             assertThat(item.sampleCount()).isEqualTo(20);
+            assertThat(item.source()).isEqualTo("ROLLUP");
         });
         verify(repository).findHistory(org.mockito.ArgumentMatchers.argThat(query ->
                 query.aggregation() == Aggregation.AVG
                         && query.offset() == 10
                         && query.limit() == 10
                         && query.watermark() == 42L
+                        && query.rollupWatermark() == 9L
                         && Duration.ofMinutes(5).equals(query.bucket())
         ));
+    }
+
+    @Test
+    void 后续页必须原样携带两个历史水位且不得使用未来聚合水位() {
+        UUID deviceId = UUID.randomUUID();
+        DeviceTelemetryRepository repository = mock(DeviceTelemetryRepository.class);
+        when(repository.currentHistoryWatermarks()).thenReturn(new HistoryWatermarks(42L, 9L));
+        DeviceTelemetryQueryService service = new DeviceTelemetryQueryService(
+                mapperWithDevice(deviceId), repository
+        );
+        Instant from = Instant.parse("2026-07-15T00:00:00Z");
+        Instant to = from.plusSeconds(60);
+
+        assertThatThrownBy(() -> service.findHistory(
+                deviceId, "speed", from, to, "AVG", Duration.ofMinutes(1),
+                42L, null, 2, 100
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                assertThat(exception.errorCode().code()).isEqualTo("TELEMETRY-400-001"));
+        assertThatThrownBy(() -> service.findHistory(
+                deviceId, "speed", from, to, "AVG", Duration.ofMinutes(1),
+                42L, 10L, 2, 100
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                assertThat(exception.errorCode().code()).isEqualTo("TELEMETRY-400-001"));
+        verify(repository, org.mockito.Mockito.never()).findHistory(any());
     }
 
     @Test
@@ -294,7 +324,7 @@ class DeviceTelemetryQueryServiceTest {
         DeviceTelemetryRepository repository = mock(DeviceTelemetryRepository.class);
         when(repository.findHistory(any()))
                 .thenThrow(new DataAccessResourceFailureException("connection timeout"));
-        when(repository.currentIngestionWatermark()).thenReturn(42L);
+        when(repository.currentHistoryWatermarks()).thenReturn(new HistoryWatermarks(42L, 9L));
         DeviceTelemetryQueryService service = new DeviceTelemetryQueryService(
                 mapperWithDevice(deviceId), repository
         );
@@ -302,7 +332,7 @@ class DeviceTelemetryQueryServiceTest {
 
         assertThatThrownBy(() -> service.findHistory(
                 deviceId, "speed", from, from.plusSeconds(60),
-                "RAW", null, 42L, 1, 100
+                "RAW", null, 42L, 9L, 1, 100
         )).isInstanceOfSatisfying(MineException.class, exception ->
                 assertThat(exception.errorCode().code()).isEqualTo("TELEMETRY-503-001"));
     }
@@ -311,7 +341,7 @@ class DeviceTelemetryQueryServiceTest {
     void 客户端不得使用超过当前已提交值的未来水位() {
         UUID deviceId = UUID.randomUUID();
         DeviceTelemetryRepository repository = mock(DeviceTelemetryRepository.class);
-        when(repository.currentIngestionWatermark()).thenReturn(42L);
+        when(repository.currentHistoryWatermarks()).thenReturn(new HistoryWatermarks(42L, 9L));
         DeviceTelemetryQueryService service = new DeviceTelemetryQueryService(
                 mapperWithDevice(deviceId), repository
         );
@@ -319,7 +349,7 @@ class DeviceTelemetryQueryServiceTest {
 
         assertThatThrownBy(() -> service.findHistory(
                 deviceId, "speed", from, from.plusSeconds(60),
-                "RAW", null, 43L, 1, 100
+                "RAW", null, 43L, 9L, 1, 100
         )).isInstanceOfSatisfying(MineException.class, exception ->
                 assertThat(exception.errorCode().code()).isEqualTo("TELEMETRY-400-001"));
         verify(repository, org.mockito.Mockito.never()).findHistory(any());
