@@ -1,6 +1,8 @@
 package com.bosco.mine.telemetry.strategy;
 
 import com.bosco.mine.messaging.strategy.StrategyRuntimeChangedPayload;
+import com.bosco.mine.telemetry.alarm.AlarmPolicy;
+import com.bosco.mine.telemetry.alarm.AlarmPolicyRepository;
 import com.bosco.mine.telemetry.quality.DataQualityPolicy;
 import com.bosco.mine.telemetry.quality.DataQualityPolicyRepository;
 import org.flywaydb.core.Flyway;
@@ -42,8 +44,10 @@ class StrategyPolicyRepositoryIT {
     private static final UUID PRODUCT_ID = UUID.randomUUID();
     private static final UUID FIRST_DEVICE_ID = UUID.randomUUID();
     private static final UUID SECOND_DEVICE_ID = UUID.randomUUID();
+    private static final UUID ALARM_DEVICE_ID = UUID.randomUUID();
     private static StrategyPolicyRepository repository;
     private static DataQualityPolicyRepository policyReader;
+    private static AlarmPolicyRepository alarmPolicyReader;
     private static JdbcTemplate jdbcTemplate;
 
     @BeforeAll
@@ -53,6 +57,7 @@ class StrategyPolicyRepositoryIT {
         Flyway.configure().dataSource(dataSource).locations("classpath:db/migration").load().migrate();
         repository = new StrategyPolicyRepository(dataSource);
         policyReader = new DataQualityPolicyRepository(dataSource);
+        alarmPolicyReader = new AlarmPolicyRepository(dataSource);
         jdbcTemplate = new JdbcTemplate(dataSource);
     }
 
@@ -117,6 +122,32 @@ class StrategyPolicyRepositoryIT {
         assertThat(repository.isEventProcessed(conflictingEventId)).isFalse();
     }
 
+    @Test
+    void 告警和数据质量应使用独立修订水位与最后正确镜像() {
+        UUID snapshotId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        repository.stage(snapshotId, List.of(new StrategyPolicyRepository.StagedPolicy(
+                ALARM_DEVICE_ID, alarmValues(), "sha256:" + "4".repeat(64))));
+        StrategyRuntimeChangedPayload payload = new StrategyRuntimeChangedPayload(
+                snapshotId, PRODUCT_ID, "ALARM", 1, 1, "sha256:" + "d".repeat(64));
+
+        repository.finalizeApply(eventId, payload);
+
+        Map<UUID, AlarmPolicy> policies = alarmPolicyReader.findByDeviceIds(
+                Set.of(ALARM_DEVICE_ID, SECOND_DEVICE_ID));
+        assertThat(policies).containsOnlyKeys(ALARM_DEVICE_ID);
+        assertThat(policies.get(ALARM_DEVICE_ID).runtimeRevision()).isEqualTo(1);
+        assertThat(policies.get(ALARM_DEVICE_ID).rules()).singleElement().satisfies(rule -> {
+            assertThat(rule.key()).isEqualTo("required-rpm");
+            assertThat(rule.qualityRuleCode()).isEqualTo(
+                    com.bosco.mine.telemetry.quality.QualityRuleCode.REQUIRED_MISSING);
+        });
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT runtime_revision FROM telemetry_strategy_runtime_revision
+                 WHERE product_id = ? AND strategy_type = 'ALARM'
+                """, Long.class, PRODUCT_ID)).isEqualTo(1L);
+    }
+
     private StrategyRuntimeChangedPayload payload(
             UUID snapshotId,
             long revision,
@@ -125,5 +156,22 @@ class StrategyPolicyRepositoryIT {
     ) {
         return new StrategyRuntimeChangedPayload(
                 snapshotId, PRODUCT_ID, "DATA_QUALITY", revision, itemCount, hash);
+    }
+
+    private String alarmValues() {
+        return """
+                {"rules":[{
+                  "key":"required-rpm",
+                  "name":"转速缺失",
+                  "sourceType":"QUALITY",
+                  "severity":"WARNING",
+                  "triggerDurationSeconds":30,
+                  "recoverDurationSeconds":60,
+                  "cooldownSeconds":300,
+                  "enabled":true,
+                  "propertyId":"engine.rpm",
+                  "qualityRuleCode":"REQUIRED_MISSING"
+                }]}
+                """;
     }
 }

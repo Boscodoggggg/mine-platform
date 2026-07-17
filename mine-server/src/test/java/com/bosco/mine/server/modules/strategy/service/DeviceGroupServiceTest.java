@@ -177,6 +177,10 @@ class DeviceGroupServiceTest {
                 productId, "DATA_QUALITY", List.of(addedDeviceId, removedDeviceId),
                 StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
         );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "ALARM", List.of(addedDeviceId, removedDeviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
+        );
     }
 
     @Test
@@ -229,6 +233,10 @@ class DeviceGroupServiceTest {
         );
         verify(runtimeSnapshotService).captureDelta(
                 productId, "DATA_QUALITY", List.of(memberId),
+                StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
+        );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "ALARM", List.of(memberId),
                 StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
         );
     }

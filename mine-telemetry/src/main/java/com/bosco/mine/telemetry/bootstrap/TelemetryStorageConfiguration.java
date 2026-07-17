@@ -1,6 +1,7 @@
 package com.bosco.mine.telemetry.bootstrap;
 
 import com.bosco.mine.messaging.topology.MineTopology;
+import com.bosco.mine.telemetry.alarm.AlarmPolicyRepository;
 import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapMetrics;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapObserver;
@@ -109,6 +110,12 @@ public class TelemetryStorageConfiguration {
     @Bean
     public DataQualityPolicyRepository dataQualityPolicyRepository(DataSource dataSource) {
         return new DataQualityPolicyRepository(dataSource);
+    }
+
+    /** 创建按批次读取最后正确告警策略的本地仓储。 */
+    @Bean
+    public AlarmPolicyRepository alarmPolicyRepository(DataSource dataSource) {
+        return new AlarmPolicyRepository(dataSource);
     }
 
     /** 创建无状态属性级数据质量判定器。 */

@@ -81,6 +81,7 @@ public class StrategySnapshotLoader {
         if (repository.isEventProcessed(eventId)) {
             return;
         }
+        StrategySnapshotIntegrity.requireSupportedStrategyType(payload.strategyType());
         UUID cursor = null;
         UUID previousDeviceId = null;
         int itemCount = 0;
@@ -112,7 +113,7 @@ public class StrategySnapshotLoader {
                         }
                         StrategySnapshotIntegrity.ValidatedPolicy validated =
                                 StrategySnapshotIntegrity.validateAndNormalize(
-                                        item.deviceId(), item.values());
+                                        payload.strategyType(), item.deviceId(), item.values());
                         if (!validated.contentHash().equals(item.contentHash())) {
                             throw new PermanentStrategySnapshotException("单设备策略哈希不一致");
                         }

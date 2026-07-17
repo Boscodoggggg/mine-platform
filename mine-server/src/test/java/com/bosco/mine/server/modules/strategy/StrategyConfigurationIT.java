@@ -20,6 +20,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -203,6 +204,60 @@ class StrategyConfigurationIT {
     }
 
     @Test
+    void 告警策略应按整组覆盖并生成独立的可靠运行修订() {
+        Fixture fixture = createFixture(800, 900);
+        StrategyConfigurationService.StrategyVersionView productDraft =
+                strategyService.createDraft(new StrategyConfigurationService.CreateDraftCommand(
+                        fixture.productId(),
+                        "ALARM",
+                        Map.of("rules", List.of(alarmRule(
+                                "product-stale", "产品数据陈旧", "STALE_TIMESTAMP"))),
+                        "产品告警基线"
+                ));
+        strategyService.publish(new StrategyConfigurationService.PublishCommand(
+                productDraft.id(), StrategyScopeType.PRODUCT, fixture.productId(),
+                "发布产品告警基线", "alarm-product-release"
+        ));
+        StrategyConfigurationService.StrategyVersionView deviceDraft =
+                strategyService.createDraft(new StrategyConfigurationService.CreateDraftCommand(
+                        fixture.productId(),
+                        "ALARM",
+                        Map.of("rules", List.of(alarmRule(
+                                "device-required", "设备转速缺失", "REQUIRED_MISSING"))),
+                        "设备告警覆盖"
+                ));
+        strategyService.publish(new StrategyConfigurationService.PublishCommand(
+                deviceDraft.id(), StrategyScopeType.DEVICE, fixture.deviceId(),
+                "发布设备告警覆盖", "alarm-device-release"
+        ));
+
+        StrategyConfigurationService.EffectiveStrategyView effective =
+                strategyService.findEffective(fixture.deviceId(), "ALARM");
+
+        assertThat(effective.valid()).isTrue();
+        assertThat(effective.values().get("rules").toString())
+                .contains("device-required")
+                .doesNotContain("product-stale");
+        assertThat(effective.sources().get("rules").scopeType())
+                .isEqualTo(StrategyScopeType.DEVICE);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM dev_strategy_runtime_snapshot
+                 WHERE product_id = ?
+                   AND strategy_type = 'ALARM'
+                   AND runtime_revision IN (1, 2)
+                """, Long.class, fixture.productId())).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                  FROM sys_outbox_event event
+                  JOIN dev_strategy_runtime_snapshot snapshot
+                    ON snapshot.id = event.aggregate_id
+                 WHERE snapshot.product_id = ?
+                   AND event.payload ->> 'strategyType' = 'ALARM'
+                """, Long.class, fixture.productId())).isEqualTo(2L);
+    }
+
+    @Test
     void 设备组优先级变化应经过冲突门禁并让回滚使用当前优先级() {
         Fixture fixture = createFixture(800, 900);
         StrategyConfigurationService.StrategyVersionView firstDraft = createDraft(
@@ -269,6 +324,19 @@ class StrategyConfigurationIT {
                 Map.of("offlineThresholdSeconds", thresholdSeconds),
                 description
         ));
+    }
+
+    private Map<String, Object> alarmRule(String key, String name, String qualityRuleCode) {
+        Map<String, Object> rule = new LinkedHashMap<>();
+        rule.put("key", key);
+        rule.put("name", name);
+        rule.put("sourceType", "QUALITY");
+        rule.put("severity", "WARNING");
+        rule.put("triggerDurationSeconds", 30);
+        rule.put("recoverDurationSeconds", 60);
+        rule.put("cooldownSeconds", 300);
+        rule.put("qualityRuleCode", qualityRuleCode);
+        return rule;
     }
 
     private StrategyConfigurationService.PublishCommand publish(

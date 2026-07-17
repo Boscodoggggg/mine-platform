@@ -129,12 +129,13 @@ class TelemetryMigrationIT {
                     'telemetry_strategy_snapshot_stage',
                     'telemetry_strategy_runtime_revision',
                     'telemetry_data_quality_policy',
+                    'telemetry_alarm_policy',
                     'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence'
                 ]) AS table_name
                 ORDER BY table_name
                 """))
-                .hasSize(5)
+                .hasSize(6)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(queryStrings("""
                 SELECT COALESCE(col_description(table_class.oid, attribute.attnum), '')
@@ -146,6 +147,7 @@ class TelemetryMigrationIT {
                     'telemetry_strategy_snapshot_stage',
                     'telemetry_strategy_runtime_revision',
                     'telemetry_data_quality_policy',
+                    'telemetry_alarm_policy',
                     'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence'
                   )
@@ -153,7 +155,7 @@ class TelemetryMigrationIT {
                   AND NOT attribute.attisdropped
                 ORDER BY table_class.relname, attribute.attnum
                 """))
-                .hasSize(33)
+                .hasSize(40)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
 
         assertThat(queryStrings("""
@@ -243,12 +245,14 @@ class TelemetryMigrationIT {
                     'telemetry_strategy_snapshot_stage',
                     'telemetry_strategy_runtime_revision',
                     'telemetry_data_quality_policy',
+                    'telemetry_alarm_policy',
                     'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence'
                   )
                 ORDER BY table_name
                 """))
                 .containsExactly(
+                        "telemetry_alarm_policy",
                         "telemetry_data_quality_policy",
                         "telemetry_quality_evidence",
                         "telemetry_strategy_event_inbox",

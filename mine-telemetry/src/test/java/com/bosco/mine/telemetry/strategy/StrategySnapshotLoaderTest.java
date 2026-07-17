@@ -94,6 +94,64 @@ class StrategySnapshotLoaderTest {
         assertThat(counter(meterRegistry, "validate", "failure")).isOne();
     }
 
+    @Test
+    void 应使用告警类型注册表独立校验规则快照() throws Exception {
+        StrategyPolicyRepository repository = mock(StrategyPolicyRepository.class);
+        StrategySnapshotSource source = mock(StrategySnapshotSource.class);
+        Map<String, Object> rule = new java.util.LinkedHashMap<>();
+        rule.put("key", "required-rpm");
+        rule.put("name", "转速缺失");
+        rule.put("sourceType", "QUALITY");
+        rule.put("severity", "WARNING");
+        rule.put("triggerDurationSeconds", 30);
+        rule.put("recoverDurationSeconds", 60);
+        rule.put("cooldownSeconds", 300);
+        rule.put("qualityRuleCode", "REQUIRED_MISSING");
+        Map<String, Object> values = Map.of("rules", List.of(rule));
+        String itemHash = StrategySnapshotIntegrity.policyHash(
+                "ALARM", FIRST_DEVICE_ID, values);
+        String snapshotHash = snapshotHash(FIRST_DEVICE_ID, itemHash);
+        StrategyRuntimeChangedPayload payload = new StrategyRuntimeChangedPayload(
+                SNAPSHOT_ID, PRODUCT_ID, "ALARM", 3, 1, snapshotHash);
+        when(source.fetch(SNAPSHOT_ID, null, 100)).thenReturn(new
+                StrategySnapshotSource.SnapshotPage(
+                SNAPSHOT_ID, PRODUCT_ID, "ALARM", 3, 1, snapshotHash,
+                List.of(new StrategySnapshotSource.SnapshotItem(
+                        FIRST_DEVICE_ID, values, itemHash)), null));
+
+        new StrategySnapshotLoader(repository, source, 100).apply(EVENT_ID, payload);
+
+        @SuppressWarnings("unchecked")
+        org.mockito.ArgumentCaptor<List<StrategyPolicyRepository.StagedPolicy>> policies =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(repository).stage(org.mockito.ArgumentMatchers.eq(SNAPSHOT_ID), policies.capture());
+        assertThat(policies.getValue()).singleElement().satisfies(policy ->
+                assertThat(policy.valuesJson())
+                        .contains("\"key\":\"required-rpm\"")
+                        .contains("\"enabled\":true"));
+        verify(repository).finalizeApply(EVENT_ID, payload);
+    }
+
+    @Test
+    void 未注册运行类型应在访问控制面前永久拒绝() {
+        StrategyPolicyRepository repository = mock(StrategyPolicyRepository.class);
+        StrategySnapshotSource source = mock(StrategySnapshotSource.class);
+        StrategyRuntimeChangedPayload payload = new StrategyRuntimeChangedPayload(
+                SNAPSHOT_ID, PRODUCT_ID, "UNREGISTERED", 1, 0,
+                "sha256:" + "a".repeat(64));
+
+        assertThatThrownBy(() ->
+                new StrategySnapshotLoader(repository, source, 100).apply(EVENT_ID, payload))
+                .isInstanceOf(PermanentStrategySnapshotException.class)
+                .hasMessageContaining("不支持");
+
+        verify(source, never()).fetch(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyInt());
+        verify(repository, never()).finalizeApply(EVENT_ID, payload);
+    }
+
     private StrategySnapshotSource.SnapshotPage page(
             String contentHash,
             List<StrategySnapshotSource.SnapshotItem> items,

@@ -3,9 +3,11 @@ package com.bosco.mine.server.modules.strategy.service;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
 import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.model.strategy.EffectiveStrategyResolver;
 import com.bosco.mine.model.strategy.ScopedStrategyFragment;
+import com.bosco.mine.model.strategy.StrategyDefinition;
 import com.bosco.mine.model.strategy.StrategyScopeType;
 import com.bosco.mine.model.strategy.StrategyValidationException;
 import com.bosco.mine.server.modules.command.outbox.OutboxCommitNotifier;
@@ -35,7 +37,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 /**
- * 把数据质量控制面的最终有效策略固化为可重放的不可变增量快照。
+ * 把数据质量和告警控制面的最终有效策略固化为可重放的不可变增量快照。
  */
 @Service
 public class StrategyRuntimeSnapshotService {
@@ -47,12 +49,15 @@ public class StrategyRuntimeSnapshotService {
     private static final int RESOLUTION_BATCH_SIZE = 1_000;
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
     private static final Comparator<UUID> UUID_ORDER = Comparator.comparing(UUID::toString);
+    private static final Map<String, StrategyDefinition> RUNTIME_DEFINITIONS = Map.of(
+            DataQualityStrategyDefinition.TYPE, new DataQualityStrategyDefinition(),
+            AlarmStrategyDefinition.TYPE, new AlarmStrategyDefinition()
+    );
 
     private final StrategyRuntimeSnapshotMapper snapshotMapper;
     private final StrategyConfigurationMapper configurationMapper;
     private final ObjectMapper objectMapper;
     private final OutboxCommitNotifier commitNotifier;
-    private final DataQualityStrategyDefinition definition = new DataQualityStrategyDefinition();
     private final EffectiveStrategyResolver resolver = new EffectiveStrategyResolver();
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
@@ -80,7 +85,7 @@ public class StrategyRuntimeSnapshotService {
     /**
      * 在当前控制面事务中生成受影响设备的最终有效策略增量。
      *
-     * <p>空对象条目是显式删除语义。当前仅 DATA_QUALITY 进入跨服务运行消费；
+     * <p>空对象条目是显式删除语义。当前仅数据质量和告警进入跨服务运行消费；
      * 未发布过该类型时不会制造无意义事件。</p>
      *
      * @param productId 产品标识
@@ -100,8 +105,8 @@ public class StrategyRuntimeSnapshotService {
         Objects.requireNonNull(strategyType, "策略类型不能为空");
         Objects.requireNonNull(affectedDeviceIds, "受影响设备集合不能为空");
         Objects.requireNonNull(changeReason, "快照变更原因不能为空");
-        if (!DataQualityStrategyDefinition.TYPE.equals(strategyType)
-                || affectedDeviceIds.isEmpty()) {
+        StrategyDefinition definition = RUNTIME_DEFINITIONS.get(strategyType);
+        if (definition == null || affectedDeviceIds.isEmpty()) {
             return Optional.empty();
         }
         configurationMapper.lockProduct(productId);
@@ -117,7 +122,7 @@ public class StrategyRuntimeSnapshotService {
         UUID snapshotId = idGenerator.next();
         long runtimeRevision = snapshotMapper.nextRuntimeRevision(productId, strategyType);
         List<StrategyRuntimeSnapshotMapper.SnapshotItemWrite> items = resolveItems(
-                snapshotId, productId, deviceIds);
+                snapshotId, productId, strategyType, definition, deviceIds);
         String contentHash = snapshotHash(items);
         snapshotMapper.insertSnapshot(
                 snapshotId, productId, strategyType, runtimeRevision,
@@ -189,6 +194,8 @@ public class StrategyRuntimeSnapshotService {
     private List<StrategyRuntimeSnapshotMapper.SnapshotItemWrite> resolveItems(
             UUID snapshotId,
             UUID productId,
+            String strategyType,
+            StrategyDefinition definition,
             List<UUID> deviceIds
     ) {
         Map<UUID, List<ScopedStrategyFragment>> fragmentsByDevice = new LinkedHashMap<>();
@@ -198,7 +205,7 @@ public class StrategyRuntimeSnapshotService {
                     start, Math.min(start + RESOLUTION_BATCH_SIZE, deviceIds.size()));
             for (StrategyConfigurationMapper.StrategyFragmentRecord record
                     : configurationMapper.findCurrentFragmentsForDevices(
-                            productId, DataQualityStrategyDefinition.TYPE, batch)) {
+                            productId, strategyType, batch)) {
                 List<ScopedStrategyFragment> target = fragmentsByDevice.get(record.deviceId());
                 if (target == null) {
                     throw snapshotInvalid(record.deviceId(), "返回了非目标设备策略片段");
@@ -208,7 +215,8 @@ public class StrategyRuntimeSnapshotService {
                         StrategyScopeType.valueOf(record.scopeType()),
                         record.scopeId(),
                         record.groupPriority(),
-                        validateFragment(record.deviceId(), readMap(record.valuesJson()))
+                        validateFragment(
+                                definition, record.deviceId(), readMap(record.valuesJson()))
                 ));
             }
         }
@@ -221,7 +229,7 @@ public class StrategyRuntimeSnapshotService {
             }
             Map<String, Object> values = fragments.isEmpty()
                     ? Map.of()
-                    : validateEffective(deviceId, resolution.values());
+                    : validateEffective(definition, deviceId, resolution.values());
             items.add(new StrategyRuntimeSnapshotMapper.SnapshotItemWrite(
                     snapshotId,
                     deviceId,
@@ -232,15 +240,24 @@ public class StrategyRuntimeSnapshotService {
         return List.copyOf(items);
     }
 
-    private Map<String, Object> validateFragment(UUID deviceId, Map<String, Object> values) {
-        return validate(deviceId, values, "策略片段未通过类型校验");
+    private Map<String, Object> validateFragment(
+            StrategyDefinition definition,
+            UUID deviceId,
+            Map<String, Object> values
+    ) {
+        return validate(definition, deviceId, values, "策略片段未通过类型校验");
     }
 
-    private Map<String, Object> validateEffective(UUID deviceId, Map<String, Object> values) {
-        return validate(deviceId, values, "最终有效策略未通过类型校验");
+    private Map<String, Object> validateEffective(
+            StrategyDefinition definition,
+            UUID deviceId,
+            Map<String, Object> values
+    ) {
+        return validate(definition, deviceId, values, "最终有效策略未通过类型校验");
     }
 
     private Map<String, Object> validate(
+            StrategyDefinition definition,
             UUID deviceId,
             Map<String, Object> values,
             String message

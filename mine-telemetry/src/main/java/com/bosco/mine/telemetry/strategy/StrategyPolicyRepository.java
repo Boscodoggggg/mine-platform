@@ -12,7 +12,7 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * 在 TimescaleDB 中暂存策略快照并原子切换单设备数据质量策略镜像。
+ * 在 TimescaleDB 中暂存策略快照并按受控类型原子切换单设备最后正确镜像。
  */
 public class StrategyPolicyRepository {
 
@@ -81,6 +81,7 @@ public class StrategyPolicyRepository {
      * @param payload 已完成整包校验的轻量事件
      */
     public void finalizeApply(UUID eventId, StrategyRuntimeChangedPayload payload) {
+        String policyTable = policyTable(payload.strategyType());
         transactionTemplate.executeWithoutResult(status -> {
             lockProductStrategy(payload.productId(), payload.strategyType());
             CurrentRevision current = currentRevision(payload.productId(), payload.strategyType());
@@ -105,14 +106,14 @@ public class StrategyPolicyRepository {
             }
 
             jdbcTemplate.update("""
-                    DELETE FROM telemetry_data_quality_policy policy
+                    DELETE FROM %s policy
                     USING telemetry_strategy_snapshot_stage stage
                     WHERE stage.snapshot_id = ?
                       AND stage.device_id = policy.device_id
                       AND stage.values_json = '{}'::JSONB
-                    """, payload.snapshotId());
+                    """.formatted(policyTable), payload.snapshotId());
             jdbcTemplate.update("""
-                    INSERT INTO telemetry_data_quality_policy (
+                    INSERT INTO %s (
                         device_id, product_id, runtime_revision, snapshot_id,
                         values_json, content_hash, updated_at
                     )
@@ -127,8 +128,9 @@ public class StrategyPolicyRepository {
                         values_json = EXCLUDED.values_json,
                         content_hash = EXCLUDED.content_hash,
                         updated_at = CURRENT_TIMESTAMP
-                    WHERE telemetry_data_quality_policy.runtime_revision < EXCLUDED.runtime_revision
-                    """, payload.productId(), payload.runtimeRevision(), payload.snapshotId(),
+                    WHERE %s.runtime_revision < EXCLUDED.runtime_revision
+                    """.formatted(policyTable, policyTable),
+                    payload.productId(), payload.runtimeRevision(), payload.snapshotId(),
                     payload.snapshotId());
             jdbcTemplate.update("""
                     INSERT INTO telemetry_strategy_runtime_revision (
@@ -148,6 +150,14 @@ public class StrategyPolicyRepository {
             recordInbox(eventId, payload.snapshotId());
             discard(payload.snapshotId());
         });
+    }
+
+    private String policyTable(String strategyType) {
+        return switch (strategyType) {
+            case "DATA_QUALITY" -> "telemetry_data_quality_policy";
+            case "ALARM" -> "telemetry_alarm_policy";
+            default -> throw new PermanentStrategySnapshotException("不支持该策略镜像类型");
+        };
     }
 
     private void lockProductStrategy(UUID productId, String strategyType) {

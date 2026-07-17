@@ -4,6 +4,8 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
+import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.server.modules.device.dto.DeviceResponse;
 import com.bosco.mine.server.modules.device.dto.ProductResponse;
 import com.bosco.mine.server.modules.device.model.Device;
@@ -197,10 +199,8 @@ public class DeviceCommandService {
         }
         DeviceResponse created = deviceById(deviceId);
         audit("CREATE_DEVICE", "device:device:create", "DEVICE", deviceId, Map.of(), deviceSummary(created));
-        runtimeSnapshotService.captureDelta(
-                productId, "DATA_QUALITY", java.util.List.of(deviceId),
-                StrategyRuntimeSnapshotService.ChangeReason.DEVICE_CREATE
-        );
+        captureRuntimeDeltas(
+                productId, deviceId, StrategyRuntimeSnapshotService.ChangeReason.DEVICE_CREATE);
         return created;
     }
 
@@ -248,10 +248,21 @@ public class DeviceCommandService {
         DeviceResponse archived = deviceById(deviceId);
         audit("ARCHIVE_DEVICE", "device:device:archive", "DEVICE", deviceId,
                 deviceSummary(before), deviceSummary(archived));
+        captureRuntimeDeltas(
+                before.productId(), deviceId,
+                StrategyRuntimeSnapshotService.ChangeReason.DEVICE_ARCHIVE);
+    }
+
+    private void captureRuntimeDeltas(
+            UUID productId,
+            UUID deviceId,
+            StrategyRuntimeSnapshotService.ChangeReason reason
+    ) {
+        java.util.List<UUID> deviceIds = java.util.List.of(deviceId);
         runtimeSnapshotService.captureDelta(
-                before.productId(), "DATA_QUALITY", java.util.List.of(deviceId),
-                StrategyRuntimeSnapshotService.ChangeReason.DEVICE_ARCHIVE
-        );
+                productId, DataQualityStrategyDefinition.TYPE, deviceIds, reason);
+        runtimeSnapshotService.captureDelta(
+                productId, AlarmStrategyDefinition.TYPE, deviceIds, reason);
     }
 
     private ProductResponse productById(UUID productId) {

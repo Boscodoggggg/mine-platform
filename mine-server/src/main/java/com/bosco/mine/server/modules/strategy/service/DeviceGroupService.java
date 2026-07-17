@@ -4,6 +4,8 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
+import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.strategy.repository.StrategyScopeMapper;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
@@ -197,10 +199,9 @@ public class DeviceGroupService {
                 "DEVICE_GROUP", groupId, summary(before), summary(updated)
         );
         if (locked.priority() != command.priority()) {
-            runtimeSnapshotService.captureDelta(
-                    locked.productId(), "DATA_QUALITY", affectedDeviceIds,
-                    StrategyRuntimeSnapshotService.ChangeReason.PRIORITY
-            );
+            captureRuntimeDeltas(
+                    locked.productId(), affectedDeviceIds,
+                    StrategyRuntimeSnapshotService.ChangeReason.PRIORITY);
             cacheInvalidator.invalidateAfterCommit(
                     "ONLINE_STATUS", affectedDeviceIds,
                     EffectiveStrategyCacheInvalidator.InvalidationReason.PRIORITY
@@ -278,10 +279,9 @@ public class DeviceGroupService {
         List<UUID> affectedDeviceIds = new ArrayList<>(added.size() + removed.size());
         affectedDeviceIds.addAll(added);
         affectedDeviceIds.addAll(removed);
-        runtimeSnapshotService.captureDelta(
-                group.productId(), "DATA_QUALITY", affectedDeviceIds,
-                StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
-        );
+        captureRuntimeDeltas(
+                group.productId(), affectedDeviceIds,
+                StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP);
         cacheInvalidator.invalidateAfterCommit(
                 "ONLINE_STATUS", affectedDeviceIds,
                 EffectiveStrategyCacheInvalidator.InvalidationReason.MEMBERSHIP
@@ -313,10 +313,9 @@ public class DeviceGroupService {
                 "DEVICE_STRATEGY", "ARCHIVE_DEVICE_GROUP", "device:group:edit",
                 "DEVICE_GROUP", groupId, summary(before), Map.of("status", "ARCHIVED")
         );
-        runtimeSnapshotService.captureDelta(
-                initial.productId(), "DATA_QUALITY", affectedDeviceIds,
-                StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
-        );
+        captureRuntimeDeltas(
+                initial.productId(), affectedDeviceIds,
+                StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE);
         cacheInvalidator.invalidateAfterCommit(
                 "ONLINE_STATUS", affectedDeviceIds,
                 EffectiveStrategyCacheInvalidator.InvalidationReason.ARCHIVE
@@ -326,6 +325,17 @@ public class DeviceGroupService {
     private StrategyScopeMapper.DeviceGroupRecord requireGroup(UUID groupId) {
         return mapper.findGroupById(groupId)
                 .orElseThrow(() -> new MineException(GROUP_NOT_FOUND, Map.of("groupId", groupId)));
+    }
+
+    private void captureRuntimeDeltas(
+            UUID productId,
+            List<UUID> affectedDeviceIds,
+            StrategyRuntimeSnapshotService.ChangeReason reason
+    ) {
+        runtimeSnapshotService.captureDelta(
+                productId, DataQualityStrategyDefinition.TYPE, affectedDeviceIds, reason);
+        runtimeSnapshotService.captureDelta(
+                productId, AlarmStrategyDefinition.TYPE, affectedDeviceIds, reason);
     }
 
     private StrategyScopeMapper.DeviceGroupRecord requireActiveGroup(UUID groupId) {

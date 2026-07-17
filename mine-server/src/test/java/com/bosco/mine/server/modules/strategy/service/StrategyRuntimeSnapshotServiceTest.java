@@ -25,7 +25,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 校验数据质量有效策略增量快照、删除语义和轻量 Outbox 事件。
+ * 校验数据质量与告警有效策略增量快照、删除语义和轻量 Outbox 事件。
  */
 class StrategyRuntimeSnapshotServiceTest {
 
@@ -124,6 +124,45 @@ class StrategyRuntimeSnapshotServiceTest {
     }
 
     @Test
+    void 告警规则集合应按作用域整体覆盖并写入独立运行修订() {
+        UUID productReleaseId = UUID.randomUUID();
+        UUID deviceReleaseId = UUID.randomUUID();
+        when(snapshotMapper.hasRelease(productId, "ALARM")).thenReturn(true);
+        when(snapshotMapper.nextRuntimeRevision(productId, "ALARM")).thenReturn(3L);
+        when(configurationMapper.findCurrentFragmentsForDevices(
+                productId, "ALARM", List.of(firstDeviceId)
+        )).thenReturn(List.of(
+                new StrategyConfigurationMapper.StrategyFragmentRecord(
+                        firstDeviceId, productReleaseId, "PRODUCT", productId, null,
+                        alarmValues("product-stale", "产品数据陈旧")
+                ),
+                new StrategyConfigurationMapper.StrategyFragmentRecord(
+                        firstDeviceId, deviceReleaseId, "DEVICE", firstDeviceId, null,
+                        alarmValues("device-stale", "设备数据陈旧")
+                )
+        ));
+
+        StrategyRuntimeSnapshotService.SnapshotView snapshot = service.captureDelta(
+                productId,
+                "ALARM",
+                List.of(firstDeviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.PUBLISH
+        ).orElseThrow();
+
+        assertThat(snapshot.strategyType()).isEqualTo("ALARM");
+        assertThat(snapshot.runtimeRevision()).isEqualTo(3);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<StrategyRuntimeSnapshotMapper.SnapshotItemWrite>> items =
+                ArgumentCaptor.forClass(List.class);
+        verify(snapshotMapper).insertItems(items.capture());
+        assertThat(items.getValue()).singleElement().satisfies(item ->
+                assertThat(item.valuesJson())
+                        .contains("\"key\":\"device-stale\"")
+                        .contains("\"enabled\":true")
+                        .doesNotContain("product-stale"));
+    }
+
+    @Test
     void 未发布数据质量策略或非运行消费类型不得制造空事件() {
         when(snapshotMapper.hasRelease(productId, "DATA_QUALITY")).thenReturn(false);
 
@@ -182,5 +221,20 @@ class StrategyRuntimeSnapshotServiceTest {
     ) {
         return new StrategyRuntimeSnapshotMapper.SnapshotItemRecord(
                 snapshotId, deviceId, valuesJson, "sha256:" + "b".repeat(64));
+    }
+
+    private String alarmValues(String key, String name) {
+        return """
+                {"rules":[{
+                  "key":"%s",
+                  "name":"%s",
+                  "sourceType":"QUALITY",
+                  "severity":"WARNING",
+                  "triggerDurationSeconds":30,
+                  "recoverDurationSeconds":60,
+                  "cooldownSeconds":300,
+                  "qualityRuleCode":"STALE_TIMESTAMP"
+                }]}
+                """.formatted(key, name);
     }
 }
