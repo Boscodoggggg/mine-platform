@@ -70,7 +70,8 @@ class TelemetryMigrationIT {
                 WHERE hypertable_schema = 'public'
                 ORDER BY hypertable_name
                 """))
-                .containsExactly("location_point", "telemetry_numeric");
+                .containsExactly(
+                        "location_point", "telemetry_numeric", "telemetry_numeric_rollup");
         assertThat(queryStrings("""
                 SELECT tablename || ':' || indexname
                 FROM pg_indexes
@@ -132,6 +133,8 @@ class TelemetryMigrationIT {
                     'telemetry_alarm_policy',
                     'telemetry_retention_policy',
                     'telemetry_aggregation_policy',
+                    'telemetry_aggregation_execution',
+                    'telemetry_numeric_rollup',
                     'telemetry_retention_execution',
                     'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence',
@@ -140,7 +143,7 @@ class TelemetryMigrationIT {
                 ]) AS table_name
                 ORDER BY table_name
                 """))
-                .hasSize(11)
+                .hasSize(13)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(queryStrings("""
                 SELECT COALESCE(col_description(table_class.oid, attribute.attnum), '')
@@ -155,6 +158,8 @@ class TelemetryMigrationIT {
                       'telemetry_alarm_policy',
                       'telemetry_retention_policy',
                       'telemetry_aggregation_policy',
+                      'telemetry_aggregation_execution',
+                      'telemetry_numeric_rollup',
                       'telemetry_retention_execution',
                       'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence',
@@ -165,7 +170,7 @@ class TelemetryMigrationIT {
                   AND NOT attribute.attisdropped
                 ORDER BY table_class.relname, attribute.attnum
                 """))
-                .hasSize(109)
+                .hasSize(140)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(queryStrings("""
                 SELECT indexname
@@ -272,6 +277,8 @@ class TelemetryMigrationIT {
                     'telemetry_alarm_policy',
                     'telemetry_retention_policy',
                     'telemetry_aggregation_policy',
+                    'telemetry_aggregation_execution',
+                    'telemetry_numeric_rollup',
                     'telemetry_retention_execution',
                     'telemetry_strategy_event_inbox',
                     'telemetry_quality_evidence',
@@ -281,10 +288,12 @@ class TelemetryMigrationIT {
                 ORDER BY table_name
                 """))
                 .containsExactly(
+                        "telemetry_aggregation_execution",
                         "telemetry_aggregation_policy",
                         "telemetry_alarm_policy",
                         "telemetry_alarm_runtime_state",
                         "telemetry_data_quality_policy",
+                        "telemetry_numeric_rollup",
                         "telemetry_outbox_event",
                         "telemetry_quality_evidence",
                         "telemetry_retention_execution",
