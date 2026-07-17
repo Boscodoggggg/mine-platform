@@ -177,6 +177,8 @@ GET/POST         /api/v1/strategy-releases
 GET              /api/v1/strategy-releases/{id}
 POST             /api/v1/strategy-releases/{id}/rollback
 GET              /api/v1/devices/{id}/effective-strategies/{type}
+POST             /api/v1/retention-previews
+GET              /api/v1/retention-executions?limit=20
 
 GET/POST         /api/v1/config-releases
 GET              /api/v1/config-releases/{id}
@@ -188,7 +190,9 @@ POST             /internal/v1/config-releases/{id}/nodes/{nodeId}
 
 样本、测试、发布、回滚和查看发布历史分别使用 `device:protocol:sample:view`、`device:protocol:sample:edit`、`device:protocol:test`、`device:configuration:publish`、`device:configuration:rollback`、`device:configuration:view` 权限。发布和回滚必须携带 `Idempotency-Key`；内部接口不使用用户会话，必须携带从只读 secret 文件加载的 `X-Mine-Service-Token`，且响应不包含任何凭据。
 
-设备组查看/维护分别使用 `device:group:view`、`device:group:edit`，策略查看/编辑/发布分别使用 `device:strategy:view`、`device:strategy:edit`、`device:strategy:publish`。设备组成员、优先级和归档变更采用乐观锁；发布和回滚要求 `Idempotency-Key` 与原因。当前策略白名单包含 `ONLINE_STATUS`、`DATA_QUALITY` 和 `ALARM`：前两类按字段继承，`ALARM.rules` 作为原子集合整组覆盖。有效值查询返回最终字段、作用范围/发布来源、稳定内容哈希和冲突详情。同优先级设备组异值冲突返回 `409 / STRATEGY-409-001`，策略版本、发布事实和审计均不提交。
+设备组查看/维护分别使用 `device:group:view`、`device:group:edit`，策略查看/编辑/发布分别使用 `device:strategy:view`、`device:strategy:edit`、`device:strategy:publish`。设备组成员、优先级和归档变更采用乐观锁；发布和回滚要求 `Idempotency-Key` 与原因。当前策略白名单包含 `ONLINE_STATUS`、`DATA_QUALITY`、`ALARM` 和 `RETENTION`：前两类按字段继承，`ALARM.rules` 和 `RETENTION.policy` 分别作为原子集合/对象整组覆盖。有效值查询返回最终字段、作用范围/发布来源、稳定内容哈希和冲突详情。同优先级设备组异值冲突返回 `409 / STRATEGY-409-001`，策略版本、发布事实和审计均不提交。
+
+保留影响预览与执行历史是只读运行接口，要求 `device:strategy:view`。预览请求提交 `strategyVersionId + productId + scopeType + scopeId`，不接受浏览器提供的任意策略对象；服务端按发布后的逐设备最终策略统计，每数据集最多精确统计 100 万行，达到上限时返回 `atLeast=true`。响应的一次性凭证绑定管理员、确切版本内容、作用域、成员、组优先级和最终解析哈希；`RETENTION` 发布与回滚必须提交该凭证，过期、复用或状态变化返回 `RETENTION-409-001`。已有当前 `RETENTION` 组发布时，成员、优先级和归档变更使用独立的设备组变化预览，绑定变化类型、设备组版本、成员差异和目标优先级；最终设备组写事务重新检查 `device:strategy:publish` 并一次消费凭证。独立菜单使用 `governance:retention:view`，授予该菜单时后端自动补齐产品、设备和策略三项只读菜单依赖，不补齐编辑、发布、归档或凭据权限。V28 会为升级前已拥有策略查看菜单的角色补齐相同只读集合。
 
 ### 2.4 矿山业务
 
@@ -486,8 +490,9 @@ Phase 2 已落地表及关键语义：
 - `dev_config_node_status`：节点维度的 `PENDING/LOADED/FAILED`、实际哈希、脱敏消息和加载时间。
 - `dev_device_group`：产品内稳定编码、显示名称、0～1000 策略优先级、归档状态和乐观锁。
 - `dev_device_group_membership`：设备组成员的生效/结束时间区间；当前关系由部分唯一索引约束，设备归档时由数据库自动关闭。
-- `dev_strategy_version`：经过策略类型注册表校验的局部字段版本；当前数据库白名单允许 `ONLINE_STATUS`、`DATA_QUALITY`、`ALARM`，已发布版本不可修改或删除。
+- `dev_strategy_version`：经过策略类型注册表校验的局部字段版本；当前数据库白名单允许 `ONLINE_STATUS`、`DATA_QUALITY`、`ALARM`、`RETENTION`，已发布版本不可修改或删除。
 - `dev_strategy_release`：把已发布策略版本应用到产品、设备组或单设备的不可变事实，保存组优先级审计快照、幂等键、动作和回滚引用。
+- `dev_retention_preview_evidence`：15 分钟短期一次性预览凭证，保存管理员、版本、作用域、直接发布或设备组变化身份、最终解析哈希、统计/过期时间和消费事实；V29 创建并完整注释。
 
 所有新增表和字段均通过 `COMMENT ON TABLE`、`COMMENT ON COLUMN` 提供中文注释；`DatabaseMigrationIT` 会读取 PostgreSQL 元数据校验注释不缺失。配置包和发布表由触发器保护为不可变，产品内序号、哈希格式、回滚引用、状态与加载时间等均有数据库约束。成员关系触发器再次校验设备/组产品一致性和生命周期；策略发布触发器再次校验版本、产品、策略类型与多态作用范围一致性。
 
@@ -667,6 +672,13 @@ CREATE TABLE location_point (
 
 最终 chunk interval、分区和唯一约束必须依据写入基准测试决定，不能照抄示意值。
 
+数据保留运行新增：
+
+- `telemetry_retention_policy`：单设备最后正确 `RETENTION.policy` 镜像，保存运行修订、快照、规范化 JSON、内容哈希，并用生成列暴露启用状态、等级和两个期限。
+- `telemetry_retention_execution`：不可删除的单轮执行事实，保存实例、状态、启用策略数、两个数据集删除量、批次数、数据库开始/完成时间和脱敏错误；触发器只允许运行进度单向增加及 `RUNNING` 收敛到终态。
+
+V15 创建策略镜像并扩展运行修订白名单，V16 创建执行事实和候选索引。所有表和字段使用中文注释，TimescaleDB 集成测试校验注释完整、约束、索引、终态保护及有界删除边界。
+
 ## 13. 当前值
 
 Redis hash 保存物模型值及独立发生时间。API 查询设备 latest 时：
@@ -689,7 +701,7 @@ Redis hash 保存物模型值及独立发生时间。API 查询设备 latest 时
 - 用户、设备、车辆、人员：归档，不物理删除历史引用。
 - 草稿且从未发布的配置允许删除，但记录审计。
 - 已发布配置版本不可删除，只能停用或回滚。
-- 遥测按保留策略清理。
+- 原始数值遥测和质量证据按最后正确 `RETENTION` 策略有界清理；首版不删除 Inbox、最新值、告警状态/Outbox、策略镜像/水位、服务端告警和审计。
 - 审计按长期策略归档，普通管理员无删除权限。
 
 ## 16. Migration 规则

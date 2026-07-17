@@ -184,6 +184,22 @@ Compose profiles：
 
 所有服务启动时输出“非敏感有效配置摘要”和版本，不打印 secret。
 
+### 7.1 数据保留调度参数
+
+数据保留在应用默认配置中关闭，单机 Compose 显式开启。多 Telemetry 实例可以同时开启，但必须使用不同实例标识；数据库 advisory lock 会让同一 TimescaleDB 每轮只有一个实例真正执行。
+
+| 环境变量 | 默认值 | 安全边界与说明 |
+|---|---:|---|
+| `MINE_TELEMETRY_RETENTION_ENABLED` | 应用 `false`；单机 Compose `true` | 是否创建调度器；紧急停删必须先同时停止/缩容全部旧实例并确认锁释放，再以 `false` 启动，禁止使用滚动重启代替停机 |
+| `MINE_TELEMETRY_RETENTION_INSTANCE_ID` | Telemetry 实例/主机名 | 1～128 字符，必须能定位执行节点 |
+| `MINE_TELEMETRY_RETENTION_BATCH_SIZE` | `10000` | 每数据集每批 1～100000 行 |
+| `MINE_TELEMETRY_RETENTION_MAX_CYCLES` | `10` | 单轮双数据集周期 1～1000 |
+| `MINE_TELEMETRY_RETENTION_INITIAL_DELAY` | `30s` | 0～24 小时 |
+| `MINE_TELEMETRY_RETENTION_INTERVAL` | `5m` | 固定延迟 10 秒～24 小时 |
+| `MINE_TELEMETRY_RETENTION_STALE_TIMEOUT` | `2h` | 失联执行收敛阈值 1 分钟～7 天 |
+
+批次和周期上限是数据库保护参数，不是吞吐承诺。调整前必须结合候选积压、磁盘、WAL、锁等待、查询计划和备份窗口；不得为追赶积压直接提高到最大值。标准操作、暂停和恢复步骤见 [数据保留运行手册](runbooks/retention-runtime.md)。
+
 ## 8. 服务发现
 
 - 单机：Compose service name。
@@ -214,6 +230,7 @@ Compose profiles：
 | node-1 故障 | VIP 到 node-2，浏览器/设备重连 |
 | 单个 gateway 故障 | MQTT Broker 保持，其他 gateway 消费 |
 | 单个 telemetry 故障 | RabbitMQ 未 ACK 消息重新投递 |
+| 数据保留执行实例故障 | 数据库锁随会话释放，超时 `RUNNING` 事实由后续实例收敛为失败并重新扫描 |
 | 一个 RabbitMQ 节点故障 | 剩余两个多数派继续 |
 | PostgreSQL 主库故障 | 人工提升备库并切换连接 |
 | Redis 主故障 | Sentinel 切换，从历史/新消息修复最新值 |
@@ -253,6 +270,8 @@ Compose profiles：
 3. 加密离线或异地副本。
 
 每周自动恢复校验关键表和 Timescale 扩展版本；每季度完整演练。
+
+数据保留策略回滚不恢复已删除的遥测或质量证据。恢复已删事实前必须先停止保留调度、冻结相关写入/查询切换方案，选择删除前恢复点并在隔离环境验证，再按矿区批准的恢复流程回灌或切换；未完成备份恢复演练不得把数据保留切片视为生产放行。
 
 ## 13. 升级
 
@@ -309,6 +328,18 @@ TimescaleDB 的 PostgreSQL major 版本升级不是普通容器重建。PG17 数
 - 不记录密码、token、完整个人敏感信息。
 
 Prometheus 不把 deviceId、commandId、traceId 当 label，避免高基数。
+
+### 15.1 数据保留监控
+
+至少观察以下指标和告警：
+
+- `mine_telemetry_retention_runs_total{status=...}` 与 `mine_telemetry_retention_rows_deleted_total{dataset="raw|quality"}`；
+- `mine_telemetry_retention_running`、`mine_telemetry_retention_policy_count`；
+- `mine_telemetry_retention_consecutive_failures`、`mine_telemetry_retention_consecutive_partial`；
+- `mine_telemetry_retention_last_success_epoch_seconds` 与 `mine_telemetry_retention_last_completion_epoch_seconds`；
+- `MineTelemetryRetentionConsecutiveFailures`、`MineTelemetryRetentionNoRecentSuccess`、`MineTelemetryRetentionPersistentlyPartial`。
+
+告警后的标准顺序是：确认是否仍在删除、检查最近执行事实与数据库健康、必要时停止调度、再处理积压或回滚策略。禁止为了消除告警删除执行事实、清零数据库状态或手工批量删除。
 
 ## 16. 运维页面和 Grafana 边界
 
