@@ -5,6 +5,7 @@ import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
+import com.bosco.mine.model.strategy.AggregationStrategyDefinition;
 import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.model.strategy.RetentionStrategyDefinition;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
@@ -404,6 +405,8 @@ public class DeviceGroupService {
                 productId, AlarmStrategyDefinition.TYPE, affectedDeviceIds, reason);
         runtimeSnapshotService.captureDelta(
                 productId, RetentionStrategyDefinition.TYPE, affectedDeviceIds, reason);
+        runtimeSnapshotService.captureDelta(
+                productId, AggregationStrategyDefinition.TYPE, affectedDeviceIds, reason);
     }
 
     private StrategyScopeMapper.DeviceGroupRecord requireActiveGroup(UUID groupId) {

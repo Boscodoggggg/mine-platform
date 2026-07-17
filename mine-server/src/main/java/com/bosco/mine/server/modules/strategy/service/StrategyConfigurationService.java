@@ -5,6 +5,7 @@ import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
+import com.bosco.mine.model.strategy.AggregationStrategyDefinition;
 import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.model.strategy.EffectiveStrategyResolver;
 import com.bosco.mine.model.strategy.OnlineStatusStrategyDefinition;
@@ -639,6 +640,9 @@ public class StrategyConfigurationService implements StrategyConflictGuard {
         }
         if (RetentionStrategyDefinition.TYPE.equals(normalizedType)) {
             return new RetentionStrategyDefinition();
+        }
+        if (AggregationStrategyDefinition.TYPE.equals(normalizedType)) {
+            return new AggregationStrategyDefinition();
         }
         throw new MineException(DEFINITION_INVALID, Map.of(
                 "violations", List.of(new StrategyValidationException.Violation(

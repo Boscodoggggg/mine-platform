@@ -40,7 +40,7 @@ class StrategyConfigurationOpenApiTest {
 
         Map<String, Object> schemas = map(map(root.get("components")).get("schemas"));
         assertThat(list(map(schemas.get("StrategyType")).get("enum")))
-                .contains("RETENTION");
+                .contains("RETENTION", "AGGREGATION");
         assertThat(map(map(schemas.get("RetentionPolicy")).get("properties")))
                 .containsKeys(
                         "enabled", "retentionClass",

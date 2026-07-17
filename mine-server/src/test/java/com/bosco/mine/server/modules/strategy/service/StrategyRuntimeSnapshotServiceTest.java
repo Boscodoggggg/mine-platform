@@ -202,6 +202,45 @@ class StrategyRuntimeSnapshotServiceTest {
     }
 
     @Test
+    void 聚合策略对象应按作用域整体覆盖并写入独立运行修订() {
+        UUID productReleaseId = UUID.randomUUID();
+        UUID deviceReleaseId = UUID.randomUUID();
+        when(snapshotMapper.hasRelease(productId, "AGGREGATION")).thenReturn(true);
+        when(snapshotMapper.nextRuntimeRevision(productId, "AGGREGATION")).thenReturn(5L);
+        when(configurationMapper.findCurrentFragmentsForDevices(
+                productId, "AGGREGATION", List.of(firstDeviceId)
+        )).thenReturn(List.of(
+                new StrategyConfigurationMapper.StrategyFragmentRecord(
+                        firstDeviceId, productReleaseId, "PRODUCT", productId, null,
+                        aggregationValues("speed", 300, 7_200)
+                ),
+                new StrategyConfigurationMapper.StrategyFragmentRecord(
+                        firstDeviceId, deviceReleaseId, "DEVICE", firstDeviceId, null,
+                        aggregationValues("payload", 3_600, 14_400)
+                )
+        ));
+
+        StrategyRuntimeSnapshotService.SnapshotView snapshot = service.captureDelta(
+                productId,
+                "AGGREGATION",
+                List.of(firstDeviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.PUBLISH
+        ).orElseThrow();
+
+        assertThat(snapshot.strategyType()).isEqualTo("AGGREGATION");
+        assertThat(snapshot.runtimeRevision()).isEqualTo(5);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<StrategyRuntimeSnapshotMapper.SnapshotItemWrite>> items =
+                ArgumentCaptor.forClass(List.class);
+        verify(snapshotMapper).insertItems(items.capture());
+        assertThat(items.getValue()).singleElement().satisfies(item ->
+                assertThat(item.valuesJson())
+                        .contains("\"propertyId\":\"payload\"")
+                        .contains("\"correctionWindowSeconds\":14400")
+                        .doesNotContain("speed"));
+    }
+
+    @Test
     void 未发布数据质量策略或非运行消费类型不得制造空事件() {
         when(snapshotMapper.hasRelease(productId, "DATA_QUALITY")).thenReturn(false);
 
@@ -286,5 +325,19 @@ class StrategyRuntimeSnapshotServiceTest {
                   "qualityEvidenceDays":%d
                 }}
                 """.formatted(retentionClass, rawDays, evidenceDays);
+    }
+
+    private String aggregationValues(
+            String propertyId,
+            int bucketSeconds,
+            int correctionWindowSeconds
+    ) {
+        return """
+                {"policy":{
+                  "enabled":true,
+                  "correctionWindowSeconds":%d,
+                  "rules":[{"propertyId":"%s","bucketSeconds":%d}]
+                }}
+                """.formatted(correctionWindowSeconds, propertyId, bucketSeconds);
     }
 }

@@ -63,6 +63,10 @@ class DeviceCommandServiceTest {
                 productId, "RETENTION", List.of(created.id()),
                 StrategyRuntimeSnapshotService.ChangeReason.DEVICE_CREATE
         );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "AGGREGATION", List.of(created.id()),
+                StrategyRuntimeSnapshotService.ChangeReason.DEVICE_CREATE
+        );
     }
 
     @Test
@@ -81,6 +85,10 @@ class DeviceCommandServiceTest {
 
         verify(runtimeSnapshotService).captureDelta(
                 productId, "RETENTION", List.of(deviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.DEVICE_ARCHIVE
+        );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "AGGREGATION", List.of(deviceId),
                 StrategyRuntimeSnapshotService.ChangeReason.DEVICE_ARCHIVE
         );
     }

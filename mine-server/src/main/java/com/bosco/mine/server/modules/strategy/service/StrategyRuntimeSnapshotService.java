@@ -4,6 +4,7 @@ import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.model.strategy.AlarmStrategyDefinition;
+import com.bosco.mine.model.strategy.AggregationStrategyDefinition;
 import com.bosco.mine.model.strategy.DataQualityStrategyDefinition;
 import com.bosco.mine.model.strategy.EffectiveStrategyResolver;
 import com.bosco.mine.model.strategy.RetentionStrategyDefinition;
@@ -38,7 +39,7 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 /**
- * 把数据质量、告警和数据保留控制面的最终有效策略固化为可重放的不可变增量快照。
+ * 把数据质量、告警、数据保留和聚合控制面的最终有效策略固化为可重放的不可变增量快照。
  */
 @Service
 public class StrategyRuntimeSnapshotService {
@@ -53,7 +54,8 @@ public class StrategyRuntimeSnapshotService {
     private static final Map<String, StrategyDefinition> RUNTIME_DEFINITIONS = Map.of(
             DataQualityStrategyDefinition.TYPE, new DataQualityStrategyDefinition(),
             AlarmStrategyDefinition.TYPE, new AlarmStrategyDefinition(),
-            RetentionStrategyDefinition.TYPE, new RetentionStrategyDefinition()
+            RetentionStrategyDefinition.TYPE, new RetentionStrategyDefinition(),
+            AggregationStrategyDefinition.TYPE, new AggregationStrategyDefinition()
     );
 
     private final StrategyRuntimeSnapshotMapper snapshotMapper;
@@ -87,7 +89,7 @@ public class StrategyRuntimeSnapshotService {
     /**
      * 在当前控制面事务中生成受影响设备的最终有效策略增量。
      *
-     * <p>空对象条目是显式删除语义。当前仅数据质量、告警和数据保留进入跨服务运行消费；
+     * <p>空对象条目是显式删除语义。当前仅数据质量、告警、数据保留和聚合进入跨服务运行消费；
      * 未发布过该类型时不会制造无意义事件。</p>
      *
      * @param productId 产品标识

@@ -186,6 +186,38 @@ class StrategyConfigurationServiceTest {
     }
 
     @Test
+    void 应创建固定桶且稳定排序的聚合策略草稿() {
+        when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
+        when(mapper.nextVersionNumber(productId, "AGGREGATION")).thenReturn(1L);
+
+        StrategyConfigurationService.StrategyVersionView created = service.createDraft(
+                new StrategyConfigurationService.CreateDraftCommand(
+                        productId,
+                        "aggregation",
+                        Map.of("policy", Map.of(
+                                "enabled", true,
+                                "correctionWindowSeconds", 7_200L,
+                                "rules", List.of(
+                                        Map.of("propertyId", "speed", "bucketSeconds", 300L),
+                                        Map.of("propertyId", "payload", "bucketSeconds", 3_600)
+                                )
+                        )),
+                        "矿卡数值聚合规则"
+                )
+        );
+
+        assertThat(created.strategyType()).isEqualTo("AGGREGATION");
+        assertThat(created.values()).containsOnlyKeys("policy");
+        verify(mapper).insertVersion(
+                eq(created.id()), eq(productId), eq("AGGREGATION"), eq(1L),
+                eq("{\"policy\":{\"correctionWindowSeconds\":7200,\"enabled\":true,"
+                        + "\"rules\":[{\"bucketSeconds\":3600,\"propertyId\":\"payload\"},"
+                        + "{\"bucketSeconds\":300,\"propertyId\":\"speed\"}]}}"),
+                eq("矿卡数值聚合规则"), eq(null)
+        );
+    }
+
+    @Test
     void 任意字段和非整数值必须被类型注册表拒绝() {
         when(scopeMapper.isActiveProduct(productId)).thenReturn(true);
 

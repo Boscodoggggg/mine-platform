@@ -2032,7 +2032,7 @@ components:
         version: { type: integer, format: int64, minimum: 0 }
     StrategyType:
       type: string
-      enum: [ONLINE_STATUS, DATA_QUALITY, ALARM, RETENTION]
+      enum: [ONLINE_STATUS, DATA_QUALITY, ALARM, RETENTION, AGGREGATION]
     StrategyScopeType:
       type: string
       enum: [PRODUCT, GROUP, DEVICE]

@@ -190,6 +190,10 @@ class DeviceGroupServiceTest {
                 productId, "RETENTION", List.of(addedDeviceId, removedDeviceId),
                 StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
         );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "AGGREGATION", List.of(addedDeviceId, removedDeviceId),
+                StrategyRuntimeSnapshotService.ChangeReason.MEMBERSHIP
+        );
         verify(retentionGroupChangeGuard).verify(any(RetentionGroupChangeGuard.ActivationCommand.class));
         verify(retentionGroupChangeGuard).markGroupChangeActivated(previewToken, groupId);
     }
@@ -256,6 +260,10 @@ class DeviceGroupServiceTest {
                 productId, "RETENTION", List.of(memberId),
                 StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
         );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "AGGREGATION", List.of(memberId),
+                StrategyRuntimeSnapshotService.ChangeReason.GROUP_ARCHIVE
+        );
         verify(retentionGroupChangeGuard).markGroupChangeActivated(previewToken, groupId);
     }
 
@@ -283,6 +291,10 @@ class DeviceGroupServiceTest {
 
         verify(runtimeSnapshotService).captureDelta(
                 productId, "RETENTION", List.of(memberId),
+                StrategyRuntimeSnapshotService.ChangeReason.PRIORITY
+        );
+        verify(runtimeSnapshotService).captureDelta(
+                productId, "AGGREGATION", List.of(memberId),
                 StrategyRuntimeSnapshotService.ChangeReason.PRIORITY
         );
         verify(retentionGroupChangeGuard).markGroupChangeActivated(previewToken, groupId);
