@@ -19,28 +19,33 @@ class RoutingOutboxEventPublisherTest {
     void 应按稳定事件类型路由命令和配置发布() {
         OutboxEventPublisher commandPublisher = mock(OutboxEventPublisher.class);
         OutboxEventPublisher configurationPublisher = mock(OutboxEventPublisher.class);
+        OutboxEventPublisher strategyPublisher = mock(OutboxEventPublisher.class);
         RoutingOutboxEventPublisher publisher = new RoutingOutboxEventPublisher(
-                commandPublisher, configurationPublisher);
+                commandPublisher, configurationPublisher, strategyPublisher);
         OutboxEvent command = event("command.dispatch.requested");
         OutboxEvent configuration = event("config.release.created");
+        OutboxEvent strategy = event("strategy.runtime.changed");
 
         publisher.publish(command);
         publisher.publish(configuration);
+        publisher.publish(strategy);
 
         verify(commandPublisher).publish(command);
         verify(configurationPublisher).publish(configuration);
+        verify(strategyPublisher).publish(strategy);
     }
 
     @Test
     void 未知事件类型必须拒绝而不能误投递() {
         OutboxEventPublisher commandPublisher = mock(OutboxEventPublisher.class);
         OutboxEventPublisher configurationPublisher = mock(OutboxEventPublisher.class);
+        OutboxEventPublisher strategyPublisher = mock(OutboxEventPublisher.class);
         RoutingOutboxEventPublisher publisher = new RoutingOutboxEventPublisher(
-                commandPublisher, configurationPublisher);
+                commandPublisher, configurationPublisher, strategyPublisher);
 
         assertThatThrownBy(() -> publisher.publish(event("unknown.event")))
                 .isInstanceOf(IllegalArgumentException.class);
-        verifyNoInteractions(commandPublisher, configurationPublisher);
+        verifyNoInteractions(commandPublisher, configurationPublisher, strategyPublisher);
     }
 
     private OutboxEvent event(String eventType) {

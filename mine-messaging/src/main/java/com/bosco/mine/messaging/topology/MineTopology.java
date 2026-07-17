@@ -42,6 +42,9 @@ public final class MineTopology {
     /** 动态配置发布交换机。 */
     public static final String CONFIG_EXCHANGE = "mine.config.x";
 
+    /** 运行策略变更交换机。 */
+    public static final String STRATEGY_EXCHANGE = "mine.strategy.x";
+
     /** 已持久化最新值的实时通知交换机。 */
     public static final String REALTIME_EXCHANGE = "mine.realtime.x";
 
@@ -66,6 +69,9 @@ public final class MineTopology {
     /** 动态配置消费队列。 */
     public static final String CONFIG_QUEUE = "mine.config.q";
 
+    /** 遥测服务运行策略消费队列。 */
+    public static final String TELEMETRY_STRATEGY_QUEUE = "mine.telemetry.strategy.q";
+
     /** 人工处置和重放使用的死信队列。 */
     public static final String DEAD_LETTER_QUEUE = "mine.dead-letter.q";
 
@@ -80,6 +86,9 @@ public final class MineTopology {
 
     /** 配置发布路由模式。 */
     public static final String CONFIG_ROUTING_PATTERN = "config.#";
+
+    /** 运行策略变更路由模式。 */
+    public static final String STRATEGY_ROUTING_PATTERN = "strategy.runtime.#";
 
     private MineTopology() {
     }

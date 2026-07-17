@@ -70,7 +70,8 @@ public class CommandOutboxConfiguration {
         long confirmTimeoutMillis = properties.resolvedConfirmTimeout().toMillis();
         return new RoutingOutboxEventPublisher(
                 new RabbitCommandOutboxPublisher(rabbitTemplate, confirmTimeoutMillis),
-                new RabbitConfigurationOutboxPublisher(rabbitTemplate, confirmTimeoutMillis)
+                new RabbitConfigurationOutboxPublisher(rabbitTemplate, confirmTimeoutMillis),
+                new RabbitStrategyOutboxPublisher(rabbitTemplate, confirmTimeoutMillis)
         );
     }
 
