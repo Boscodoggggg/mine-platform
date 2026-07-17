@@ -5,7 +5,8 @@ info:
   description: |
     智慧矿山平台对管理端开放的 REST 契约。本文件固化已实现的产品设备、遥测查询、
     协议黄金样本、配置发布回滚、运行节点证据、设备组和三级有效策略接口。
-    所有时间均为带时区的 ISO-8601 UTC 时间。命令中心只开放已发布的低风险命令模板。
+    所有时间均为带时区的 ISO-8601 UTC 时间。命令中心只开放已发布的低风险命令模板；
+    告警中心以触发、恢复、确认和关闭四类正交事实形成可追责处置闭环。
 servers:
   - url: /api/v1
 security:
@@ -29,6 +30,8 @@ tags:
     description: 设备最新值与数值遥测历史
   - name: CommandCenter
     description: 设备命令下发与可靠状态时间线
+  - name: AlarmCenter
+    description: 双来源告警查询、确认和恢复后关闭
 paths:
   /dashboard/operations:
     get:
@@ -875,6 +878,117 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '404': { $ref: '#/components/responses/CommandNotFound' }
+  /alarms:
+    get:
+      tags: [AlarmCenter]
+      operationId: listAlarms
+      summary: 组合过滤并分页查询告警周期
+      description: |
+        status 由触发、恢复、确认和关闭事实实时推导；active=true 只返回尚未恢复的告警。
+        查询结果按触发时间和告警标识倒序排列。
+      parameters:
+        - name: active
+          in: query
+          schema: { type: boolean }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/AlarmStatus' }
+        - name: severity
+          in: query
+          schema: { $ref: '#/components/schemas/AlarmSeverity' }
+        - name: deviceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: ruleKey
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - name: from
+          in: query
+          description: 触发时间范围起点，包含。
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: 触发时间范围终点，不包含。
+          schema: { type: string, format: date-time }
+        - $ref: '#/components/parameters/Page'
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+      responses:
+        '200':
+          description: 告警周期分页。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlarmPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /alarms/{alarmId}:
+    get:
+      tags: [AlarmCenter]
+      operationId: getAlarm
+      summary: 查询告警周期完整事实
+      parameters:
+        - $ref: '#/components/parameters/AlarmId'
+      responses:
+        '200':
+          description: 告警详情。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Alarm' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/AlarmNotFound' }
+  /alarms/{alarmId}/acknowledgements:
+    post:
+      tags: [AlarmCenter]
+      operationId: acknowledgeAlarm
+      summary: 幂等记录首次告警确认事实
+      description: 已确认告警再次请求时返回当前事实，不重复写确认或操作审计。
+      parameters:
+        - $ref: '#/components/parameters/AlarmId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlarmDispositionRequest' }
+      responses:
+        '200':
+          description: 确认后的告警事实。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Alarm' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/AlarmNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /alarms/{alarmId}/close:
+    post:
+      tags: [AlarmCenter]
+      operationId: closeAlarm
+      summary: 幂等关闭已经恢复的告警
+      description: 活动告警不能关闭；关闭只改变处置事实，不覆盖触发、恢复和确认时间线。
+      parameters:
+        - $ref: '#/components/parameters/AlarmId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlarmDispositionRequest' }
+      responses:
+        '200':
+          description: 关闭后的告警事实。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Alarm' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/AlarmNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /products:
     get:
       tags: [DeviceRegistry]
@@ -1645,6 +1759,14 @@ components:
       schema:
         type: string
         format: uuid
+    AlarmId:
+      name: alarmId
+      in: path
+      required: true
+      description: 告警周期 UUID。
+      schema:
+        type: string
+        format: uuid
     ProtocolVersionId:
       name: protocolVersionId
       in: path
@@ -1679,7 +1801,7 @@ components:
       name: Idempotency-Key
       in: header
       required: true
-      description: 同一管理员重复请求时返回原发布的稳定幂等键。
+      description: 同一业务操作重试时保持不变的稳定幂等键。
       schema: { type: string, minLength: 1, maxLength: 128 }
     Keyword:
       name: keyword
@@ -2761,6 +2883,81 @@ components:
         workOrderNo: { type: string, maxLength: 128 }
         ttlSeconds: { type: integer, minimum: 1, maximum: 86400 }
         timeoutSeconds: { type: integer, minimum: 1, maximum: 86400 }
+    AlarmStatus:
+      type: string
+      enum:
+        - ACTIVE_UNACKNOWLEDGED
+        - ACTIVE_ACKNOWLEDGED
+        - RECOVERED_UNACKNOWLEDGED
+        - RECOVERED_ACKNOWLEDGED
+        - CLOSED
+    AlarmSeverity:
+      type: string
+      enum: [INFO, WARNING, CRITICAL]
+    Alarm:
+      type: object
+      required:
+        - id
+        - deviceId
+        - deviceCode
+        - deviceName
+        - productKey
+        - ruleKey
+        - ruleName
+        - sourceType
+        - severity
+        - status
+        - policyRuntimeRevision
+        - policySnapshotId
+        - policyContentHash
+        - raisedAt
+        - raisedEvidence
+        - recoveredEvidence
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        deviceCode: { type: string, maxLength: 128 }
+        deviceName: { type: string, maxLength: 128 }
+        productKey: { type: string, maxLength: 64 }
+        ruleKey: { type: string, maxLength: 64 }
+        ruleName: { type: string, maxLength: 100 }
+        sourceType: { type: string, enum: [NUMERIC, QUALITY] }
+        severity: { $ref: '#/components/schemas/AlarmSeverity' }
+        propertyId: { type: [string, 'null'], maxLength: 128 }
+        status: { $ref: '#/components/schemas/AlarmStatus' }
+        policyRuntimeRevision: { type: integer, format: int64, minimum: 1 }
+        policySnapshotId: { type: string, format: uuid }
+        policyContentHash: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        raisedAt: { type: string, format: date-time }
+        raisedEvidence: { type: object, additionalProperties: true }
+        recoveredAt: { type: [string, 'null'], format: date-time }
+        recoveredEvidence: { type: object, additionalProperties: true }
+        recoveryReason:
+          type: [string, 'null']
+          enum: [CONDITION_CLEARED, RULE_DISABLED, RULE_REMOVED, RULE_CHANGED, null]
+        acknowledgedAt: { type: [string, 'null'], format: date-time }
+        acknowledgedBy: { type: [string, 'null'], format: uuid }
+        acknowledgementNote: { type: [string, 'null'], maxLength: 1000 }
+        closedAt: { type: [string, 'null'], format: date-time }
+        closedBy: { type: [string, 'null'], format: uuid }
+        closeNote: { type: [string, 'null'], maxLength: 1000 }
+        version: { type: integer, format: int64, minimum: 0 }
+    AlarmPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMetadata'
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Alarm' }
+    AlarmDispositionRequest:
+      type: object
+      required: [note, version]
+      properties:
+        note: { type: string, minLength: 1, maxLength: 1000 }
+        version: { type: integer, format: int64, minimum: 0 }
     ProductStatus:
       type: string
       enum: [DRAFT, ACTIVE, ARCHIVED]
@@ -3137,6 +3334,12 @@ components:
                 $ref: '#/components/schemas/ApiError'
     CommandNotFound:
       description: 命令不存在，错误码 COMMAND-404-001。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    AlarmNotFound:
+      description: 告警不存在，错误码 ALARM-404-001。
       content:
         application/json:
           schema:

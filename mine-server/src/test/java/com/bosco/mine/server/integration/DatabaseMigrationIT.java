@@ -58,7 +58,9 @@ class DatabaseMigrationIT {
             "sys_operation_log",
             "sys_outbox_event",
             "sys_inbox_event",
-            "cmd_instance"
+            "cmd_instance",
+            "alarm_event",
+            "alarm_acknowledgement"
     );
 
     @Container
@@ -111,6 +113,97 @@ class DatabaseMigrationIT {
     }
 
     @Test
+    void 告警中心表必须具备完整中文注释和处置约束() {
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN ('alarm_event', 'alarm_acknowledgement')
+                ORDER BY class.relname
+                """, String.class)).hasSize(2)
+                .allMatch(comment -> comment != null && comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN ('alarm_event'::regclass, 'alarm_acknowledgement'::regclass)
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_alarm_acknowledgement_alarm"))
+                .containsExactly("alarm_id");
+        assertThat(constraintColumns("uk_alarm_acknowledgement_idempotency"))
+                .containsExactly("alarm_id", "idempotency_key");
+        assertThat(constraintColumns("fk_alarm_event_device"))
+                .containsExactly("device_id");
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'alarm_event'
+                ORDER BY indexname
+                """, String.class)).contains(
+                "idx_alarm_event_device_time",
+                "idx_alarm_event_rule_time",
+                "idx_alarm_event_status_time"
+        );
+    }
+
+    @Test
+    void 告警触发事件和证据必须成对存在或同时为空() {
+        UUID productId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        UUID recoveryFirstAlarmId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO dev_product (id, product_key, name, device_type)
+                VALUES (?, 'alarm-constraint-product', '告警约束测试产品', 'SENSOR')
+                """, productId);
+        jdbcTemplate.update("""
+                INSERT INTO dev_device (id, product_id, device_code, name)
+                VALUES (?, ?, 'alarm-constraint-device', '告警约束测试设备')
+                """, deviceId, productId);
+
+        try {
+            assertThat(jdbcTemplate.update("""
+                    INSERT INTO alarm_event (
+                        id, device_id, product_key, rule_key, rule_name, source_type, severity,
+                        property_id, policy_runtime_revision, policy_snapshot_id,
+                        policy_content_hash, raised_at
+                    ) VALUES (
+                        ?, ?, 'alarm-constraint-product', 'quality-rule', '质量规则', 'QUALITY',
+                        'WARNING', NULL, 1, ?, ?, CURRENT_TIMESTAMP
+                    )
+                    """, recoveryFirstAlarmId, deviceId, UUID.randomUUID(),
+                    "sha256:" + "a".repeat(64))).isOne();
+            assertRejected("""
+                    INSERT INTO alarm_event (
+                        id, device_id, product_key, rule_key, rule_name, source_type, severity,
+                        property_id, policy_runtime_revision, policy_snapshot_id,
+                        policy_content_hash, raised_at, raised_event_id
+                    ) VALUES (
+                        ?, ?, 'alarm-constraint-product', 'numeric-rule', '数值规则', 'NUMERIC',
+                        'CRITICAL', 'temperature', 1, ?, ?, CURRENT_TIMESTAMP, ?
+                    )
+                    """, UUID.randomUUID(), deviceId, UUID.randomUUID(),
+                    "sha256:" + "b".repeat(64), UUID.randomUUID());
+            assertRejected("""
+                    INSERT INTO alarm_event (
+                        id, device_id, product_key, rule_key, rule_name, source_type, severity,
+                        property_id, policy_runtime_revision, policy_snapshot_id,
+                        policy_content_hash, raised_at, raised_evidence
+                    ) VALUES (
+                        ?, ?, 'alarm-constraint-product', 'numeric-rule', '数值规则', 'NUMERIC',
+                        'CRITICAL', 'temperature', 1, ?, ?, CURRENT_TIMESTAMP, '{}'::jsonb
+                    )
+                    """, UUID.randomUUID(), deviceId, UUID.randomUUID(),
+                    "sha256:" + "c".repeat(64));
+        } finally {
+            jdbcTemplate.update("DELETE FROM alarm_event WHERE device_id = ?", deviceId);
+            jdbcTemplate.update("DELETE FROM dev_device WHERE id = ?", deviceId);
+            jdbcTemplate.update("DELETE FROM dev_product WHERE id = ?", productId);
+        }
+    }
+
+    @Test
     void 应发布只读的系统与设备授权菜单契约() {
         assertThat(jdbcTemplate.queryForList("""
                 SELECT component_key
@@ -118,6 +211,7 @@ class DatabaseMigrationIT {
                 WHERE component_key IS NOT NULL
                 ORDER BY component_key
                 """, String.class)).containsExactly(
+                "alarm-center",
                 "command-center",
                 "device-device-list",
                 "device-model-management",
@@ -203,6 +297,16 @@ class DatabaseMigrationIT {
                 "command:instance:view",
                 "command:template:view"
         );
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE permission LIKE 'alarm:%'
+                ORDER BY permission
+                """, String.class)).containsExactly(
+                "alarm:event:ack",
+                "alarm:event:close",
+                "alarm:event:view"
+        );
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu child
@@ -249,6 +353,12 @@ class DatabaseMigrationIT {
                 FROM sys_menu
                 WHERE visible = TRUE
                   AND path IN ('/command', '/command/center')
+                """, Long.class)).isEqualTo(2L);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM sys_menu
+                WHERE visible = TRUE
+                  AND path IN ('/alarm', '/alarm/center')
                 """, Long.class)).isEqualTo(2L);
     }
 

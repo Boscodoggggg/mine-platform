@@ -605,6 +605,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/alarms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 组合过滤并分页查询告警周期
+         * @description status 由触发、恢复、确认和关闭事实实时推导；active=true 只返回尚未恢复的告警。
+         *     查询结果按触发时间和告警标识倒序排列。
+         */
+        get: operations["listAlarms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alarms/{alarmId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询告警周期完整事实 */
+        get: operations["getAlarm"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alarms/{alarmId}/acknowledgements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等记录首次告警确认事实
+         * @description 已确认告警再次请求时返回当前事实，不重复写确认或操作审计。
+         */
+        post: operations["acknowledgeAlarm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alarms/{alarmId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等关闭已经恢复的告警
+         * @description 活动告警不能关闭；关闭只改变处置事实，不覆盖触发、恢复和确认时间线。
+         */
+        post: operations["closeAlarm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products": {
         parameters: {
             query?: never;
@@ -1821,6 +1899,63 @@ export interface components {
             timeoutSeconds: number;
         };
         /** @enum {string} */
+        AlarmStatus: "ACTIVE_UNACKNOWLEDGED" | "ACTIVE_ACKNOWLEDGED" | "RECOVERED_UNACKNOWLEDGED" | "RECOVERED_ACKNOWLEDGED" | "CLOSED";
+        /** @enum {string} */
+        AlarmSeverity: "INFO" | "WARNING" | "CRITICAL";
+        Alarm: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            deviceId: string;
+            deviceCode: string;
+            deviceName: string;
+            productKey: string;
+            ruleKey: string;
+            ruleName: string;
+            /** @enum {string} */
+            sourceType: "NUMERIC" | "QUALITY";
+            severity: components["schemas"]["AlarmSeverity"];
+            propertyId?: string | null;
+            status: components["schemas"]["AlarmStatus"];
+            /** Format: int64 */
+            policyRuntimeRevision: number;
+            /** Format: uuid */
+            policySnapshotId: string;
+            policyContentHash: string;
+            /** Format: date-time */
+            raisedAt: string;
+            raisedEvidence: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            recoveredAt?: string | null;
+            recoveredEvidence: {
+                [key: string]: unknown;
+            };
+            /** @enum {string|null} */
+            recoveryReason?: "CONDITION_CLEARED" | "RULE_DISABLED" | "RULE_REMOVED" | "RULE_CHANGED" | null;
+            /** Format: date-time */
+            acknowledgedAt?: string | null;
+            /** Format: uuid */
+            acknowledgedBy?: string | null;
+            acknowledgementNote?: string | null;
+            /** Format: date-time */
+            closedAt?: string | null;
+            /** Format: uuid */
+            closedBy?: string | null;
+            closeNote?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        AlarmPage: components["schemas"]["PageMetadata"] & {
+            items: components["schemas"]["Alarm"][];
+        };
+        AlarmDispositionRequest: {
+            note: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @enum {string} */
         ProductStatus: "DRAFT" | "ACTIVE" | "ARCHIVED";
         /** @enum {string} */
         DeviceStatus: "ENABLED" | "DISABLED" | "ARCHIVED";
@@ -2131,6 +2266,15 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
+        /** @description 告警不存在，错误码 ALARM-404-001。 */
+        AlarmNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
         /** @description 产品不存在，错误码 DEVICE-404-001。 */
         ProductNotFound: {
             headers: {
@@ -2192,6 +2336,8 @@ export interface components {
         DeviceId: string;
         /** @description 命令 UUID。 */
         CommandId: string;
+        /** @description 告警周期 UUID。 */
+        AlarmId: string;
         /** @description 协议映射版本 UUID。 */
         ProtocolVersionId: string;
         /** @description 配置发布 UUID。 */
@@ -2202,7 +2348,7 @@ export interface components {
         StrategyVersionId: string;
         /** @description 不可变策略发布 UUID。 */
         StrategyReleaseId: string;
-        /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+        /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
         IdempotencyKey: string;
         Keyword: string;
         Page: number;
@@ -3089,7 +3235,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
                 "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
             path?: never;
@@ -3146,7 +3292,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
                 "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
             path: {
@@ -3344,6 +3490,137 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["CommandNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listAlarms: {
+        parameters: {
+            query?: {
+                active?: boolean;
+                status?: components["schemas"]["AlarmStatus"];
+                severity?: components["schemas"]["AlarmSeverity"];
+                deviceId?: string;
+                ruleKey?: string;
+                /** @description 触发时间范围起点，包含。 */
+                from?: string;
+                /** @description 触发时间范围终点，不包含。 */
+                to?: string;
+                page?: components["parameters"]["Page"];
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 告警周期分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlarmPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAlarm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 告警周期 UUID。 */
+                alarmId: components["parameters"]["AlarmId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 告警详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Alarm"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AlarmNotFound"];
+        };
+    };
+    acknowledgeAlarm: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 告警周期 UUID。 */
+                alarmId: components["parameters"]["AlarmId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlarmDispositionRequest"];
+            };
+        };
+        responses: {
+            /** @description 确认后的告警事实。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Alarm"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AlarmNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    closeAlarm: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 告警周期 UUID。 */
+                alarmId: components["parameters"]["AlarmId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlarmDispositionRequest"];
+            };
+        };
+        responses: {
+            /** @description 关闭后的告警事实。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Alarm"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["AlarmNotFound"];
             409: components["responses"]["Conflict"];
         };
     };
@@ -4134,7 +4411,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
                 "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
             path?: never;
@@ -4193,7 +4470,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description 同一管理员重复请求时返回原发布的稳定幂等键。 */
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
                 "Idempotency-Key": components["parameters"]["IdempotencyKey"];
             };
             path: {
