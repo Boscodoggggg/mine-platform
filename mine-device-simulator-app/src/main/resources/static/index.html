@@ -17,11 +17,11 @@
         <span><strong>矿山设备</strong><small>SIMULATOR</small></span>
       </a>
       <nav aria-label="主导航">
-        <a class="nav-item active" href="#devices">
+        <a class="nav-item active" href="#devices" data-view="devices">
           <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h2M15 10h2M15 14h2"/></svg>
           设备模拟
         </a>
-        <a class="nav-item" href="#activity">
+        <a class="nav-item" href="#logs" data-view="logs">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg>
           运行日志
         </a>
@@ -46,25 +46,25 @@
       </header>
 
       <section class="metrics" aria-label="运行概览">
-        <article class="metric-card">
+        <button class="metric-card" data-metric-action="ALL" type="button" aria-label="查看全部设备">
           <span class="metric-icon warm"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M15 10h2"/></svg></span>
           <div><span>设备配置</span><strong id="deviceCount">0</strong><small>台虚拟设备</small></div>
-        </article>
-        <article class="metric-card">
+        </button>
+        <button class="metric-card" data-metric-action="CONNECTED" type="button" aria-label="筛选在线设备">
           <span class="metric-icon green"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12.5 9.5 17 19 7"/></svg></span>
           <div><span>在线连接</span><strong id="onlineCount">0</strong><small>条链路就绪</small></div>
-        </article>
-        <article class="metric-card">
+        </button>
+        <button class="metric-card" data-metric-action="ACTIVITY" type="button" aria-label="查看发送活动">
           <span class="metric-icon blue"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 5-5v3h5a4 4 0 0 1 4 4v3M19 12l-5 5v-3H9a4 4 0 0 1-4-4V7"/></svg></span>
           <div><span>累计发送</span><strong id="sentCount">0</strong><small>帧模拟报文</small></div>
-        </article>
-        <article class="metric-card">
+        </button>
+        <button class="metric-card" data-metric-action="FAILED" type="button" aria-label="查看发送失败记录">
           <span class="metric-icon red"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 8v5M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg></span>
           <div><span>发送失败</span><strong id="failedCount">0</strong><small>次需要关注</small></div>
-        </article>
+        </button>
       </section>
 
-      <div class="workspace">
+      <div class="workspace" id="workspace">
         <section class="panel device-panel" id="devices">
           <div class="panel-header">
             <div><h2>模拟设备</h2><p>配置保存在本机 YAML，认证密码仅在启动时临时使用。</p></div>
@@ -77,12 +77,16 @@
           <div class="device-grid" id="deviceGrid" aria-live="polite"></div>
         </section>
 
-        <aside class="panel activity-panel" id="activity">
+        <aside class="panel activity-panel" id="logs">
           <div class="panel-header compact">
-            <div><h2>实时活动</h2><p id="activityHint">选择一台设备查看日志</p></div>
-            <button class="icon-button" id="refreshButton" type="button" aria-label="刷新状态">
-              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.5 9A7 7 0 0 0 6 7M5.5 15A7 7 0 0 0 18 17"/></svg>
-            </button>
+            <div><h2 id="activityTitle">实时活动</h2><p id="activityHint">选择一台设备查看日志</p></div>
+            <div class="activity-controls">
+              <label class="log-device-picker" for="logDeviceSelect">日志设备</label>
+              <select id="logDeviceSelect" aria-label="选择日志设备"><option value="">暂无设备</option></select>
+              <button class="icon-button" id="refreshButton" type="button" aria-label="刷新状态">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M18.5 9A7 7 0 0 0 6 7M5.5 15A7 7 0 0 0 18 17"/></svg>
+              </button>
+            </div>
           </div>
           <div class="activity-list" id="activityList"></div>
         </aside>

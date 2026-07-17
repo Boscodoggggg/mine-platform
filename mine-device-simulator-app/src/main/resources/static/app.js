@@ -3,6 +3,7 @@ const state = {
   runtime: new Map(),
   selectedId: null,
   filter: "ALL",
+  activeView: "devices",
   busy: false
 };
 
@@ -90,7 +91,16 @@ function render() {
   $("#sentCount").textContent = formatNumber(runtimes.reduce((sum, item) => sum + item.sentCount, 0));
   $("#failedCount").textContent = formatNumber(runtimes.reduce((sum, item) => sum + item.failedCount, 0));
   renderDevices();
+  renderLogDeviceOptions();
   renderActivity();
+}
+
+function renderLogDeviceOptions() {
+  const select = $("#logDeviceSelect");
+  select.innerHTML = state.profiles.length
+    ? state.profiles.map(profile => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)}</option>`).join("")
+    : '<option value="">暂无设备</option>';
+  select.value = state.selectedId || "";
 }
 
 function renderDevices() {
@@ -113,6 +123,12 @@ function renderDevices() {
 
 function deviceCard(profile, runtime) {
   const running = runtime.running;
+  const sendBlockedReason = runtime.state === "CONNECTED"
+    ? ""
+    : "请先启动设备并等待连接成功，再发送报文";
+  const connectionBlockedReason = running
+    ? ""
+    : "请先启动设备任务，再执行断连操作";
   const protocol = profile.transportMode === "MQTT" ? (profile.tlsEnabled ? "MQTTS" : "MQTT")
     : profile.transportMode === "TCP_CLIENT" ? "TCP CLIENT" : "TCP SERVER";
   const endpoint = `${profile.host}:${profile.port}`;
@@ -133,8 +149,8 @@ function deviceCard(profile, runtime) {
     </div>
     <div class="card-actions">
       <button class="action-button ${running ? "stop" : "start"}" type="button" data-action="${running ? "stop" : "start"}">${running ? "停止任务" : "启动任务"}</button>
-      <button class="action-button" type="button" data-action="send" ${runtime.state !== "CONNECTED" ? "disabled" : ""}>单发</button>
-      <button class="action-button" type="button" data-action="${runtime.state === "DISCONNECTED" && running ? "reconnect" : "disconnect"}" ${!running ? "disabled" : ""}>${runtime.state === "DISCONNECTED" && running ? "重连" : "断连"}</button>
+      <button class="action-button" type="button" data-action="send" ${sendBlockedReason ? `aria-disabled="true" data-blocked-reason="${sendBlockedReason}"` : ""}>单发</button>
+      <button class="action-button" type="button" data-action="${runtime.state === "DISCONNECTED" && running ? "reconnect" : "disconnect"}" ${connectionBlockedReason ? `aria-disabled="true" data-blocked-reason="${connectionBlockedReason}"` : ""}>${runtime.state === "DISCONNECTED" && running ? "重连" : "断连"}</button>
       <button class="card-menu" type="button" data-action="edit" aria-label="编辑 ${escapeHtml(profile.name)}">编辑</button>
       <button class="card-menu" type="button" data-action="delete" aria-label="删除 ${escapeHtml(profile.name)}">删除</button>
     </div>
@@ -162,6 +178,29 @@ function renderActivity() {
 
 function emptyActivity(title, text) {
   return `<div class="empty-state"><div><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg><strong>${title}</strong><p>${text}</p></div></div>`;
+}
+
+function viewFromHash() {
+  return location.hash === "#logs" || location.hash === "#activity" ? "logs" : "devices";
+}
+
+function setActiveView(view) {
+  const activeView = view === "logs" ? "logs" : "devices";
+  state.activeView = activeView;
+  $("#workspace").classList.toggle("log-view", activeView === "logs");
+  $$(".nav-item[data-view]").forEach(item => {
+    const active = item.dataset.view === activeView;
+    item.classList.toggle("active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+  $("#activityTitle").textContent = activeView === "logs" ? "运行日志" : "实时活动";
+}
+
+function navigateToView(view) {
+  const targetHash = `#${view === "logs" ? "logs" : "devices"}`;
+  if (location.hash === targetHash) setActiveView(view);
+  else location.hash = targetHash;
 }
 
 function openProfile(profile = null) {
@@ -246,8 +285,18 @@ async function deleteProfile(profile) {
 }
 
 $("#addDeviceButton").addEventListener("click", () => openProfile());
-$("#refreshButton").addEventListener("click", () => loadAll());
+$("#refreshButton").addEventListener("click", async event => {
+  event.currentTarget.classList.add("refreshing");
+  await loadAll();
+  event.currentTarget.classList.remove("refreshing");
+  toast("状态已刷新");
+});
 $("#transportMode").addEventListener("change", () => updateTransportFields(true));
+$("#logDeviceSelect").addEventListener("change", event => {
+  state.selectedId = event.currentTarget.value || null;
+  renderDevices();
+  renderActivity();
+});
 form.addEventListener("submit", saveProfile);
 $("#credentialForm").addEventListener("submit", async event => {
   event.preventDefault();
@@ -267,6 +316,15 @@ document.addEventListener("click", event => {
     state.filter = filter.dataset.filter;
     $$("[data-filter]").forEach(item => item.classList.toggle("active", item === filter));
     renderDevices();
+    if (!state.profiles.length) toast("暂无设备，请先添加一台模拟设备");
+  }
+  const metric = event.target.closest("[data-metric-action]");
+  if (metric) handleMetricAction(metric.dataset.metricAction);
+  const navigation = event.target.closest(".nav-item[data-view]");
+  if (navigation) {
+    event.preventDefault();
+    navigateToView(navigation.dataset.view);
+    return;
   }
   const card = event.target.closest("[data-profile-id]");
   if (!card) return;
@@ -276,6 +334,11 @@ document.addEventListener("click", event => {
   const actionButton = event.target.closest("[data-action]");
   if (!actionButton) { render(); return; }
   event.stopPropagation();
+  const blockedReason = actionButton.dataset.blockedReason;
+  if (blockedReason) {
+    toast(blockedReason);
+    return;
+  }
   const action = actionButton.dataset.action;
   if (action === "edit") {
     openProfile(profile);
@@ -290,6 +353,33 @@ document.addEventListener("click", event => {
   }
   render();
 });
+
+function handleMetricAction(action) {
+  if (action === "ALL" || action === "CONNECTED") {
+    navigateToView("devices");
+    state.filter = action;
+    $$('[data-filter]').forEach(item => item.classList.toggle("active", item.dataset.filter === action));
+    renderDevices();
+    $("#devices").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (action === "CONNECTED" && !state.profiles.some(profile => runtimeFor(profile).state === "CONNECTED")) {
+      toast("当前没有已连接设备");
+    }
+    return;
+  }
+  if (action === "FAILED") {
+    const failed = state.profiles.find(profile => runtimeFor(profile).failedCount > 0);
+    if (failed) {
+      state.selectedId = failed.id;
+      render();
+    } else {
+      toast("当前没有发送失败记录");
+    }
+  }
+  navigateToView("logs");
+  $("#logs").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+window.addEventListener("hashchange", () => setActiveView(viewFromHash()));
 
 profileDialog.addEventListener("click", event => {
   if (event.target === profileDialog) profileDialog.close();
@@ -320,5 +410,6 @@ function formatTime(value) {
 function formatNumber(value) { return new Intl.NumberFormat("zh-CN", { notation: value > 9999 ? "compact" : "standard" }).format(value); }
 function formatInterval(value) { return value >= 1000 && value % 1000 === 0 ? `${value / 1000} 秒` : `${value} ms`; }
 
+setActiveView(viewFromHash());
 loadAll();
 setInterval(() => loadAll({ quiet: true }), 2000);
