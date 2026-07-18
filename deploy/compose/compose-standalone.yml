@@ -81,6 +81,7 @@ services:
       MINE_BOOTSTRAP_ADMIN_USERNAME: ${MINE_BOOTSTRAP_ADMIN_USERNAME:-mine-admin}
       MINE_BOOTSTRAP_ADMIN_DISPLAY_NAME: ${MINE_BOOTSTRAP_ADMIN_DISPLAY_NAME:-矿区超级管理员}
       MINE_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/mine_super_admin_password
+      MINE_PERSON_DATA_KEY_FILE: /run/secrets/mine_person_data_key
       MINE_PASSWORD_BCRYPT_STRENGTH: ${MINE_PASSWORD_BCRYPT_STRENGTH:-12}
       MINE_AUTH_ACTIVE_TIMEOUT_SECONDS: ${MINE_AUTH_ACTIVE_TIMEOUT_SECONDS:-1800}
       MINE_RABBITMQ_ADMIN_BASE_URL: http://rabbitmq:15672
@@ -113,6 +114,7 @@ services:
       - postgres_password
       - redis_password
       - mine_super_admin_password
+      - mine_person_data_key
       - rabbitmq_admin_username
       - rabbitmq_admin_password
       - timescale_reader_password
@@ -784,6 +786,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/mine_configuration_distribution_token
   mine_super_admin_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/mine_super_admin_password
+  mine_person_data_key:
+    file: ${MINE_SECRETS_DIR:-../secrets}/mine_person_data_key
   grafana_admin_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/grafana_admin_password
   tls_certificate:

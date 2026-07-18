@@ -41,6 +41,8 @@ sa-token:
   is-read-body: false
 
 mine:
+  sensitive-data:
+    key-file: ${MINE_PERSON_DATA_KEY_FILE:/run/secrets/mine_person_data_key}
   configuration-distribution:
     enabled: ${MINE_CONFIGURATION_DISTRIBUTION_ENABLED:false}
     service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
