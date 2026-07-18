@@ -394,6 +394,232 @@ declare namespace App {
           string
         >;
         context: Record<'scopeRevoked' | 'invalidSelection' | 'loadFailed', string>;
+        assets: {
+          context: Record<
+            "label" | "placeholder" | "refresh" | "empty",
+            string
+          >;
+          common: Record<"status" | "updatedAt" | "version", string>;
+          status: Record<"active" | "archived", string>;
+          action: Record<"archive", string>;
+          validation: Record<"required", string>;
+          message: Record<"saved" | "archived" | "optimisticConflict", string>;
+          organization: Record<
+            | "code"
+            | "name"
+            | "search"
+            | "listTitle"
+            | "create"
+            | "createTitle"
+            | "editTitle"
+            | "empty"
+            | "emptyGuide"
+            | "confirmArchive",
+            string
+          >;
+          site: Record<
+            | "code"
+            | "name"
+            | "timezone"
+            | "description"
+            | "search"
+            | "listTitle"
+            | "create"
+            | "createTitle"
+            | "editTitle"
+            | "empty"
+            | "selectOrganization"
+            | "confirmArchive",
+            string
+          >;
+          vehicle: Record<
+            | "code"
+            | "name"
+            | "typeLabel"
+            | "mineNumber"
+            | "licensePlate"
+            | "brand"
+            | "model"
+            | "ratedLoad"
+            | "tons"
+            | "search"
+            | "listTitle"
+            | "create"
+            | "createTitle"
+            | "editTitle"
+            | "empty"
+            | "emptyGuide"
+            | "confirmArchive",
+            string
+          > & {
+            status: Record<
+              "active" | "maintenance" | "outofservice" | "archived",
+              string
+            >;
+            type: Record<
+              | "haultruck"
+              | "excavator"
+              | "loader"
+              | "drill"
+              | "dozer"
+              | "watertruck"
+              | "lightvehicle"
+              | "other",
+              string
+            >;
+          };
+          person: Record<
+            | "code"
+            | "name"
+            | "typeLabel"
+            | "phone"
+            | "certificate"
+            | "assignmentFrom"
+            | "assignmentTo"
+            | "search"
+            | "listTitle"
+            | "create"
+            | "createTitle"
+            | "editTitle"
+            | "empty"
+            | "emptyGuide"
+            | "confirmArchive"
+            | "sensitiveAction"
+            | "sensitiveTitle"
+            | "sensitiveNotice"
+            | "sensitiveCreateNotice"
+            | "qualificationAction"
+            | "qualificationTitle"
+            | "qualificationEmpty"
+            | "addQualification"
+            | "qualificationCode"
+            | "qualificationName"
+            | "allowedVehicleTypes"
+            | "qualificationValidFrom"
+            | "qualificationValidTo"
+            | "revokeQualification"
+            | "qualificationConfirmRevoke"
+            | "qualificationExpired",
+            string
+          > & {
+            type: Record<
+              | "driver"
+              | "operator"
+              | "supervisor"
+              | "worker"
+              | "visitor"
+              | "other",
+              string
+            >;
+            status: Record<"active" | "inactive" | "archived", string>;
+            qualificationStatus: Record<
+              "active" | "revoked" | "expired",
+              string
+            >;
+          };
+          tag: Record<
+            | "tab"
+            | "code"
+            | "vendor"
+            | "model"
+            | "battery"
+            | "batteryObservedAt"
+            | "search"
+            | "create"
+            | "createTitle"
+            | "editTitle"
+            | "empty"
+            | "confirmArchive",
+            string
+          > & {
+            status: Record<"active" | "lost" | "retired" | "archived", string>;
+          };
+          coordinate: Record<
+            | "tab"
+            | "dualModelNotice"
+            | "systemList"
+            | "systemSearch"
+            | "transformList"
+            | "createSystem"
+            | "editSystem"
+            | "createTransform"
+            | "editTransform"
+            | "code"
+            | "name"
+            | "typeLabel"
+            | "unitLabel"
+            | "epsg"
+            | "range"
+            | "rangeValue"
+            | "unified"
+            | "unifiedYes"
+            | "unifiedNo"
+            | "minX"
+            | "maxX"
+            | "minY"
+            | "maxY"
+            | "minZ"
+            | "maxZ"
+            | "source"
+            | "target"
+            | "version"
+            | "algorithmLabel"
+            | "parameters"
+            | "validFrom"
+            | "validTo"
+            | "publish"
+            | "published"
+            | "transformEmpty"
+            | "invalidParameters"
+            | "confirmArchive"
+            | "confirmPublish",
+            string
+          > & {
+            type: Record<"localcartesian" | "wgs84" | "enu", string>;
+            unit: Record<"meter" | "millimeter" | "degree", string>;
+            algorithm: Record<"identity" | "affine3d" | "wgs84enu", string>;
+            transformStatus: Record<"draft" | "published", string>;
+          };
+          binding: Record<
+            | "title"
+            | "description"
+            | "start"
+            | "temporalNotice"
+            | "drawerTitle"
+            | "typeLabel"
+            | "resource"
+            | "target"
+            | "role"
+            | "effectiveAt"
+            | "reason"
+            | "preview"
+            | "execute"
+            | "back"
+            | "previous"
+            | "proposed"
+            | "none"
+            | "affectedObjects"
+            | "qualificationPassed"
+            | "qualificationFailed"
+            | "qualificationRequired"
+            | "qualificationNotRequired"
+            | "required"
+            | "blocked"
+            | "confirmSwitch"
+            | "switched"
+            | "complete"
+            | "operationId",
+            string
+          > & {
+            type: Record<
+              "vehicledevice" | "vehicletag" | "persontag" | "personvehicle",
+              string
+            >;
+            impact: Record<"resource" | "previoustarget" | "newtarget", string>;
+            object: Record<"person" | "vehicle" | "tag" | "device", string>;
+            step: Record<"configure" | "preview" | "complete", string>;
+          };
+        };
         common: {
           action: string;
           edit: string;

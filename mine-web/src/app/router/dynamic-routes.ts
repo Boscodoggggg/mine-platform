@@ -32,11 +32,11 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
   'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue'),
   'alarm-center': () => import('@/modules/alarm/pages/alarm-center/AlarmCenterPage.vue'),
-  'mine-site-archive': fallbackView,
-  'mine-vehicle-management': fallbackView,
-  'mine-person-management': fallbackView,
-  'mine-location-tag-management': fallbackView,
-  'mine-binding-management': fallbackView,
+  'mine-site-archive': () => import('@/modules/mine/pages/site-archive/MineSiteArchivePage.vue'),
+  'mine-vehicle-management': () => import('@/modules/mine/pages/vehicle-management/VehicleManagementPage.vue'),
+  'mine-person-management': () => import('@/modules/mine/pages/person-management/PersonManagementPage.vue'),
+  'mine-location-tag-management': () => import('@/modules/mine/pages/tag-management/LocationTagManagementPage.vue'),
+  'mine-binding-management': () => import('@/modules/mine/pages/binding-management/BindingManagementPage.vue'),
   'mine-location-monitor': fallbackView
 };
 
