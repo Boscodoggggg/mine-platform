@@ -14,6 +14,9 @@ import com.bosco.mine.gateway.configuration.ConfigurationSnapshotCache;
 import com.bosco.mine.gateway.configuration.GatewayConfigurationDistributionProperties;
 import com.bosco.mine.gateway.configuration.HttpConfigurationSnapshotClient;
 import com.bosco.mine.gateway.configuration.ProtocolSnapshotRegistry;
+import com.bosco.mine.gateway.location.ConfirmedLocationPublisher;
+import com.bosco.mine.gateway.location.LocationMessageConsumer;
+import com.bosco.mine.gateway.location.LocationMessageNormalizer;
 import com.bosco.mine.gateway.mqtt.ConfirmedTelemetryPublisher;
 import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.normalize.DeviceMessageNormalizer;
@@ -43,7 +46,7 @@ import java.time.Clock;
  * 装配 gateway 的设备域连接和平台内部连接。
  *
  * <p>两套连接固定进入不同 vhost 并使用不同最小权限账号。设备域连接负责上行消费和 MQTT 下行，平台连接负责
- * 命令消费以及遥测、命令状态发布，两个安全域的权限不得混用。</p>
+ * 命令消费以及遥测、定位观测和命令状态发布，两个安全域的权限不得混用。</p>
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({
@@ -184,6 +187,25 @@ public class GatewayRabbitConfiguration {
     }
 
     /**
+     * 创建固定 JSON v1 定位报文标准化器。
+     *
+     * @param registry 可信设备身份快照
+     * @param properties gateway RabbitMQ 输入边界参数
+     * @return 定位报文标准化器
+     */
+    @Bean
+    public LocationMessageNormalizer locationMessageNormalizer(
+            DeviceSessionRegistry registry,
+            GatewayRabbitProperties properties
+    ) {
+        return new LocationMessageNormalizer(
+                registry,
+                IdGenerator.timeOrdered(),
+                Clock.systemUTC(),
+                properties.resolvedMaxPayloadBytes());
+    }
+
+    /**
      * 创建配置发布消息解码器。
      *
      * @param properties RabbitMQ 输入边界参数
@@ -277,6 +299,23 @@ public class GatewayRabbitConfiguration {
     }
 
     /**
+     * 创建使用平台连接的定位观测确认发布器。
+     *
+     * @param platformConnectionFactory 平台 vhost 连接
+     * @param properties gateway RabbitMQ 参数
+     * @return 带 Broker 确认的定位发布器
+     */
+    @Bean
+    public ConfirmedLocationPublisher confirmedLocationPublisher(
+            CachingConnectionFactory platformConnectionFactory,
+            GatewayRabbitProperties properties
+    ) {
+        return new ConfirmedLocationPublisher(
+                new RabbitTemplate(platformConnectionFactory),
+                properties.resolvedConfirmTimeoutMillis());
+    }
+
+    /**
      * 创建设备原始消息消费处理器。
      *
      * @param normalizer 标准化器
@@ -289,6 +328,21 @@ public class GatewayRabbitConfiguration {
             ConfirmedTelemetryPublisher publisher
     ) {
         return new DeviceMessageConsumer(normalizer, publisher);
+    }
+
+    /**
+     * 创建独立原始定位消息处理器。
+     *
+     * @param normalizer 定位报文标准化器
+     * @param publisher 定位观测确认发布器
+     * @return 原始定位消息处理器
+     */
+    @Bean
+    public LocationMessageConsumer locationMessageConsumer(
+            LocationMessageNormalizer normalizer,
+            ConfirmedLocationPublisher publisher
+    ) {
+        return new LocationMessageConsumer(normalizer, publisher);
     }
 
     /**
@@ -422,6 +476,29 @@ public class GatewayRabbitConfiguration {
         container.setAutoStartup(properties.resolvedAutoStartup());
         container.setMessageListener(consumer);
         return container;
+    }
+
+    /**
+     * 创建手工确认的原始定位上行监听容器。
+     *
+     * @param deviceConnectionFactory 设备 vhost 连接
+     * @param consumer 定位消息处理器
+     * @param properties gateway RabbitMQ 参数
+     * @param snapshotLoader 身份快照加载器，保证首次快照先于消费启动
+     * @return 定位上行监听容器
+     */
+    @Bean(destroyMethod = "destroy")
+    public SimpleMessageListenerContainer locationMessageListenerContainer(
+            CachingConnectionFactory deviceConnectionFactory,
+            LocationMessageConsumer consumer,
+            GatewayRabbitProperties properties,
+            DeviceIdentitySnapshotLoader snapshotLoader
+    ) {
+        return listenerContainer(
+                deviceConnectionFactory,
+                MineTopology.DEVICE_LOCATION_UPLINK_QUEUE,
+                consumer,
+                properties);
     }
 
     /**

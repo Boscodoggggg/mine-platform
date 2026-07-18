@@ -4,6 +4,7 @@ import com.bosco.mine.gateway.command.CommandAckConsumer;
 import com.bosco.mine.gateway.command.CommandDispatchConsumer;
 import com.bosco.mine.gateway.configuration.ConfigurationSnapshotCache;
 import com.bosco.mine.gateway.configuration.ConfigurationDistributionMetrics;
+import com.bosco.mine.gateway.location.LocationMessageConsumer;
 import com.bosco.mine.gateway.mqtt.DeviceMessageConsumer;
 import com.bosco.mine.gateway.session.DeviceIdentitySnapshotLoader;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
@@ -72,6 +73,7 @@ class GatewayRabbitConfigurationTest {
                     assertThat(infoBuilder.build().getDetails())
                             .containsEntry("deviceIdentitySnapshot", context.getBean(DeviceSessionRegistry.class).status());
                     assertThat(context).hasSingleBean(DeviceMessageConsumer.class);
+                    assertThat(context).hasSingleBean(LocationMessageConsumer.class);
                     assertThat(context).hasSingleBean(CommandDispatchConsumer.class);
                     assertThat(context).hasSingleBean(CommandAckConsumer.class);
                     CachingConnectionFactory device = context.getBean(
@@ -95,6 +97,7 @@ class GatewayRabbitConfigurationTest {
                             .collect(Collectors.toSet());
                     assertThat(listenerQueues).containsExactlyInAnyOrder(
                             MineTopology.DEVICE_UPLINK_QUEUE,
+                            MineTopology.DEVICE_LOCATION_UPLINK_QUEUE,
                             MineTopology.DEVICE_COMMAND_ACK_QUEUE,
                             MineTopology.COMMAND_QUEUE,
                             MineTopology.CONFIG_QUEUE

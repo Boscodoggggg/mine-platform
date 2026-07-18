@@ -1,6 +1,9 @@
 package com.bosco.mine.gateway.mqtt;
 
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.gateway.location.ConfirmedLocationPublisher;
+import com.bosco.mine.gateway.location.LocationMessageConsumer;
+import com.bosco.mine.gateway.location.LocationMessageNormalizer;
 import com.bosco.mine.gateway.normalize.DeviceMessageNormalizer;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.topology.MineTopology;
@@ -90,7 +93,9 @@ class DeviceMessageConsumerIT {
         addUser(DEVICE_CONSUMER, DEVICE_CONSUMER_PASSWORD);
         rabbitmqctl(
                 "set_permissions", "-p", MineTopology.DEVICE_VHOST, DEVICE_CONSUMER,
-                "^$", "^$", "^" + MineTopology.DEVICE_UPLINK_QUEUE.replace(".", "\\.") + "$"
+                "^$", "^$", "^("
+                        + MineTopology.DEVICE_UPLINK_QUEUE.replace(".", "\\.") + "|"
+                        + MineTopology.DEVICE_LOCATION_UPLINK_QUEUE.replace(".", "\\.") + ")$"
         );
 
         addUser(PLATFORM_PUBLISHER, PLATFORM_PUBLISHER_PASSWORD);
@@ -102,7 +107,7 @@ class DeviceMessageConsumerIT {
         addUser(PLATFORM_OBSERVER, PLATFORM_OBSERVER_PASSWORD);
         rabbitmqctl(
                 "set_permissions", "-p", MineTopology.PLATFORM_VHOST, PLATFORM_OBSERVER,
-                "^$", "^$", "^mine\\.telemetry\\.q$"
+                "^$", "^$", "^(mine\\.telemetry\\.q|mine\\.location\\.q)$"
         );
     }
 
@@ -116,15 +121,7 @@ class DeviceMessageConsumerIT {
 
     @Test
     void MQTT遥测应经设备队列标准化并发布到平台遥测队列() throws Exception {
-        DeviceSessionRegistry registry = new DeviceSessionRegistry();
-        registry.activate(1, "a".repeat(64), List.of(new DeviceSessionRegistry.DeviceIdentity(
-                "haul-truck",
-                DEVICE_CLIENT_ID,
-                DEVICE_ID,
-                "simulator-001",
-                "mine-site-001",
-                "mqtt-json-v1"
-        )));
+        DeviceSessionRegistry registry = registry();
         DeviceMessageNormalizer normalizer = new DeviceMessageNormalizer(
                 registry,
                 IdGenerator.timeOrdered(),
@@ -179,6 +176,57 @@ class DeviceMessageConsumerIT {
         assertThat(json.get("payload").get("properties").get("engine.rpm").asInt()).isEqualTo(1280);
     }
 
+    @Test
+    void MQTT定位应经独立队列转换为可信平台观测() throws Exception {
+        LocationMessageNormalizer normalizer = new LocationMessageNormalizer(
+                registry(), IdGenerator.timeOrdered(), Clock.systemUTC(), 64 * 1024);
+        deviceConnectionFactory = connectionFactory(
+                MineTopology.DEVICE_VHOST, DEVICE_CONSUMER, DEVICE_CONSUMER_PASSWORD, false);
+        platformConnectionFactory = connectionFactory(
+                MineTopology.PLATFORM_VHOST, PLATFORM_PUBLISHER, PLATFORM_PUBLISHER_PASSWORD, true);
+        LocationMessageConsumer consumer = new LocationMessageConsumer(
+                normalizer,
+                new ConfirmedLocationPublisher(new RabbitTemplate(platformConnectionFactory), 5000));
+        listener = new SimpleMessageListenerContainer(deviceConnectionFactory);
+        listener.setQueueNames(MineTopology.DEVICE_LOCATION_UPLINK_QUEUE);
+        listener.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+        listener.setPrefetchCount(10);
+        listener.setMessageListener(consumer);
+        listener.start();
+
+        MqttClient mqttClient = mqttClient();
+        try {
+            mqttClient.publish(
+                    "mine/v1/haul-truck/" + DEVICE_CLIENT_ID + "/up/location",
+                    locationPayload(),
+                    1,
+                    false);
+        } finally {
+            if (mqttClient.isConnected()) mqttClient.disconnect(1000);
+            mqttClient.close();
+        }
+
+        observerConnectionFactory = connectionFactory(
+                MineTopology.PLATFORM_VHOST, PLATFORM_OBSERVER, PLATFORM_OBSERVER_PASSWORD, false);
+        RabbitTemplate observer = new RabbitTemplate(observerConnectionFactory);
+        observer.setReceiveTimeout(Duration.ofSeconds(10).toMillis());
+        Message normalized = observer.receive(MineTopology.LOCATION_QUEUE);
+
+        assertThat(normalized).isNotNull();
+        assertThat(normalized.getMessageProperties().getReceivedRoutingKey())
+                .isEqualTo(MineTopology.LOCATION_OBSERVATION_ROUTING_KEY);
+        JsonNode json = JsonMapper.builder().build().readTree(normalized.getBody());
+        assertThat(java.util.UUID.fromString(json.get("observationId").asString()).version())
+                .isEqualTo(7);
+        assertThat(json.get("sourceDeviceId").asString()).isEqualTo(DEVICE_ID);
+        assertThat(json.get("tagCode").asString()).isEqualTo("tag-001");
+        assertThat(json.get("coordinateSystemCode").asString()).isEqualTo("uwb-local");
+        assertThat(json.get("x").asDouble()).isEqualTo(128.5D);
+        assertThat(json.has("siteId")).isFalse();
+        assertThat(json.has("vehicleId")).isFalse();
+        assertThat(json.has("personId")).isFalse();
+    }
+
     private static byte[] payload() {
         return """
                 {
@@ -191,6 +239,40 @@ class DeviceMessageConsumerIT {
                   "properties":{"engine.rpm":1280,"vehicle.speed":12.5}
                 }
                 """.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static byte[] locationPayload() {
+        return """
+                {
+                  "schemaVersion":1,
+                  "productKey":"haul-truck",
+                  "deviceCode":"simulator-001",
+                  "tagCode":"tag-001",
+                  "coordinateSystemCode":"uwb-local",
+                  "x":128.5,
+                  "y":64.25,
+                  "z":12.0,
+                  "speedMetersPerSecond":8.5,
+                  "headingDegrees":180.0,
+                  "accuracyMeters":0.3,
+                  "bootId":"simulator-boot-001",
+                  "sequence":7,
+                  "occurredAt":"2026-07-18T08:00:00Z"
+                }
+                """.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private DeviceSessionRegistry registry() {
+        DeviceSessionRegistry registry = new DeviceSessionRegistry();
+        registry.activate(1, "a".repeat(64), List.of(new DeviceSessionRegistry.DeviceIdentity(
+                "haul-truck",
+                DEVICE_CLIENT_ID,
+                DEVICE_ID,
+                "simulator-001",
+                "mine-site-001",
+                "mqtt-json-v1"
+        )));
+        return registry;
     }
 
     private MqttClient mqttClient() throws Exception {
