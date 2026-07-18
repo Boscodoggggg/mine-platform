@@ -17,6 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -29,9 +30,12 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RealtimeWebSocketHandler.class);
     private static final String TELEMETRY_PERMISSION = "device:telemetry:view";
+    private static final String LOCATION_PERMISSION = "mine:location:view";
 
     private final RealtimeAuthenticator authenticator;
     private final RealtimeSnapshotProvider snapshots;
+    private final RealtimeLocationSnapshotProvider locationSnapshots;
+    private final RealtimeSiteAuthorizer siteAuthorizer;
     private final RealtimeSessionRegistry registry;
     private final RealtimeLimits limits;
     private final JsonMapper jsonMapper;
@@ -41,17 +45,25 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
      *
      * @param authenticator 令牌鉴权器
      * @param snapshots 最新值快照读取器
+     * @param locationSnapshots 位置快照读取器
+     * @param siteAuthorizer 矿区作用域授权器
      * @param registry 会话注册表
      * @param limits 单连接资源限制
      */
     public RealtimeWebSocketHandler(
             RealtimeAuthenticator authenticator,
             RealtimeSnapshotProvider snapshots,
+            RealtimeLocationSnapshotProvider locationSnapshots,
+            RealtimeSiteAuthorizer siteAuthorizer,
             RealtimeSessionRegistry registry,
             RealtimeLimits limits
     ) {
         this.authenticator = Objects.requireNonNull(authenticator, "实时鉴权器不能为空");
         this.snapshots = Objects.requireNonNull(snapshots, "快照读取器不能为空");
+        this.locationSnapshots = Objects.requireNonNull(
+                locationSnapshots, "位置快照读取器不能为空");
+        this.siteAuthorizer = Objects.requireNonNull(
+                siteAuthorizer, "矿区作用域授权器不能为空");
         this.registry = Objects.requireNonNull(registry, "会话注册表不能为空");
         this.limits = Objects.requireNonNull(limits, "实时限制不能为空");
         this.jsonMapper = JsonMapper.builder().findAndAddModules().build();
@@ -129,33 +141,42 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void authenticate(String sessionId, JsonNode root, String requestId) {
-        RealtimePrincipal principal = authenticator.authenticate(requiredText(root, "token"));
-        if (!principal.hasPermission(TELEMETRY_PERMISSION)) {
-            throw new RealtimeAuthenticationException("缺少设备遥测查看权限");
-        }
-        registry.authenticate(sessionId, principal, requiredText(root, "token"));
+        String token = requiredText(root, "token");
+        RealtimePrincipal principal = authenticator.authenticate(token);
+        requireRealtimePermission(principal);
+        registry.authenticate(sessionId, principal, token);
         send(sessionId, "ACK", requestId, Map.of("action", "AUTH"));
     }
 
     private void subscribe(String sessionId, JsonNode root, String requestId) {
-        refreshAuthentication(sessionId);
-        List<DeviceLatestSubscription> additions = parseSubscriptions(root, false);
-        registry.subscribe(sessionId, additions, limits);
+        RealtimePrincipal principal = refreshAuthentication(sessionId);
+        ParsedSubscriptions additions = parseSubscriptions(root, false);
+        requireRequestedAccess(principal, additions);
+        registry.subscribe(
+                sessionId, additions.deviceSubscriptions(), additions.siteIds(), limits);
         send(sessionId, "ACK", requestId, Map.of("action", "SUBSCRIBE"));
-        additions.forEach(subscription -> sendSnapshot(sessionId, subscription));
+        additions.deviceSubscriptions().forEach(
+                subscription -> sendSnapshot(sessionId, subscription));
+        additions.siteIds().forEach(
+                siteId -> sendLocationSnapshot(sessionId, principal.userId(), siteId));
     }
 
     private void unsubscribe(String sessionId, JsonNode root, String requestId) {
         refreshAuthentication(sessionId);
-        registry.unsubscribe(sessionId, parseSubscriptions(root, true));
+        ParsedSubscriptions removals = parseSubscriptions(root, true);
+        registry.unsubscribe(
+                sessionId, removals.deviceSubscriptions(), removals.siteIds());
         send(sessionId, "ACK", requestId, Map.of("action", "UNSUBSCRIBE"));
     }
 
     private void resync(String sessionId, String requestId) {
-        refreshAuthentication(sessionId);
+        RealtimePrincipal principal = refreshAuthentication(sessionId);
         List<DeviceLatestSubscription> subscriptions = registry.subscriptions(sessionId);
+        List<UUID> siteSubscriptions = registry.siteSubscriptions(sessionId);
         send(sessionId, "ACK", requestId, Map.of("action", "RESYNC"));
         subscriptions.forEach(subscription -> sendSnapshot(sessionId, subscription));
+        siteSubscriptions.forEach(
+                siteId -> sendLocationSnapshot(sessionId, principal.userId(), siteId));
     }
 
     private void ping(String sessionId, String requestId) {
@@ -175,23 +196,44 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         send(sessionId, "SNAPSHOT", null, fields);
     }
 
-    private List<DeviceLatestSubscription> parseSubscriptions(JsonNode root, boolean propertiesOptional) {
+    private void sendLocationSnapshot(String sessionId, UUID userId, UUID siteId) {
+        var snapshot = locationSnapshots.load(userId, siteId);
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("topic", "MINE_SITE_LOCATION");
+        fields.put("siteId", siteId);
+        fields.put("watermark", snapshot.watermark());
+        fields.put("source", snapshot.source());
+        fields.put("truncated", snapshot.truncated());
+        fields.put("items", snapshot.items());
+        send(sessionId, "SNAPSHOT", null, fields);
+    }
+
+    private ParsedSubscriptions parseSubscriptions(JsonNode root, boolean propertiesOptional) {
         JsonNode topics = root.get("topics");
         if (topics == null || !topics.isArray() || topics.isEmpty()) {
             throw new IllegalArgumentException("topics 必须是非空数组");
         }
-        List<DeviceLatestSubscription> parsed = new ArrayList<>();
+        Map<UUID, LinkedHashSet<String>> devices = new LinkedHashMap<>();
+        LinkedHashSet<UUID> sites = new LinkedHashSet<>();
         for (JsonNode topic : topics) {
-            if (!"DEVICE_LATEST".equals(requiredText(topic, "type"))) {
-                throw new IllegalArgumentException("当前只支持 DEVICE_LATEST 主题");
-            }
-            List<UUID> deviceIds = uuidArray(topic, "ids", false);
-            List<String> propertyIds = textArray(topic, "properties", propertiesOptional);
-            for (UUID deviceId : deviceIds) {
-                parsed.add(new DeviceLatestSubscription(deviceId, propertyIds));
+            String type = requiredText(topic, "type");
+            List<UUID> ids = uuidArray(topic, "ids", false);
+            if ("DEVICE_LATEST".equals(type)) {
+                List<String> propertyIds = textArray(topic, "properties", propertiesOptional);
+                ids.forEach(deviceId -> devices
+                        .computeIfAbsent(deviceId, ignored -> new LinkedHashSet<>())
+                        .addAll(propertyIds));
+            } else if ("MINE_SITE_LOCATION".equals(type)) {
+                sites.addAll(ids);
+            } else {
+                throw new IllegalArgumentException("不支持的实时主题: " + type);
             }
         }
-        return List.copyOf(parsed);
+        List<DeviceLatestSubscription> deviceSubscriptions = devices.entrySet().stream()
+                .map(entry -> new DeviceLatestSubscription(
+                        entry.getKey(), List.copyOf(entry.getValue())))
+                .toList();
+        return new ParsedSubscriptions(deviceSubscriptions, List.copyOf(sites));
     }
 
     private List<UUID> uuidArray(JsonNode root, String field, boolean optional) {
@@ -230,18 +272,53 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         return value.asString();
     }
 
-    private void refreshAuthentication(String sessionId) {
+    private RealtimePrincipal refreshAuthentication(String sessionId) {
         String token = registry.token(sessionId).orElseThrow(
                 RealtimeAuthenticationRequiredException::new
         );
         RealtimePrincipal principal = authenticator.authenticate(token);
-        if (!principal.hasPermission(TELEMETRY_PERMISSION)) {
-            throw new RealtimeAuthenticationException("缺少设备遥测查看权限");
-        }
+        requireRealtimePermission(principal);
         if (registry.principal(sessionId).isEmpty()) {
             throw new RealtimeAuthenticationRequiredException();
         }
+        if (!registry.subscriptions(sessionId).isEmpty()
+                && !principal.hasPermission(TELEMETRY_PERMISSION)) {
+            throw new RealtimeAuthenticationException("设备遥测查看权限已撤销");
+        }
+        List<UUID> siteIds = registry.siteSubscriptions(sessionId);
+        if (!siteIds.isEmpty() && !principal.hasPermission(LOCATION_PERMISSION)) {
+            throw new RealtimeAuthenticationException("矿区位置查看权限已撤销");
+        }
+        try {
+            siteIds.forEach(siteId -> siteAuthorizer.requireAccess(principal.userId(), siteId));
+        } catch (MineException exception) {
+            throw new RealtimeAuthenticationException("矿区数据授权已撤销");
+        }
         registry.authenticate(sessionId, principal, token);
+        return principal;
+    }
+
+    private void requireRealtimePermission(RealtimePrincipal principal) {
+        if (!principal.hasPermission(TELEMETRY_PERMISSION)
+                && !principal.hasPermission(LOCATION_PERMISSION)) {
+            throw new RealtimeAuthenticationException("缺少实时数据查看权限");
+        }
+    }
+
+    private void requireRequestedAccess(
+            RealtimePrincipal principal,
+            ParsedSubscriptions subscriptions
+    ) {
+        if (!subscriptions.deviceSubscriptions().isEmpty()
+                && !principal.hasPermission(TELEMETRY_PERMISSION)) {
+            throw new RealtimeAuthenticationException("缺少设备遥测查看权限");
+        }
+        if (!subscriptions.siteIds().isEmpty()
+                && !principal.hasPermission(LOCATION_PERMISSION)) {
+            throw new RealtimeAuthenticationException("缺少矿区位置查看权限");
+        }
+        subscriptions.siteIds().forEach(
+                siteId -> siteAuthorizer.requireAccess(principal.userId(), siteId));
     }
 
     private void error(String sessionId, String requestId, String code, String message) {
@@ -264,5 +341,15 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         }
         payload.putAll(fields);
         registry.send(sessionId, payload);
+    }
+
+    private record ParsedSubscriptions(
+            List<DeviceLatestSubscription> deviceSubscriptions,
+            List<UUID> siteIds
+    ) {
+        private ParsedSubscriptions {
+            deviceSubscriptions = List.copyOf(deviceSubscriptions);
+            siteIds = List.copyOf(siteIds);
+        }
     }
 }

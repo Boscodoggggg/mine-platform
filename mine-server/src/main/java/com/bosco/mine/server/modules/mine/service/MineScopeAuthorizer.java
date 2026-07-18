@@ -106,13 +106,28 @@ public class MineScopeAuthorizer {
      * @return 活动矿区
      */
     public MineSite requireSite(UUID siteId) {
+        return requireSiteForUser(identity.currentUserId(), siteId);
+    }
+
+    /**
+     * 要求指定启用用户可访问活动矿区，供脱离 HTTP 请求线程的实时通道复核授权。
+     *
+     * @param userId 用户标识
+     * @param siteId 矿区标识
+     * @return 活动矿区
+     */
+    public MineSite requireSiteForUser(UUID userId, UUID siteId) {
+        Objects.requireNonNull(userId, "用户标识不能为空");
+        Objects.requireNonNull(siteId, "矿区标识不能为空");
+        if (!mapper.isEnabledUser(userId)) {
+            throw new MineException(USER_DISABLED, Map.of());
+        }
         MineSite site = mapper.findSiteById(siteId)
                 .filter(item -> "ACTIVE".equals(item.status()))
                 .orElseThrow(() -> new MineException(SITE_NOT_FOUND, Map.of()));
-        MineOrganization organization = mapper.findOrganizationById(site.organizationId())
+        mapper.findOrganizationById(site.organizationId())
                 .filter(item -> "ACTIVE".equals(item.status()))
                 .orElseThrow(() -> new MineException(SITE_NOT_FOUND, Map.of()));
-        UUID userId = currentUserId();
         if (!bootstrapAdminId.equals(userId) && !mapper.hasSiteAccess(userId, siteId)) {
             throw denied();
         }

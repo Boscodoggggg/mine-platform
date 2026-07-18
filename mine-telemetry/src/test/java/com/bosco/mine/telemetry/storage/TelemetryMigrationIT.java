@@ -225,9 +225,18 @@ class TelemetryMigrationIT {
                         "uq_location_event_time",
                         "uq_location_source_cycle_time",
                         "idx_location_site_time",
+                        "idx_location_site_ingest",
                         "idx_location_site_tag_time",
                         "idx_location_site_vehicle_time",
                         "idx_location_site_person_time");
+        assertThat(queryStrings("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'location_realtime_outbox'
+                ORDER BY indexname
+                """))
+                .contains("idx_location_outbox_site_tag_ingest");
         assertThat(queryStrings("""
                 SELECT table_name
                 FROM information_schema.tables

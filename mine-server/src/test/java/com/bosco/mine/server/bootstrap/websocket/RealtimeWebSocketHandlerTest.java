@@ -4,8 +4,10 @@ import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
+import com.bosco.mine.messaging.realtime.RealtimeLocationEvent;
 import com.bosco.mine.server.modules.device.dto.DeviceLatestResponse;
 import com.bosco.mine.server.modules.device.dto.TelemetryLatestItemResponse;
+import com.bosco.mine.server.modules.mine.dto.CurrentLocationResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -30,6 +32,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -40,11 +43,17 @@ class RealtimeWebSocketHandlerTest {
 
     private static final UUID USER_ID = UUID.fromString("0198aef6-2e80-7000-8000-000000000001");
     private static final UUID DEVICE_ID = UUID.fromString("0198aef6-2e80-7000-8000-000000000101");
+    private static final UUID SITE_ID = UUID.fromString("0198aef6-2e80-7000-8000-000000000401");
+    private static final UUID OTHER_SITE_ID = UUID.fromString("0198aef6-2e80-7000-8000-000000000402");
 
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
     private final AtomicInteger snapshotCalls = new AtomicInteger();
     private final AtomicBoolean snapshotAvailable = new AtomicBoolean(true);
     private final AtomicBoolean tokenValid = new AtomicBoolean(true);
+    private final AtomicBoolean siteAuthorized = new AtomicBoolean(true);
+    private final AtomicInteger locationSnapshotCalls = new AtomicInteger();
+    private final AtomicReference<Set<String>> permissions = new AtomicReference<>(Set.of(
+            "device:telemetry:view", "mine:location:view"));
     private RecordingWebSocketSession session;
     private RealtimeSessionRegistry registry;
     private RealtimeWebSocketHandler handler;
@@ -57,7 +66,7 @@ class RealtimeWebSocketHandlerTest {
             if (!"valid-token".equals(token) || !tokenValid.get()) {
                 throw new RealtimeAuthenticationException("令牌无效");
             }
-            return new RealtimePrincipal(USER_ID, Set.of("device:telemetry:view"));
+            return new RealtimePrincipal(USER_ID, permissions.get());
         };
         RealtimeSnapshotProvider snapshots = (deviceId, propertyIds) -> {
             snapshotCalls.incrementAndGet();
@@ -83,9 +92,25 @@ class RealtimeWebSocketHandlerTest {
                     List.of("rpm")
             );
         };
+        RealtimeSiteAuthorizer siteAuthorizer = (userId, siteId) -> {
+            if (!USER_ID.equals(userId) || !SITE_ID.equals(siteId) || !siteAuthorized.get()) {
+                throw new MineException(
+                        new ErrorCode("MINE-SCOPE-403-002", "无权访问该组织或矿区"), Map.of());
+            }
+        };
+        RealtimeLocationSnapshotProvider locationSnapshots = (userId, siteId) -> {
+            siteAuthorizer.requireAccess(userId, siteId);
+            locationSnapshotCalls.incrementAndGet();
+            RealtimeLocationEvent event = locationEvent(SITE_ID, 71L);
+            return new CurrentLocationResponse(
+                    siteId, event.sourceSequence(), "REDIS", false,
+                    List.of(CurrentLocationResponse.Item.from(event)));
+        };
         handler = new RealtimeWebSocketHandler(
                 authenticator,
                 snapshots,
+                locationSnapshots,
+                siteAuthorizer,
                 registry,
                 new RealtimeLimits(4, 8, 16, 16_384)
         );
@@ -239,6 +264,81 @@ class RealtimeWebSocketHandlerTest {
         assertThat(session.messages()).hasSize(1);
     }
 
+    @Test
+    void 矿区位置订阅应返回快照且只推送本矿事件() throws Exception {
+        authenticate();
+        session.clearMessages();
+
+        send(siteSubscription("site-sub-1", SITE_ID));
+
+        assertThat(session.messages()).hasSize(2);
+        assertThat(message(0).get("type").asString()).isEqualTo("ACK");
+        JsonNode snapshot = message(1);
+        assertThat(snapshot.get("type").asString()).isEqualTo("SNAPSHOT");
+        assertThat(snapshot.get("topic").asString()).isEqualTo("MINE_SITE_LOCATION");
+        assertThat(snapshot.get("siteId").asString()).isEqualTo(SITE_ID.toString());
+        assertThat(snapshot.get("items").get(0).get("tagCode").asString())
+                .isEqualTo("tag-001");
+        assertThat(locationSnapshotCalls).hasValue(1);
+        session.clearMessages();
+
+        registry.publishLocation(locationEvent(OTHER_SITE_ID, 72L));
+        assertThat(session.messages()).isEmpty();
+
+        registry.publishLocation(locationEvent(SITE_ID, 73L));
+        assertThat(session.messages()).hasSize(1);
+        JsonNode data = lastMessage();
+        assertThat(data.get("type").asString()).isEqualTo("DATA");
+        assertThat(data.get("topic").asString()).isEqualTo("MINE_SITE_LOCATION");
+        assertThat(data.get("siteId").asString()).isEqualTo(SITE_ID.toString());
+        assertThat(data.get("item").get("sourceSequence").asLong()).isEqualTo(73L);
+        assertThat(data.toString()).doesNotContain("phone", "idCard");
+    }
+
+    @Test
+    void 只有位置权限的用户也应能建立矿区实时订阅() throws Exception {
+        permissions.set(Set.of("mine:location:view"));
+
+        authenticate();
+        session.clearMessages();
+        send(siteSubscription("site-only-sub", SITE_ID));
+
+        assertThat(session.messages()).hasSize(2);
+        assertThat(message(0).get("type").asString()).isEqualTo("ACK");
+        assertThat(message(1).get("topic").asString()).isEqualTo("MINE_SITE_LOCATION");
+    }
+
+    @Test
+    void 矿区授权撤销后下一次心跳应使连接失效并停止位置推送() throws Exception {
+        authenticate();
+        send(siteSubscription("site-sub-1", SITE_ID));
+        session.clearMessages();
+        siteAuthorized.set(false);
+
+        send("{\"action\":\"PING\",\"requestId\":\"ping-revoked\"}");
+
+        assertThat(lastMessage().get("code").asString()).isEqualTo("REALTIME-AUTH-FAILED");
+        session.clearMessages();
+        registry.publishLocation(locationEvent(SITE_ID, 74L));
+        assertThat(session.messages()).isEmpty();
+    }
+
+    @Test
+    void 矿区位置重同步应复用统一序号并重新读取快照() throws Exception {
+        authenticate();
+        send(siteSubscription("site-sub-1", SITE_ID));
+        session.clearMessages();
+
+        send("{\"action\":\"RESYNC\",\"requestId\":\"site-sync-1\"}");
+
+        assertThat(session.messages()).hasSize(2);
+        assertThat(message(0).get("type").asString()).isEqualTo("ACK");
+        assertThat(message(1).get("topic").asString()).isEqualTo("MINE_SITE_LOCATION");
+        assertThat(message(1).get("sequence").asLong())
+                .isGreaterThan(message(0).get("sequence").asLong());
+        assertThat(locationSnapshotCalls).hasValue(2);
+    }
+
     private void authenticate() throws Exception {
         send("{\"action\":\"AUTH\",\"requestId\":\"auth-1\",\"token\":\"valid-token\"}");
         assertThat(lastMessage().get("type").asString()).isEqualTo("ACK");
@@ -254,6 +354,43 @@ class RealtimeWebSocketHandlerTest {
                         "properties", propertyIds
                 ))
         ));
+    }
+
+    private String siteSubscription(String requestId, UUID siteId) throws Exception {
+        return jsonMapper.writeValueAsString(Map.of(
+                "action", "SUBSCRIBE",
+                "requestId", requestId,
+                "topics", List.of(Map.of(
+                        "type", "MINE_SITE_LOCATION",
+                        "ids", List.of(siteId.toString(), siteId.toString())
+                ))
+        ));
+    }
+
+    private RealtimeLocationEvent locationEvent(UUID siteId, long sequence) {
+        String suffix = String.format("%012d", sequence);
+        return new RealtimeLocationEvent(
+                UUID.fromString("0198aef6-2e80-7000-8000-" + suffix),
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000501"),
+                siteId,
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000502"),
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000503"),
+                "tag-001",
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000504"),
+                null,
+                null,
+                sequence,
+                Instant.parse("2026-07-15T02:00:00Z").plusSeconds(sequence),
+                Instant.parse("2026-07-15T02:00:01Z").plusSeconds(sequence),
+                120.5D,
+                88.25D,
+                null,
+                4.5D,
+                90D,
+                0.5D,
+                RealtimeLocationEvent.QualityStatus.GOOD,
+                null
+        );
     }
 
     private void send(String payload) throws Exception {

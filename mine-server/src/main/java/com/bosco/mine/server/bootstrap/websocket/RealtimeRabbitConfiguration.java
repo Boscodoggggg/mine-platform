@@ -97,6 +97,23 @@ public class RealtimeRabbitConfiguration {
     }
 
     /**
+     * 将本实例队列绑定到全部矿区位置实时事件。
+     *
+     * @param realtimeQueue 本实例实时队列
+     * @param realtimeExchange 实时主题交换机
+     * @return 矿区位置实时绑定
+     */
+    @Bean
+    public Binding realtimeLocationBinding(
+            Queue realtimeQueue,
+            TopicExchange realtimeExchange
+    ) {
+        return BindingBuilder.bind(realtimeQueue)
+                .to(realtimeExchange)
+                .with(MineTopology.REALTIME_LOCATION_ROUTING_PATTERN);
+    }
+
+    /**
      * 创建实时拓扑声明器，连接恢复后自动重建本实例临时队列和绑定。
      *
      * @param realtimeConnectionFactory 实时事件连接工厂
@@ -127,10 +144,24 @@ public class RealtimeRabbitConfiguration {
     }
 
     /**
+     * 创建矿区位置实时事件消费者。
+     *
+     * @param registry 本实例会话注册表
+     * @return 位置实时消费者
+     */
+    @Bean
+    public RealtimeLocationConsumer realtimeLocationConsumer(
+            RealtimeSessionRegistry registry
+    ) {
+        return new RealtimeLocationConsumer(registry);
+    }
+
+    /**
      * 创建事件驱动、手工确认的 RabbitMQ 监听容器，不启动任何数据库轮询任务。
      *
      * @param realtimeConnectionFactory 实时事件连接工厂
-     * @param consumer 实时遥测消费者
+     * @param telemetryConsumer 实时遥测消费者
+     * @param locationConsumer 位置实时消费者
      * @param properties 实时通道配置
      * @param realtimeRabbitAdmin 实时拓扑声明器
      * @param realtimeQueue 本实例实时队列
@@ -139,7 +170,8 @@ public class RealtimeRabbitConfiguration {
     @Bean(destroyMethod = "destroy")
     public SimpleMessageListenerContainer realtimeMessageListenerContainer(
             CachingConnectionFactory realtimeConnectionFactory,
-            RealtimeTelemetryConsumer consumer,
+            RealtimeTelemetryConsumer telemetryConsumer,
+            RealtimeLocationConsumer locationConsumer,
             RealtimeProperties properties,
             RabbitAdmin realtimeRabbitAdmin,
             Queue realtimeQueue
@@ -154,7 +186,8 @@ public class RealtimeRabbitConfiguration {
         container.setDefaultRequeueRejected(true);
         container.setMissingQueuesFatal(true);
         container.setAutoStartup(properties.resolvedRabbitAutoStartup());
-        container.setMessageListener(consumer);
+        container.setMessageListener(new RealtimeEventConsumer(
+                telemetryConsumer, locationConsumer));
         return container;
     }
 

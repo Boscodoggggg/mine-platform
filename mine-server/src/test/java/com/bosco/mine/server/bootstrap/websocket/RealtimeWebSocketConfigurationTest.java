@@ -1,6 +1,8 @@
 package com.bosco.mine.server.bootstrap.websocket;
 
 import com.bosco.mine.server.modules.device.service.DeviceTelemetryQueryService;
+import com.bosco.mine.server.modules.mine.location.LocationQueryService;
+import com.bosco.mine.server.modules.mine.service.MineScopeAuthorizer;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
@@ -44,5 +46,20 @@ class RealtimeWebSocketConfigurationTest {
         provider.load(deviceId, List.of("speed"));
 
         verify(service).findLatest(deviceId, List.of("speed"));
+    }
+
+    @Test
+    void 位置快照和实时作用域应委托给统一矿区服务() {
+        LocationQueryService queryService = mock(LocationQueryService.class);
+        MineScopeAuthorizer authorizer = mock(MineScopeAuthorizer.class);
+        UUID userId = UUID.randomUUID();
+        UUID siteId = UUID.randomUUID();
+        RealtimeWebSocketConfiguration configuration = new RealtimeWebSocketConfiguration();
+
+        configuration.realtimeLocationSnapshotProvider(queryService).load(userId, siteId);
+        configuration.realtimeSiteAuthorizer(authorizer).requireAccess(userId, siteId);
+
+        verify(queryService).findCurrentForUser(userId, siteId, 10_000);
+        verify(authorizer).requireSiteForUser(userId, siteId);
     }
 }

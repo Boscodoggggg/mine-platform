@@ -1,5 +1,6 @@
 package com.bosco.mine.server.bootstrap.websocket;
 
+import com.bosco.mine.messaging.realtime.RealtimeLocationEvent;
 import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import org.slf4j.Logger;
@@ -75,8 +76,10 @@ public final class RealtimeSessionRegistry {
      */
     public void authenticate(String sessionId, RealtimePrincipal principal, String token) {
         SessionState state = state(sessionId);
-        state.principal = Objects.requireNonNull(principal, "用户不能为空");
-        state.token = Objects.requireNonNull(token, "令牌不能为空");
+        synchronized (state) {
+            state.principal = Objects.requireNonNull(principal, "用户不能为空");
+            state.token = Objects.requireNonNull(token, "令牌不能为空");
+        }
     }
 
     /**
@@ -86,8 +89,10 @@ public final class RealtimeSessionRegistry {
      */
     public void clearAuthentication(String sessionId) {
         SessionState state = state(sessionId);
-        state.principal = null;
-        state.token = null;
+        synchronized (state) {
+            state.principal = null;
+            state.token = null;
+        }
     }
 
     /**
@@ -97,7 +102,10 @@ public final class RealtimeSessionRegistry {
      * @return 已鉴权用户
      */
     public Optional<RealtimePrincipal> principal(String sessionId) {
-        return Optional.ofNullable(state(sessionId).principal);
+        SessionState state = state(sessionId);
+        synchronized (state) {
+            return Optional.ofNullable(state.principal);
+        }
     }
 
     /**
@@ -107,36 +115,45 @@ public final class RealtimeSessionRegistry {
      * @return 已保存令牌
      */
     public Optional<String> token(String sessionId) {
-        return Optional.ofNullable(state(sessionId).token);
+        SessionState state = state(sessionId);
+        synchronized (state) {
+            return Optional.ofNullable(state.token);
+        }
     }
 
     /**
      * 原子添加一批设备最新值订阅并校验连接级限额。
      *
      * @param sessionId 会话标识
-     * @param additions 新订阅
+     * @param deviceAdditions 新设备订阅
+     * @param siteAdditions 新矿区位置订阅
      * @param limits 连接限额
      */
     public void subscribe(
             String sessionId,
-            Collection<DeviceLatestSubscription> additions,
+            Collection<DeviceLatestSubscription> deviceAdditions,
+            Collection<UUID> siteAdditions,
             RealtimeLimits limits
     ) {
         SessionState state = state(sessionId);
         synchronized (state) {
             Map<UUID, LinkedHashSet<String>> merged = copySubscriptions(state.subscriptions);
-            for (DeviceLatestSubscription addition : additions) {
+            for (DeviceLatestSubscription addition : deviceAdditions) {
                 merged.computeIfAbsent(addition.deviceId(), ignored -> new LinkedHashSet<>())
                         .addAll(addition.propertyIds());
             }
+            LinkedHashSet<UUID> mergedSites = new LinkedHashSet<>(state.siteSubscriptions);
+            mergedSites.addAll(siteAdditions);
             int propertyCount = merged.values().stream().mapToInt(Set::size).sum();
-            if (merged.size() > limits.maxSubscriptions()
+            if (merged.size() + mergedSites.size() > limits.maxSubscriptions()
                     || merged.size() > limits.maxDevices()
                     || propertyCount > limits.maxProperties()) {
                 throw new RealtimeLimitExceededException("实时订阅数量超过连接上限");
             }
             state.subscriptions.clear();
             state.subscriptions.putAll(merged);
+            state.siteSubscriptions.clear();
+            state.siteSubscriptions.addAll(mergedSites);
         }
     }
 
@@ -144,12 +161,17 @@ public final class RealtimeSessionRegistry {
      * 删除指定设备订阅；空属性集合表示删除整个设备订阅。
      *
      * @param sessionId 会话标识
-     * @param removals 待删除订阅
+     * @param deviceRemovals 待删除设备订阅
+     * @param siteRemovals 待删除矿区位置订阅
      */
-    public void unsubscribe(String sessionId, Collection<DeviceLatestSubscription> removals) {
+    public void unsubscribe(
+            String sessionId,
+            Collection<DeviceLatestSubscription> deviceRemovals,
+            Collection<UUID> siteRemovals
+    ) {
         SessionState state = state(sessionId);
         synchronized (state) {
-            for (DeviceLatestSubscription removal : removals) {
+            for (DeviceLatestSubscription removal : deviceRemovals) {
                 LinkedHashSet<String> existing = state.subscriptions.get(removal.deviceId());
                 if (existing == null) {
                     continue;
@@ -163,6 +185,7 @@ public final class RealtimeSessionRegistry {
                     }
                 }
             }
+            state.siteSubscriptions.removeAll(siteRemovals);
         }
     }
 
@@ -184,6 +207,19 @@ public final class RealtimeSessionRegistry {
     }
 
     /**
+     * 获取当前会话的矿区位置订阅快照。
+     *
+     * @param sessionId 会话标识
+     * @return 矿区标识集合
+     */
+    public List<UUID> siteSubscriptions(String sessionId) {
+        SessionState state = state(sessionId);
+        synchronized (state) {
+            return List.copyOf(state.siteSubscriptions);
+        }
+    }
+
+    /**
      * 将已持久化的遥测增量推送给订阅了对应设备和属性的本实例连接。
      *
      * @param event 实时遥测事件
@@ -191,40 +227,75 @@ public final class RealtimeSessionRegistry {
     public void publish(RealtimeTelemetryEvent event) {
         Objects.requireNonNull(event, "实时遥测事件不能为空");
         for (SessionState state : sessions.values()) {
-            List<String> properties = subscribedProperties(state, event.deviceId());
-            if (state.principal == null || properties.isEmpty()) {
-                continue;
-            }
-            Map<String, Double> filtered = new LinkedHashMap<>();
-            Map<String, Quality> filteredQualities = new LinkedHashMap<>();
-            properties.forEach(propertyId -> {
-                Double value = event.values().get(propertyId);
-                if (value != null) {
-                    filtered.put(propertyId, value);
-                    filteredQualities.put(propertyId, event.qualities().get(propertyId));
+            synchronized (state) {
+                List<String> properties = subscribedProperties(state, event.deviceId());
+                if (state.principal == null
+                        || !state.principal.hasPermission("device:telemetry:view")
+                        || properties.isEmpty()) {
+                    continue;
                 }
-            });
-            if (filtered.isEmpty()) {
-                continue;
+                Map<String, Double> filtered = new LinkedHashMap<>();
+                Map<String, Quality> filteredQualities = new LinkedHashMap<>();
+                properties.forEach(propertyId -> {
+                    Double value = event.values().get(propertyId);
+                    if (value != null) {
+                        filtered.put(propertyId, value);
+                        filteredQualities.put(propertyId, event.qualities().get(propertyId));
+                    }
+                });
+                if (filtered.isEmpty()) {
+                    continue;
+                }
+                Quality filteredQuality = filteredQualities.values().stream()
+                        .reduce(Quality.GOOD, this::worse);
+                try {
+                    send(state.session.getId(), Map.ofEntries(
+                            Map.entry("type", "DATA"),
+                            Map.entry("topic", "DEVICE_LATEST"),
+                            Map.entry("deviceId", event.deviceId()),
+                            Map.entry("eventId", event.eventId()),
+                            Map.entry("sourceSequence", event.sourceSequence()),
+                            Map.entry("occurredAt", event.occurredAt()),
+                            Map.entry("receivedAt", event.receivedAt()),
+                            Map.entry("quality", filteredQuality),
+                            Map.entry("values", Map.copyOf(filtered)),
+                            Map.entry("qualities", Map.copyOf(filteredQualities))
+                    ));
+                } catch (RealtimeTransportException exception) {
+                    LOGGER.warn("实时连接发送失败并移除会话，sessionId={}",
+                            state.session.getId());
+                    remove(state.session.getId());
+                }
             }
-            Quality filteredQuality = filteredQualities.values().stream()
-                    .reduce(Quality.GOOD, this::worse);
-            try {
-                send(state.session.getId(), Map.ofEntries(
-                        Map.entry("type", "DATA"),
-                        Map.entry("topic", "DEVICE_LATEST"),
-                        Map.entry("deviceId", event.deviceId()),
-                        Map.entry("eventId", event.eventId()),
-                        Map.entry("sourceSequence", event.sourceSequence()),
-                        Map.entry("occurredAt", event.occurredAt()),
-                        Map.entry("receivedAt", event.receivedAt()),
-                        Map.entry("quality", filteredQuality),
-                        Map.entry("values", Map.copyOf(filtered)),
-                        Map.entry("qualities", Map.copyOf(filteredQualities))
-                ));
-            } catch (RealtimeTransportException exception) {
-                LOGGER.warn("实时连接发送失败并移除会话，sessionId={}", state.session.getId());
-                remove(state.session.getId());
+        }
+    }
+
+    /**
+     * 将已持久化的位置增量推送给订阅了对应矿区且仍保有位置权限的本实例连接。
+     *
+     * @param event 实时位置事件
+     */
+    public void publishLocation(RealtimeLocationEvent event) {
+        Objects.requireNonNull(event, "实时位置事件不能为空");
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                if (!state.siteSubscriptions.contains(event.siteId())
+                        || state.principal == null
+                        || !state.principal.hasPermission("mine:location:view")) {
+                    continue;
+                }
+                try {
+                    send(state.session.getId(), Map.of(
+                            "type", "DATA",
+                            "topic", "MINE_SITE_LOCATION",
+                            "siteId", event.siteId(),
+                            "item", event
+                    ));
+                } catch (RealtimeTransportException exception) {
+                    LOGGER.warn("位置实时连接发送失败并移除会话，sessionId={}",
+                            state.session.getId());
+                    remove(state.session.getId());
+                }
             }
         }
     }
@@ -313,6 +384,7 @@ public final class RealtimeSessionRegistry {
         private final WebSocketSession session;
         private final AtomicLong sequence = new AtomicLong();
         private final Map<UUID, LinkedHashSet<String>> subscriptions = new LinkedHashMap<>();
+        private final LinkedHashSet<UUID> siteSubscriptions = new LinkedHashSet<>();
         private volatile RealtimePrincipal principal;
         private volatile String token;
 

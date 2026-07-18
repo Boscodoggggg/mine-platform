@@ -88,6 +88,28 @@ class MineScopeAuthorizerTest {
                         assertThat(exception.errorCode().code()).isEqualTo("MINE-SCOPE-404-002"));
     }
 
+    @Test
+    void 实时通道应按显式用户重新校验矿区授权() {
+        MineScopeMapper mapper = mock(MineScopeMapper.class);
+        UUID userId = UUID.randomUUID();
+        UUID organizationId = UUID.randomUUID();
+        UUID siteId = UUID.randomUUID();
+        when(mapper.isEnabledUser(userId)).thenReturn(true);
+        when(mapper.findOrganizationById(organizationId)).thenReturn(Optional.of(
+                organization(organizationId, "ACTIVE")));
+        when(mapper.findSiteById(siteId)).thenReturn(Optional.of(
+                site(siteId, organizationId, "ACTIVE")));
+        when(mapper.hasSiteAccess(userId, siteId)).thenReturn(true);
+        MineScopeAuthorizer authorizer = authorizer(mapper, UUID::randomUUID);
+
+        assertThat(authorizer.requireSiteForUser(userId, siteId).id()).isEqualTo(siteId);
+
+        when(mapper.hasSiteAccess(userId, siteId)).thenReturn(false);
+        assertThatThrownBy(() -> authorizer.requireSiteForUser(userId, siteId))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-SCOPE-403-002"));
+    }
+
     private MineScopeAuthorizer authorizer(
             MineScopeMapper mapper,
             MineRequestIdentity identity

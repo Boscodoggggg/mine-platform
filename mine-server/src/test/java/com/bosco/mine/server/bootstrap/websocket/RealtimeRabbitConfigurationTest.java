@@ -4,6 +4,7 @@ import com.bosco.mine.messaging.topology.MineTopology;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
@@ -69,6 +70,7 @@ class RealtimeRabbitConfigurationTest {
                 .realtimeMessageListenerContainer(
                         factory,
                         new RealtimeTelemetryConsumer(registry),
+                        new RealtimeLocationConsumer(registry),
                         properties,
                         admin,
                         queue
@@ -79,6 +81,19 @@ class RealtimeRabbitConfigurationTest {
         assertThat(container.getQueueNames()).containsExactly(queue.getName());
         container.destroy();
         factory.destroy();
+    }
+
+    @Test
+    void 临时队列应同时绑定遥测和矿区位置实时主题() {
+        RealtimeRabbitConfiguration configuration = new RealtimeRabbitConfiguration();
+        RealtimeProperties properties = properties(tempDir.resolve("password"));
+        Queue queue = configuration.realtimeQueue(properties);
+        TopicExchange exchange = configuration.realtimeExchange();
+
+        assertThat(configuration.realtimeTelemetryBinding(queue, exchange).getRoutingKey())
+                .isEqualTo(MineTopology.REALTIME_TELEMETRY_ROUTING_PATTERN);
+        assertThat(configuration.realtimeLocationBinding(queue, exchange).getRoutingKey())
+                .isEqualTo(MineTopology.REALTIME_LOCATION_ROUTING_PATTERN);
     }
 
     private RealtimeProperties properties(Path passwordFile) {
