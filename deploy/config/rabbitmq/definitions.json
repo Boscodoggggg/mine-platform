@@ -49,6 +49,16 @@
       }
     },
     {
+      "name": "mine.gateway.location-uplink.q",
+      "vhost": "/mine-device",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.device.dlx"
+      }
+    },
+    {
       "name": "mine.device.dead-letter.q",
       "vhost": "/mine-device",
       "durable": true,
@@ -71,6 +81,16 @@
     },
     {
       "name": "mine.gateway.command.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.location.q",
       "vhost": "/mine-platform",
       "durable": true,
       "auto_delete": false,
@@ -122,6 +142,16 @@
     },
     {
       "name": "mine.server.alarm-event.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.telemetry.location-config.q",
       "vhost": "/mine-platform",
       "durable": true,
       "auto_delete": false,
@@ -198,6 +228,15 @@
       "arguments": {}
     },
     {
+      "name": "mine.location-config.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
       "name": "mine.business.x",
       "vhost": "/mine-platform",
       "type": "topic",
@@ -234,6 +273,14 @@
       "arguments": {}
     },
     {
+      "source": "amq.topic",
+      "vhost": "/mine-device",
+      "destination": "mine.gateway.location-uplink.q",
+      "destination_type": "queue",
+      "routing_key": "mine.v1.*.*.up.location",
+      "arguments": {}
+    },
+    {
       "source": "mine.device.dlx",
       "vhost": "/mine-device",
       "destination": "mine.device.dead-letter.q",
@@ -255,6 +302,14 @@
       "destination": "mine.gateway.command.q",
       "destination_type": "queue",
       "routing_key": "command.dispatch.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.telemetry.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.location.q",
+      "destination_type": "queue",
+      "routing_key": "location.observation",
       "arguments": {}
     },
     {
@@ -295,6 +350,14 @@
       "destination": "mine.server.alarm-event.q",
       "destination_type": "queue",
       "routing_key": "alarm.*",
+      "arguments": {}
+    },
+    {
+      "source": "mine.location-config.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.telemetry.location-config.q",
+      "destination_type": "queue",
+      "routing_key": "location.runtime.#",
       "arguments": {}
     },
     {

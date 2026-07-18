@@ -38,6 +38,7 @@ class RabbitTopologyIT {
     private static final String MQTT_DEVICE_A = "device-a";
     private static final String MQTT_DEVICE_B = "device-b";
     private static final String MQTT_PUBLISH_DENIED_DEVICE = "device-publish-denied";
+    private static final String MQTT_ACTION_DENIED_DEVICE = "device-action-denied";
     private static final String MQTT_SUBSCRIBE_DENIED_DEVICE = "device-subscribe-denied";
     private static final String MQTT_PASSWORD = "mqtt-device-test-password";
     private static final Path RABBITMQ_CONFIG = rabbitmqConfigDirectory();
@@ -94,6 +95,7 @@ class RabbitTopologyIT {
                         MineTopology.TELEMETRY_EXCHANGE,
                         MineTopology.COMMAND_EXCHANGE,
                         MineTopology.CONFIG_EXCHANGE,
+                        MineTopology.LOCATION_CONFIG_EXCHANGE,
                         MineTopology.BUSINESS_EXCHANGE,
                         MineTopology.DEAD_LETTER_EXCHANGE
                 );
@@ -105,14 +107,28 @@ class RabbitTopologyIT {
         assertThat(queues)
                 .contains(
                         MineTopology.TELEMETRY_QUEUE,
+                        MineTopology.LOCATION_QUEUE,
                         MineTopology.COMMAND_QUEUE,
                         MineTopology.COMMAND_STATUS_QUEUE,
                         MineTopology.COMMAND_TIMEOUT_WAIT_QUEUE,
                         MineTopology.CONFIG_QUEUE,
+                        MineTopology.TELEMETRY_LOCATION_CONFIG_QUEUE,
                         MineTopology.SERVER_ALARM_EVENT_QUEUE,
                         MineTopology.DEAD_LETTER_QUEUE
                 );
         assertThat(lineStartingWith(queues, MineTopology.TELEMETRY_QUEUE))
+                .contains(
+                        "\ttrue\t",
+                        "{\"x-queue-type\",\"quorum\"}",
+                        "{\"x-dead-letter-exchange\",\"mine.dlx\"}"
+                );
+        assertThat(lineStartingWith(queues, MineTopology.LOCATION_QUEUE))
+                .contains(
+                        "\ttrue\t",
+                        "{\"x-queue-type\",\"quorum\"}",
+                        "{\"x-dead-letter-exchange\",\"mine.dlx\"}"
+                );
+        assertThat(lineStartingWith(queues, MineTopology.TELEMETRY_LOCATION_CONFIG_QUEUE))
                 .contains(
                         "\ttrue\t",
                         "{\"x-queue-type\",\"quorum\"}",
@@ -139,6 +155,9 @@ class RabbitTopologyIT {
                         MineTopology.TELEMETRY_EXCHANGE + "\t"
                                 + MineTopology.TELEMETRY_QUEUE + "\t"
                                 + MineTopology.TELEMETRY_ROUTING_PATTERN,
+                        MineTopology.TELEMETRY_EXCHANGE + "\t"
+                                + MineTopology.LOCATION_QUEUE + "\t"
+                                + MineTopology.LOCATION_OBSERVATION_ROUTING_KEY,
                         MineTopology.COMMAND_EXCHANGE + "\t"
                                 + MineTopology.COMMAND_QUEUE + "\t"
                                 + MineTopology.COMMAND_DISPATCH_ROUTING_PATTERN,
@@ -151,6 +170,9 @@ class RabbitTopologyIT {
                         MineTopology.CONFIG_EXCHANGE + "\t"
                                 + MineTopology.CONFIG_QUEUE + "\t"
                                 + MineTopology.CONFIG_ROUTING_PATTERN,
+                        MineTopology.LOCATION_CONFIG_EXCHANGE + "\t"
+                                + MineTopology.TELEMETRY_LOCATION_CONFIG_QUEUE + "\t"
+                                + MineTopology.LOCATION_RUNTIME_ROUTING_PATTERN,
                         MineTopology.BUSINESS_EXCHANGE + "\t"
                                 + MineTopology.SERVER_ALARM_EVENT_QUEUE + "\t"
                                 + MineTopology.ALARM_EVENT_ROUTING_PATTERN
@@ -162,6 +184,7 @@ class RabbitTopologyIT {
         );
         assertThat(deviceQueues).contains(
                 MineTopology.DEVICE_UPLINK_QUEUE,
+                MineTopology.DEVICE_LOCATION_UPLINK_QUEUE,
                 MineTopology.DEVICE_COMMAND_ACK_QUEUE
         );
         String deviceBindings = rabbitmqctl(
@@ -169,6 +192,9 @@ class RabbitTopologyIT {
                 "source_name", "destination_name", "routing_key"
         );
         assertThat(deviceBindings).contains(
+                MineTopology.MQTT_EXCHANGE + "\t"
+                        + MineTopology.DEVICE_LOCATION_UPLINK_QUEUE + "\t"
+                        + MineTopology.DEVICE_LOCATION_ROUTING_PATTERN,
                 MineTopology.MQTT_EXCHANGE + "\t"
                         + MineTopology.DEVICE_COMMAND_ACK_QUEUE + "\t"
                         + MineTopology.DEVICE_COMMAND_ACK_ROUTING_PATTERN
@@ -200,6 +226,7 @@ class RabbitTopologyIT {
         createMqttDevice(MQTT_DEVICE_A);
         createMqttDevice(MQTT_DEVICE_B);
         createMqttDevice(MQTT_PUBLISH_DENIED_DEVICE);
+        createMqttDevice(MQTT_ACTION_DENIED_DEVICE);
         createMqttDevice(MQTT_SUBSCRIBE_DENIED_DEVICE);
 
         MqttClient deviceA = openMqttClient(MQTT_DEVICE_A, false);
@@ -208,6 +235,18 @@ class RabbitTopologyIT {
             deviceA.publish(
                     "mine/v1/truck/device-a/up/telemetry",
                     "{\"speed\":12}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    1,
+                    false
+            );
+            deviceA.publish(
+                    "mine/v1/truck/device-a/up/location",
+                    "{\"x\":12,\"y\":18}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    1,
+                    false
+            );
+            deviceA.publish(
+                    "mine/v1/truck/device-a/up/command-ack",
+                    "{\"status\":\"SUCCEEDED\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                     1,
                     false
             );
@@ -233,6 +272,18 @@ class RabbitTopologyIT {
             )).isInstanceOf(MqttException.class);
         } finally {
             closeMqttClient(publishDenied);
+        }
+
+        MqttClient actionDenied = openMqttClient(MQTT_ACTION_DENIED_DEVICE, true);
+        try {
+            assertThatThrownBy(() -> actionDenied.publish(
+                    "mine/v1/truck/device-action-denied/up/event",
+                    "{}".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    1,
+                    false
+            )).isInstanceOf(MqttException.class);
+        } finally {
+            closeMqttClient(actionDenied);
         }
 
         MqttClient subscribeDenied = openMqttClient(MQTT_SUBSCRIBE_DENIED_DEVICE, true);

@@ -208,6 +208,33 @@ jq -e '[.bindings[] | select(.vhost == "/mine-platform" and .source == "mine.bus
   and .destination == "mine.server.alarm-event.q" and .routing_key == "alarm.*")] | length == 1' \
   "${definitions_file}" >/dev/null \
   || { echo "FAIL: RabbitMQ 缺少告警业务事实绑定" >&2; exit 1; }
+jq -e '[.queues[] | select(.vhost == "/mine-device" and .name == "mine.gateway.location-uplink.q"
+  and .durable == true and .arguments["x-queue-type"] == "quorum"
+  and .arguments["x-dead-letter-exchange"] == "mine.device.dlx")] | length == 1' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少带死信的原始定位上行队列" >&2; exit 1; }
+jq -e '[.bindings[] | select(.vhost == "/mine-device" and .source == "amq.topic"
+  and .destination == "mine.gateway.location-uplink.q"
+  and .routing_key == "mine.v1.*.*.up.location")] | length == 1' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少原始定位精确上行绑定" >&2; exit 1; }
+jq -e '[.exchanges[] | select(.vhost == "/mine-platform" and .name == "mine.location-config.x"
+  and .type == "topic" and .durable == true)] | length == 1' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少持久定位运行快照交换机" >&2; exit 1; }
+jq -e '[.queues[] | select(.vhost == "/mine-platform"
+  and (.name == "mine.location.q" or .name == "mine.telemetry.location-config.q")
+  and .durable == true and .arguments["x-queue-type"] == "quorum"
+  and .arguments["x-dead-letter-exchange"] == "mine.dlx")] | length == 2' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少带死信的定位观测或快照 quorum 队列" >&2; exit 1; }
+jq -e '([.bindings[] | select(.vhost == "/mine-platform" and .source == "mine.telemetry.x"
+    and .destination == "mine.location.q" and .routing_key == "location.observation")] | length == 1)
+  and ([.bindings[] | select(.vhost == "/mine-platform" and .source == "mine.location-config.x"
+    and .destination == "mine.telemetry.location-config.q"
+    and .routing_key == "location.runtime.#")] | length == 1)' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 定位观测或快照必须使用精确独立绑定" >&2; exit 1; }
 
 bootstrap_file="${ROOT_DIR}/deploy/scripts/rabbitmq-bootstrap.sh"
 grep -q 'upsert_user "mine-server-alarm"' "${bootstrap_file}" \
@@ -216,5 +243,13 @@ grep -q "mine\\\\.business\\\\.x" "${bootstrap_file}" \
   || { echo "FAIL: telemetry 账号未获得业务事实交换机写权限" >&2; exit 1; }
 grep -q "mine\\\\.server\\\\.alarm-event\\\\.q" "${bootstrap_file}" \
   || { echo "FAIL: server 告警账号未限制为告警队列只读" >&2; exit 1; }
+grep -q "mine\\\\.gateway\\\\.location-uplink\\\\.q" "${bootstrap_file}" \
+  || { echo "FAIL: gateway device 账号未获得原始定位队列只读权限" >&2; exit 1; }
+grep -q "mine\\\\.location\\\\.q" "${bootstrap_file}" \
+  || { echo "FAIL: telemetry 账号未获得定位观测队列只读权限" >&2; exit 1; }
+grep -q "mine\\\\.telemetry\\\\.location-config\\\\.q" "${bootstrap_file}" \
+  || { echo "FAIL: telemetry 账号未获得定位快照队列只读权限" >&2; exit 1; }
+grep -q "mine\\\\.location-config\\\\.x" "${bootstrap_file}" \
+  || { echo "FAIL: server command 账号未获得定位快照交换机写权限" >&2; exit 1; }
 
 echo "PASS: 部署配置覆盖可靠拓扑、受控 TCP、聚合与保留和低基数告警规则"

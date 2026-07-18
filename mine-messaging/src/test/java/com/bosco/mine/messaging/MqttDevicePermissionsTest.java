@@ -21,7 +21,7 @@ class MqttDevicePermissionsTest {
                 .isEqualTo("^(amq\\.topic|mqtt-subscription-truck-001qos[01])$");
         assertThat(permissions.readPattern()).isEqualTo(permissions.writePattern());
         assertThat(permissions.topicWritePattern())
-                .isEqualTo("^mine\\.v1\\.[^.]+\\.truck-001\\.up\\.[^.]+$");
+                .isEqualTo("^mine\\.v1\\.[^.]+\\.truck-001\\.up\\.(telemetry|location|command-ack)$");
         assertThat(permissions.topicReadPattern())
                 .isEqualTo("^mine\\.v1\\.[^.]+\\.truck-001\\.down\\.[^.]+$");
     }
@@ -43,7 +43,7 @@ class MqttDevicePermissionsTest {
         );
 
         assertThat(permissions.topicWritePattern())
-                .isEqualTo("^mine\\.v1\\.haul-truck\\.device-001\\.up\\.[^.]+$");
+                .isEqualTo("^mine\\.v1\\.haul-truck\\.device-001\\.up\\.(telemetry|location|command-ack)$");
         assertThat(permissions.topicReadPattern())
                 .isEqualTo("^mine\\.v1\\.haul-truck\\.device-001\\.down\\.[^.]+$");
         assertThatIllegalArgumentException()

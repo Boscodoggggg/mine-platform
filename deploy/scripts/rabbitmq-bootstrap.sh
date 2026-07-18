@@ -76,17 +76,20 @@ upsert_user "mine-server-realtime" "${server_realtime_password}"
 upsert_user "mine-server-command" "${server_command_password}"
 upsert_user "mine-server-alarm" "${server_alarm_password}"
 rabbitmqctl -q set_permissions -p /mine-device "mine-gateway-device" \
-  '^$' '^amq\.topic$' '^(mine\.gateway\.uplink\.q|mine\.gateway\.command-ack\.q)$'
+  '^$' '^amq\.topic$' \
+  '^(mine\.gateway\.uplink\.q|mine\.gateway\.location-uplink\.q|mine\.gateway\.command-ack\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-gateway-platform" \
   '^$' '^(mine\.telemetry\.x|mine\.command\.x)$' '^(mine\.gateway\.command\.q|mine\.config\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-telemetry" \
-  '^$' '^(mine\.realtime\.x|mine\.business\.x)$' '^(mine\.telemetry\.q|mine\.telemetry\.strategy\.q)$'
+  '^$' '^(mine\.realtime\.x|mine\.business\.x)$' \
+  '^(mine\.telemetry\.q|mine\.location\.q|mine\.telemetry\.strategy\.q|mine\.telemetry\.location-config\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-server-realtime" \
   '^(mine\.realtime\.x|mine\.realtime\.server\.[A-Za-z0-9_-]+\.q)$' \
   '^(mine\.realtime\.x|mine\.realtime\.server\.[A-Za-z0-9_-]+\.q)$' \
   '^(mine\.realtime\.x|mine\.realtime\.server\.[A-Za-z0-9_-]+\.q)$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-server-command" \
-  '^$' '^(mine\.command\.x|mine\.config\.x|mine\.strategy\.x)$' '^mine\.server\.command-status\.q$'
+  '^$' '^(mine\.command\.x|mine\.config\.x|mine\.strategy\.x|mine\.location-config\.x)$' \
+  '^mine\.server\.command-status\.q$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-server-alarm" \
   '^$' '^$' '^mine\.server\.alarm-event\.q$'
 unset legacy_command_messages gateway_device_password gateway_platform_password telemetry_password server_realtime_password server_command_password server_alarm_password

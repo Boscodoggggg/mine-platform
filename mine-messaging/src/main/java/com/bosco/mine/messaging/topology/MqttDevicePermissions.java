@@ -65,7 +65,9 @@ public final class MqttDevicePermissions {
                 queuePattern,
                 resourcePattern,
                 resourcePattern,
-                "^mine\\.v1\\." + productPattern + "\\." + deviceId + "\\.up\\.[^.]+$",
+                // 上行动作采用白名单，防止设备自行扩展未受治理的主题。
+                "^mine\\.v1\\." + productPattern + "\\." + deviceId
+                        + "\\.up\\.(telemetry|location|command-ack)$",
                 "^mine\\.v1\\." + productPattern + "\\." + deviceId + "\\.down\\.[^.]+$"
         );
     }

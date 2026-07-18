@@ -21,6 +21,9 @@ public final class MineTopology {
     /** 设备命令业务 ACK 原始报文队列。 */
     public static final String DEVICE_COMMAND_ACK_QUEUE = "mine.gateway.command-ack.q";
 
+    /** 设备上行原始定位报文独立队列。 */
+    public static final String DEVICE_LOCATION_UPLINK_QUEUE = "mine.gateway.location-uplink.q";
+
     /** 设备侧不可重试原始报文死信交换机。 */
     public static final String DEVICE_DEAD_LETTER_EXCHANGE = "mine.device.dlx";
 
@@ -32,6 +35,9 @@ public final class MineTopology {
 
     /** MQTT 命令业务 ACK 上行主题绑定模式。 */
     public static final String DEVICE_COMMAND_ACK_ROUTING_PATTERN = "mine.v1.*.*.up.command-ack";
+
+    /** MQTT 原始定位上行主题绑定模式。 */
+    public static final String DEVICE_LOCATION_ROUTING_PATTERN = "mine.v1.*.*.up.location";
 
     /** 标准化遥测消息交换机。 */
     public static final String TELEMETRY_EXCHANGE = "mine.telemetry.x";
@@ -63,6 +69,9 @@ public final class MineTopology {
     /** 遥测处理服务消费队列。 */
     public static final String TELEMETRY_QUEUE = "mine.telemetry.q";
 
+    /** 定位处理服务消费强类型观测的独立队列。 */
+    public static final String LOCATION_QUEUE = "mine.location.q";
+
     /** 接入服务下行指令消费队列。 */
     public static final String COMMAND_QUEUE = "mine.gateway.command.q";
 
@@ -78,6 +87,10 @@ public final class MineTopology {
     /** 遥测服务运行策略消费队列。 */
     public static final String TELEMETRY_STRATEGY_QUEUE = "mine.telemetry.strategy.q";
 
+    /** Telemetry 消费定位运行快照变更的独立队列。 */
+    public static final String TELEMETRY_LOCATION_CONFIG_QUEUE =
+            "mine.telemetry.location-config.q";
+
     /** 管理服务告警事实消费队列。 */
     public static final String SERVER_ALARM_EVENT_QUEUE = "mine.server.alarm-event.q";
 
@@ -86,6 +99,9 @@ public final class MineTopology {
 
     /** 遥测消息路由模式。 */
     public static final String TELEMETRY_ROUTING_PATTERN = "telemetry.#";
+
+    /** Gateway 发布强类型定位观测的精确路由键。 */
+    public static final String LOCATION_OBSERVATION_ROUTING_KEY = "location.observation";
 
     /** 下行指令路由模式。 */
     public static final String COMMAND_DISPATCH_ROUTING_PATTERN = "command.dispatch.#";
@@ -104,6 +120,9 @@ public final class MineTopology {
 
     /** 定位运行快照变更路由模式。 */
     public static final String LOCATION_RUNTIME_ROUTING_PATTERN = "location.runtime.#";
+
+    /** 已持久化定位最新值的实时通知路由模式。 */
+    public static final String REALTIME_LOCATION_ROUTING_PATTERN = "realtime.location.#";
 
     /** 告警触发稳定路由键。 */
     public static final String ALARM_RAISED_ROUTING_KEY = "alarm.raised";
