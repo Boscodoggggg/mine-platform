@@ -6,6 +6,7 @@ import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.model.spatial.SpatialClassifier;
 import com.bosco.mine.model.spatial.SpatialPoint;
 import com.bosco.mine.model.spatial.SpatialZone;
+import com.bosco.mine.server.modules.mine.location.LocationSnapshotService;
 import com.bosco.mine.server.modules.mine.model.MineSite;
 import com.bosco.mine.server.modules.mine.service.MineScopeAuthorizer;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionRequest;
@@ -89,6 +90,7 @@ public class SpatialRouteCommandService {
     private final MineScopeAuthorizer authorizer;
     private final OperationAuditService auditService;
     private final ObjectMapper objectMapper;
+    private final LocationSnapshotService snapshotService;
     private final SpatialClassifier classifier = new SpatialClassifier();
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
@@ -100,19 +102,22 @@ public class SpatialRouteCommandService {
      * @param authorizer 矿区数据作用域授权器
      * @param auditService 操作审计服务
      * @param objectMapper JSON 映射器
+     * @param snapshotService 定位运行快照发布服务
      */
     public SpatialRouteCommandService(
             SpatialRouteMapper mapper,
             SpatialRouteQueryService queryService,
             MineScopeAuthorizer authorizer,
             OperationAuditService auditService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            LocationSnapshotService snapshotService
     ) {
         this.mapper = mapper;
         this.queryService = queryService;
         this.authorizer = authorizer;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.snapshotService = snapshotService;
     }
 
     /** 创建稳定途径点。 */
@@ -140,14 +145,23 @@ public class SpatialRouteCommandService {
     public void archiveWaypoint(UUID siteId, UUID waypointId, long version) {
         MineSite site = authorizer.requireSite(siteId);
         SpatialObjectRecord before = requireActiveWaypoint(site, waypointId);
-        if (mapper.archiveWaypoint(
-                site.organizationId(), site.id(), waypointId, version,
-                authorizer.currentUserId()) == 0) {
-            throw conflict(waypointId);
+        if (mapper.countActivePublishedRouteReferences(
+                site.organizationId(), site.id(), waypointId) > 0) {
+            throw referenceInvalid(waypointId);
+        }
+        try {
+            if (mapper.archiveWaypoint(
+                    site.organizationId(), site.id(), waypointId, version,
+                    authorizer.currentUserId()) == 0) {
+                throw conflict(waypointId);
+            }
+        } catch (DataIntegrityViolationException exception) {
+            throw referenceInvalid(waypointId);
         }
         SpatialObjectResponse after = queryService.findWaypoint(site.id(), waypointId);
         audit("ARCHIVE_WAYPOINT", "mine:spatial:edit", "MINE_WAYPOINT", waypointId,
                 objectSummary(SpatialRouteQueryService.toResponse(before)), objectSummary(after));
+        refreshLocationSnapshot(site);
     }
 
     /** 创建途径点草稿版本。 */
@@ -159,6 +173,9 @@ public class SpatialRouteCommandService {
         requireActiveWaypoint(site, waypointId);
         validateUnifiedCoordinate(site, request.coordinateSystemId());
         WaypointVersionRequest normalized = normalize(request);
+        validateWaypointBounds(
+                site, normalized.coordinateSystemId(), normalized.x(), normalized.y(),
+                normalized.z(), normalized.minZ(), normalized.maxZ());
         UUID versionId = idGenerator.next();
         try {
             mapper.insertWaypointVersion(toWrite(
@@ -188,6 +205,9 @@ public class SpatialRouteCommandService {
         WaypointVersionRecord before = requireWaypointVersion(site, waypointId, versionId);
         validateUnifiedCoordinate(site, request.coordinateSystemId());
         WaypointVersionUpdateRequest normalized = normalize(request);
+        validateWaypointBounds(
+                site, normalized.coordinateSystemId(), normalized.x(), normalized.y(),
+                normalized.z(), normalized.minZ(), normalized.maxZ());
         if (!"DRAFT".equals(before.status()) || before.version() != request.version()) {
             throw versionConflict(versionId);
         }
@@ -219,6 +239,9 @@ public class SpatialRouteCommandService {
             throw versionConflict(versionId);
         }
         validateUnifiedCoordinate(site, before.coordinateSystemId());
+        validateWaypointBounds(
+                site, before.coordinateSystemId(), before.x(), before.y(), before.z(),
+                before.minZ(), before.maxZ());
         String contentHash = hash(waypointHashSource(before));
         try {
             if (mapper.publishWaypointVersion(
@@ -233,6 +256,7 @@ public class SpatialRouteCommandService {
                 site.id(), waypointId, versionId);
         audit("PUBLISH_WAYPOINT_VERSION", "mine:spatial:publish", "MINE_WAYPOINT_VERSION", versionId,
                 waypointSummary(SpatialRouteQueryService.toResponse(before)), waypointSummary(published));
+        refreshLocationSnapshot(site);
         return published;
     }
 
@@ -269,6 +293,7 @@ public class SpatialRouteCommandService {
         SpatialObjectResponse after = queryService.findRoute(site.id(), routeId);
         audit("ARCHIVE_ROUTE", "mine:spatial:edit", "MINE_ROUTE", routeId,
                 objectSummary(SpatialRouteQueryService.toResponse(before)), objectSummary(after));
+        refreshLocationSnapshot(site);
     }
 
     /** 创建路线草稿版本及其有序途径点。 */
@@ -359,6 +384,7 @@ public class SpatialRouteCommandService {
         RouteVersionResponse published = queryService.findRouteVersion(site.id(), routeId, versionId);
         audit("PUBLISH_ROUTE_VERSION", "mine:spatial:publish", "MINE_ROUTE_VERSION", versionId,
                 routeSummary(draft), routeSummary(published));
+        refreshLocationSnapshot(site);
         return published;
     }
 
@@ -395,6 +421,7 @@ public class SpatialRouteCommandService {
         SpatialObjectResponse after = queryService.findGeofence(site.id(), geofenceId);
         audit("ARCHIVE_GEOFENCE", "mine:spatial:edit", "MINE_GEOFENCE", geofenceId,
                 objectSummary(SpatialRouteQueryService.toResponse(before)), objectSummary(after));
+        refreshLocationSnapshot(site);
     }
 
     /** 创建电子围栏草稿版本及其有序顶点。 */
@@ -406,6 +433,9 @@ public class SpatialRouteCommandService {
         requireActiveGeofence(site, geofenceId);
         validateUnifiedCoordinate(site, request.coordinateSystemId());
         NormalizedGeofence normalized = normalize(request);
+        validateGeofenceBounds(
+                site, normalized.coordinateSystemId(), normalized.vertices(),
+                normalized.minZ(), normalized.maxZ());
         UUID versionId = idGenerator.next();
         try {
             mapper.insertGeofenceVersion(toWrite(
@@ -436,6 +466,9 @@ public class SpatialRouteCommandService {
         GeofenceVersionRecord before = requireGeofenceVersion(site, geofenceId, versionId);
         validateUnifiedCoordinate(site, request.coordinateSystemId());
         NormalizedGeofence normalized = normalize(request, before.versionNumber());
+        validateGeofenceBounds(
+                site, normalized.coordinateSystemId(), normalized.vertices(),
+                normalized.minZ(), normalized.maxZ());
         if (!"DRAFT".equals(before.status()) || before.version() != request.version()) {
             throw versionConflict(versionId);
         }
@@ -472,11 +505,14 @@ public class SpatialRouteCommandService {
         }
         GeofenceVersionResponse draft = queryService.findGeofenceVersion(
                 site.id(), geofenceId, versionId);
+        List<SpatialVertexRequest> draftVertices = draft.vertices().stream()
+                .map(vertex -> new SpatialVertexRequest(
+                        vertex.sequenceNumber(), vertex.x(), vertex.y()))
+                .toList();
+        validateGeofenceBounds(
+                site, draft.coordinateSystemId(), draftVertices, draft.minZ(), draft.maxZ());
         validatePolygon(
-                draft.vertices().stream()
-                        .map(vertex -> new SpatialVertexRequest(
-                                vertex.sequenceNumber(), vertex.x(), vertex.y()))
-                        .toList(),
+                draftVertices,
                 draft.detectionPolicy().boundaryToleranceMeters(), draft.minZ(), draft.maxZ());
         String contentHash = hash(geofenceHashSource(draft));
         try {
@@ -492,7 +528,14 @@ public class SpatialRouteCommandService {
                 site.id(), geofenceId, versionId);
         audit("PUBLISH_GEOFENCE_VERSION", "mine:spatial:publish", "MINE_GEOFENCE_VERSION", versionId,
                 geofenceSummary(draft), geofenceSummary(published));
+        refreshLocationSnapshot(site);
         return published;
+    }
+
+    /** 在当前事务中发布空间配置变更后的完整定位运行快照。 */
+    private void refreshLocationSnapshot(MineSite site) {
+        snapshotService.captureSite(
+                site.organizationId(), site.id(), LocationSnapshotService.ChangeReason.SPATIAL_CHANGE);
     }
 
     private SpatialObjectRecord requireActiveWaypoint(MineSite site, UUID id) {
@@ -542,6 +585,73 @@ public class SpatialRouteCommandService {
                 site.organizationId(), site.id(), coordinateSystemId)) {
             throw new MineException(REQUEST_INVALID, Map.of("siteId", site.id()));
         }
+    }
+
+    /** 校验途径点圆心和高度区间位于活动统一坐标系边界内。 */
+    private void validateWaypointBounds(
+            MineSite site,
+            UUID coordinateSystemId,
+            double x,
+            double y,
+            Double z,
+            Double minZ,
+            Double maxZ
+    ) {
+        SpatialRouteMapper.SpatialCoordinateBounds bounds = coordinateBounds(
+                site, coordinateSystemId);
+        if (outsidePlanarBounds(bounds, x, y)
+                || z != null && bounds.minZ() != null
+                && (z < bounds.minZ() || z > bounds.maxZ())
+                || outsideHeightBounds(bounds, minZ, maxZ)) {
+            throw invalid();
+        }
+    }
+
+    /** 校验围栏全部顶点和高度区间位于活动统一坐标系边界内。 */
+    private void validateGeofenceBounds(
+            MineSite site,
+            UUID coordinateSystemId,
+            List<SpatialVertexRequest> vertices,
+            Double minZ,
+            Double maxZ
+    ) {
+        SpatialRouteMapper.SpatialCoordinateBounds bounds = coordinateBounds(
+                site, coordinateSystemId);
+        if (vertices.stream().anyMatch(vertex -> outsidePlanarBounds(
+                bounds, vertex.x(), vertex.y()))
+                || outsideHeightBounds(bounds, minZ, maxZ)) {
+            throw invalid();
+        }
+    }
+
+    /** 返回矿区活动统一坐标系边界。 */
+    private SpatialRouteMapper.SpatialCoordinateBounds coordinateBounds(
+            MineSite site,
+            UUID coordinateSystemId
+    ) {
+        return mapper.findActiveUnifiedCoordinateBounds(
+                        site.organizationId(), site.id(), coordinateSystemId)
+                .orElseThrow(this::invalid);
+    }
+
+    /** 判断二维坐标是否超出统一坐标系平面边界。 */
+    private boolean outsidePlanarBounds(
+            SpatialRouteMapper.SpatialCoordinateBounds bounds,
+            double x,
+            double y
+    ) {
+        return x < bounds.minX() || x > bounds.maxX()
+                || y < bounds.minY() || y > bounds.maxY();
+    }
+
+    /** 判断可选高度区间是否超出统一坐标系高程边界。 */
+    private boolean outsideHeightBounds(
+            SpatialRouteMapper.SpatialCoordinateBounds bounds,
+            Double minZ,
+            Double maxZ
+    ) {
+        return minZ != null && bounds.minZ() != null
+                && (minZ < bounds.minZ() || maxZ > bounds.maxZ());
     }
 
     private WaypointVersionRequest normalize(WaypointVersionRequest request) {
@@ -1041,6 +1151,11 @@ public class SpatialRouteCommandService {
     private MineException versionConflict(UUID id, Exception cause) {
         return new MineException(VERSION_CONFLICT, Map.of(
                 "versionId", id, "exceptionType", cause.getClass().getSimpleName()));
+    }
+
+    /** 返回途径点仍被活动已发布路线引用的稳定业务错误。 */
+    private MineException referenceInvalid(UUID waypointId) {
+        return new MineException(REFERENCE_INVALID, Map.of("waypointId", waypointId));
     }
 
     private MineException invalid() {

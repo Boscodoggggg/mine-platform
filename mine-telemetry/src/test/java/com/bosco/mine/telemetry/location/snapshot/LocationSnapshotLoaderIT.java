@@ -46,6 +46,14 @@ class LocationSnapshotLoaderIT {
     private static final UUID DEVICE_BINDING_ID = uuid(108);
     private static final UUID TAG_BINDING_ID = uuid(109);
     private static final UUID EVENT_ID = uuid(110);
+    private static final UUID FIRST_WAYPOINT_ID = uuid(111);
+    private static final UUID FIRST_WAYPOINT_VERSION_ID = uuid(112);
+    private static final UUID SECOND_WAYPOINT_ID = uuid(113);
+    private static final UUID SECOND_WAYPOINT_VERSION_ID = uuid(114);
+    private static final UUID ROUTE_ID = uuid(115);
+    private static final UUID ROUTE_VERSION_ID = uuid(116);
+    private static final UUID GEOFENCE_ID = uuid(117);
+    private static final UUID GEOFENCE_VERSION_ID = uuid(118);
     private static final JsonMapper JSON = JsonMapper.builder().findAndAddModules().build();
 
     @Container
@@ -74,6 +82,9 @@ class LocationSnapshotLoaderIT {
                     assertThat(snapshot.snapshotId()).isEqualTo(revisionThree.snapshotId());
                     assertThat(snapshot.revision()).isEqualTo(3);
                     assertThat(snapshot.items()).hasSize(revisionThree.items().size());
+                    assertThat(snapshot.items().values())
+                            .extracting(LocationRuntimeRegistry.RuntimeItem::itemType)
+                            .contains("WAYPOINT_VERSION", "ROUTE_VERSION", "GEOFENCE_VERSION");
                 });
         assertThat(query(dataSource, """
                 SELECT runtime_revision || ':' || item_count
@@ -94,6 +105,40 @@ class LocationSnapshotLoaderIT {
                 uuid(203), SITE_ID, invalidTransform.event()))
                 .isInstanceOf(PermanentLocationSnapshotException.class)
                 .hasMessageContaining("坐标转换");
+        assertThat(registry.current(SITE_ID)).get()
+                .extracting(LocationRuntimeRegistry.RuntimeSnapshot::revision)
+                .isEqualTo(3L);
+
+        SnapshotFixture overlappingVersions = withOverlappingWaypointVersion(
+                fixture(uuid(218), 7, validMatrix(), 0), uuid(218), 7);
+        assertThatThrownBy(() -> new LocationSnapshotLoader(
+                registry, overlappingVersions.source(), 4).apply(
+                uuid(219), SITE_ID, overlappingVersions.event()))
+                .isInstanceOf(PermanentLocationSnapshotException.class)
+                .hasMessageContaining("重叠");
+        assertThat(registry.current(SITE_ID)).get()
+                .extracting(LocationRuntimeRegistry.RuntimeSnapshot::revision)
+                .isEqualTo(3L);
+
+        SnapshotFixture outOfBounds = fixture(
+                uuid(216), 6, validMatrix(), 0,
+                SECOND_WAYPOINT_VERSION_ID, 5_000D);
+        assertThatThrownBy(() -> new LocationSnapshotLoader(
+                registry, outOfBounds.source(), 4).apply(
+                uuid(217), SITE_ID, outOfBounds.event()))
+                .isInstanceOf(PermanentLocationSnapshotException.class)
+                .hasMessageContaining("边界");
+        assertThat(registry.current(SITE_ID)).get()
+                .extracting(LocationRuntimeRegistry.RuntimeSnapshot::revision)
+                .isEqualTo(3L);
+
+        SnapshotFixture invalidRoute = fixture(
+                uuid(214), 5, validMatrix(), 0, uuid(999));
+        assertThatThrownBy(() -> new LocationSnapshotLoader(
+                registry, invalidRoute.source(), 4).apply(
+                uuid(215), SITE_ID, invalidRoute.event()))
+                .isInstanceOf(PermanentLocationSnapshotException.class)
+                .hasMessageContaining("路线");
         assertThat(registry.current(SITE_ID)).get()
                 .extracting(LocationRuntimeRegistry.RuntimeSnapshot::revision)
                 .isEqualTo(3L);
@@ -149,6 +194,31 @@ class LocationSnapshotLoaderIT {
             List<Double> matrix,
             int declaredExtraItems
     ) {
+        return fixture(
+                snapshotId, revision, matrix, declaredExtraItems,
+                SECOND_WAYPOINT_VERSION_ID, 100D);
+    }
+
+    private SnapshotFixture fixture(
+            UUID snapshotId,
+            long revision,
+            List<Double> matrix,
+            int declaredExtraItems,
+            UUID secondRouteWaypointVersionId
+    ) {
+        return fixture(
+                snapshotId, revision, matrix, declaredExtraItems,
+                secondRouteWaypointVersionId, 100D);
+    }
+
+    private SnapshotFixture fixture(
+            UUID snapshotId,
+            long revision,
+            List<Double> matrix,
+            int declaredExtraItems,
+            UUID secondRouteWaypointVersionId,
+            double firstWaypointX
+    ) {
         List<ItemFixture> items = new ArrayList<>();
         items.add(item("COORDINATE_SYSTEM:" + SOURCE_COORDINATE_ID, "COORDINATE_SYSTEM",
                 Map.ofEntries(
@@ -194,6 +264,47 @@ class LocationSnapshotLoaderIT {
                         "bindingId", TAG_BINDING_ID, "tagId", TAG_ID,
                         "vehicleId", VEHICLE_ID,
                         "validFrom", "2026-01-01T00:00:00Z")));
+        items.add(item("WAYPOINT_VERSION:" + FIRST_WAYPOINT_VERSION_ID,
+                "WAYPOINT_VERSION", waypointContent(
+                        FIRST_WAYPOINT_ID, FIRST_WAYPOINT_VERSION_ID, firstWaypointX, 200D)));
+        items.add(item("WAYPOINT_VERSION:" + SECOND_WAYPOINT_VERSION_ID,
+                "WAYPOINT_VERSION", waypointContent(
+                        SECOND_WAYPOINT_ID, SECOND_WAYPOINT_VERSION_ID, 300D, 400D)));
+        items.add(item("ROUTE_VERSION:" + ROUTE_VERSION_ID, "ROUTE_VERSION", Map.ofEntries(
+                Map.entry("versionId", ROUTE_VERSION_ID),
+                Map.entry("routeId", ROUTE_ID),
+                Map.entry("coordinateSystemId", TARGET_COORDINATE_ID),
+                Map.entry("versionNumber", 1),
+                Map.entry("direction", "BIDIRECTIONAL"),
+                Map.entry("applicableVehicleTypes", List.of("HAUL_TRUCK")),
+                Map.entry("validFrom", "2026-01-01T00:00:00Z"),
+                Map.entry("contentHash", "sha256:" + "c".repeat(64)),
+                Map.entry("waypoints", List.of(
+                        Map.of(
+                                "sequenceNumber", 1,
+                                "waypointVersionId", FIRST_WAYPOINT_VERSION_ID,
+                                "stopRequired", true,
+                                "expectedDwellSeconds", 20),
+                        mapWithNullableDwell(secondRouteWaypointVersionId))))));
+        items.add(item("GEOFENCE_VERSION:" + GEOFENCE_VERSION_ID,
+                "GEOFENCE_VERSION", Map.ofEntries(
+                        Map.entry("versionId", GEOFENCE_VERSION_ID),
+                        Map.entry("geofenceId", GEOFENCE_ID),
+                        Map.entry("coordinateSystemId", TARGET_COORDINATE_ID),
+                        Map.entry("versionNumber", 1),
+                        Map.entry("geofenceType", "WORK"),
+                        Map.entry("boundaryToleranceMeters", 0.5D),
+                        Map.entry("enterConfirmPoints", 2),
+                        Map.entry("exitConfirmPoints", 2),
+                        Map.entry("dwellSeconds", 30),
+                        Map.entry("allowedLatenessSeconds", 10),
+                        Map.entry("idleFlushSeconds", 60),
+                        Map.entry("validFrom", "2026-01-01T00:00:00Z"),
+                        Map.entry("contentHash", "sha256:" + "d".repeat(64)),
+                        Map.entry("vertices", List.of(
+                                Map.of("sequenceNumber", 1, "x", 100D, "y", 100D),
+                                Map.of("sequenceNumber", 2, "x", 500D, "y", 100D),
+                                Map.of("sequenceNumber", 3, "x", 100D, "y", 500D))))));
         items.sort(Comparator.comparing(ItemFixture::itemKey));
         String snapshotHash = snapshotHash(items);
         int declaredCount = items.size() + declaredExtraItems;
@@ -202,6 +313,60 @@ class LocationSnapshotLoaderIT {
         return new SnapshotFixture(
                 snapshotId, revision, List.copyOf(items), source,
                 new LocationRuntimeChangedPayload(snapshotId, revision, snapshotHash));
+    }
+
+    private Map<String, Object> waypointContent(
+            UUID waypointId,
+            UUID versionId,
+            double x,
+            double y
+    ) {
+        return Map.ofEntries(
+                Map.entry("versionId", versionId),
+                Map.entry("waypointId", waypointId),
+                Map.entry("coordinateSystemId", TARGET_COORDINATE_ID),
+                Map.entry("versionNumber", 1),
+                Map.entry("waypointType", "CHECK"),
+                Map.entry("x", x),
+                Map.entry("y", y),
+                Map.entry("radiusMeters", 20D),
+                Map.entry("boundaryToleranceMeters", 0.5D),
+                Map.entry("enterConfirmPoints", 2),
+                Map.entry("exitConfirmPoints", 2),
+                Map.entry("dwellSeconds", 30),
+                Map.entry("allowedLatenessSeconds", 10),
+                Map.entry("idleFlushSeconds", 60),
+                Map.entry("validFrom", "2026-01-01T00:00:00Z"),
+                Map.entry("contentHash", "sha256:" + "b".repeat(64)));
+    }
+
+    private SnapshotFixture withOverlappingWaypointVersion(
+            SnapshotFixture base,
+            UUID snapshotId,
+            long revision
+    ) {
+        UUID overlappingVersionId = uuid(119);
+        List<ItemFixture> items = new ArrayList<>(base.items());
+        items.add(item(
+                "WAYPOINT_VERSION:" + overlappingVersionId,
+                "WAYPOINT_VERSION",
+                waypointContent(FIRST_WAYPOINT_ID, overlappingVersionId, 150D, 250D)));
+        items.sort(Comparator.comparing(ItemFixture::itemKey));
+        String contentHash = snapshotHash(items);
+        LocationSnapshotSource source = new PagedSource(
+                snapshotId, revision, items.size(), contentHash, List.copyOf(items));
+        return new SnapshotFixture(
+                snapshotId, revision, List.copyOf(items), source,
+                new LocationRuntimeChangedPayload(snapshotId, revision, contentHash));
+    }
+
+    private Map<String, Object> mapWithNullableDwell(UUID waypointVersionId) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("sequenceNumber", 2);
+        value.put("waypointVersionId", waypointVersionId);
+        value.put("stopRequired", false);
+        value.put("expectedDwellSeconds", null);
+        return value;
     }
 
     private ItemFixture item(String key, String type, Map<String, Object> content) {

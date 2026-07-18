@@ -4,6 +4,7 @@ import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.server.MineServerApplication;
 import com.bosco.mine.server.modules.mine.dto.CoordinateSystemRequest;
 import com.bosco.mine.server.modules.mine.dto.CoordinateSystemResponse;
+import com.bosco.mine.server.modules.mine.dto.CoordinateSystemUpdateRequest;
 import com.bosco.mine.server.modules.mine.dto.MineOrganizationResponse;
 import com.bosco.mine.server.modules.mine.service.MineAssetCommandService;
 import com.bosco.mine.server.modules.mine.service.MineRequestIdentity;
@@ -174,6 +175,11 @@ class SpatialRouteManagementIT {
                 firstSiteId, waypoint.id(), draft.id(), updated.version());
         assertThat(published.status()).isEqualTo("PUBLISHED");
         assertThat(published.contentHash()).matches("sha256:[0-9a-f]{64}");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM mine_location_runtime_snapshot
+                WHERE site_id = ? AND change_reason = 'SPATIAL_CHANGE'
+                """, Long.class, firstSiteId)).isOne();
         assertThat(queryService.findWaypointVersion(firstSiteId, waypoint.id(), draft.id()))
                 .isEqualTo(published);
         assertThatThrownBy(() -> commandService.updateWaypointVersion(
@@ -185,6 +191,18 @@ class SpatialRouteManagementIT {
                         assertThat(exception.errorCode().code()).isEqualTo("MINE-SPATIAL-409-002"));
 
         commandService.archiveWaypoint(firstSiteId, waypoint.id(), waypoint.version());
+        UUID latestSnapshotId = jdbcTemplate.queryForObject("""
+                SELECT id
+                FROM mine_location_runtime_snapshot
+                WHERE site_id = ?
+                ORDER BY revision DESC
+                LIMIT 1
+                """, UUID.class, firstSiteId);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM mine_location_runtime_snapshot_item
+                WHERE snapshot_id = ? AND item_key = ?
+                """, Long.class, latestSnapshotId, "WAYPOINT_VERSION:" + published.id())).isZero();
         assertThat(queryService.findWaypoints(firstSiteId, "load-point", "ARCHIVED", 1, 20).items())
                 .extracting(SpatialObjectResponse::id)
                 .containsExactly(waypoint.id());
@@ -216,6 +234,16 @@ class SpatialRouteManagementIT {
         assertThat(publishedRoute.waypoints())
                 .extracting(item -> item.sequenceNumber())
                 .containsExactly(1, 2);
+        assertThatThrownBy(() -> assetCommandService.archiveCoordinateSystem(
+                firstSiteId, unifiedCoordinate.id(), unifiedCoordinate.version()))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-ASSET-409-005"));
+        assertThatThrownBy(() -> commandService.archiveWaypoint(
+                firstSiteId,
+                firstWaypoint.waypointId(),
+                queryService.findWaypoint(firstSiteId, firstWaypoint.waypointId()).version()))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-SPATIAL-422-003"));
 
         SpatialObjectResponse geofence = commandService.createGeofence(firstSiteId, "work-zone-01");
         GeofenceVersionResponse geofenceDraft = commandService.createGeofenceVersion(
@@ -256,6 +284,83 @@ class SpatialRouteManagementIT {
     }
 
     @Test
+    void 空间高度区间必须在统一坐标系高程边界内提前失败() {
+        SpatialObjectResponse waypoint = commandService.createWaypoint(
+                firstSiteId, "height-bounds-point");
+        assertThatThrownBy(() -> commandService.createWaypointVersion(
+                firstSiteId,
+                waypoint.id(),
+                new WaypointVersionRequest(
+                        unifiedCoordinate.id(), 1, "高度越界途径点", "CHECK",
+                        100D, 100D, 20D, 10D, -501D, 80D,
+                        DEFAULT_POLICY, VALID_FROM, null)))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-SPATIAL-422-002"));
+
+        SpatialObjectResponse geofence = commandService.createGeofence(
+                firstSiteId, "height-bounds-zone");
+        assertThatThrownBy(() -> commandService.createGeofenceVersion(
+                firstSiteId,
+                geofence.id(),
+                new GeofenceVersionRequest(
+                        unifiedCoordinate.id(), 1, "高度越界围栏", "WORK",
+                        0D, 2_001D, DEFAULT_POLICY, VALID_FROM, null,
+                        List.of(
+                                new SpatialVertexRequest(1, 100D, 100D),
+                                new SpatialVertexRequest(2, 200D, 100D),
+                                new SpatialVertexRequest(3, 200D, 200D),
+                                new SpatialVertexRequest(4, 100D, 200D)))))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-SPATIAL-422-002"));
+    }
+
+    @Test
+    void 发布必须按最新统一坐标边界重新校验草稿几何() {
+        SpatialObjectResponse waypoint = commandService.createWaypoint(
+                firstSiteId, "publish-recheck-point");
+        WaypointVersionResponse waypointDraft = commandService.createWaypointVersion(
+                firstSiteId,
+                waypoint.id(),
+                waypointRequest(unifiedCoordinate.id(), 1, "待复核途径点", 100D, 100D));
+        CoordinateSystemResponse narrowed = assetCommandService.updateCoordinateSystem(
+                firstSiteId,
+                unifiedCoordinate.id(),
+                coordinateUpdate(unifiedCoordinate, 50D));
+
+        assertThatThrownBy(() -> commandService.publishWaypointVersion(
+                firstSiteId, waypoint.id(), waypointDraft.id(), waypointDraft.version()))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-SPATIAL-422-002"));
+
+        CoordinateSystemResponse restored = assetCommandService.updateCoordinateSystem(
+                firstSiteId,
+                narrowed.id(),
+                coordinateUpdate(narrowed, 10_000D));
+        SpatialObjectResponse geofence = commandService.createGeofence(
+                firstSiteId, "publish-recheck-zone");
+        GeofenceVersionResponse geofenceDraft = commandService.createGeofenceVersion(
+                firstSiteId,
+                geofence.id(),
+                new GeofenceVersionRequest(
+                        restored.id(), 1, "待复核围栏", "WORK", 0D, 100D,
+                        DEFAULT_POLICY, VALID_FROM, null,
+                        List.of(
+                                new SpatialVertexRequest(1, 100D, 100D),
+                                new SpatialVertexRequest(2, 200D, 100D),
+                                new SpatialVertexRequest(3, 200D, 200D),
+                                new SpatialVertexRequest(4, 100D, 200D))));
+        assetCommandService.updateCoordinateSystem(
+                firstSiteId,
+                restored.id(),
+                coordinateUpdate(restored, 150D));
+
+        assertThatThrownBy(() -> commandService.publishGeofenceVersion(
+                firstSiteId, geofence.id(), geofenceDraft.id(), geofenceDraft.version()))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-SPATIAL-422-002"));
+    }
+
+    @Test
     void 查询和写入都必须执行服务端矿区作用域并校验分页() {
         SpatialObjectResponse waypoint = commandService.createWaypoint(firstSiteId, "scope-point-01");
         assertThat(queryService.findWaypoints(firstSiteId, "scope", "ACTIVE", 1, 20).total())
@@ -292,6 +397,17 @@ class SpatialRouteManagementIT {
         return new WaypointVersionRequest(
                 coordinateSystemId, versionNumber, name, "LOAD", x, y, 20D,
                 15D, 0D, 80D, DEFAULT_POLICY, VALID_FROM, null);
+    }
+
+    private CoordinateSystemUpdateRequest coordinateUpdate(
+            CoordinateSystemResponse coordinate,
+            double maxX
+    ) {
+        return new CoordinateSystemUpdateRequest(
+                coordinate.name(), coordinate.coordinateType(), coordinate.unit(),
+                coordinate.epsgCode(), coordinate.unified(), coordinate.minX(), maxX,
+                coordinate.minY(), coordinate.maxY(), coordinate.minZ(), coordinate.maxZ(),
+                coordinate.version());
     }
 
     private UUID createUser(String suffix) {

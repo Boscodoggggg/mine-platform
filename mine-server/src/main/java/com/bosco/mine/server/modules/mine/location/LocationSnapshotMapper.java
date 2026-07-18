@@ -156,6 +156,144 @@ public interface LocationSnapshotMapper {
 
                 UNION ALL
 
+                SELECT 'WAYPOINT_VERSION:' || waypoint_version.id,
+                       'WAYPOINT_VERSION',
+                       jsonb_build_object(
+                           'allowedLatenessSeconds', waypoint_version.allowed_lateness_seconds,
+                           'boundaryToleranceMeters', waypoint_version.boundary_tolerance_meters,
+                           'contentHash', waypoint_version.content_hash,
+                           'coordinateSystemId', waypoint_version.coordinate_system_id,
+                           'dwellSeconds', waypoint_version.dwell_seconds,
+                           'enterConfirmPoints', waypoint_version.enter_confirm_points,
+                           'exitConfirmPoints', waypoint_version.exit_confirm_points,
+                           'idleFlushSeconds', waypoint_version.idle_flush_seconds,
+                           'maxZ', waypoint_version.max_z,
+                           'minZ', waypoint_version.min_z,
+                           'radiusMeters', waypoint_version.radius_meters,
+                           'validFrom', waypoint_version.valid_from,
+                           'validTo', waypoint_version.valid_to,
+                           'versionId', waypoint_version.id,
+                           'versionNumber', waypoint_version.version_number,
+                           'waypointId', waypoint_version.waypoint_id,
+                           'waypointType', waypoint_version.waypoint_type,
+                           'x', waypoint_version.x,
+                           'y', waypoint_version.y,
+                           'z', waypoint_version.z
+                       )
+                FROM mine_waypoint_version waypoint_version
+                JOIN mine_waypoint waypoint
+                  ON waypoint.id = waypoint_version.waypoint_id
+                 AND waypoint.organization_id = waypoint_version.organization_id
+                 AND waypoint.site_id = waypoint_version.site_id
+                JOIN mine_coordinate_system coordinate
+                  ON coordinate.id = waypoint_version.coordinate_system_id
+                 AND coordinate.organization_id = waypoint_version.organization_id
+                 AND coordinate.site_id = waypoint_version.site_id
+                WHERE waypoint_version.site_id = #{siteId}
+                  AND waypoint_version.organization_id = #{organizationId}
+                  AND waypoint_version.status = 'PUBLISHED'
+                  AND waypoint.status = 'ACTIVE'
+                  AND coordinate.status = 'ACTIVE'
+                  AND coordinate.unified
+
+                UNION ALL
+
+                SELECT 'ROUTE_VERSION:' || route_version.id,
+                       'ROUTE_VERSION',
+                       jsonb_build_object(
+                           'applicableVehicleTypes', route_version.applicable_vehicle_types,
+                           'contentHash', route_version.content_hash,
+                           'coordinateSystemId', route_version.coordinate_system_id,
+                           'direction', route_version.direction,
+                           'routeId', route_version.route_id,
+                           'validFrom', route_version.valid_from,
+                           'validTo', route_version.valid_to,
+                           'versionId', route_version.id,
+                           'versionNumber', route_version.version_number,
+                           'waypoints', COALESCE((
+                               SELECT jsonb_agg(
+                                   jsonb_build_object(
+                                       'expectedDwellSeconds', route_waypoint.expected_dwell_seconds,
+                                       'sequenceNumber', route_waypoint.sequence_number,
+                                       'stopRequired', route_waypoint.stop_required,
+                                       'waypointVersionId', route_waypoint.waypoint_version_id
+                                   ) ORDER BY route_waypoint.sequence_number
+                               )
+                               FROM mine_route_version_waypoint route_waypoint
+                               WHERE route_waypoint.route_version_id = route_version.id
+                                 AND route_waypoint.organization_id = route_version.organization_id
+                                 AND route_waypoint.site_id = route_version.site_id
+                           ), '[]'::JSONB)
+                       )
+                FROM mine_route_version route_version
+                JOIN mine_route route
+                  ON route.id = route_version.route_id
+                 AND route.organization_id = route_version.organization_id
+                 AND route.site_id = route_version.site_id
+                JOIN mine_coordinate_system coordinate
+                  ON coordinate.id = route_version.coordinate_system_id
+                 AND coordinate.organization_id = route_version.organization_id
+                 AND coordinate.site_id = route_version.site_id
+                WHERE route_version.site_id = #{siteId}
+                  AND route_version.organization_id = #{organizationId}
+                  AND route_version.status = 'PUBLISHED'
+                  AND route.status = 'ACTIVE'
+                  AND coordinate.status = 'ACTIVE'
+                  AND coordinate.unified
+
+                UNION ALL
+
+                SELECT 'GEOFENCE_VERSION:' || geofence_version.id,
+                       'GEOFENCE_VERSION',
+                       jsonb_build_object(
+                           'allowedLatenessSeconds', geofence_version.allowed_lateness_seconds,
+                           'boundaryToleranceMeters', geofence_version.boundary_tolerance_meters,
+                           'contentHash', geofence_version.content_hash,
+                           'coordinateSystemId', geofence_version.coordinate_system_id,
+                           'dwellSeconds', geofence_version.dwell_seconds,
+                           'enterConfirmPoints', geofence_version.enter_confirm_points,
+                           'exitConfirmPoints', geofence_version.exit_confirm_points,
+                           'geofenceId', geofence_version.geofence_id,
+                           'geofenceType', geofence_version.geofence_type,
+                           'idleFlushSeconds', geofence_version.idle_flush_seconds,
+                           'maxZ', geofence_version.max_z,
+                           'minZ', geofence_version.min_z,
+                           'validFrom', geofence_version.valid_from,
+                           'validTo', geofence_version.valid_to,
+                           'versionId', geofence_version.id,
+                           'versionNumber', geofence_version.version_number,
+                           'vertices', COALESCE((
+                               SELECT jsonb_agg(
+                                   jsonb_build_object(
+                                       'sequenceNumber', vertex.sequence_number,
+                                       'x', vertex.x,
+                                       'y', vertex.y
+                                   ) ORDER BY vertex.sequence_number
+                               )
+                               FROM mine_geofence_vertex vertex
+                               WHERE vertex.geofence_version_id = geofence_version.id
+                                 AND vertex.organization_id = geofence_version.organization_id
+                                 AND vertex.site_id = geofence_version.site_id
+                           ), '[]'::JSONB)
+                       )
+                FROM mine_geofence_version geofence_version
+                JOIN mine_geofence geofence
+                  ON geofence.id = geofence_version.geofence_id
+                 AND geofence.organization_id = geofence_version.organization_id
+                 AND geofence.site_id = geofence_version.site_id
+                JOIN mine_coordinate_system coordinate
+                  ON coordinate.id = geofence_version.coordinate_system_id
+                 AND coordinate.organization_id = geofence_version.organization_id
+                 AND coordinate.site_id = geofence_version.site_id
+                WHERE geofence_version.site_id = #{siteId}
+                  AND geofence_version.organization_id = #{organizationId}
+                  AND geofence_version.status = 'PUBLISHED'
+                  AND geofence.status = 'ACTIVE'
+                  AND coordinate.status = 'ACTIVE'
+                  AND coordinate.unified
+
+                UNION ALL
+
                 SELECT 'VEHICLE_DEVICE_BINDING:' || binding.id,
                        'VEHICLE_DEVICE_BINDING',
                        jsonb_build_object(

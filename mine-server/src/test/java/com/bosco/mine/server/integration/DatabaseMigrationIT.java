@@ -384,6 +384,19 @@ class DatabaseMigrationIT {
                   AND NOT tgisinternal
                   AND tgname LIKE 'trg_mine_location_runtime_snapshot%immutable'
                 """, Long.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname IN (
+                    'ck_mine_location_runtime_snapshot_reason',
+                    'ck_mine_location_runtime_snapshot_item_type'
+                )
+                ORDER BY conname
+                """, String.class))
+                .hasSize(2)
+                .anySatisfy(definition -> assertThat(definition).contains("SPATIAL_CHANGE"))
+                .anySatisfy(definition -> assertThat(definition).contains(
+                        "WAYPOINT_VERSION", "ROUTE_VERSION", "GEOFENCE_VERSION"));
     }
 
     @Test

@@ -310,7 +310,19 @@ class TelemetryMigrationIT {
                 """))
                 .singleElement()
                 .satisfies(definition -> assertThat(definition)
-                        .contains("'SOURCE_DEVICE'::character varying"));
+                        .contains(
+                                "'SOURCE_DEVICE'::character varying",
+                                "'WAYPOINT_VERSION'::character varying",
+                                "'ROUTE_VERSION'::character varying",
+                                "'GEOFENCE_VERSION'::character varying"));
+        assertThat(queryStrings("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conrelid = 'location_snapshot_stage'::regclass
+                  AND conname = 'ck_location_snapshot_stage_content'
+                """))
+                .singleElement()
+                .satisfies(definition -> assertThat(definition).contains("2097152"));
 
         assertThat(queryStrings("""
                 SELECT current_boot_id || ':' || highest_sequence

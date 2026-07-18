@@ -300,7 +300,8 @@ public class LocationSnapshotService {
         SITE_CHANGE,
         ASSET_CHANGE,
         COORDINATE_CHANGE,
-        BINDING_SWITCH
+        BINDING_SWITCH,
+        SPATIAL_CHANGE
     }
 
     /** 当前事务新建的定位运行快照。 */

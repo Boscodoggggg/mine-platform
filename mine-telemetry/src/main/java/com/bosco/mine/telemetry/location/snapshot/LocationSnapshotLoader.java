@@ -26,7 +26,8 @@ public final class LocationSnapshotLoader {
     private static final Pattern ITEM_KEY =
             Pattern.compile("^[A-Z][A-Z_]*:[0-9a-f-]{36}$");
     private static final Pattern HASH = Pattern.compile("^sha256:[0-9a-f]{64}$");
-    private static final int MAX_ITEM_BYTES = 1_048_576;
+    /** 覆盖控制面允许的 10,000 个路线节点并限制单条内存占用。 */
+    private static final int MAX_ITEM_BYTES = 2_097_152;
 
     private final LocationRuntimeRegistry registry;
     private final LocationSnapshotSource source;

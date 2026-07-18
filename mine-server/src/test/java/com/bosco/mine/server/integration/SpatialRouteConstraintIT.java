@@ -13,8 +13,16 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -179,9 +187,147 @@ class SpatialRouteConstraintIT {
                 SELECT status FROM mine_route_version WHERE id = ?
                 """, String.class, routeVersionId)).isEqualTo("PUBLISHED");
         assertThatThrownBy(() -> jdbcTemplate.update("""
+                UPDATE mine_coordinate_system
+                SET status = 'ARCHIVED', archived_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, unifiedCoordinateSystemId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbcTemplate.update("""
                 DELETE FROM mine_route_version_waypoint
                 WHERE route_version_id = ? AND sequence_number = 1
                 """, routeVersionId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+                UPDATE mine_waypoint
+                SET status = 'ARCHIVED', archived_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, waypointA))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 发布必须重新校验草稿几何与最新坐标边界() {
+        UUID geofenceId = insertGeofence("publish-height-bounds-zone");
+        UUID geofenceVersionId = insertGeofenceVersion(
+                geofenceId, 1, "2026-07-18T00:00:00Z");
+        insertVertices(geofenceVersionId, square(0D));
+        jdbcTemplate.update("""
+                UPDATE mine_coordinate_system
+                SET max_x = 5
+                WHERE id = ?
+                """, unifiedCoordinateSystemId);
+
+        assertThatThrownBy(() -> publish("mine_geofence_version", geofenceVersionId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        jdbcTemplate.update("""
+                UPDATE mine_coordinate_system
+                SET max_x = 1000
+                WHERE id = ?
+                """, unifiedCoordinateSystemId);
+        UUID waypointId = insertWaypoint("publish-bounds-point");
+        UUID waypointVersionId = insertWaypointVersion(
+                waypointId, unifiedCoordinateSystemId, 1, "2026-07-18T00:00:00Z");
+        jdbcTemplate.update("""
+                UPDATE mine_coordinate_system
+                SET max_x = 5
+                WHERE id = ?
+                """, unifiedCoordinateSystemId);
+
+        assertThatThrownBy(() -> publish("mine_waypoint_version", waypointVersionId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 空间版本先发布时坐标变更必须等待并在发布提交后失败() throws Exception {
+        UUID geofenceVersionId = preparedGeofenceVersion("publish-first-zone");
+        try (Connection publishConnection = connection();
+             Connection coordinateConnection = connection();
+             var executor = Executors.newSingleThreadExecutor()) {
+            publishConnection.setAutoCommit(false);
+            coordinateConnection.setAutoCommit(false);
+            publish(publishConnection, "mine_geofence_version", geofenceVersionId);
+
+            int coordinateBackendPid = backendPid(coordinateConnection);
+            CountDownLatch ready = new CountDownLatch(1);
+            Future<SQLException> result = executor.submit(() -> {
+                ready.countDown();
+                try {
+                    narrowCoordinateHeight(coordinateConnection);
+                    coordinateConnection.commit();
+                    return null;
+                } catch (SQLException exception) {
+                    coordinateConnection.rollback();
+                    return exception;
+                }
+            });
+
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(awaitLockWait(coordinateBackendPid))
+                    .as("坐标变更必须等待尚未提交的空间版本发布")
+                    .isTrue();
+            publishConnection.commit();
+            SQLException exception = result.get(10, TimeUnit.SECONDS);
+            assertThat((Throwable) exception).isNotNull();
+            assertThat(exception.getSQLState()).isEqualTo("23514");
+        }
+    }
+
+    @Test
+    void 坐标边界先变更时空间发布必须等待并按新边界失败() throws Exception {
+        UUID geofenceVersionId = preparedGeofenceVersion("coordinate-first-zone");
+        try (Connection coordinateConnection = connection();
+             Connection publishConnection = connection();
+             var executor = Executors.newSingleThreadExecutor()) {
+            coordinateConnection.setAutoCommit(false);
+            publishConnection.setAutoCommit(false);
+            narrowCoordinateHeight(coordinateConnection);
+
+            int publishBackendPid = backendPid(publishConnection);
+            CountDownLatch ready = new CountDownLatch(1);
+            Future<SQLException> result = executor.submit(() -> {
+                ready.countDown();
+                try {
+                    publish(publishConnection, "mine_geofence_version", geofenceVersionId);
+                    publishConnection.commit();
+                    return null;
+                } catch (SQLException exception) {
+                    publishConnection.rollback();
+                    return exception;
+                }
+            });
+
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(awaitLockWait(publishBackendPid))
+                    .as("空间发布必须等待尚未提交的坐标边界变更")
+                    .isTrue();
+            coordinateConnection.commit();
+            SQLException exception = result.get(10, TimeUnit.SECONDS);
+            assertThat((Throwable) exception).isNotNull();
+            assertThat(exception.getSQLState()).isEqualTo("23514");
+        }
+    }
+
+    @Test
+    void 数据库必须拒绝超出统一坐标系边界的空间高度区间() {
+        UUID waypointId = insertWaypoint("height-bounds-point");
+        UUID waypointVersionId = insertWaypointVersion(
+                waypointId, unifiedCoordinateSystemId, 1, "2026-07-18T00:00:00Z");
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+                UPDATE mine_waypoint_version
+                SET min_z = -101, max_z = 50
+                WHERE id = ?
+                """, waypointVersionId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        UUID geofenceId = insertGeofence("height-bounds-zone");
+        UUID geofenceVersionId = insertGeofenceVersion(
+                geofenceId, 1, "2026-07-18T00:00:00Z");
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+                UPDATE mine_geofence_version
+                SET min_z = -50, max_z = 101
+                WHERE id = ?
+                """, geofenceVersionId))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -271,6 +417,14 @@ class SpatialRouteConstraintIT {
         return id;
     }
 
+    private UUID preparedGeofenceVersion(String code) {
+        UUID geofenceId = insertGeofence(code);
+        UUID versionId = insertGeofenceVersion(
+                geofenceId, 1, "2026-07-18T00:00:00Z");
+        insertVertices(versionId, square(0D));
+        return versionId;
+    }
+
     private void insertVertices(UUID versionId, double[][] points) {
         for (int index = 0; index < points.length; index++) {
             jdbcTemplate.update("""
@@ -325,6 +479,61 @@ class SpatialRouteConstraintIT {
                 + "status = 'PUBLISHED', content_hash = ?, "
                 + "published_at = CURRENT_TIMESTAMP WHERE id = ?",
                 "sha256:" + "1".repeat(64), id);
+    }
+
+    private void publish(Connection connection, String table, UUID id) throws SQLException {
+        if (!List.of(
+                "mine_waypoint_version", "mine_route_version", "mine_geofence_version")
+                .contains(table)) {
+            throw new IllegalArgumentException("不支持的空间版本表");
+        }
+        try (var statement = connection.prepareStatement("UPDATE " + table + " SET "
+                + "status = 'PUBLISHED', content_hash = ?, "
+                + "published_at = CURRENT_TIMESTAMP WHERE id = ?")) {
+            statement.setString(1, "sha256:" + "1".repeat(64));
+            statement.setObject(2, id);
+            statement.executeUpdate();
+        }
+    }
+
+    private void narrowCoordinateHeight(Connection connection) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+                UPDATE mine_coordinate_system
+                SET min_z = 0
+                WHERE id = ?
+                """)) {
+            statement.setObject(1, unifiedCoordinateSystemId);
+            statement.executeUpdate();
+        }
+    }
+
+    private Connection connection() throws SQLException {
+        return DriverManager.getConnection(
+                POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+    }
+
+    private int backendPid(Connection connection) throws SQLException {
+        try (var statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT pg_backend_pid()")) {
+            resultSet.next();
+            return resultSet.getInt(1);
+        }
+    }
+
+    private boolean awaitLockWait(int backendPid) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Boolean waiting = jdbcTemplate.queryForObject("""
+                    SELECT wait_event_type = 'Lock'
+                    FROM pg_stat_activity
+                    WHERE pid = ?
+                    """, Boolean.class, backendPid);
+            if (Boolean.TRUE.equals(waiting)) {
+                return true;
+            }
+            Thread.sleep(10);
+        }
+        return false;
     }
 
     private double[][] square(double offset) {

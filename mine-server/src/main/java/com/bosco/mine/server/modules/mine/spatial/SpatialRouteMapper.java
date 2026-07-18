@@ -40,6 +40,24 @@ public interface SpatialRouteMapper {
             @Param("siteId") UUID siteId,
             @Param("coordinateSystemId") UUID coordinateSystemId);
 
+    /** 查询当前矿区活动统一坐标系的高程边界。 */
+    @Select("""
+            SELECT id AS coordinateSystemId,
+                   min_x AS minX, max_x AS maxX,
+                   min_y AS minY, max_y AS maxY,
+                   min_z AS minZ, max_z AS maxZ
+            FROM mine_coordinate_system
+            WHERE id = #{coordinateSystemId}
+              AND organization_id = #{organizationId}
+              AND site_id = #{siteId}
+              AND unified = TRUE
+              AND status = 'ACTIVE'
+            """)
+    Optional<SpatialCoordinateBounds> findActiveUnifiedCoordinateBounds(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("coordinateSystemId") UUID coordinateSystemId);
+
     /** 新增稳定途径点。 */
     @Insert("""
             INSERT INTO mine_waypoint (
@@ -123,6 +141,33 @@ public interface SpatialRouteMapper {
             @Param("id") UUID id,
             @Param("version") long version,
             @Param("operatorId") UUID operatorId);
+
+    /** 统计仍在活动已发布路线中引用该稳定途径点的版本。 */
+    @Select("""
+            SELECT COUNT(*)
+            FROM mine_route_version_waypoint route_waypoint
+            JOIN mine_route_version route_version
+              ON route_version.id = route_waypoint.route_version_id
+             AND route_version.organization_id = route_waypoint.organization_id
+             AND route_version.site_id = route_waypoint.site_id
+            JOIN mine_route route
+              ON route.id = route_version.route_id
+             AND route.organization_id = route_version.organization_id
+             AND route.site_id = route_version.site_id
+            JOIN mine_waypoint_version waypoint_version
+              ON waypoint_version.id = route_waypoint.waypoint_version_id
+             AND waypoint_version.organization_id = route_waypoint.organization_id
+             AND waypoint_version.site_id = route_waypoint.site_id
+            WHERE waypoint_version.waypoint_id = #{waypointId}
+              AND route_waypoint.organization_id = #{organizationId}
+              AND route_waypoint.site_id = #{siteId}
+              AND route_version.status = 'PUBLISHED'
+              AND route.status = 'ACTIVE'
+            """)
+    long countActivePublishedRouteReferences(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("waypointId") UUID waypointId);
 
     /** 新增途径点草稿版本。 */
     @Insert("""
@@ -210,21 +255,27 @@ public interface SpatialRouteMapper {
     @Select("""
             <script>
             SELECT COUNT(*)
-            FROM mine_waypoint_version
-            WHERE organization_id = #{organizationId}
-              AND site_id = #{siteId}
-              AND coordinate_system_id = #{coordinateSystemId}
-              AND status = 'PUBLISHED'
-              AND valid_from &lt;= #{validFrom}
+            FROM mine_waypoint_version waypoint_version
+            JOIN mine_waypoint waypoint
+              ON waypoint.id = waypoint_version.waypoint_id
+             AND waypoint.organization_id = waypoint_version.organization_id
+             AND waypoint.site_id = waypoint_version.site_id
+            WHERE waypoint_version.organization_id = #{organizationId}
+              AND waypoint_version.site_id = #{siteId}
+              AND waypoint_version.coordinate_system_id = #{coordinateSystemId}
+              AND waypoint_version.status = 'PUBLISHED'
+              AND waypoint.status = 'ACTIVE'
+              AND waypoint_version.valid_from &lt;= #{validFrom}
               <choose>
                 <when test="validTo != null">
-                  AND (valid_to IS NULL OR valid_to &gt;= #{validTo})
+                  AND (waypoint_version.valid_to IS NULL
+                       OR waypoint_version.valid_to &gt;= #{validTo})
                 </when>
                 <otherwise>
-                  AND valid_to IS NULL
+                  AND waypoint_version.valid_to IS NULL
                 </otherwise>
               </choose>
-              AND id IN
+              AND waypoint_version.id IN
               <foreach collection="versionIds" item="versionId" open="(" separator="," close=")">
                 #{versionId}
               </foreach>
@@ -685,6 +736,18 @@ public interface SpatialRouteMapper {
             @Param("siteId") UUID siteId,
             @Param("parentId") UUID parentId,
             @Param("id") UUID id);
+
+    /** 运行空间配置所使用统一坐标系的平面和可选高程边界。 */
+    record SpatialCoordinateBounds(
+            UUID coordinateSystemId,
+            double minX,
+            double maxX,
+            double minY,
+            double maxY,
+            Double minZ,
+            Double maxZ
+    ) {
+    }
 
     /** 途径点版本写入参数。 */
     record WaypointVersionWrite(

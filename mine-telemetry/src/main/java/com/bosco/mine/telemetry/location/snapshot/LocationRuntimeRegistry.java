@@ -1,5 +1,8 @@
 package com.bosco.mine.telemetry.location.snapshot;
 
+import com.bosco.mine.model.spatial.SpatialClassifier;
+import com.bosco.mine.model.spatial.SpatialPoint;
+import com.bosco.mine.model.spatial.SpatialZone;
 import com.bosco.mine.telemetry.location.transform.CoordinateTransformRegistry;
 import com.bosco.mine.telemetry.location.transform.CoordinateTransformer;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -23,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -47,8 +51,20 @@ public final class LocationRuntimeRegistry {
             Map.entry("VEHICLE_DEVICE_BINDING", "VEHICLE_DEVICE_BINDING:"),
             Map.entry("VEHICLE_TAG_BINDING", "VEHICLE_TAG_BINDING:"),
             Map.entry("PERSON_TAG_BINDING", "PERSON_TAG_BINDING:"),
-            Map.entry("PERSON_VEHICLE_BINDING", "PERSON_VEHICLE_BINDING:")
+            Map.entry("PERSON_VEHICLE_BINDING", "PERSON_VEHICLE_BINDING:"),
+            Map.entry("WAYPOINT_VERSION", "WAYPOINT_VERSION:"),
+            Map.entry("ROUTE_VERSION", "ROUTE_VERSION:"),
+            Map.entry("GEOFENCE_VERSION", "GEOFENCE_VERSION:")
     );
+    private static final Set<String> WAYPOINT_TYPES =
+            Set.of("LOAD", "UNLOAD", "CHECK", "WAIT", "ENTRY", "EXIT");
+    private static final Set<String> ROUTE_DIRECTIONS =
+            Set.of("FORWARD", "REVERSE", "BIDIRECTIONAL");
+    private static final Set<String> GEOFENCE_TYPES =
+            Set.of("RESTRICTED", "WORK", "LOAD", "UNLOAD", "WAIT", "SAFETY", "OTHER");
+    private static final Set<String> VEHICLE_TYPES = Set.of(
+            "HAUL_TRUCK", "EXCAVATOR", "LOADER", "DRILL", "DOZER",
+            "WATER_TRUCK", "LIGHT_VEHICLE", "OTHER");
 
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
@@ -292,7 +308,8 @@ public final class LocationRuntimeRegistry {
             throw new PermanentLocationSnapshotException("持久定位快照完整摘要不一致");
         }
         validateSite(metadata, byKey);
-        validateCoordinateTransforms(byKey);
+        CoordinateSystem unifiedCoordinate = validateCoordinateTransforms(byKey);
+        validateSpatialVersions(byKey, unifiedCoordinate);
         return new RuntimeSnapshot(
                 metadata.snapshotId(), metadata.organizationId(), metadata.siteId(),
                 metadata.revision(), metadata.itemCount(), metadata.contentHash(),
@@ -312,7 +329,8 @@ public final class LocationRuntimeRegistry {
         }
     }
 
-    private void validateCoordinateTransforms(Map<String, RuntimeItem> items) {
+    /** 校验坐标转换并返回唯一活动统一坐标系及其边界。 */
+    private CoordinateSystem validateCoordinateTransforms(Map<String, RuntimeItem> items) {
         Map<UUID, CoordinateSystem> systems = new LinkedHashMap<>();
         int activeUnifiedCount = 0;
         for (RuntimeItem item : items.values()) {
@@ -327,7 +345,7 @@ public final class LocationRuntimeRegistry {
                     requiredDouble(content, "minX"), requiredDouble(content, "maxX"),
                     requiredDouble(content, "minY"), requiredDouble(content, "maxY"),
                     optionalDouble(content, "minZ"), optionalDouble(content, "maxZ"));
-            if (systems.put(id, new CoordinateSystem(status, unified, bounds)) != null) {
+            if (systems.put(id, new CoordinateSystem(id, status, unified, bounds)) != null) {
                 throw new PermanentLocationSnapshotException("定位快照坐标系标识重复");
             }
             if (unified && "ACTIVE".equals(status)) {
@@ -386,6 +404,292 @@ public final class LocationRuntimeRegistry {
                         "定位快照坐标转换参数不合法", exception);
             }
         }
+        return systems.values().stream()
+                .filter(system -> system.unified() && "ACTIVE".equals(system.status()))
+                .findFirst()
+                .orElseThrow(() -> new PermanentLocationSnapshotException(
+                        "定位快照缺少活动统一坐标系"));
+    }
+
+    /** 校验空间版本均可被运行时安全编译，并验证路线引用完整性。 */
+    private void validateSpatialVersions(
+            Map<String, RuntimeItem> items,
+            CoordinateSystem unifiedCoordinate
+    ) {
+        UUID unifiedCoordinateId = unifiedCoordinate.id();
+        Map<UUID, SpatialVersion> waypoints = new LinkedHashMap<>();
+        List<PublishedInterval> publishedIntervals = new ArrayList<>();
+        SpatialClassifier classifier = new SpatialClassifier();
+
+        for (RuntimeItem item : items.values()) {
+            if (!"WAYPOINT_VERSION".equals(item.itemType())) {
+                continue;
+            }
+            try {
+                JsonNode content = readJson(item.contentJson());
+                UUID versionId = requireVersionIdentity(item, content);
+                UUID waypointId = requiredUuid(content, "waypointId");
+                UUID coordinateId = requiredUuid(content, "coordinateSystemId");
+                requireUnifiedCoordinate(coordinateId, unifiedCoordinateId);
+                if (requiredInt(content, "versionNumber") < 1
+                        || !WAYPOINT_TYPES.contains(requiredText(content, "waypointType"))) {
+                    throw new IllegalArgumentException("途径点版本枚举或版本号不合法");
+                }
+                validatePolicy(content);
+                double x = requiredDouble(content, "x");
+                double y = requiredDouble(content, "y");
+                Double z = optionalDouble(content, "z");
+                Double minZ = optionalDouble(content, "minZ");
+                Double maxZ = optionalDouble(content, "maxZ");
+                requireSpatialBounds(unifiedCoordinate.bounds(), x, y, z);
+                requireHeightBounds(unifiedCoordinate.bounds(), minZ, maxZ);
+                SpatialZone.Circle circle = new SpatialZone.Circle(
+                        x, y,
+                        requiredDouble(content, "radiusMeters"),
+                        requiredDouble(content, "boundaryToleranceMeters"),
+                        minZ, maxZ);
+                classifier.classify(circle, new SpatialPoint(circle.centerX(), circle.centerY(), null));
+                Instant validFrom = requiredInstant(content, "validFrom");
+                Instant validTo = optionalInstant(content, "validTo");
+                validateValidity(validFrom, validTo);
+                requirePublishedHash(content);
+                waypoints.put(versionId, new SpatialVersion(
+                        waypointId, coordinateId, validFrom, validTo));
+                publishedIntervals.add(new PublishedInterval(
+                        "WAYPOINT", waypointId, validFrom, validTo));
+            } catch (PermanentLocationSnapshotException exception) {
+                throw exception;
+            } catch (RuntimeException exception) {
+                throw new PermanentLocationSnapshotException("定位快照途径点版本不合法", exception);
+            }
+        }
+
+        for (RuntimeItem item : items.values()) {
+            if ("ROUTE_VERSION".equals(item.itemType())) {
+                publishedIntervals.add(validateRouteVersion(
+                        item, waypoints, unifiedCoordinateId));
+            } else if ("GEOFENCE_VERSION".equals(item.itemType())) {
+                publishedIntervals.add(validateGeofenceVersion(
+                        item, classifier, unifiedCoordinate));
+            }
+        }
+        validateNoOverlappingIntervals(publishedIntervals);
+    }
+
+    /** 校验单个路线版本的枚举、有效期、有序引用和途径点覆盖关系。 */
+    private PublishedInterval validateRouteVersion(
+            RuntimeItem item,
+            Map<UUID, SpatialVersion> waypoints,
+            UUID unifiedCoordinateId
+    ) {
+        try {
+            JsonNode content = readJson(item.contentJson());
+            requireVersionIdentity(item, content);
+            UUID routeId = requiredUuid(content, "routeId");
+            UUID coordinateId = requiredUuid(content, "coordinateSystemId");
+            requireUnifiedCoordinate(coordinateId, unifiedCoordinateId);
+            if (requiredInt(content, "versionNumber") < 1
+                    || !ROUTE_DIRECTIONS.contains(requiredText(content, "direction"))) {
+                throw new IllegalArgumentException("路线版本枚举或版本号不合法");
+            }
+            JsonNode vehicleTypes = requiredArray(content, "applicableVehicleTypes");
+            if (vehicleTypes.isEmpty() || vehicleTypes.size() > 16) {
+                throw new IllegalArgumentException("路线适用车辆类型数量不合法");
+            }
+            for (JsonNode vehicleType : vehicleTypes) {
+                if (!vehicleType.isString() || !VEHICLE_TYPES.contains(vehicleType.asString())) {
+                    throw new IllegalArgumentException("路线适用车辆类型不合法");
+                }
+            }
+            Instant validFrom = requiredInstant(content, "validFrom");
+            Instant validTo = optionalInstant(content, "validTo");
+            validateValidity(validFrom, validTo);
+            requirePublishedHash(content);
+            JsonNode references = requiredArray(content, "waypoints");
+            if (references.size() < 2 || references.size() > 10_000) {
+                throw new IllegalArgumentException("路线途径点数量不合法");
+            }
+            for (int index = 0; index < references.size(); index++) {
+                JsonNode reference = references.get(index);
+                if (requiredInt(reference, "sequenceNumber") != index + 1) {
+                    throw new IllegalArgumentException("路线途径点顺序不连续");
+                }
+                requiredBoolean(reference, "stopRequired");
+                optionalBoundedInt(reference, "expectedDwellSeconds", 0, 86_400);
+                UUID waypointVersionId = requiredUuid(reference, "waypointVersionId");
+                SpatialVersion waypoint = waypoints.get(waypointVersionId);
+                if (waypoint == null || !coordinateId.equals(waypoint.coordinateSystemId())
+                        || waypoint.validFrom().isAfter(validFrom)
+                        || !coversEnd(waypoint.validTo(), validTo)) {
+                    throw new IllegalArgumentException("路线引用的途径点版本不完整或有效期不覆盖");
+                }
+            }
+            return new PublishedInterval("ROUTE", routeId, validFrom, validTo);
+        } catch (PermanentLocationSnapshotException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new PermanentLocationSnapshotException("定位快照路线版本不合法", exception);
+        }
+    }
+
+    /** 校验单个电子围栏版本的策略、有序顶点和简单多边形拓扑。 */
+    private PublishedInterval validateGeofenceVersion(
+            RuntimeItem item,
+            SpatialClassifier classifier,
+            CoordinateSystem unifiedCoordinate
+    ) {
+        try {
+            JsonNode content = readJson(item.contentJson());
+            requireVersionIdentity(item, content);
+            UUID geofenceId = requiredUuid(content, "geofenceId");
+            requireUnifiedCoordinate(
+                    requiredUuid(content, "coordinateSystemId"), unifiedCoordinate.id());
+            if (requiredInt(content, "versionNumber") < 1
+                    || !GEOFENCE_TYPES.contains(requiredText(content, "geofenceType"))) {
+                throw new IllegalArgumentException("围栏版本枚举或版本号不合法");
+            }
+            validatePolicy(content);
+            Instant validFrom = requiredInstant(content, "validFrom");
+            Instant validTo = optionalInstant(content, "validTo");
+            validateValidity(validFrom, validTo);
+            requirePublishedHash(content);
+            JsonNode verticesNode = requiredArray(content, "vertices");
+            if (verticesNode.size() < 3 || verticesNode.size() > 10_000) {
+                throw new IllegalArgumentException("围栏顶点数量不合法");
+            }
+            List<SpatialZone.Vertex> vertices = new ArrayList<>(verticesNode.size());
+            for (int index = 0; index < verticesNode.size(); index++) {
+                JsonNode vertex = verticesNode.get(index);
+                if (requiredInt(vertex, "sequenceNumber") != index + 1) {
+                    throw new IllegalArgumentException("围栏顶点顺序不连续");
+                }
+                double x = requiredDouble(vertex, "x");
+                double y = requiredDouble(vertex, "y");
+                requireSpatialBounds(unifiedCoordinate.bounds(), x, y, null);
+                vertices.add(new SpatialZone.Vertex(x, y));
+            }
+            Double minZ = optionalDouble(content, "minZ");
+            Double maxZ = optionalDouble(content, "maxZ");
+            requireHeightBounds(unifiedCoordinate.bounds(), minZ, maxZ);
+            SpatialZone.Polygon polygon = new SpatialZone.Polygon(
+                    vertices, requiredDouble(content, "boundaryToleranceMeters"),
+                    minZ, maxZ);
+            classifier.classify(polygon, new SpatialPoint(
+                    vertices.getFirst().x(), vertices.getFirst().y(), null));
+            return new PublishedInterval("GEOFENCE", geofenceId, validFrom, validTo);
+        } catch (PermanentLocationSnapshotException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new PermanentLocationSnapshotException("定位快照电子围栏版本不合法", exception);
+        }
+    }
+
+    /** 校验空间内容中的版本标识与稳定条目键一致。 */
+    private UUID requireVersionIdentity(RuntimeItem item, JsonNode content) {
+        UUID versionId = requiredUuid(content, "versionId");
+        UUID keyId = UUID.fromString(item.itemKey().substring(item.itemKey().indexOf(':') + 1));
+        if (!versionId.equals(keyId)) {
+            throw new PermanentLocationSnapshotException("空间版本标识与条目键不一致");
+        }
+        return versionId;
+    }
+
+    /** 要求空间版本使用当前矿区活动统一坐标系。 */
+    private void requireUnifiedCoordinate(UUID coordinateId, UUID unifiedCoordinateId) {
+        if (!unifiedCoordinateId.equals(coordinateId)) {
+            throw new PermanentLocationSnapshotException("空间版本未使用活动统一坐标系");
+        }
+    }
+
+    /** 校验空间点位于统一坐标系二维边界内，并在有高程时校验三维边界。 */
+    private void requireSpatialBounds(
+            CoordinateTransformer.TargetBounds bounds,
+            double x,
+            double y,
+            Double z
+    ) {
+        boolean outside = x < bounds.minX() || x > bounds.maxX()
+                || y < bounds.minY() || y > bounds.maxY();
+        if (z != null && bounds.minZ() != null) {
+            outside = outside || z < bounds.minZ() || z > bounds.maxZ();
+        }
+        if (outside) {
+            throw new PermanentLocationSnapshotException("空间版本坐标超出统一坐标边界");
+        }
+    }
+
+    /** 校验可选空间高度区间没有超出统一坐标系高程边界。 */
+    private void requireHeightBounds(
+            CoordinateTransformer.TargetBounds bounds,
+            Double minZ,
+            Double maxZ
+    ) {
+        if (minZ != null && maxZ != null && bounds.minZ() != null
+                && (minZ < bounds.minZ() || maxZ > bounds.maxZ())) {
+            throw new PermanentLocationSnapshotException("空间版本高度超出统一坐标边界");
+        }
+    }
+
+    /**
+     * 禁止同一类稳定空间对象的发布版本有效期重叠；相邻半开区间允许首尾衔接。
+     */
+    private void validateNoOverlappingIntervals(List<PublishedInterval> intervals) {
+        Map<SpatialObjectKey, List<PublishedInterval>> grouped = new LinkedHashMap<>();
+        for (PublishedInterval interval : intervals) {
+            SpatialObjectKey key = new SpatialObjectKey(
+                    interval.objectType(), interval.objectId());
+            grouped.computeIfAbsent(key, ignored -> new ArrayList<>()).add(interval);
+        }
+        for (List<PublishedInterval> versions : grouped.values()) {
+            versions.sort(Comparator.comparing(PublishedInterval::validFrom));
+            Instant previousEnd = null;
+            boolean previousOpenEnded = false;
+            for (PublishedInterval version : versions) {
+                if (previousOpenEnded
+                        || previousEnd != null && version.validFrom().isBefore(previousEnd)) {
+                    throw new PermanentLocationSnapshotException(
+                            "同一空间稳定对象的发布有效期重叠");
+                }
+                previousEnd = version.validTo();
+                previousOpenEnded = previousEnd == null;
+            }
+        }
+    }
+
+    /** 校验控制面发布版本携带合法内容摘要。 */
+    private void requirePublishedHash(JsonNode content) {
+        if (!HASH.matcher(requiredText(content, "contentHash")).matches()) {
+            throw new PermanentLocationSnapshotException("空间发布版本摘要不合法");
+        }
+    }
+
+    /** 校验空间消抖、停留和迟到水位参数的运行边界。 */
+    private void validatePolicy(JsonNode content) {
+        double tolerance = requiredDouble(content, "boundaryToleranceMeters");
+        int enter = requiredInt(content, "enterConfirmPoints");
+        int exit = requiredInt(content, "exitConfirmPoints");
+        int dwell = requiredInt(content, "dwellSeconds");
+        int lateness = requiredInt(content, "allowedLatenessSeconds");
+        int idle = requiredInt(content, "idleFlushSeconds");
+        if (tolerance < 0D || tolerance > 1_000D
+                || enter < 1 || enter > 20 || exit < 1 || exit > 20
+                || dwell < 0 || dwell > 86_400 || lateness < 0 || lateness > 300
+                || idle < 1 || idle > 3_600 || idle <= lateness) {
+            throw new PermanentLocationSnapshotException("空间判定策略不合法");
+        }
+    }
+
+    /** 校验空间版本的半开有效时间区间。 */
+    private void validateValidity(Instant validFrom, Instant validTo) {
+        if (validTo != null && !validTo.isAfter(validFrom)) {
+            throw new PermanentLocationSnapshotException("空间版本有效期不合法");
+        }
+    }
+
+    /** 判断途径点有效期终点是否覆盖路线有效期终点。 */
+    private boolean coversEnd(Instant referenceEnd, Instant routeEnd) {
+        return routeEnd == null ? referenceEnd == null
+                : referenceEnd == null || !referenceEnd.isBefore(routeEnd);
     }
 
     private void validateItemIdentity(RuntimeItem item) {
@@ -496,6 +800,46 @@ public final class LocationRuntimeRegistry {
         return value.doubleValue();
     }
 
+    /** 读取必填整数，拒绝浮点数或缺失值。 */
+    private int requiredInt(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isIntegralNumber()) {
+            throw new PermanentLocationSnapshotException("定位快照整数字段不合法");
+        }
+        return value.intValue();
+    }
+
+    /** 读取限定范围的可选整数。 */
+    private Integer optionalBoundedInt(JsonNode node, String field, int minimum, int maximum) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        int result = requiredInt(node, field);
+        if (result < minimum || result > maximum) {
+            throw new PermanentLocationSnapshotException("定位快照可选整数字段不合法");
+        }
+        return result;
+    }
+
+    /** 读取必填 UTC 时间点。 */
+    private Instant requiredInstant(JsonNode node, String field) {
+        try {
+            return Instant.parse(requiredText(node, field));
+        } catch (RuntimeException exception) {
+            throw new PermanentLocationSnapshotException("定位快照时间字段不合法", exception);
+        }
+    }
+
+    /** 读取允许缺失或为空的时间点。 */
+    private Instant optionalInstant(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        return requiredInstant(node, field);
+    }
+
     private boolean requiredBoolean(JsonNode node, String field) {
         JsonNode value = node.get(field);
         if (value == null || !value.isBoolean()) {
@@ -508,6 +852,15 @@ public final class LocationRuntimeRegistry {
         JsonNode value = node.get(field);
         if (value == null || !value.isObject()) {
             throw new PermanentLocationSnapshotException("定位快照对象字段不合法");
+        }
+        return value;
+    }
+
+    /** 读取必填 JSON 数组。 */
+    private JsonNode requiredArray(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isArray()) {
+            throw new PermanentLocationSnapshotException("定位快照数组字段不合法");
         }
         return value;
     }
@@ -615,6 +968,28 @@ public final class LocationRuntimeRegistry {
         }
     }
 
+    /** 路线引用校验所需的最小途径点版本元数据。 */
+    private record SpatialVersion(
+            UUID waypointId,
+            UUID coordinateSystemId,
+            Instant validFrom,
+            Instant validTo
+    ) {
+    }
+
+    /** 同类稳定空间对象分组键。 */
+    private record SpatialObjectKey(String objectType, UUID objectId) {
+    }
+
+    /** 已发布空间版本的半开有效时间区间。 */
+    private record PublishedInterval(
+            String objectType,
+            UUID objectId,
+            Instant validFrom,
+            Instant validTo
+    ) {
+    }
+
     /**
      * 运行快照单条不可变内容。
      *
@@ -632,6 +1007,7 @@ public final class LocationRuntimeRegistry {
     }
 
     private record CoordinateSystem(
+            UUID id,
             String status,
             boolean unified,
             CoordinateTransformer.TargetBounds bounds

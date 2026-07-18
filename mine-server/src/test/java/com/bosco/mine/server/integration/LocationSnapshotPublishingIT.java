@@ -188,6 +188,72 @@ class LocationSnapshotPublishingIT {
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
+    @Test
+    void 空间快照必须只下发活动对象的已发布版本并保持引用与几何顺序() {
+        UUID coordinateId = UUID.randomUUID();
+        UUID firstWaypointId = UUID.randomUUID();
+        UUID firstWaypointVersionId = UUID.randomUUID();
+        UUID draftWaypointVersionId = UUID.randomUUID();
+        UUID secondWaypointId = UUID.randomUUID();
+        UUID secondWaypointVersionId = UUID.randomUUID();
+        UUID routeId = UUID.randomUUID();
+        UUID routeVersionId = UUID.randomUUID();
+        UUID geofenceId = UUID.randomUUID();
+        UUID geofenceVersionId = UUID.randomUUID();
+
+        insertUnifiedCoordinate(coordinateId);
+        insertWaypoint(firstWaypointId, "snapshot-waypoint-a");
+        insertWaypointVersion(
+                firstWaypointVersionId, firstWaypointId, coordinateId, 1, "PUBLISHED", 100D, 200D);
+        insertWaypointVersion(
+                draftWaypointVersionId, firstWaypointId, coordinateId, 2, "DRAFT", 110D, 210D);
+        insertWaypoint(secondWaypointId, "snapshot-waypoint-b");
+        insertWaypointVersion(
+                secondWaypointVersionId, secondWaypointId, coordinateId, 1, "PUBLISHED", 300D, 400D);
+        insertRoute(routeId, routeVersionId, coordinateId,
+                firstWaypointVersionId, secondWaypointVersionId);
+        insertGeofence(geofenceId, geofenceVersionId, coordinateId);
+
+        LocationSnapshotService.SnapshotView snapshot = snapshotService.captureSite(
+                organizationId, siteId, LocationSnapshotService.ChangeReason.SPATIAL_CHANGE)
+                .orElseThrow();
+
+        assertThat(snapshot.changeReason()).isEqualTo(LocationSnapshotService.ChangeReason.SPATIAL_CHANGE);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT item_type
+                FROM mine_location_runtime_snapshot_item
+                WHERE snapshot_id = ? AND item_type LIKE '%_VERSION'
+                ORDER BY item_type, item_key
+                """, String.class, snapshot.snapshotId()))
+                .containsExactly(
+                        "GEOFENCE_VERSION", "ROUTE_VERSION",
+                        "WAYPOINT_VERSION", "WAYPOINT_VERSION");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM mine_location_runtime_snapshot_item
+                WHERE snapshot_id = ? AND item_key = ?
+                """, Long.class, snapshot.snapshotId(), "WAYPOINT_VERSION:" + draftWaypointVersionId))
+                .isZero();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT child ->> 'waypointVersionId'
+                FROM mine_location_runtime_snapshot_item item,
+                     jsonb_array_elements(item.content -> 'waypoints') child
+                WHERE item.snapshot_id = ? AND item.item_key = ?
+                ORDER BY (child ->> 'sequenceNumber')::INTEGER
+                """, String.class, snapshot.snapshotId(), "ROUTE_VERSION:" + routeVersionId))
+                .containsExactly(firstWaypointVersionId.toString(), secondWaypointVersionId.toString());
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT (vertex ->> 'sequenceNumber')::INTEGER
+                FROM mine_location_runtime_snapshot_item item,
+                     jsonb_array_elements(item.content -> 'vertices') vertex
+                WHERE item.snapshot_id = ? AND item.item_key = ?
+                """, Integer.class, snapshot.snapshotId(), "GEOFENCE_VERSION:" + geofenceVersionId))
+                .containsExactly(1, 2, 3);
+        assertThat(snapshotService.captureSite(
+                organizationId, siteId, LocationSnapshotService.ChangeReason.SPATIAL_CHANGE))
+                .isEmpty();
+    }
+
     private UUID insertTag(String code, String status) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
@@ -200,6 +266,122 @@ class LocationSnapshotPublishingIT {
                 """, id, organizationId, siteId,
                 code + "-" + shortId(id), status, status);
         return id;
+    }
+
+    private void insertUnifiedCoordinate(UUID coordinateId) {
+        jdbcTemplate.update("""
+                INSERT INTO mine_coordinate_system (
+                    id, organization_id, site_id, system_code, name,
+                    coordinate_type, unit, unified,
+                    min_x, max_x, min_y, max_y, min_z, max_z
+                ) VALUES (?, ?, ?, 'snapshot-unified', '快照统一坐标',
+                          'LOCAL_CARTESIAN', 'METER', TRUE,
+                          0, 10000, 0, 10000, -500, 2000)
+                """, coordinateId, organizationId, siteId);
+    }
+
+    private void insertWaypoint(UUID waypointId, String code) {
+        jdbcTemplate.update("""
+                INSERT INTO mine_waypoint (id, organization_id, site_id, waypoint_code)
+                VALUES (?, ?, ?, ?)
+                """, waypointId, organizationId, siteId, code);
+    }
+
+    private void insertWaypointVersion(
+            UUID versionId,
+            UUID waypointId,
+            UUID coordinateId,
+            int versionNumber,
+            String status,
+            double x,
+            double y
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO mine_waypoint_version (
+                    id, waypoint_id, organization_id, site_id, coordinate_system_id,
+                    version_number, name, waypoint_type, x, y, radius_meters,
+                    boundary_tolerance_meters, enter_confirm_points, exit_confirm_points,
+                    dwell_seconds, allowed_lateness_seconds, idle_flush_seconds,
+                    valid_from, status, content_hash, published_at
+                ) VALUES (?, ?, ?, ?, ?, ?, '快照途径点', 'CHECK', ?, ?, 20,
+                          0.5, 2, 2, 30, 10, 60,
+                          '2026-01-01T00:00:00Z', ?,
+                          CASE WHEN ? = 'PUBLISHED' THEN ? ELSE NULL END,
+                          CASE WHEN ? = 'PUBLISHED' THEN CURRENT_TIMESTAMP ELSE NULL END)
+                """, versionId, waypointId, organizationId, siteId, coordinateId,
+                versionNumber, x, y, status, status, testHash(versionNumber), status);
+    }
+
+    private void insertRoute(
+            UUID routeId,
+            UUID routeVersionId,
+            UUID coordinateId,
+            UUID firstWaypointVersionId,
+            UUID secondWaypointVersionId
+    ) {
+        jdbcTemplate.update("""
+                INSERT INTO mine_route (id, organization_id, site_id, route_code)
+                VALUES (?, ?, ?, 'snapshot-route')
+                """, routeId, organizationId, siteId);
+        jdbcTemplate.update("""
+                INSERT INTO mine_route_version (
+                    id, route_id, organization_id, site_id, coordinate_system_id,
+                    version_number, name, direction, applicable_vehicle_types,
+                    valid_from
+                ) VALUES (?, ?, ?, ?, ?, 1, '快照路线', 'BIDIRECTIONAL',
+                          '["HAUL_TRUCK"]'::JSONB, '2026-01-01T00:00:00Z')
+                """, routeVersionId, routeId, organizationId, siteId, coordinateId);
+        jdbcTemplate.update("""
+                INSERT INTO mine_route_version_waypoint (
+                    route_version_id, waypoint_version_id, organization_id,
+                    site_id, sequence_number, stop_required, expected_dwell_seconds
+                ) VALUES
+                    (?, ?, ?, ?, 2, FALSE, NULL),
+                    (?, ?, ?, ?, 1, TRUE, 20)
+                """, routeVersionId, secondWaypointVersionId, organizationId, siteId,
+                routeVersionId, firstWaypointVersionId, organizationId, siteId);
+        jdbcTemplate.update("""
+                UPDATE mine_route_version
+                SET status = 'PUBLISHED', content_hash = ?, published_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, testHash(11), routeVersionId);
+    }
+
+    private void insertGeofence(UUID geofenceId, UUID versionId, UUID coordinateId) {
+        jdbcTemplate.update("""
+                INSERT INTO mine_geofence (id, organization_id, site_id, geofence_code)
+                VALUES (?, ?, ?, 'snapshot-geofence')
+                """, geofenceId, organizationId, siteId);
+        jdbcTemplate.update("""
+                INSERT INTO mine_geofence_version (
+                    id, geofence_id, organization_id, site_id, coordinate_system_id,
+                    version_number, name, geofence_type,
+                    boundary_tolerance_meters, enter_confirm_points, exit_confirm_points,
+                    dwell_seconds, allowed_lateness_seconds, idle_flush_seconds,
+                    valid_from
+                ) VALUES (?, ?, ?, ?, ?, 1, '快照围栏', 'WORK',
+                          0.5, 2, 2, 30, 10, 60,
+                          '2026-01-01T00:00:00Z')
+                """, versionId, geofenceId, organizationId, siteId, coordinateId);
+        jdbcTemplate.update("""
+                INSERT INTO mine_geofence_vertex (
+                    geofence_version_id, organization_id, site_id, sequence_number, x, y
+                ) VALUES
+                    (?, ?, ?, 3, 100, 500),
+                    (?, ?, ?, 1, 100, 100),
+                    (?, ?, ?, 2, 500, 100)
+                """, versionId, organizationId, siteId,
+                versionId, organizationId, siteId,
+                versionId, organizationId, siteId);
+        jdbcTemplate.update("""
+                UPDATE mine_geofence_version
+                SET status = 'PUBLISHED', content_hash = ?, published_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """, testHash(21), versionId);
+    }
+
+    private String testHash(int discriminator) {
+        return "sha256:" + Integer.toHexString(discriminator % 16).repeat(64);
     }
 
     private String shortId(UUID id) {

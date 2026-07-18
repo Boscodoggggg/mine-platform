@@ -295,9 +295,13 @@ public class MineAssetCommandService {
     public void archiveCoordinateSystem(UUID siteId, UUID systemId, long version) {
         MineSite site = authorizer.requireSite(siteId);
         MineCoordinateSystem before = requireCoordinateSystem(site, systemId, false);
-        if (mapper.archiveCoordinateSystem(
-                site.organizationId(), site.id(), systemId, version,
-                authorizer.currentUserId()) == 0) {
+        try {
+            if (mapper.archiveCoordinateSystem(
+                    site.organizationId(), site.id(), systemId, version,
+                    authorizer.currentUserId()) == 0) {
+                throw coordinateConflict(systemId);
+            }
+        } catch (DataIntegrityViolationException exception) {
             throw coordinateConflict(systemId);
         }
         CoordinateSystemResponse archived = coordinateSystem(site, systemId);
