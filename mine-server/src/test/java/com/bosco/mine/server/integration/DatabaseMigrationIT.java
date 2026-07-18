@@ -70,6 +70,10 @@ class DatabaseMigrationIT {
             "mine_organization",
             "mine_site",
             "mine_user_scope_grant",
+            "mine_vehicle",
+            "mine_location_tag",
+            "mine_coordinate_system",
+            "mine_coordinate_transform_version",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -200,6 +204,45 @@ class DatabaseMigrationIT {
                    SET status = 'ARCHIVED', archived_at = NULL
                  WHERE id = ?
                 """, firstSiteId);
+    }
+
+    @Test
+    void 矿区资产和坐标版本表必须具备完整中文注释() {
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'mine_vehicle', 'mine_location_tag',
+                    'mine_coordinate_system', 'mine_coordinate_transform_version'
+                )
+                ORDER BY class.relname
+                """, String.class))
+                .hasSize(4)
+                .allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN (
+                    'mine_vehicle'::regclass,
+                    'mine_location_tag'::regclass,
+                    'mine_coordinate_system'::regclass,
+                    'mine_coordinate_transform_version'::regclass
+                )
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_mine_vehicle_site_code"))
+                .containsExactly("site_id", "vehicle_code");
+        assertThat(constraintColumns("uk_mine_location_tag_site_code"))
+                .containsExactly("site_id", "tag_code");
+        assertThat(constraintColumns("uk_mine_coordinate_system_site_code"))
+                .containsExactly("site_id", "system_code");
+        assertThat(constraintColumns("uk_mine_coordinate_transform_pair_version"))
+                .containsExactly(
+                        "source_coordinate_system_id",
+                        "target_coordinate_system_id",
+                        "version_number");
     }
 
     @Test
