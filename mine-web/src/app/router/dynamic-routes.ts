@@ -9,6 +9,8 @@ import type { NavigationMenuNode } from '@/modules/system/api/auth';
 
 type ViewLoader = () => Promise<Component>;
 
+const fallbackView: ViewLoader = () => import('./DynamicFallbackPage.vue');
+
 /**
  * 服务端 componentKey 到本地页面的唯一映射表。
  *
@@ -29,10 +31,15 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'aggregation-governance': () => import('@/modules/device/pages/aggregation-governance/AggregationGovernancePage.vue'),
   'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
   'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue'),
-  'alarm-center': () => import('@/modules/alarm/pages/alarm-center/AlarmCenterPage.vue')
+  'alarm-center': () => import('@/modules/alarm/pages/alarm-center/AlarmCenterPage.vue'),
+  'mine-site-archive': fallbackView,
+  'mine-vehicle-management': fallbackView,
+  'mine-person-management': fallbackView,
+  'mine-location-tag-management': fallbackView,
+  'mine-binding-management': fallbackView,
+  'mine-location-monitor': fallbackView
 };
 
-const fallbackView: ViewLoader = () => import('./DynamicFallbackPage.vue');
 const safeRoutePathPattern = /^\/[A-Za-z0-9/_-]*$/;
 const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>>> = {
   '/system': 'mine.menu.system',
@@ -53,7 +60,14 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/command': 'mine.menu.command',
   '/command/center': 'mine.menu.commandCenter',
   '/alarm': 'mine.menu.alarms',
-  '/alarm/center': 'mine.menu.alarmCenter'
+  '/alarm/center': 'mine.menu.alarmCenter',
+  '/mine': 'mine.menu.mine',
+  '/mine/sites': 'mine.menu.mineSites',
+  '/mine/vehicles': 'mine.menu.mineVehicles',
+  '/mine/people': 'mine.menu.minePeople',
+  '/mine/location-tags': 'mine.menu.mineLocationTags',
+  '/mine/bindings': 'mine.menu.mineBindings',
+  '/mine/location': 'mine.menu.mineLocation'
 };
 const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18nKey>>> = {
   'home-overview': 'mine.menu.overview',
@@ -70,7 +84,13 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'aggregation-governance': 'mine.menu.aggregation',
   'device-monitor': 'mine.menu.monitor',
   'command-center': 'mine.menu.commandCenter',
-  'alarm-center': 'mine.menu.alarmCenter'
+  'alarm-center': 'mine.menu.alarmCenter',
+  'mine-site-archive': 'mine.menu.mineSites',
+  'mine-vehicle-management': 'mine.menu.mineVehicles',
+  'mine-person-management': 'mine.menu.minePeople',
+  'mine-location-tag-management': 'mine.menu.mineLocationTags',
+  'mine-binding-management': 'mine.menu.mineBindings',
+  'mine-location-monitor': 'mine.menu.mineLocation'
 };
 
 export interface DynamicNavigationResult {
@@ -89,9 +109,9 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
 
     const componentKey = node.componentKey || '';
     const component = componentRegistry[componentKey];
-    const componentFallback = !component;
-    if (componentFallback && componentKey) {
-      unknownComponentKeys.add(componentKey);
+    if (!component) {
+      if (componentKey) unknownComponentKeys.add(componentKey);
+      return;
     }
 
     const routeName = createRouteName('dynamic', node.id);
@@ -108,20 +128,20 @@ export function buildDynamicNavigation(nodes: NavigationMenuNode[]): DynamicNavi
         ...routeIcon,
         hideInMenu: true,
         componentKey: node.componentKey,
-        componentFallback
+        componentFallback: false
       },
       children: [
         {
           path: '',
           name: routeName,
-          component: component || fallbackView,
+          component,
           props: componentKey === 'retention-governance' ? { fixedStrategyType: 'RETENTION' } : undefined,
           meta: {
             title: node.name,
             i18nKey,
             ...routeIcon,
             componentKey: node.componentKey,
-            componentFallback
+            componentFallback: false
           }
         }
       ]
@@ -145,7 +165,7 @@ function buildMenus(nodes: NavigationMenuNode[]): App.Global.Menu[] {
 
       return [createMenu(node, children)];
     }
-    if (!isSafeRoutePath(node.path)) return [];
+    if (!isSafeRoutePath(node.path) || !node.componentKey || !componentRegistry[node.componentKey]) return [];
 
     return [createMenu(node, children.length > 0 ? children : undefined)];
   });

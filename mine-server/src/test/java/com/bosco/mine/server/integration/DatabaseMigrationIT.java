@@ -741,6 +741,12 @@ class DatabaseMigrationIT {
                 "device-monitor",
                 "device-product-list",
                 "device-strategy-workbench",
+                "mine-binding-management",
+                "mine-location-monitor",
+                "mine-location-tag-management",
+                "mine-person-management",
+                "mine-site-archive",
+                "mine-vehicle-management",
                 "retention-governance",
                 "system-dictionary-list",
                 "system-menu-list",
@@ -840,6 +846,55 @@ class DatabaseMigrationIT {
                 "governance:aggregation:execute",
                 "governance:aggregation:view",
                 "governance:retention:view"
+        );
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE permission LIKE 'mine:%'
+                ORDER BY permission
+                """, String.class)).containsExactly(
+                "mine:binding:switch",
+                "mine:coordinate:edit",
+                "mine:coordinate:publish",
+                "mine:coordinate:view",
+                "mine:location-tag:edit",
+                "mine:location-tag:view",
+                "mine:location:view",
+                "mine:organization:edit",
+                "mine:organization:view",
+                "mine:person:edit",
+                "mine:person:qualification:edit",
+                "mine:person:sensitive:edit",
+                "mine:person:sensitive:view",
+                "mine:person:view",
+                "mine:scope:assign",
+                "mine:site:edit",
+                "mine:site:view",
+                "mine:vehicle:edit",
+                "mine:vehicle:view"
+        );
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT id, name, path, sort_order, visible, i18n_key, protected_node
+                FROM sys_menu
+                WHERE id = '019b0000-0000-7000-8000-000000000600'
+                """)).containsEntry("name", "矿区管理")
+                .containsEntry("path", "/mine")
+                .containsEntry("sort_order", 125)
+                .containsEntry("visible", true)
+                .containsEntry("i18n_key", "mine.menu.mine")
+                .containsEntry("protected_node", true);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT component_key
+                FROM sys_menu
+                WHERE parent_id = '019b0000-0000-7000-8000-000000000600'
+                ORDER BY sort_order
+                """, String.class)).containsExactly(
+                "mine-site-archive",
+                "mine-vehicle-management",
+                "mine-person-management",
+                "mine-location-tag-management",
+                "mine-binding-management",
+                "mine-location-monitor"
         );
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)

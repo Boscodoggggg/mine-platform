@@ -34,6 +34,16 @@ tags:
     description: 设备命令下发与可靠状态时间线
   - name: AlarmCenter
     description: 双来源告警查询、确认和恢复后关闭
+  - name: MineScope
+    description: 组织、矿区和当前会话数据范围
+  - name: MineAssets
+    description: 车辆、定位标签、双坐标系和转换版本
+  - name: MinePeople
+    description: 矿区人员、敏感信息和司机资质
+  - name: MineBinding
+    description: 车辆、人员、设备和定位标签的原子换绑
+  - name: MineLocation
+    description: 当前位置快照和有界历史轨迹
 paths:
   /dashboard/operations:
     get:
@@ -1897,6 +1907,767 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/StrategyNotFound' }
+  /mine/context:
+    get:
+      tags: [MineScope]
+      operationId: getMineContext
+      summary: 查询当前会话可访问的矿区上下文
+      description: 候选列表每次从服务端实时计算，撤权后不保留过期矿区。
+      responses:
+        '200':
+          description: 当前用户的组织和矿区授权快照。
+          content: { application/json: { schema: { $ref: '#/components/schemas/MineContextResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /mine/organizations:
+    get:
+      tags: [MineScope]
+      operationId: listMineOrganizations
+      summary: 分页查询可见组织
+      parameters:
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MineArchiveStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 组织分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/MineOrganizationPage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineScope]
+      operationId: createMineOrganization
+      summary: 创建组织
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineOrganizationRequest' } } }
+      responses:
+        '201':
+          description: 组织已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/MineOrganizationResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/organizations/{organizationId}:
+    patch:
+      tags: [MineScope]
+      operationId: updateMineOrganization
+      summary: 修改组织
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineOrganizationUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的组织。
+          content: { application/json: { schema: { $ref: '#/components/schemas/MineOrganizationResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/organizations/{organizationId}/archive:
+    post:
+      tags: [MineScope]
+      operationId: archiveMineOrganization
+      summary: 归档组织
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 组织已归档。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/organizations/{organizationId}/sites:
+    get:
+      tags: [MineScope]
+      operationId: listMineSites
+      summary: 分页查询组织下的矿区
+      parameters:
+        - { $ref: '#/components/parameters/OrganizationId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MineArchiveStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 矿区分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/MineSitePage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineScope]
+      operationId: createMineSite
+      summary: 创建矿区
+      parameters: [{ $ref: '#/components/parameters/OrganizationId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineSiteRequest' } } }
+      responses:
+        '201':
+          description: 矿区已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/MineSiteResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}:
+    patch:
+      tags: [MineScope]
+      operationId: updateMineSite
+      summary: 修改矿区
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineSiteUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的矿区。
+          content: { application/json: { schema: { $ref: '#/components/schemas/MineSiteResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/archive:
+    post:
+      tags: [MineScope]
+      operationId: archiveMineSite
+      summary: 归档矿区
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 矿区已归档。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/scope-grants:
+    get:
+      tags: [MineScope]
+      operationId: listMineScopeGrants
+      summary: 查询组织数据范围授权
+      parameters:
+        - name: organizationId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 数据范围授权。
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/MineScopeGrantResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [MineScope]
+      operationId: grantMineScope
+      summary: 幂等新增数据范围授权
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineScopeGrantRequest' } } }
+      responses:
+        '204': { description: 授权已生效或已存在。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [MineScope]
+      operationId: revokeMineScope
+      summary: 幂等撤销数据范围授权
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineScopeGrantRequest' } } }
+      responses:
+        '204': { description: 授权已撤销或原本不存在。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /mine/sites/{siteId}/vehicles:
+    get:
+      tags: [MineAssets]
+      operationId: listMineVehicles
+      summary: 分页查询矿区车辆
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/VehicleStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 车辆分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/VehiclePage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineAssets]
+      operationId: createMineVehicle
+      summary: 创建车辆
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VehicleRequest' } } }
+      responses:
+        '201':
+          description: 车辆已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/VehicleResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/vehicles/{vehicleId}:
+    patch:
+      tags: [MineAssets]
+      operationId: updateMineVehicle
+      summary: 修改车辆
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/VehicleId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/VehicleUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的车辆。
+          content: { application/json: { schema: { $ref: '#/components/schemas/VehicleResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/vehicles/{vehicleId}/archive:
+    post:
+      tags: [MineAssets]
+      operationId: archiveMineVehicle
+      summary: 归档车辆
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/VehicleId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 车辆已归档。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/location-tags:
+    get:
+      tags: [MineAssets]
+      operationId: listMineLocationTags
+      summary: 分页查询定位标签
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/LocationTagStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 定位标签分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocationTagPage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineAssets]
+      operationId: createMineLocationTag
+      summary: 创建定位标签
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LocationTagRequest' } } }
+      responses:
+        '201':
+          description: 定位标签已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocationTagResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/location-tags/{tagId}:
+    patch:
+      tags: [MineAssets]
+      operationId: updateMineLocationTag
+      summary: 修改定位标签
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/TagId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/LocationTagUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的定位标签。
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocationTagResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/location-tags/{tagId}/archive:
+    post:
+      tags: [MineAssets]
+      operationId: archiveMineLocationTag
+      summary: 归档定位标签
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/TagId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 定位标签已归档。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/coordinate-systems:
+    get:
+      tags: [MineAssets]
+      operationId: listMineCoordinateSystems
+      summary: 分页查询矿区双坐标模型
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MineArchiveStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 坐标系分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateSystemPage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineAssets]
+      operationId: createMineCoordinateSystem
+      summary: 创建坐标系
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateSystemRequest' } } }
+      responses:
+        '201':
+          description: 坐标系已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateSystemResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/coordinate-systems/{systemId}:
+    patch:
+      tags: [MineAssets]
+      operationId: updateMineCoordinateSystem
+      summary: 修改坐标系
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/CoordinateSystemId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateSystemUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的坐标系。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateSystemResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/coordinate-systems/{systemId}/archive:
+    post:
+      tags: [MineAssets]
+      operationId: archiveMineCoordinateSystem
+      summary: 归档坐标系并保留历史引用
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/CoordinateSystemId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 坐标系已归档。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/coordinate-transforms:
+    get:
+      tags: [MineAssets]
+      operationId: listMineCoordinateTransforms
+      summary: 分页查询坐标转换版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/CoordinateTransformStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 坐标转换版本分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateTransformPage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineAssets]
+      operationId: createMineCoordinateTransform
+      summary: 创建坐标转换草稿
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateTransformRequest' } } }
+      responses:
+        '201':
+          description: 坐标转换草稿已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateTransformResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/coordinate-transforms/{transformId}:
+    patch:
+      tags: [MineAssets]
+      operationId: updateMineCoordinateTransform
+      summary: 修改坐标转换草稿
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/CoordinateTransformId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateTransformUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的坐标转换。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateTransformResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/coordinate-transforms/{transformId}/publish:
+    post:
+      tags: [MineAssets]
+      operationId: publishMineCoordinateTransform
+      summary: 发布并永久锁定坐标转换版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/CoordinateTransformId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '200':
+          description: 已发布的不可变坐标转换。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CoordinateTransformResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/people:
+    get:
+      tags: [MinePeople]
+      operationId: listMinePeople
+      summary: 分页查询脱敏人员档案
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/PersonStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 脱敏人员分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/PersonPage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MinePeople]
+      operationId: createMinePerson
+      summary: 创建人员档案
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PersonCreateRequest' } } }
+      responses:
+        '201':
+          description: 脱敏人员档案已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/PersonResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/people/{personId}:
+    get:
+      tags: [MinePeople]
+      operationId: getMinePerson
+      summary: 查询脱敏人员详情
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/PersonId' }
+      responses:
+        '200':
+          description: 脱敏人员档案。
+          content: { application/json: { schema: { $ref: '#/components/schemas/PersonResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    patch:
+      tags: [MinePeople]
+      operationId: updateMinePerson
+      summary: 修改人员档案
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/PersonId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PersonUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的脱敏人员档案。
+          content: { application/json: { schema: { $ref: '#/components/schemas/PersonResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/people/{personId}/archive:
+    post:
+      tags: [MinePeople]
+      operationId: archiveMinePerson
+      summary: 归档人员档案
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/PersonId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 人员档案已归档。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/people/{personId}/sensitive:
+    get:
+      tags: [MinePeople]
+      operationId: getMinePersonSensitive
+      summary: 独立授权查询人员敏感信息
+      description: 响应强制 private、no-store，禁止中间缓存。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/PersonId' }
+      responses:
+        '200':
+          description: 人员明文敏感信息。
+          headers:
+            Cache-Control: { schema: { type: string }, description: 'private, no-store' }
+          content: { application/json: { schema: { $ref: '#/components/schemas/PersonSensitiveResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    patch:
+      tags: [MinePeople]
+      operationId: updateMinePersonSensitive
+      summary: 独立授权修改人员敏感信息
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/PersonId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PersonSensitiveUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的脱敏人员档案。
+          content: { application/json: { schema: { $ref: '#/components/schemas/PersonResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/people/{personId}/qualifications:
+    get:
+      tags: [MinePeople]
+      operationId: listMineDriverQualifications
+      summary: 查询人员司机资质
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/PersonId' }
+      responses:
+        '200':
+          description: 司机资质列表。
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/DriverQualificationResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    post:
+      tags: [MinePeople]
+      operationId: createMineDriverQualification
+      summary: 新增人员司机资质
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/PersonId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/DriverQualificationRequest' } } }
+      responses:
+        '201':
+          description: 司机资质已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/DriverQualificationResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/people/{personId}/qualifications/{qualificationId}/revoke:
+    post:
+      tags: [MinePeople]
+      operationId: revokeMineDriverQualification
+      summary: 吊销人员司机资质
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/PersonId' }
+        - { $ref: '#/components/parameters/QualificationId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 资质已吊销。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/bindings/preview:
+    post:
+      tags: [MineBinding]
+      operationId: previewMineBindingSwitch
+      summary: 预览原子换绑影响
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/BindingSwitchRequest' } } }
+      responses:
+        '200':
+          description: 旧关系、目标关系、资质结论和影响对象。
+          content: { application/json: { schema: { $ref: '#/components/schemas/BindingPreviewResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/bindings/switch:
+    post:
+      tags: [MineBinding]
+      operationId: switchMineBinding
+      summary: 幂等原子执行换绑
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/BindingSwitchRequest' } } }
+      responses:
+        '200':
+          description: 已执行或幂等重放的换绑结果。
+          content: { application/json: { schema: { $ref: '#/components/schemas/BindingPreviewResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/locations/current:
+    get:
+      tags: [MineLocation]
+      operationId: getMineCurrentLocations
+      summary: 查询矿区当前位置快照
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 10000, default: 5000 }
+      responses:
+        '200':
+          description: Redis 快照或 TimescaleDB 回源快照。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CurrentLocationResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/LocationRuntimeUnavailable' }
+  /mine/sites/{siteId}/locations/trajectory:
+    get:
+      tags: [MineLocation]
+      operationId: getMineLocationTrajectory
+      summary: 查询最多二十四小时的稳定分页轨迹
+      description: |
+        from 包含、to 不包含，时间窗口不得超过 24 小时。首页服务端固定 watermark，
+        后续页必须原样回传 watermark 和 nextCursor，每页最多输出 5000 点。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: subjectType
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/LocationSubjectType' }
+        - name: subjectId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: true
+          description: 必须晚于 from 且两者间隔不超过 24 小时。
+          schema: { type: string, format: date-time }
+        - name: watermark
+          in: query
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 2048 }
+        - name: maxPoints
+          in: query
+          schema: { type: integer, minimum: 2, maximum: 5000, default: 5000 }
+      responses:
+        '200':
+          description: 使用固定水位和不透明游标的轨迹页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/LocationTrajectoryResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/LocationRuntimeUnavailable' }
 components:
   securitySchemes:
     MineToken:
@@ -1965,6 +2736,54 @@ components:
       required: true
       description: 不可变策略发布 UUID。
       schema: { type: string, format: uuid }
+    OrganizationId:
+      name: organizationId
+      in: path
+      required: true
+      description: 组织 UUID。
+      schema: { type: string, format: uuid }
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      description: 矿区 UUID。
+      schema: { type: string, format: uuid }
+    VehicleId:
+      name: vehicleId
+      in: path
+      required: true
+      description: 车辆 UUID。
+      schema: { type: string, format: uuid }
+    TagId:
+      name: tagId
+      in: path
+      required: true
+      description: 定位标签 UUID。
+      schema: { type: string, format: uuid }
+    CoordinateSystemId:
+      name: systemId
+      in: path
+      required: true
+      description: 坐标系 UUID。
+      schema: { type: string, format: uuid }
+    CoordinateTransformId:
+      name: transformId
+      in: path
+      required: true
+      description: 坐标转换版本 UUID。
+      schema: { type: string, format: uuid }
+    PersonId:
+      name: personId
+      in: path
+      required: true
+      description: 人员 UUID。
+      schema: { type: string, format: uuid }
+    QualificationId:
+      name: qualificationId
+      in: path
+      required: true
+      description: 司机资质 UUID。
+      schema: { type: string, format: uuid }
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1994,6 +2813,594 @@ components:
         maximum: 100
         default: 20
   schemas:
+    MineArchiveStatus:
+      type: string
+      enum: [ACTIVE, ARCHIVED]
+    MineArchiveRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+    MineOrganizationRequest:
+      type: object
+      additionalProperties: false
+      required: [organizationCode, name]
+      properties:
+        organizationCode: { type: string, pattern: '^[A-Za-z][A-Za-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+    MineOrganizationUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        version: { type: integer, format: int64, minimum: 0 }
+    MineOrganizationResponse:
+      type: object
+      required: [id, organizationCode, name, status, archivedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationCode: { type: string }
+        name: { type: string }
+        status: { $ref: '#/components/schemas/MineArchiveStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    MineOrganizationPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MineOrganizationResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    MineSiteRequest:
+      type: object
+      additionalProperties: false
+      required: [siteCode, name, timezone]
+      properties:
+        siteCode: { type: string, pattern: '^[A-Za-z][A-Za-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        timezone: { type: string, minLength: 1, maxLength: 64, description: IANA 时区名。 }
+        description: { type: [string, 'null'], maxLength: 500 }
+    MineSiteUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, timezone, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        timezone: { type: string, minLength: 1, maxLength: 64 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    MineSiteResponse:
+      type: object
+      required: [id, organizationId, siteCode, name, timezone, description, status, archivedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteCode: { type: string }
+        name: { type: string }
+        timezone: { type: string }
+        description: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/MineArchiveStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    MineSitePage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/MineSiteResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    MineOrganizationContext:
+      type: object
+      required: [organization, organizationWide, sites]
+      properties:
+        organization: { $ref: '#/components/schemas/MineOrganizationResponse' }
+        organizationWide: { type: boolean }
+        sites: { type: array, items: { $ref: '#/components/schemas/MineSiteResponse' } }
+    MineContextResponse:
+      type: object
+      required: [organizations]
+      properties:
+        organizations: { type: array, items: { $ref: '#/components/schemas/MineOrganizationContext' } }
+    MineScopeGrantRequest:
+      type: object
+      additionalProperties: false
+      required: [userId, organizationId]
+      properties:
+        userId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId:
+          type: [string, 'null']
+          format: uuid
+          description: null 表示组织级全矿区授权。
+    MineScopeGrantResponse:
+      type: object
+      required: [id, userId, organizationId, siteId, grantedAt, grantedBy]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: [string, 'null'], format: uuid }
+        grantedAt: { type: string, format: date-time }
+        grantedBy: { type: string, format: uuid }
+    VehicleType:
+      type: string
+      enum: [HAUL_TRUCK, EXCAVATOR, LOADER, DRILL, DOZER, WATER_TRUCK, LIGHT_VEHICLE, OTHER]
+    VehicleStatus:
+      type: string
+      enum: [ACTIVE, MAINTENANCE, OUT_OF_SERVICE, ARCHIVED]
+    VehicleRequest:
+      type: object
+      additionalProperties: false
+      required: [vehicleCode, name, vehicleType]
+      properties:
+        vehicleCode: { type: string, pattern: '^[A-Za-z][A-Za-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        vehicleType: { $ref: '#/components/schemas/VehicleType' }
+        mineNumber: { type: [string, 'null'], maxLength: 64 }
+        licensePlate: { type: [string, 'null'], maxLength: 32 }
+        brand: { type: [string, 'null'], maxLength: 64 }
+        model: { type: [string, 'null'], maxLength: 64 }
+        ratedLoadTons: { type: [number, 'null'], exclusiveMinimum: 0 }
+    VehicleUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, vehicleType, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        vehicleType: { $ref: '#/components/schemas/VehicleType' }
+        mineNumber: { type: [string, 'null'], maxLength: 64 }
+        licensePlate: { type: [string, 'null'], maxLength: 32 }
+        brand: { type: [string, 'null'], maxLength: 64 }
+        model: { type: [string, 'null'], maxLength: 64 }
+        ratedLoadTons: { type: [number, 'null'], exclusiveMinimum: 0 }
+        version: { type: integer, format: int64, minimum: 0 }
+    VehicleResponse:
+      type: object
+      required: [id, organizationId, siteId, vehicleCode, name, vehicleType, mineNumber, licensePlate, brand, model, ratedLoadTons, status, archivedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        vehicleCode: { type: string }
+        name: { type: string }
+        vehicleType: { $ref: '#/components/schemas/VehicleType' }
+        mineNumber: { type: [string, 'null'] }
+        licensePlate: { type: [string, 'null'] }
+        brand: { type: [string, 'null'] }
+        model: { type: [string, 'null'] }
+        ratedLoadTons: { type: [number, 'null'] }
+        status: { $ref: '#/components/schemas/VehicleStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    VehiclePage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/VehicleResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    LocationTagStatus:
+      type: string
+      enum: [ACTIVE, LOST, RETIRED, ARCHIVED]
+    LocationTagRequest:
+      type: object
+      additionalProperties: false
+      required: [tagCode]
+      properties:
+        tagCode: { type: string, pattern: '^[A-Za-z][A-Za-z0-9-]{1,63}$' }
+        vendor: { type: [string, 'null'], maxLength: 128 }
+        model: { type: [string, 'null'], maxLength: 64 }
+        batteryPercent: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        batteryObservedAt: { type: [string, 'null'], format: date-time }
+    LocationTagUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        vendor: { type: [string, 'null'], maxLength: 128 }
+        model: { type: [string, 'null'], maxLength: 64 }
+        batteryPercent: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        batteryObservedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    LocationTagResponse:
+      type: object
+      required: [id, organizationId, siteId, tagCode, vendor, model, batteryPercent, batteryObservedAt, status, archivedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        tagCode: { type: string }
+        vendor: { type: [string, 'null'] }
+        model: { type: [string, 'null'] }
+        batteryPercent: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        batteryObservedAt: { type: [string, 'null'], format: date-time }
+        status: { $ref: '#/components/schemas/LocationTagStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    LocationTagPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/LocationTagResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    CoordinateType:
+      type: string
+      enum: [LOCAL_CARTESIAN, WGS84, ENU]
+    CoordinateUnit:
+      type: string
+      enum: [METER, MILLIMETER, DEGREE]
+    CoordinateSystemRequest:
+      type: object
+      additionalProperties: false
+      required: [systemCode, name, coordinateType, unit, unified, minX, maxX, minY, maxY]
+      properties:
+        systemCode: { type: string, pattern: '^[A-Za-z][A-Za-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        coordinateType: { $ref: '#/components/schemas/CoordinateType' }
+        unit: { $ref: '#/components/schemas/CoordinateUnit' }
+        epsgCode: { type: [integer, 'null'], minimum: 1, maximum: 999999 }
+        unified: { type: boolean }
+        minX: { type: number, format: double }
+        maxX: { type: number, format: double }
+        minY: { type: number, format: double }
+        maxY: { type: number, format: double }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+    CoordinateSystemUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, coordinateType, unit, unified, minX, maxX, minY, maxY, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        coordinateType: { $ref: '#/components/schemas/CoordinateType' }
+        unit: { $ref: '#/components/schemas/CoordinateUnit' }
+        epsgCode: { type: [integer, 'null'], minimum: 1, maximum: 999999 }
+        unified: { type: boolean }
+        minX: { type: number, format: double }
+        maxX: { type: number, format: double }
+        minY: { type: number, format: double }
+        maxY: { type: number, format: double }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+        version: { type: integer, format: int64, minimum: 0 }
+    CoordinateSystemResponse:
+      type: object
+      required: [id, organizationId, siteId, systemCode, name, coordinateType, unit, epsgCode, unified, minX, maxX, minY, maxY, minZ, maxZ, status, archivedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        systemCode: { type: string }
+        name: { type: string }
+        coordinateType: { $ref: '#/components/schemas/CoordinateType' }
+        unit: { $ref: '#/components/schemas/CoordinateUnit' }
+        epsgCode: { type: [integer, 'null'] }
+        unified: { type: boolean }
+        minX: { type: number, format: double }
+        maxX: { type: number, format: double }
+        minY: { type: number, format: double }
+        maxY: { type: number, format: double }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+        status: { $ref: '#/components/schemas/MineArchiveStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    CoordinateSystemPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/CoordinateSystemResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    CoordinateTransformAlgorithm:
+      type: string
+      enum: [IDENTITY, AFFINE_3D, WGS84_ENU]
+    CoordinateTransformStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED]
+    CoordinateTransformRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceCoordinateSystemId, targetCoordinateSystemId, versionNumber, algorithm, parameters, validFrom]
+      properties:
+        sourceCoordinateSystemId: { type: string, format: uuid }
+        targetCoordinateSystemId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        algorithm: { $ref: '#/components/schemas/CoordinateTransformAlgorithm' }
+        parameters: { type: object, additionalProperties: true }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+    CoordinateTransformUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [algorithm, parameters, validFrom, version]
+      properties:
+        algorithm: { $ref: '#/components/schemas/CoordinateTransformAlgorithm' }
+        parameters: { type: object, additionalProperties: true }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    CoordinateTransformResponse:
+      type: object
+      required: [id, organizationId, siteId, sourceCoordinateSystemId, targetCoordinateSystemId, versionNumber, algorithm, parameters, validFrom, validTo, status, contentHash, publishedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        sourceCoordinateSystemId: { type: string, format: uuid }
+        targetCoordinateSystemId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        algorithm: { $ref: '#/components/schemas/CoordinateTransformAlgorithm' }
+        parameters: { type: object, additionalProperties: true }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        status: { $ref: '#/components/schemas/CoordinateTransformStatus' }
+        contentHash: { type: string }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    CoordinateTransformPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/CoordinateTransformResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    PersonType:
+      type: string
+      enum: [DRIVER, OPERATOR, SUPERVISOR, WORKER, VISITOR, OTHER]
+    PersonStatus:
+      type: string
+      enum: [ACTIVE, INACTIVE, ARCHIVED]
+    PersonCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [personCode, name, personType, phone, certificateNumber, assignmentFrom]
+      properties:
+        personCode: { type: string, pattern: '^[A-Za-z][A-Za-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        personType: { $ref: '#/components/schemas/PersonType' }
+        phone: { type: string, minLength: 1, maxLength: 32, writeOnly: true }
+        certificateNumber: { type: string, minLength: 1, maxLength: 64, writeOnly: true }
+        assignmentFrom: { type: string, format: date }
+        assignmentTo: { type: [string, 'null'], format: date }
+    PersonUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, personType, status, version]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        personType: { $ref: '#/components/schemas/PersonType' }
+        status: { type: string, enum: [ACTIVE, INACTIVE] }
+        version: { type: integer, format: int64, minimum: 0 }
+    PersonResponse:
+      type: object
+      required: [id, organizationId, siteId, personCode, name, personType, phoneMasked, certificateMasked, assignmentFrom, assignmentTo, status, archivedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        personCode: { type: string }
+        name: { type: string }
+        personType: { $ref: '#/components/schemas/PersonType' }
+        phoneMasked: { type: string, readOnly: true }
+        certificateMasked: { type: string, readOnly: true }
+        assignmentFrom: { type: string, format: date }
+        assignmentTo: { type: [string, 'null'], format: date }
+        status: { $ref: '#/components/schemas/PersonStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    PersonPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/PersonResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    PersonSensitiveResponse:
+      type: object
+      required: [personId, phone, certificateNumber]
+      properties:
+        personId: { type: string, format: uuid }
+        phone: { type: string, readOnly: true }
+        certificateNumber: { type: string, readOnly: true }
+    PersonSensitiveUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [phone, certificateNumber, version]
+      properties:
+        phone: { type: string, minLength: 1, maxLength: 32, writeOnly: true }
+        certificateNumber: { type: string, minLength: 1, maxLength: 64, writeOnly: true }
+        version: { type: integer, format: int64, minimum: 0 }
+    QualificationStatus:
+      type: string
+      enum: [ACTIVE, REVOKED, EXPIRED]
+    DriverQualificationRequest:
+      type: object
+      additionalProperties: false
+      required: [qualificationCode, name, allowedVehicleTypes, validFrom, validTo]
+      properties:
+        qualificationCode: { type: string, pattern: '^[A-Za-z][A-Za-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        allowedVehicleTypes:
+          type: array
+          minItems: 1
+          maxItems: 8
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/VehicleType' }
+        validFrom: { type: string, format: date }
+        validTo: { type: string, format: date }
+    DriverQualificationResponse:
+      type: object
+      required: [id, personId, qualificationCode, name, allowedVehicleTypes, validFrom, validTo, status, revokedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        personId: { type: string, format: uuid }
+        qualificationCode: { type: string }
+        name: { type: string }
+        allowedVehicleTypes: { type: array, items: { $ref: '#/components/schemas/VehicleType' } }
+        validFrom: { type: string, format: date }
+        validTo: { type: string, format: date }
+        status: { $ref: '#/components/schemas/QualificationStatus' }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    BindingType:
+      type: string
+      enum: [VEHICLE_DEVICE, VEHICLE_TAG, PERSON_TAG, PERSON_VEHICLE]
+    BindingSwitchRequest:
+      type: object
+      additionalProperties: false
+      required: [bindingType, resourceId, targetId, effectiveAt, reason]
+      properties:
+        bindingType: { $ref: '#/components/schemas/BindingType' }
+        resourceId: { type: string, format: uuid }
+        targetId: { type: string, format: uuid }
+        role: { type: [string, 'null'], maxLength: 24 }
+        effectiveAt: { type: string, format: date-time }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    BindingRelation:
+      type: object
+      required: [bindingId, bindingType, resourceId, targetId, role, validFrom, validTo]
+      properties:
+        bindingId: { type: [string, 'null'], format: uuid }
+        bindingType: { $ref: '#/components/schemas/BindingType' }
+        resourceId: { type: string, format: uuid }
+        targetId: { type: string, format: uuid }
+        role: { type: [string, 'null'] }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+    QualificationAssessment:
+      type: object
+      required: [required, qualified, qualificationId]
+      properties:
+        required: { type: boolean }
+        qualified: { type: boolean }
+        qualificationId: { type: [string, 'null'], format: uuid }
+    BindingAffectedObject:
+      type: object
+      required: [objectType, objectId, impact]
+      properties:
+        objectType: { type: string }
+        objectId: { type: string, format: uuid }
+        impact: { type: string, enum: [RESOURCE, PREVIOUS_TARGET, NEW_TARGET] }
+    BindingPreviewResponse:
+      type: object
+      required: [operationId, executed, executable, bindingType, previousBinding, proposedBinding, qualification, affectedObjects, blockers, outboxEventId]
+      properties:
+        operationId: { type: [string, 'null'], format: uuid }
+        executed: { type: boolean }
+        executable: { type: boolean }
+        bindingType: { $ref: '#/components/schemas/BindingType' }
+        previousBinding:
+          oneOf:
+            - { $ref: '#/components/schemas/BindingRelation' }
+            - { type: 'null' }
+        proposedBinding: { $ref: '#/components/schemas/BindingRelation' }
+        qualification: { $ref: '#/components/schemas/QualificationAssessment' }
+        affectedObjects: { type: array, maxItems: 3, items: { $ref: '#/components/schemas/BindingAffectedObject' } }
+        blockers: { type: array, items: { type: string } }
+        outboxEventId: { type: [string, 'null'], format: uuid }
+    LocationSubjectType:
+      type: string
+      enum: [TAG, VEHICLE, PERSON]
+    LocationQualityStatus:
+      type: string
+      enum: [GOOD, DEGRADED]
+    CurrentLocationItem:
+      type: object
+      required: [eventId, organizationId, siteId, sourceDeviceId, tagId, tagCode, coordinateSystemId, vehicleId, personId, ingestSequence, occurredAt, receivedAt, localX, localY, localZ, speedMetersPerSecond, headingDegrees, accuracyMeters, qualityStatus, qualityReason]
+      properties:
+        eventId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        sourceDeviceId: { type: string, format: uuid }
+        tagId: { type: string, format: uuid }
+        tagCode: { type: string }
+        coordinateSystemId: { type: string, format: uuid }
+        vehicleId: { type: [string, 'null'], format: uuid }
+        personId: { type: [string, 'null'], format: uuid }
+        ingestSequence: { type: integer, format: int64, minimum: 0 }
+        occurredAt: { type: string, format: date-time }
+        receivedAt: { type: string, format: date-time }
+        localX: { type: number, format: double }
+        localY: { type: number, format: double }
+        localZ: { type: [number, 'null'], format: double }
+        speedMetersPerSecond: { type: [number, 'null'], minimum: 0 }
+        headingDegrees: { type: [number, 'null'], minimum: 0, maximum: 360 }
+        accuracyMeters: { type: [number, 'null'], minimum: 0 }
+        qualityStatus: { $ref: '#/components/schemas/LocationQualityStatus' }
+        qualityReason: { type: [string, 'null'] }
+    CurrentLocationResponse:
+      type: object
+      required: [siteId, watermark, source, truncated, items]
+      properties:
+        siteId: { type: string, format: uuid }
+        watermark: { type: integer, format: int64, minimum: 0 }
+        source: { type: string, enum: [REDIS, TIMESCALEDB] }
+        truncated: { type: boolean }
+        items: { type: array, maxItems: 10000, items: { $ref: '#/components/schemas/CurrentLocationItem' } }
+    LocationTrajectoryPoint:
+      type: object
+      required: [eventId, organizationId, siteId, sourceDeviceId, tagId, vehicleId, personId, coordinateSystemId, ingestSequence, occurredAt, receivedAt, localX, localY, localZ, speedMetersPerSecond, headingDegrees, accuracyMeters, qualityStatus, qualityReason]
+      properties:
+        eventId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        sourceDeviceId: { type: string, format: uuid }
+        tagId: { type: string, format: uuid }
+        vehicleId: { type: [string, 'null'], format: uuid }
+        personId: { type: [string, 'null'], format: uuid }
+        coordinateSystemId: { type: string, format: uuid }
+        ingestSequence: { type: integer, format: int64, minimum: 0 }
+        occurredAt: { type: string, format: date-time }
+        receivedAt: { type: string, format: date-time }
+        localX: { type: number, format: double }
+        localY: { type: number, format: double }
+        localZ: { type: [number, 'null'], format: double }
+        speedMetersPerSecond: { type: [number, 'null'], minimum: 0 }
+        headingDegrees: { type: [number, 'null'], minimum: 0, maximum: 360 }
+        accuracyMeters: { type: [number, 'null'], minimum: 0 }
+        qualityStatus: { $ref: '#/components/schemas/LocationQualityStatus' }
+        qualityReason: { type: [string, 'null'] }
+    LocationTrajectoryResponse:
+      type: object
+      required: [siteId, subjectType, subjectId, from, to, watermark, nextCursor, sampled, sourcePointCount, items]
+      properties:
+        siteId: { type: string, format: uuid }
+        subjectType: { $ref: '#/components/schemas/LocationSubjectType' }
+        subjectId: { type: string, format: uuid }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        watermark: { type: integer, format: int64, minimum: 0 }
+        nextCursor: { type: [string, 'null'], maxLength: 2048 }
+        sampled: { type: boolean }
+        sourcePointCount: { type: integer, minimum: 0 }
+        items: { type: array, maxItems: 5000, items: { $ref: '#/components/schemas/LocationTrajectoryPoint' } }
     DeviceGroupStatus:
       type: string
       enum: [ACTIVE, ARCHIVED]
@@ -3841,6 +5248,18 @@ components:
             $ref: '#/components/schemas/ApiError'
     RetentionRuntimeUnavailable:
       description: 遥测只读连接未启用或 TimescaleDB 查询失败，错误码 RETENTION-503-001。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    MineResourceNotFound:
+      description: 组织、矿区、车辆、标签、坐标版本、人员或资质不存在。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    LocationRuntimeUnavailable:
+      description: 位置查询存储不可用，错误码 MINE-LOCATION-503-001。
       content:
         application/json:
           schema:

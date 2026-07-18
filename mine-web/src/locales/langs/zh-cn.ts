@@ -71,7 +71,19 @@ const local: App.I18n.Schema = {
       commandCenter: '命令中心',
       alarms: '告警管理',
       alarmCenter: '告警处置中心',
-      overview: '运行总览'
+      overview: '运行总览',
+      mine: '矿区管理',
+      mineSites: '矿区档案',
+      mineVehicles: '车辆管理',
+      minePeople: '人员管理',
+      mineLocationTags: '定位标签',
+      mineBindings: '绑定管理',
+      mineLocation: '实时定位'
+    },
+    context: {
+      scopeRevoked: '当前矿区授权已变更，请重新选择矿区',
+      invalidSelection: '无权访问该矿区，请重新选择',
+      loadFailed: '矿区授权上下文加载失败'
     },
     common: {
       action: '操作',

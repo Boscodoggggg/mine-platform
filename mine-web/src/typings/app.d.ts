@@ -383,9 +383,17 @@ declare namespace App {
           | 'commandCenter'
           | 'alarms'
           | 'alarmCenter'
-          | 'overview',
+          | 'overview'
+          | 'mine'
+          | 'mineSites'
+          | 'mineVehicles'
+          | 'minePeople'
+          | 'mineLocationTags'
+          | 'mineBindings'
+          | 'mineLocation',
           string
         >;
+        context: Record<'scopeRevoked' | 'invalidSelection' | 'loadFailed', string>;
         common: {
           action: string;
           edit: string;

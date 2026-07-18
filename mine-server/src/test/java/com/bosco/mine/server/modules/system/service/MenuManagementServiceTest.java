@@ -51,10 +51,21 @@ class MenuManagementServiceTest {
     }
 
     @Test
-    void 在线菜单维护应提供数据保留治理组件选项() {
+    void 在线菜单维护应提供全部已发布页面组件选项() {
         assertThat(service.findComponentOptions())
                 .extracting(MenuManagementService.ComponentOption::key)
-                .contains("retention-governance");
+                .contains(
+                        "device-strategy-workbench",
+                        "retention-governance",
+                        "aggregation-governance",
+                        "alarm-center",
+                        "mine-site-archive",
+                        "mine-vehicle-management",
+                        "mine-person-management",
+                        "mine-location-tag-management",
+                        "mine-binding-management",
+                        "mine-location-monitor"
+                );
     }
 
     @Test

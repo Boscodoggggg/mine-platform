@@ -71,7 +71,19 @@ const local: App.I18n.Schema = {
       commandCenter: 'Command Center',
       alarms: 'Alarm Management',
       alarmCenter: 'Alarm Center',
-      overview: 'Operations Overview'
+      overview: 'Operations Overview',
+      mine: 'Mine Management',
+      mineSites: 'Mine Sites',
+      mineVehicles: 'Vehicles',
+      minePeople: 'People',
+      mineLocationTags: 'Location Tags',
+      mineBindings: 'Bindings',
+      mineLocation: 'Live Location'
+    },
+    context: {
+      scopeRevoked: 'Your mine access changed. Select an authorized mine again.',
+      invalidSelection: 'You are not authorized to access this mine. Select another mine.',
+      loadFailed: 'Failed to load the authorized mine context.'
     },
     common: {
       action: 'Actions',

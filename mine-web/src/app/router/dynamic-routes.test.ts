@@ -61,13 +61,12 @@ const nodes: NavigationMenuNode[] = [
 ];
 
 describe('buildDynamicNavigation', () => {
-  it('只为MENU生成路由且未知组件降级到本地占位页', () => {
+  it('只为白名单MENU生成路由且未知组件不对用户可见', () => {
     const result = buildDynamicNavigation(nodes);
 
-    expect(result.routes).toHaveLength(2);
-    expect(result.routes.map(route => route.path)).toEqual(['/device/overview', '/device/vendor']);
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes.map(route => route.path)).toEqual(['/device/overview']);
     expect(result.routes[0]?.meta?.componentFallback).toBe(false);
-    expect(result.routes[1]?.meta?.componentFallback).toBe(true);
     expect(result.unknownComponentKeys).toEqual(['vendor-arbitrary-file']);
     expect(result.routes.some(route => route.path === 'device:device:list')).toBe(false);
   });
@@ -77,8 +76,56 @@ describe('buildDynamicNavigation', () => {
 
     expect(result.menus).toHaveLength(1);
     expect(result.menus[0]?.label).toBe('设备管理');
-    expect(result.menus[0]?.children).toHaveLength(2);
+    expect(result.menus[0]?.children).toHaveLength(1);
     expect(result.menus[0]?.children?.some(menu => menu.label === '查看详情')).toBe(false);
+  });
+
+  it('矿区管理六个页面应命中组件白名单并提供国际化导航', () => {
+    const componentKeys = [
+      'mine-site-archive',
+      'mine-vehicle-management',
+      'mine-person-management',
+      'mine-location-tag-management',
+      'mine-binding-management',
+      'mine-location-monitor'
+    ];
+    const mineNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'mine-directory',
+        name: '矿区管理',
+        path: '/mine',
+        i18nKey: 'mine.menu.mine',
+        children: componentKeys.map((componentKey, index) => ({
+          ...nodes[0].children[0],
+          id: `mine-menu-${index}`,
+          name: `矿区页面${index}`,
+          path: ['/mine/sites', '/mine/vehicles', '/mine/people', '/mine/location-tags', '/mine/bindings', '/mine/location'][
+            index
+          ],
+          componentKey,
+          sortOrder: index,
+          children: []
+        }))
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(mineNodes);
+    setLocale('zh-CN');
+
+    expect(result.routes).toHaveLength(6);
+    expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]?.label).toBe('Mine Management');
+    expect(result.menus[0]?.children?.map(child => child.label)).toEqual([
+      'Mine Sites',
+      'Vehicles',
+      'People',
+      'Location Tags',
+      'Bindings',
+      'Live Location'
+    ]);
   });
 
   it('本地图标标记应按本地图标渲染', () => {

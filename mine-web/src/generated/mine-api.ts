@@ -1221,10 +1221,1171 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mine/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询当前会话可访问的矿区上下文
+         * @description 候选列表每次从服务端实时计算，撤权后不保留过期矿区。
+         */
+        get: operations["getMineContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询可见组织 */
+        get: operations["listMineOrganizations"];
+        put?: never;
+        /** 创建组织 */
+        post: operations["createMineOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/organizations/{organizationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改组织 */
+        patch: operations["updateMineOrganization"];
+        trace?: never;
+    };
+    "/mine/organizations/{organizationId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档组织 */
+        post: operations["archiveMineOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/organizations/{organizationId}/sites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询组织下的矿区 */
+        get: operations["listMineSites"];
+        put?: never;
+        /** 创建矿区 */
+        post: operations["createMineSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改矿区 */
+        patch: operations["updateMineSite"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档矿区 */
+        post: operations["archiveMineSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/scope-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询组织数据范围授权 */
+        get: operations["listMineScopeGrants"];
+        /** 幂等新增数据范围授权 */
+        put: operations["grantMineScope"];
+        post?: never;
+        /** 幂等撤销数据范围授权 */
+        delete: operations["revokeMineScope"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/vehicles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询矿区车辆 */
+        get: operations["listMineVehicles"];
+        put?: never;
+        /** 创建车辆 */
+        post: operations["createMineVehicle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/vehicles/{vehicleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改车辆 */
+        patch: operations["updateMineVehicle"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/vehicles/{vehicleId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档车辆 */
+        post: operations["archiveMineVehicle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/location-tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询定位标签 */
+        get: operations["listMineLocationTags"];
+        put?: never;
+        /** 创建定位标签 */
+        post: operations["createMineLocationTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/location-tags/{tagId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改定位标签 */
+        patch: operations["updateMineLocationTag"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/location-tags/{tagId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档定位标签 */
+        post: operations["archiveMineLocationTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/coordinate-systems": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询矿区双坐标模型 */
+        get: operations["listMineCoordinateSystems"];
+        put?: never;
+        /** 创建坐标系 */
+        post: operations["createMineCoordinateSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/coordinate-systems/{systemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改坐标系 */
+        patch: operations["updateMineCoordinateSystem"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/coordinate-systems/{systemId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档坐标系并保留历史引用 */
+        post: operations["archiveMineCoordinateSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/coordinate-transforms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询坐标转换版本 */
+        get: operations["listMineCoordinateTransforms"];
+        put?: never;
+        /** 创建坐标转换草稿 */
+        post: operations["createMineCoordinateTransform"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/coordinate-transforms/{transformId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改坐标转换草稿 */
+        patch: operations["updateMineCoordinateTransform"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/coordinate-transforms/{transformId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发布并永久锁定坐标转换版本 */
+        post: operations["publishMineCoordinateTransform"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询脱敏人员档案 */
+        get: operations["listMinePeople"];
+        put?: never;
+        /** 创建人员档案 */
+        post: operations["createMinePerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/people/{personId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询脱敏人员详情 */
+        get: operations["getMinePerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改人员档案 */
+        patch: operations["updateMinePerson"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/people/{personId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档人员档案 */
+        post: operations["archiveMinePerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/people/{personId}/sensitive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 独立授权查询人员敏感信息
+         * @description 响应强制 private、no-store，禁止中间缓存。
+         */
+        get: operations["getMinePersonSensitive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 独立授权修改人员敏感信息 */
+        patch: operations["updateMinePersonSensitive"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/people/{personId}/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询人员司机资质 */
+        get: operations["listMineDriverQualifications"];
+        put?: never;
+        /** 新增人员司机资质 */
+        post: operations["createMineDriverQualification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/people/{personId}/qualifications/{qualificationId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 吊销人员司机资质 */
+        post: operations["revokeMineDriverQualification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/bindings/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 预览原子换绑影响 */
+        post: operations["previewMineBindingSwitch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/bindings/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等原子执行换绑 */
+        post: operations["switchMineBinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/locations/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询矿区当前位置快照 */
+        get: operations["getMineCurrentLocations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/locations/trajectory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询最多二十四小时的稳定分页轨迹
+         * @description from 包含、to 不包含，时间窗口不得超过 24 小时。首页服务端固定 watermark，
+         *     后续页必须原样回传 watermark 和 nextCursor，每页最多输出 5000 点。
+         */
+        get: operations["getMineLocationTrajectory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        MineArchiveStatus: "ACTIVE" | "ARCHIVED";
+        MineArchiveRequest: {
+            /** Format: int64 */
+            version: number;
+        };
+        MineOrganizationRequest: {
+            organizationCode: string;
+            name: string;
+        };
+        MineOrganizationUpdateRequest: {
+            name: string;
+            /** Format: int64 */
+            version: number;
+        };
+        MineOrganizationResponse: {
+            /** Format: uuid */
+            id: string;
+            organizationCode: string;
+            name: string;
+            status: components["schemas"]["MineArchiveStatus"];
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        MineOrganizationPage: {
+            items: components["schemas"]["MineOrganizationResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        MineSiteRequest: {
+            siteCode: string;
+            name: string;
+            /** @description IANA 时区名。 */
+            timezone: string;
+            description?: string | null;
+        };
+        MineSiteUpdateRequest: {
+            name: string;
+            timezone: string;
+            description?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        MineSiteResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            siteCode: string;
+            name: string;
+            timezone: string;
+            description: string | null;
+            status: components["schemas"]["MineArchiveStatus"];
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        MineSitePage: {
+            items: components["schemas"]["MineSiteResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        MineOrganizationContext: {
+            organization: components["schemas"]["MineOrganizationResponse"];
+            organizationWide: boolean;
+            sites: components["schemas"]["MineSiteResponse"][];
+        };
+        MineContextResponse: {
+            organizations: components["schemas"]["MineOrganizationContext"][];
+        };
+        MineScopeGrantRequest: {
+            /** Format: uuid */
+            userId: string;
+            /** Format: uuid */
+            organizationId: string;
+            /**
+             * Format: uuid
+             * @description null 表示组织级全矿区授权。
+             */
+            siteId?: string | null;
+        };
+        MineScopeGrantResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            userId: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string | null;
+            /** Format: date-time */
+            grantedAt: string;
+            /** Format: uuid */
+            grantedBy: string;
+        };
+        /** @enum {string} */
+        VehicleType: "HAUL_TRUCK" | "EXCAVATOR" | "LOADER" | "DRILL" | "DOZER" | "WATER_TRUCK" | "LIGHT_VEHICLE" | "OTHER";
+        /** @enum {string} */
+        VehicleStatus: "ACTIVE" | "MAINTENANCE" | "OUT_OF_SERVICE" | "ARCHIVED";
+        VehicleRequest: {
+            vehicleCode: string;
+            name: string;
+            vehicleType: components["schemas"]["VehicleType"];
+            mineNumber?: string | null;
+            licensePlate?: string | null;
+            brand?: string | null;
+            model?: string | null;
+            ratedLoadTons?: number | null;
+        };
+        VehicleUpdateRequest: {
+            name: string;
+            vehicleType: components["schemas"]["VehicleType"];
+            mineNumber?: string | null;
+            licensePlate?: string | null;
+            brand?: string | null;
+            model?: string | null;
+            ratedLoadTons?: number | null;
+            /** Format: int64 */
+            version: number;
+        };
+        VehicleResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            vehicleCode: string;
+            name: string;
+            vehicleType: components["schemas"]["VehicleType"];
+            mineNumber: string | null;
+            licensePlate: string | null;
+            brand: string | null;
+            model: string | null;
+            ratedLoadTons: number | null;
+            status: components["schemas"]["VehicleStatus"];
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        VehiclePage: {
+            items: components["schemas"]["VehicleResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @enum {string} */
+        LocationTagStatus: "ACTIVE" | "LOST" | "RETIRED" | "ARCHIVED";
+        LocationTagRequest: {
+            tagCode: string;
+            vendor?: string | null;
+            model?: string | null;
+            batteryPercent?: number | null;
+            /** Format: date-time */
+            batteryObservedAt?: string | null;
+        };
+        LocationTagUpdateRequest: {
+            vendor?: string | null;
+            model?: string | null;
+            batteryPercent?: number | null;
+            /** Format: date-time */
+            batteryObservedAt?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        LocationTagResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            tagCode: string;
+            vendor: string | null;
+            model: string | null;
+            batteryPercent: number | null;
+            /** Format: date-time */
+            batteryObservedAt: string | null;
+            status: components["schemas"]["LocationTagStatus"];
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        LocationTagPage: {
+            items: components["schemas"]["LocationTagResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @enum {string} */
+        CoordinateType: "LOCAL_CARTESIAN" | "WGS84" | "ENU";
+        /** @enum {string} */
+        CoordinateUnit: "METER" | "MILLIMETER" | "DEGREE";
+        CoordinateSystemRequest: {
+            systemCode: string;
+            name: string;
+            coordinateType: components["schemas"]["CoordinateType"];
+            unit: components["schemas"]["CoordinateUnit"];
+            epsgCode?: number | null;
+            unified: boolean;
+            /** Format: double */
+            minX: number;
+            /** Format: double */
+            maxX: number;
+            /** Format: double */
+            minY: number;
+            /** Format: double */
+            maxY: number;
+            /** Format: double */
+            minZ?: number | null;
+            /** Format: double */
+            maxZ?: number | null;
+        };
+        CoordinateSystemUpdateRequest: {
+            name: string;
+            coordinateType: components["schemas"]["CoordinateType"];
+            unit: components["schemas"]["CoordinateUnit"];
+            epsgCode?: number | null;
+            unified: boolean;
+            /** Format: double */
+            minX: number;
+            /** Format: double */
+            maxX: number;
+            /** Format: double */
+            minY: number;
+            /** Format: double */
+            maxY: number;
+            /** Format: double */
+            minZ?: number | null;
+            /** Format: double */
+            maxZ?: number | null;
+            /** Format: int64 */
+            version: number;
+        };
+        CoordinateSystemResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            systemCode: string;
+            name: string;
+            coordinateType: components["schemas"]["CoordinateType"];
+            unit: components["schemas"]["CoordinateUnit"];
+            epsgCode: number | null;
+            unified: boolean;
+            /** Format: double */
+            minX: number;
+            /** Format: double */
+            maxX: number;
+            /** Format: double */
+            minY: number;
+            /** Format: double */
+            maxY: number;
+            /** Format: double */
+            minZ: number | null;
+            /** Format: double */
+            maxZ: number | null;
+            status: components["schemas"]["MineArchiveStatus"];
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        CoordinateSystemPage: {
+            items: components["schemas"]["CoordinateSystemResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @enum {string} */
+        CoordinateTransformAlgorithm: "IDENTITY" | "AFFINE_3D" | "WGS84_ENU";
+        /** @enum {string} */
+        CoordinateTransformStatus: "DRAFT" | "PUBLISHED";
+        CoordinateTransformRequest: {
+            /** Format: uuid */
+            sourceCoordinateSystemId: string;
+            /** Format: uuid */
+            targetCoordinateSystemId: string;
+            versionNumber: number;
+            algorithm: components["schemas"]["CoordinateTransformAlgorithm"];
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo?: string | null;
+        };
+        CoordinateTransformUpdateRequest: {
+            algorithm: components["schemas"]["CoordinateTransformAlgorithm"];
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        CoordinateTransformResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            sourceCoordinateSystemId: string;
+            /** Format: uuid */
+            targetCoordinateSystemId: string;
+            versionNumber: number;
+            algorithm: components["schemas"]["CoordinateTransformAlgorithm"];
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: string | null;
+            status: components["schemas"]["CoordinateTransformStatus"];
+            contentHash: string;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        CoordinateTransformPage: {
+            items: components["schemas"]["CoordinateTransformResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @enum {string} */
+        PersonType: "DRIVER" | "OPERATOR" | "SUPERVISOR" | "WORKER" | "VISITOR" | "OTHER";
+        /** @enum {string} */
+        PersonStatus: "ACTIVE" | "INACTIVE" | "ARCHIVED";
+        PersonCreateRequest: {
+            personCode: string;
+            name: string;
+            personType: components["schemas"]["PersonType"];
+            phone: string;
+            certificateNumber: string;
+            /** Format: date */
+            assignmentFrom: string;
+            /** Format: date */
+            assignmentTo?: string | null;
+        };
+        PersonUpdateRequest: {
+            name: string;
+            personType: components["schemas"]["PersonType"];
+            /** @enum {string} */
+            status: "ACTIVE" | "INACTIVE";
+            /** Format: int64 */
+            version: number;
+        };
+        PersonResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            personCode: string;
+            name: string;
+            personType: components["schemas"]["PersonType"];
+            readonly phoneMasked: string;
+            readonly certificateMasked: string;
+            /** Format: date */
+            assignmentFrom: string;
+            /** Format: date */
+            assignmentTo: string | null;
+            status: components["schemas"]["PersonStatus"];
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        PersonPage: {
+            items: components["schemas"]["PersonResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        PersonSensitiveResponse: {
+            /** Format: uuid */
+            personId: string;
+            readonly phone: string;
+            readonly certificateNumber: string;
+        };
+        PersonSensitiveUpdateRequest: {
+            phone: string;
+            certificateNumber: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @enum {string} */
+        QualificationStatus: "ACTIVE" | "REVOKED" | "EXPIRED";
+        DriverQualificationRequest: {
+            qualificationCode: string;
+            name: string;
+            allowedVehicleTypes: components["schemas"]["VehicleType"][];
+            /** Format: date */
+            validFrom: string;
+            /** Format: date */
+            validTo: string;
+        };
+        DriverQualificationResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            personId: string;
+            qualificationCode: string;
+            name: string;
+            allowedVehicleTypes: components["schemas"]["VehicleType"][];
+            /** Format: date */
+            validFrom: string;
+            /** Format: date */
+            validTo: string;
+            status: components["schemas"]["QualificationStatus"];
+            /** Format: date-time */
+            revokedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @enum {string} */
+        BindingType: "VEHICLE_DEVICE" | "VEHICLE_TAG" | "PERSON_TAG" | "PERSON_VEHICLE";
+        BindingSwitchRequest: {
+            bindingType: components["schemas"]["BindingType"];
+            /** Format: uuid */
+            resourceId: string;
+            /** Format: uuid */
+            targetId: string;
+            role?: string | null;
+            /** Format: date-time */
+            effectiveAt: string;
+            reason: string;
+        };
+        BindingRelation: {
+            /** Format: uuid */
+            bindingId: string | null;
+            bindingType: components["schemas"]["BindingType"];
+            /** Format: uuid */
+            resourceId: string;
+            /** Format: uuid */
+            targetId: string;
+            role: string | null;
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: string | null;
+        };
+        QualificationAssessment: {
+            required: boolean;
+            qualified: boolean;
+            /** Format: uuid */
+            qualificationId: string | null;
+        };
+        BindingAffectedObject: {
+            objectType: string;
+            /** Format: uuid */
+            objectId: string;
+            /** @enum {string} */
+            impact: "RESOURCE" | "PREVIOUS_TARGET" | "NEW_TARGET";
+        };
+        BindingPreviewResponse: {
+            /** Format: uuid */
+            operationId: string | null;
+            executed: boolean;
+            executable: boolean;
+            bindingType: components["schemas"]["BindingType"];
+            previousBinding: components["schemas"]["BindingRelation"] | null;
+            proposedBinding: components["schemas"]["BindingRelation"];
+            qualification: components["schemas"]["QualificationAssessment"];
+            affectedObjects: components["schemas"]["BindingAffectedObject"][];
+            blockers: string[];
+            /** Format: uuid */
+            outboxEventId: string | null;
+        };
+        /** @enum {string} */
+        LocationSubjectType: "TAG" | "VEHICLE" | "PERSON";
+        /** @enum {string} */
+        LocationQualityStatus: "GOOD" | "DEGRADED";
+        CurrentLocationItem: {
+            /** Format: uuid */
+            eventId: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            sourceDeviceId: string;
+            /** Format: uuid */
+            tagId: string;
+            tagCode: string;
+            /** Format: uuid */
+            coordinateSystemId: string;
+            /** Format: uuid */
+            vehicleId: string | null;
+            /** Format: uuid */
+            personId: string | null;
+            /** Format: int64 */
+            ingestSequence: number;
+            /** Format: date-time */
+            occurredAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: double */
+            localX: number;
+            /** Format: double */
+            localY: number;
+            /** Format: double */
+            localZ: number | null;
+            speedMetersPerSecond: number | null;
+            headingDegrees: number | null;
+            accuracyMeters: number | null;
+            qualityStatus: components["schemas"]["LocationQualityStatus"];
+            qualityReason: string | null;
+        };
+        CurrentLocationResponse: {
+            /** Format: uuid */
+            siteId: string;
+            /** Format: int64 */
+            watermark: number;
+            /** @enum {string} */
+            source: "REDIS" | "TIMESCALEDB";
+            truncated: boolean;
+            items: components["schemas"]["CurrentLocationItem"][];
+        };
+        LocationTrajectoryPoint: {
+            /** Format: uuid */
+            eventId: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            sourceDeviceId: string;
+            /** Format: uuid */
+            tagId: string;
+            /** Format: uuid */
+            vehicleId: string | null;
+            /** Format: uuid */
+            personId: string | null;
+            /** Format: uuid */
+            coordinateSystemId: string;
+            /** Format: int64 */
+            ingestSequence: number;
+            /** Format: date-time */
+            occurredAt: string;
+            /** Format: date-time */
+            receivedAt: string;
+            /** Format: double */
+            localX: number;
+            /** Format: double */
+            localY: number;
+            /** Format: double */
+            localZ: number | null;
+            speedMetersPerSecond: number | null;
+            headingDegrees: number | null;
+            accuracyMeters: number | null;
+            qualityStatus: components["schemas"]["LocationQualityStatus"];
+            qualityReason: string | null;
+        };
+        LocationTrajectoryResponse: {
+            /** Format: uuid */
+            siteId: string;
+            subjectType: components["schemas"]["LocationSubjectType"];
+            /** Format: uuid */
+            subjectId: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** Format: int64 */
+            watermark: number;
+            nextCursor: string | null;
+            sampled: boolean;
+            sourcePointCount: number;
+            items: components["schemas"]["LocationTrajectoryPoint"][];
+        };
         /** @enum {string} */
         DeviceGroupStatus: "ACTIVE" | "ARCHIVED";
         DeviceGroup: {
@@ -2679,6 +3840,24 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
+        /** @description 组织、矿区、车辆、标签、坐标版本、人员或资质不存在。 */
+        MineResourceNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 位置查询存储不可用，错误码 MINE-LOCATION-503-001。 */
+        LocationRuntimeUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
     };
     parameters: {
         ProductId: string;
@@ -2698,6 +3877,22 @@ export interface components {
         StrategyVersionId: string;
         /** @description 不可变策略发布 UUID。 */
         StrategyReleaseId: string;
+        /** @description 组织 UUID。 */
+        OrganizationId: string;
+        /** @description 矿区 UUID。 */
+        SiteId: string;
+        /** @description 车辆 UUID。 */
+        VehicleId: string;
+        /** @description 定位标签 UUID。 */
+        TagId: string;
+        /** @description 坐标系 UUID。 */
+        CoordinateSystemId: string;
+        /** @description 坐标转换版本 UUID。 */
+        CoordinateTransformId: string;
+        /** @description 人员 UUID。 */
+        PersonId: string;
+        /** @description 司机资质 UUID。 */
+        QualificationId: string;
         /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
         IdempotencyKey: string;
         Keyword: string;
@@ -5053,6 +6248,1297 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["StrategyNotFound"];
+        };
+    };
+    getMineContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前用户的组织和矿区授权快照。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MineContextResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listMineOrganizations: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["MineArchiveStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 组织分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MineOrganizationPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineOrganizationRequest"];
+            };
+        };
+        responses: {
+            /** @description 组织已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MineOrganizationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMineOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 组织 UUID。 */
+                organizationId: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineOrganizationUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的组织。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MineOrganizationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveMineOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 组织 UUID。 */
+                organizationId: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 组织已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineSites: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["MineArchiveStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 组织 UUID。 */
+                organizationId: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 矿区分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MineSitePage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 组织 UUID。 */
+                organizationId: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineSiteRequest"];
+            };
+        };
+        responses: {
+            /** @description 矿区已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MineSiteResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMineSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineSiteUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的矿区。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MineSiteResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveMineSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 矿区已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineScopeGrants: {
+        parameters: {
+            query: {
+                organizationId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 数据范围授权。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MineScopeGrantResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    grantMineScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineScopeGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description 授权已生效或已存在。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    revokeMineScope: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineScopeGrantRequest"];
+            };
+        };
+        responses: {
+            /** @description 授权已撤销或原本不存在。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listMineVehicles: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["VehicleStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 车辆分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehiclePage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleRequest"];
+            };
+        };
+        responses: {
+            /** @description 车辆已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMineVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 车辆 UUID。 */
+                vehicleId: components["parameters"]["VehicleId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VehicleUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的车辆。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VehicleResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveMineVehicle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 车辆 UUID。 */
+                vehicleId: components["parameters"]["VehicleId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 车辆已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineLocationTags: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["LocationTagStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 定位标签分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationTagPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineLocationTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationTagRequest"];
+            };
+        };
+        responses: {
+            /** @description 定位标签已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationTagResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMineLocationTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 定位标签 UUID。 */
+                tagId: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocationTagUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的定位标签。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationTagResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveMineLocationTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 定位标签 UUID。 */
+                tagId: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 定位标签已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineCoordinateSystems: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["MineArchiveStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 坐标系分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoordinateSystemPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineCoordinateSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoordinateSystemRequest"];
+            };
+        };
+        responses: {
+            /** @description 坐标系已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoordinateSystemResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMineCoordinateSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 坐标系 UUID。 */
+                systemId: components["parameters"]["CoordinateSystemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoordinateSystemUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的坐标系。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoordinateSystemResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveMineCoordinateSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 坐标系 UUID。 */
+                systemId: components["parameters"]["CoordinateSystemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 坐标系已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineCoordinateTransforms: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["CoordinateTransformStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 坐标转换版本分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoordinateTransformPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineCoordinateTransform: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoordinateTransformRequest"];
+            };
+        };
+        responses: {
+            /** @description 坐标转换草稿已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoordinateTransformResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMineCoordinateTransform: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 坐标转换版本 UUID。 */
+                transformId: components["parameters"]["CoordinateTransformId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoordinateTransformUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的坐标转换。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoordinateTransformResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishMineCoordinateTransform: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 坐标转换版本 UUID。 */
+                transformId: components["parameters"]["CoordinateTransformId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 已发布的不可变坐标转换。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoordinateTransformResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMinePeople: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["PersonStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 脱敏人员分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMinePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 脱敏人员档案已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMinePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 人员 UUID。 */
+                personId: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 脱敏人员档案。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    updateMinePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 人员 UUID。 */
+                personId: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏人员档案。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveMinePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 人员 UUID。 */
+                personId: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 人员档案已归档。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMinePersonSensitive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 人员 UUID。 */
+                personId: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 人员明文敏感信息。 */
+            200: {
+                headers: {
+                    /** @description private, no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonSensitiveResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    updateMinePersonSensitive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 人员 UUID。 */
+                personId: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonSensitiveUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏人员档案。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineDriverQualifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 人员 UUID。 */
+                personId: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 司机资质列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverQualificationResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    createMineDriverQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 人员 UUID。 */
+                personId: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DriverQualificationRequest"];
+            };
+        };
+        responses: {
+            /** @description 司机资质已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DriverQualificationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    revokeMineDriverQualification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 人员 UUID。 */
+                personId: components["parameters"]["PersonId"];
+                /** @description 司机资质 UUID。 */
+                qualificationId: components["parameters"]["QualificationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 资质已吊销。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewMineBindingSwitch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindingSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description 旧关系、目标关系、资质结论和影响对象。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingPreviewResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    switchMineBinding: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindingSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description 已执行或幂等重放的换绑结果。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BindingPreviewResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineCurrentLocations: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redis 快照或 TimescaleDB 回源快照。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentLocationResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["LocationRuntimeUnavailable"];
+        };
+    };
+    getMineLocationTrajectory: {
+        parameters: {
+            query: {
+                subjectType: components["schemas"]["LocationSubjectType"];
+                subjectId: string;
+                from: string;
+                /** @description 必须晚于 from 且两者间隔不超过 24 小时。 */
+                to: string;
+                watermark?: number;
+                cursor?: string;
+                maxPoints?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 使用固定水位和不透明游标的轨迹页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationTrajectoryResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["LocationRuntimeUnavailable"];
         };
     };
 }
