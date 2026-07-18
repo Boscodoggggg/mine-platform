@@ -21,6 +21,48 @@ export interface RealtimeBatch {
 
 export type RealtimeListener = (batch: RealtimeBatch) => void;
 
+export type RealtimeConnectionState =
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'AUTHENTICATING'
+  | 'CONNECTED'
+  | 'RECONNECTING';
+
+export interface RealtimeLocationItem {
+  eventId: string;
+  organizationId: string;
+  siteId: string;
+  sourceDeviceId: string;
+  tagId: string;
+  tagCode: string;
+  coordinateSystemId: string;
+  vehicleId: string | null;
+  personId: string | null;
+  ingestSequence?: number;
+  sourceSequence?: number;
+  occurredAt: string;
+  receivedAt: string;
+  localX: number;
+  localY: number;
+  localZ: number | null;
+  speedMetersPerSecond: number | null;
+  headingDegrees: number | null;
+  accuracyMeters: number | null;
+  qualityStatus: 'GOOD' | 'DEGRADED';
+  qualityReason: string | null;
+}
+
+export interface RealtimeLocationBatch {
+  siteId: string;
+  mode: 'SNAPSHOT' | 'UPDATE';
+  items: readonly RealtimeLocationItem[];
+  watermark?: number;
+  source?: 'REDIS' | 'TIMESCALEDB';
+  truncated?: boolean;
+}
+
+export type RealtimeLocationListener = (batch: RealtimeLocationBatch) => void;
+
 export interface RealtimeHubOptions {
   url: string;
   token: () => string;
@@ -49,6 +91,11 @@ interface Registration {
   listener: RealtimeListener;
 }
 
+interface LocationRegistration {
+  siteId: string;
+  listener: RealtimeLocationListener;
+}
+
 interface ServerFrame {
   type?: string;
   action?: string;
@@ -61,6 +108,11 @@ interface ServerFrame {
   quality?: string;
   code?: string;
   message?: string;
+  topic?: string;
+  siteId?: string;
+  watermark?: number;
+  source?: 'REDIS' | 'TIMESCALEDB';
+  truncated?: boolean;
   values?: Record<string, number>;
   items?: Array<{
     propertyId?: string;
@@ -70,6 +122,7 @@ interface ServerFrame {
     quality?: string;
     eventId?: string;
   }>;
+  item?: RealtimeLocationItem;
 }
 
 /**
@@ -104,6 +157,20 @@ export class RealtimeHub {
   private readonly propertyReferences = new Map<string, Map<string, number>>();
   private readonly latestValues = new Map<string, RealtimeLatestValue>();
   private readonly pendingRegistrations = new Set<Registration>();
+  private readonly locationRegistrations = new Set<LocationRegistration>();
+  private readonly locationReferences = new Map<string, number>();
+  private readonly latestLocations = new Map<string, Map<string, RealtimeLocationItem>>();
+  private readonly pendingLocationBatches = new Map<
+    string,
+    {
+      mode: 'SNAPSHOT' | 'UPDATE';
+      items: Map<string, RealtimeLocationItem>;
+      watermark?: number;
+      source?: 'REDIS' | 'TIMESCALEDB';
+      truncated?: boolean;
+    }
+  >();
+  private readonly connectionListeners = new Set<(state: RealtimeConnectionState) => void>();
   private socket: RealtimeSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,6 +182,8 @@ export class RealtimeHub {
   private desired = false;
   private resyncPending = false;
   private flushPending = false;
+  private locationFlushPending = false;
+  private connectionState: RealtimeConnectionState = 'DISCONNECTED';
 
   constructor(options: RealtimeHubOptions) {
     this.options = {
@@ -149,6 +218,7 @@ export class RealtimeHub {
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'client disconnect');
+    this.setConnectionState('DISCONNECTED');
   }
 
   /**
@@ -191,13 +261,56 @@ export class RealtimeHub {
     };
   }
 
+  /** 订阅单个矿区的位置快照和增量，多个页面共享同一服务端订阅。 */
+  subscribeMineLocation(siteId: string, listener: RealtimeLocationListener): () => void {
+    const normalizedSiteId = siteId.trim();
+    if (!normalizedSiteId) throw new Error('矿区不能为空');
+    const registration: LocationRegistration = { siteId: normalizedSiteId, listener };
+    this.locationRegistrations.add(registration);
+    const referenceCount = this.locationReferences.get(normalizedSiteId) ?? 0;
+    this.locationReferences.set(normalizedSiteId, referenceCount + 1);
+    this.connect();
+    if (referenceCount === 0 && this.authenticated) {
+      this.sendLocationTopic('SUBSCRIBE', normalizedSiteId);
+    }
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.locationRegistrations.delete(registration);
+      const count = this.locationReferences.get(normalizedSiteId) ?? 0;
+      if (count <= 1) {
+        this.locationReferences.delete(normalizedSiteId);
+        this.latestLocations.delete(normalizedSiteId);
+        this.pendingLocationBatches.delete(normalizedSiteId);
+        if (this.authenticated) this.sendLocationTopic('UNSUBSCRIBE', normalizedSiteId);
+      } else {
+        this.locationReferences.set(normalizedSiteId, count - 1);
+      }
+    };
+  }
+
+  /** 订阅连接状态；注册时立即返回当前状态。 */
+  subscribeConnectionState(listener: (state: RealtimeConnectionState) => void): () => void {
+    this.connectionListeners.add(listener);
+    listener(this.connectionState);
+    return () => this.connectionListeners.delete(listener);
+  }
+
   /** 返回内存中的单个属性最新值。 */
   getLatest(deviceId: string, propertyId: string) {
     return this.latestValues.get(this.latestKey(deviceId, propertyId));
   }
 
+  /** 返回矿区内按标签保存的最新位置副本。 */
+  getLatestLocations(siteId: string) {
+    return [...(this.latestLocations.get(siteId)?.values() ?? [])];
+  }
+
   private openSocket() {
     this.clearReconnectTimer();
+    this.setConnectionState(this.reconnectAttempt > 0 ? 'RECONNECTING' : 'CONNECTING');
     const socket = this.options.createSocket(this.options.url);
     this.socket = socket;
     this.authenticated = false;
@@ -207,6 +320,7 @@ export class RealtimeHub {
     socket.addEventListener('open', () => {
       if (this.socket !== socket) return;
       this.reconnectAttempt = 0;
+      this.setConnectionState('AUTHENTICATING');
       this.sendRaw({ action: 'AUTH', requestId: this.nextRequestId(), token: this.options.token() });
     });
     socket.addEventListener('message', event => {
@@ -217,7 +331,12 @@ export class RealtimeHub {
       if (this.socket === socket) this.socket = null;
       this.authenticated = false;
       this.clearHeartbeatTimer();
-      if (this.desired) this.scheduleReconnect();
+      if (this.desired) {
+        this.setConnectionState('RECONNECTING');
+        this.scheduleReconnect();
+      } else {
+        this.setConnectionState('DISCONNECTED');
+      }
     });
     socket.addEventListener('error', () => {
       if (socket.readyState === WebSocket.OPEN) socket.close(1011, 'transport error');
@@ -242,6 +361,7 @@ export class RealtimeHub {
     }
     if (frame.type === 'ACK' && frame.action === 'AUTH') {
       this.authenticated = true;
+      this.setConnectionState('CONNECTED');
       this.replaySubscriptions();
       this.scheduleHeartbeat();
       return;
@@ -252,6 +372,11 @@ export class RealtimeHub {
       return;
     }
     if (frame.type === 'ACK' && frame.action === 'RESYNC') this.resyncPending = false;
+    if (frame.topic === 'MINE_SITE_LOCATION') {
+      if (frame.type === 'SNAPSHOT') this.applyLocationSnapshot(frame);
+      if (frame.type === 'DATA') this.applyLocationData(frame);
+      return;
+    }
     if (frame.type === 'SNAPSHOT') this.applySnapshot(frame);
     if (frame.type === 'DATA') this.applyData(frame);
   }
@@ -269,6 +394,100 @@ export class RealtimeHub {
     this.propertyReferences.forEach((references, deviceId) => {
       this.sendTopic('SUBSCRIBE', deviceId, [...references.keys()]);
     });
+    this.locationReferences.forEach((_count, siteId) => {
+      this.sendLocationTopic('SUBSCRIBE', siteId);
+    });
+  }
+
+  private applyLocationSnapshot(frame: ServerFrame) {
+    if (!frame.siteId || !Array.isArray(frame.items)) return;
+    const items = (frame.items as unknown[])
+      .filter(this.isLocationItem)
+      .filter(item => item.siteId === frame.siteId);
+    const latest = new Map<string, RealtimeLocationItem>();
+    items.forEach(item => {
+      const existing = latest.get(item.tagId);
+      if (!existing || this.locationSequence(item) > this.locationSequence(existing)) {
+        latest.set(item.tagId, item);
+      }
+    });
+    this.latestLocations.set(frame.siteId, latest);
+    this.queueLocationBatch(frame.siteId, 'SNAPSHOT', [...latest.values()], {
+      watermark: frame.watermark,
+      source: frame.source,
+      truncated: frame.truncated
+    });
+  }
+
+  private applyLocationData(frame: ServerFrame) {
+    if (!frame.siteId || !this.isLocationItem(frame.item) || frame.item.siteId !== frame.siteId) return;
+    const latest = this.latestLocations.get(frame.siteId) ?? new Map<string, RealtimeLocationItem>();
+    const existing = latest.get(frame.item.tagId);
+    if (existing && this.locationSequence(frame.item) <= this.locationSequence(existing)) return;
+    latest.set(frame.item.tagId, frame.item);
+    this.latestLocations.set(frame.siteId, latest);
+    this.queueLocationBatch(frame.siteId, 'UPDATE', [frame.item]);
+  }
+
+  private queueLocationBatch(
+    siteId: string,
+    mode: 'SNAPSHOT' | 'UPDATE',
+    items: readonly RealtimeLocationItem[],
+    metadata: Pick<RealtimeLocationBatch, 'watermark' | 'source' | 'truncated'> = {}
+  ) {
+    const existing = this.pendingLocationBatches.get(siteId);
+    const pending = existing ?? { mode, items: new Map<string, RealtimeLocationItem>() };
+    if (mode === 'SNAPSHOT') {
+      pending.mode = 'SNAPSHOT';
+      pending.items.clear();
+    }
+    items.forEach(item => pending.items.set(item.tagId, item));
+    if (metadata.watermark !== undefined) pending.watermark = metadata.watermark;
+    if (metadata.source !== undefined) pending.source = metadata.source;
+    if (metadata.truncated !== undefined) pending.truncated = metadata.truncated;
+    this.pendingLocationBatches.set(siteId, pending);
+    if (this.locationFlushPending) return;
+    this.locationFlushPending = true;
+    queueMicrotask(() => this.flushLocationListeners());
+  }
+
+  private flushLocationListeners() {
+    this.locationFlushPending = false;
+    const batches = [...this.pendingLocationBatches.entries()];
+    this.pendingLocationBatches.clear();
+    batches.forEach(([siteId, pending]) => {
+      const batch: RealtimeLocationBatch = {
+        siteId,
+        mode: pending.mode,
+        items: [...pending.items.values()],
+        watermark: pending.watermark,
+        source: pending.source,
+        truncated: pending.truncated
+      };
+      this.locationRegistrations.forEach(registration => {
+        if (registration.siteId === siteId) registration.listener(batch);
+      });
+    });
+  }
+
+  private readonly isLocationItem = (value: unknown): value is RealtimeLocationItem => {
+    if (!value || typeof value !== 'object') return false;
+    const item = value as Partial<RealtimeLocationItem>;
+    return Boolean(
+      item.eventId &&
+        item.siteId &&
+        item.tagId &&
+        item.tagCode &&
+        typeof item.localX === 'number' &&
+        Number.isFinite(item.localX) &&
+        typeof item.localY === 'number' &&
+        Number.isFinite(item.localY) &&
+        this.locationSequence(item) > 0
+    );
+  };
+
+  private locationSequence(item: Partial<RealtimeLocationItem>) {
+    return item.sourceSequence ?? item.ingestSequence ?? 0;
   }
 
   private applySnapshot(frame: ServerFrame) {
@@ -342,6 +561,14 @@ export class RealtimeHub {
     });
   }
 
+  private sendLocationTopic(action: 'SUBSCRIBE' | 'UNSUBSCRIBE', siteId: string) {
+    this.sendRaw({
+      action,
+      requestId: this.nextRequestId(),
+      topics: [{ type: 'MINE_SITE_LOCATION', ids: [siteId] }]
+    });
+  }
+
   private sendAction(action: 'RESYNC' | 'PING') {
     this.sendRaw({ action, requestId: this.nextRequestId() });
   }
@@ -400,6 +627,12 @@ export class RealtimeHub {
     if (!this.heartbeatTimeoutTimer) return;
     clearTimeout(this.heartbeatTimeoutTimer);
     this.heartbeatTimeoutTimer = null;
+  }
+
+  private setConnectionState(state: RealtimeConnectionState) {
+    if (this.connectionState === state) return;
+    this.connectionState = state;
+    this.connectionListeners.forEach(listener => listener(state));
   }
 
   private nextRequestId() {

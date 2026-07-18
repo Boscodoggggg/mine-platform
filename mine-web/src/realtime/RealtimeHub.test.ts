@@ -243,4 +243,102 @@ describe('RealtimeHub', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(hub.getLatest('device-a', 'speed')?.value).toBe(11);
   });
+
+  it('矿区位置应复用同一连接并接收快照与批量增量', async () => {
+    const listener = vi.fn();
+    const hub = createHub();
+    const release = hub.subscribeMineLocation('site-a', listener);
+    const socket = sockets[0];
+    socket.open();
+    const auth = JSON.parse(socket.sent[0]);
+    socket.receive({ type: 'ACK', action: 'AUTH', requestId: auth.requestId, sequence: 1 });
+
+    expect(JSON.parse(socket.sent[1])).toMatchObject({
+      action: 'SUBSCRIBE',
+      topics: [{ type: 'MINE_SITE_LOCATION', ids: ['site-a'] }]
+    });
+
+    socket.receive({
+      type: 'SNAPSHOT',
+      topic: 'MINE_SITE_LOCATION',
+      siteId: 'site-a',
+      watermark: 10,
+      source: 'REDIS',
+      truncated: false,
+      items: [locationItem({ ingestSequence: 10 }), locationItem({ siteId: 'site-b', tagId: 'foreign-tag' })],
+      sequence: 2
+    });
+    await Promise.resolve();
+    expect(listener).toHaveBeenLastCalledWith(
+      expect.objectContaining({ siteId: 'site-a', mode: 'SNAPSHOT', watermark: 10 })
+    );
+    expect(listener.mock.calls[0][0].items).toHaveLength(1);
+
+    listener.mockClear();
+    socket.receive({
+      type: 'DATA',
+      topic: 'MINE_SITE_LOCATION',
+      siteId: 'site-a',
+      item: locationItem({ sourceSequence: 11, localX: 121 }),
+      sequence: 3
+    });
+    socket.receive({
+      type: 'DATA',
+      topic: 'MINE_SITE_LOCATION',
+      siteId: 'site-a',
+      item: locationItem({ tagId: 'tag-2', tagCode: 'tag-002', sourceSequence: 12 }),
+      sequence: 4
+    });
+    await Promise.resolve();
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]).toMatchObject({ siteId: 'site-a', mode: 'UPDATE' });
+    expect(listener.mock.calls[0][0].items).toHaveLength(2);
+
+    socket.sent.length = 0;
+    release();
+    expect(JSON.parse(socket.sent[0])).toMatchObject({
+      action: 'UNSUBSCRIBE',
+      topics: [{ type: 'MINE_SITE_LOCATION', ids: ['site-a'] }]
+    });
+  });
+
+  it('应向页面发布连接与弱网重连状态', () => {
+    const states: string[] = [];
+    const hub = createHub();
+    hub.subscribeConnectionState(state => states.push(state));
+    hub.subscribeMineLocation('site-a', vi.fn());
+    const socket = sockets[0];
+    socket.open();
+    const auth = JSON.parse(socket.sent[0]);
+    socket.receive({ type: 'ACK', action: 'AUTH', requestId: auth.requestId, sequence: 1 });
+    socket.remoteClose();
+
+    expect(states).toEqual(['DISCONNECTED', 'CONNECTING', 'AUTHENTICATING', 'CONNECTED', 'RECONNECTING']);
+  });
 });
+
+function locationItem(overrides: Record<string, unknown> = {}) {
+  return {
+    eventId: 'event-1',
+    organizationId: 'organization-1',
+    siteId: 'site-a',
+    sourceDeviceId: 'device-1',
+    tagId: 'tag-1',
+    tagCode: 'tag-001',
+    coordinateSystemId: 'coordinate-1',
+    vehicleId: 'vehicle-1',
+    personId: null,
+    occurredAt: '2026-07-18T00:00:00Z',
+    receivedAt: '2026-07-18T00:00:01Z',
+    localX: 120,
+    localY: 88,
+    localZ: null,
+    speedMetersPerSecond: 4.5,
+    headingDegrees: 90,
+    accuracyMeters: 0.5,
+    qualityStatus: 'GOOD',
+    qualityReason: null,
+    ...overrides
+  };
+}

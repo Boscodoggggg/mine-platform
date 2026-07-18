@@ -620,6 +620,29 @@ declare namespace App {
             step: Record<"configure" | "preview" | "complete", string>;
           };
         };
+        location: Record<
+          | "title"
+          | "description"
+          | "simulation"
+          | "currentCount"
+          | "degradedCount"
+          | "staleCount"
+          | "source"
+          | "sourceRedis"
+          | "sourceTimescaledb"
+          | "truncated",
+          string
+        > & {
+          status: Record<"idle" | "loading" | "connecting" | "live" | "reconnecting" | "error", string>;
+          filter: Record<"keyword" | "subject" | "quality" | "all", string>;
+          subject: Record<"tag" | "vehicle" | "person" | "unbound", string>;
+          quality: Record<"good" | "degraded", string>;
+          freshness: Record<"fresh" | "stale" | "offline", string>;
+          table: Record<"tagCode" | "subject" | "coordinate" | "speed" | "accuracy" | "occurredAt" | "quality" | "freshness" | "details", string>;
+          detail: Record<"title" | "basic" | "trajectory" | "subject" | "range" | "load" | "noTrajectory" | "sampled" | "eventId" | "deviceId" | "coordinateSystemId" | "sequence", string>;
+          range: Record<"hour" | "sixHours" | "day", string>;
+          canvas: Record<"xAxis" | "yAxis" | "current" | "trajectory" | "empty" | "ariaLabel", string>;
+        };
         common: {
           action: string;
           edit: string;

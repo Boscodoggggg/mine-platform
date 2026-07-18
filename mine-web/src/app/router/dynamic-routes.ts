@@ -9,8 +9,6 @@ import type { NavigationMenuNode } from '@/modules/system/api/auth';
 
 type ViewLoader = () => Promise<Component>;
 
-const fallbackView: ViewLoader = () => import('./DynamicFallbackPage.vue');
-
 /**
  * 服务端 componentKey 到本地页面的唯一映射表。
  *
@@ -37,7 +35,7 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'mine-person-management': () => import('@/modules/mine/pages/person-management/PersonManagementPage.vue'),
   'mine-location-tag-management': () => import('@/modules/mine/pages/tag-management/LocationTagManagementPage.vue'),
   'mine-binding-management': () => import('@/modules/mine/pages/binding-management/BindingManagementPage.vue'),
-  'mine-location-monitor': fallbackView
+  'mine-location-monitor': () => import('@/modules/mine/pages/realtime-location/RealtimeLocationPage.vue')
 };
 
 const safeRoutePathPattern = /^\/[A-Za-z0-9/_-]*$/;
