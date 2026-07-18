@@ -19,6 +19,7 @@ public final class LocationMessageConsumer implements ChannelAwareMessageListene
 
     private final Normalizer normalizer;
     private final Publisher publisher;
+    private final LocationIngestMetrics metrics;
 
     /**
      * 创建原始定位消费器。
@@ -27,8 +28,24 @@ public final class LocationMessageConsumer implements ChannelAwareMessageListene
      * @param publisher 带发布确认的内部观测发布边界
      */
     public LocationMessageConsumer(Normalizer normalizer, Publisher publisher) {
+        this(normalizer, publisher, LocationIngestMetrics.noop());
+    }
+
+    /**
+     * 创建带低基数处理指标的原始定位消费器。
+     *
+     * @param normalizer 可信身份与固定协议标准化边界
+     * @param publisher 带发布确认的内部观测发布边界
+     * @param metrics 定位接入指标
+     */
+    public LocationMessageConsumer(
+            Normalizer normalizer,
+            Publisher publisher,
+            LocationIngestMetrics metrics
+    ) {
         this.normalizer = Objects.requireNonNull(normalizer, "normalizer 不能为空");
         this.publisher = Objects.requireNonNull(publisher, "publisher 不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "定位接入指标不能为空");
     }
 
     /**
@@ -47,12 +64,18 @@ public final class LocationMessageConsumer implements ChannelAwareMessageListene
                     message.getBody());
             publisher.publish(observation);
             channel.basicAck(deliveryTag, false);
+            metrics.record(LocationIngestMetrics.Result.ACCEPTED,
+                    LocationIngestMetrics.Reason.NONE);
         } catch (InvalidDeviceMessageException exception) {
             LOGGER.warn("拒绝不可重试的 MQTT 定位报文: {}", exception.getMessage());
             channel.basicReject(deliveryTag, false);
+            metrics.record(LocationIngestMetrics.Result.REJECTED,
+                    LocationIngestMetrics.Reason.INVALID_MESSAGE);
         } catch (RuntimeException exception) {
             LOGGER.error("内部定位观测发布失败，原始报文将重新投递", exception);
             channel.basicNack(deliveryTag, false, true);
+            metrics.record(LocationIngestMetrics.Result.REQUEUED,
+                    LocationIngestMetrics.Reason.PUBLISH_FAILURE);
         }
     }
 

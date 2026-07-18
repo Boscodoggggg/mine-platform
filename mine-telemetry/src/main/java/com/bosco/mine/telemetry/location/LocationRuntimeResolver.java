@@ -24,6 +24,7 @@ final class LocationRuntimeResolver {
     private final LocationRuntimeRegistry registry;
     private final CoordinateTransformRegistry transformRegistry;
     private final LocationQualityEvaluator qualityEvaluator;
+    private final LocationPipelineMetrics metrics;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
     private final ConcurrentHashMap<UUID, CachedRuntime> runtimes = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<UUID, UUID> deviceSites = new ConcurrentHashMap<>();
@@ -32,13 +33,15 @@ final class LocationRuntimeResolver {
     LocationRuntimeResolver(
             LocationRuntimeRegistry registry,
             CoordinateTransformRegistry transformRegistry,
-            LocationQualityEvaluator qualityEvaluator
+            LocationQualityEvaluator qualityEvaluator,
+            LocationPipelineMetrics metrics
     ) {
         this.registry = Objects.requireNonNull(registry, "定位运行注册表不能为空");
         this.transformRegistry = Objects.requireNonNull(
                 transformRegistry, "坐标转换注册表不能为空");
         this.qualityEvaluator = Objects.requireNonNull(
                 qualityEvaluator, "定位质量判定器不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "定位流水线指标不能为空");
     }
 
     /** 按观测发生时间解析可信设备、标签、转换版本和资产绑定。 */
@@ -61,7 +64,7 @@ final class LocationRuntimeResolver {
                     LocationFactWriter.QuarantineReason.SNAPSHOT_INVALID,
                     snapshot.organizationId(), snapshot.siteId(), exception);
         }
-        return model.resolve(observation, qualityEvaluator);
+        return model.resolve(observation, qualityEvaluator, metrics);
     }
 
     private LocationRuntimeRegistry.RuntimeSnapshot findSnapshot(
@@ -196,6 +199,7 @@ final class LocationRuntimeResolver {
                     transformId, source.id(), declaredTarget.id(),
                     requiredInstant(content, "validFrom"),
                     optionalInstant(content, "validTo"),
+                    algorithm,
                     transformRegistry.resolve(new CoordinateTransformer.TransformSnapshot(
                             transformId, algorithm, parameters, declaredTarget.bounds()))));
         }
@@ -419,7 +423,8 @@ final class LocationRuntimeResolver {
 
         private ResolvedFact resolve(
                 LocationObservation observation,
-                LocationQualityEvaluator evaluator
+                LocationQualityEvaluator evaluator,
+                LocationPipelineMetrics metrics
         ) {
             if (!"ACTIVE".equals(sourceDevices.get(observation.sourceDeviceId()))
                     || deviceBindings.stream().noneMatch(binding ->
@@ -452,14 +457,27 @@ final class LocationRuntimeResolver {
             if (selected.size() > 1) {
                 throw quarantine(LocationFactWriter.QuarantineReason.TRANSFORM_VERSION_CONFLICT);
             }
+            Transform selectedTransform = selected.getFirst();
             CoordinateTransformer.TransformedCoordinate coordinate;
             try {
-                coordinate = selected.getFirst().transformer().transform(
+                coordinate = selectedTransform.transformer().transform(
                         new CoordinateTransformer.SourceCoordinate(
                                 observation.x(), observation.y(), observation.z()));
+                metrics.transform(
+                        LocationPipelineMetrics.TransformAlgorithm.valueOf(
+                                selectedTransform.algorithm().name()),
+                        LocationPipelineMetrics.TransformResult.SUCCESS);
             } catch (CoordinateTransformer.OutOfBoundsException exception) {
+                metrics.transform(
+                        LocationPipelineMetrics.TransformAlgorithm.valueOf(
+                                selectedTransform.algorithm().name()),
+                        LocationPipelineMetrics.TransformResult.FAILURE);
                 throw quarantine(LocationFactWriter.QuarantineReason.OUT_OF_BOUNDS);
             } catch (IllegalArgumentException exception) {
+                metrics.transform(
+                        LocationPipelineMetrics.TransformAlgorithm.valueOf(
+                                selectedTransform.algorithm().name()),
+                        LocationPipelineMetrics.TransformResult.FAILURE);
                 throw quarantine(LocationFactWriter.QuarantineReason.NON_FINITE_COORDINATE);
             }
             List<TagBinding> selectedBindings = tagBindings.stream()
@@ -540,6 +558,7 @@ final class LocationRuntimeResolver {
             UUID targetId,
             Instant validFrom,
             Instant validTo,
+            CoordinateTransformer.Algorithm algorithm,
             CoordinateTransformer transformer
     ) {
         private boolean contains(Instant time) {

@@ -209,6 +209,11 @@ input::placeholder, textarea::placeholder { color: #b0b1ad; }
 .checkbox-label input { width: 16px; height: 16px; accent-color: var(--accent); }
 .field-help { margin: -5px 0 14px; padding: 9px 11px; border-left: 3px solid #9da3ff; color: #666d7b; background: var(--accent-soft); font-size: 10px; line-height: 1.5; }
 .template-label small { color: var(--muted); font: 9px/1.5 ui-monospace, monospace; }
+.location-template-tool { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(170px, .8fr) auto; align-items: end; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--accent-soft); }
+.location-template-tool div { align-self: center; }
+.location-template-tool strong, .location-template-tool small { display: block; }
+.location-template-tool small { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.simulation-badge { display: inline-flex; margin-top: 5px; padding: 2px 6px; border-radius: 999px; color: var(--warning); background: var(--warning-soft); font-size: 9px; font-style: normal; font-weight: 700; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 9px; padding: 15px 27px; border-top: 1px solid var(--line); background: var(--surface-muted); }
 .wizard-footer { align-items: center; }
 .wizard-step-hint { color: var(--muted); font-size: 10px; }
@@ -241,7 +246,7 @@ input::placeholder, textarea::placeholder { color: #b0b1ad; }
 @media (max-width: 620px) {
   .topbar { align-items: stretch; flex-direction: column; }
   .topbar .button { width: 100%; }
-  .metrics, .device-grid, .form-grid { grid-template-columns: 1fr; }
+  .metrics, .device-grid, .form-grid, .location-template-tool { grid-template-columns: 1fr; }
   .device-grid { padding: 12px; }
   .panel-header { align-items: flex-start; flex-direction: column; }
   label.wide { grid-column: auto; }

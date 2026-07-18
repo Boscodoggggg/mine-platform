@@ -3,6 +3,7 @@ package com.bosco.mine.gateway.location;
 import com.bosco.mine.gateway.normalize.InvalidDeviceMessageException;
 import com.bosco.mine.model.location.LocationObservation;
 import com.rabbitmq.client.Channel;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageDeliveryMode;
@@ -35,7 +36,9 @@ class LocationMessageConsumerTest {
         Channel channel = mock(Channel.class);
         LocationObservation observation = observation();
         when(normalizer.normalize(any(), any())).thenReturn(observation);
-        LocationMessageConsumer consumer = new LocationMessageConsumer(normalizer, publisher);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        LocationMessageConsumer consumer = new LocationMessageConsumer(
+                normalizer, publisher, new LocationIngestMetrics(registry));
 
         consumer.onMessage(message(42L), channel);
 
@@ -43,6 +46,9 @@ class LocationMessageConsumerTest {
         ordered.verify(normalizer).normalize(any(), any());
         ordered.verify(publisher).publish(observation);
         ordered.verify(channel).basicAck(42L, false);
+        assertThat(registry.get("mine.gateway.location.ingest")
+                .tags("result", "accepted", "reason", "none")
+                .counter().count()).isOne();
     }
 
     @Test
@@ -52,11 +58,16 @@ class LocationMessageConsumerTest {
         Channel channel = mock(Channel.class);
         when(normalizer.normalize(any(), any()))
                 .thenThrow(new InvalidDeviceMessageException("凭据身份不匹配"));
-        LocationMessageConsumer consumer = new LocationMessageConsumer(normalizer, publisher);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        LocationMessageConsumer consumer = new LocationMessageConsumer(
+                normalizer, publisher, new LocationIngestMetrics(registry));
 
         consumer.onMessage(message(43L), channel);
 
         verify(channel).basicReject(43L, false);
+        assertThat(registry.get("mine.gateway.location.ingest")
+                .tags("result", "rejected", "reason", "invalid_message")
+                .counter().count()).isOne();
     }
 
     @Test
@@ -68,11 +79,16 @@ class LocationMessageConsumerTest {
         when(normalizer.normalize(any(), any())).thenReturn(observation);
         doThrow(new IllegalStateException("publisher confirm 超时"))
                 .when(publisher).publish(observation);
-        LocationMessageConsumer consumer = new LocationMessageConsumer(normalizer, publisher);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        LocationMessageConsumer consumer = new LocationMessageConsumer(
+                normalizer, publisher, new LocationIngestMetrics(registry));
 
         consumer.onMessage(message(44L), channel);
 
         verify(channel).basicNack(44L, false, true);
+        assertThat(registry.get("mine.gateway.location.ingest")
+                .tags("result", "requeued", "reason", "publish_failure")
+                .counter().count()).isOne();
     }
 
     @Test

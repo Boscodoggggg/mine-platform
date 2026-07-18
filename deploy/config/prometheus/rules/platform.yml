@@ -356,3 +356,57 @@ groups:
         annotations:
           summary: "显式聚合重算发生租约转移"
           description: "{{ $labels.job }} 最近 15 分钟发生重算完成回写租约丢失，系统会用稳定执行标识自动重放；若持续出现请检查查询时长和租约配置。"
+
+  - name: mine-location-runtime
+    rules:
+      - alert: MineLocationSnapshotFailuresPersistent
+        expr: >-
+          sum(increase(mine_telemetry_location_snapshot_result_total
+          {outcome=~"permanent_failure|transient_failure|invalid_message"}[15m])) >= 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "定位运行快照持续失败"
+          description: "最近 15 分钟定位运行快照至少失败 3 次，最后正确版本仍在运行；请检查控制面快照、服务令牌、网络和存储。"
+
+      - alert: MineLocationQueueBacklogHigh
+        expr: rabbitmq_queue_messages_ready{queue="mine.location.q"} > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "定位观测队列持续积压"
+          description: "定位观测待消费消息已连续 5 分钟超过 5000 条，请检查 Telemetry 消费、TimescaleDB 写入和 RabbitMQ 容量。"
+
+      - alert: MineLocationIngressRejectionRateHigh
+        expr: >-
+          (sum(rate(mine_gateway_location_ingest_total{result="rejected"}[10m]))
+          / clamp_min(sum(rate(mine_gateway_location_ingest_total[10m])), 0.001) > 0.05)
+          and (sum(increase(mine_gateway_location_ingest_total[10m])) >= 100)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "定位接入拒绝率突增"
+          description: "最近 10 分钟定位接入样本不少于 100 条且拒绝率持续超过 5%，请检查凭据快照、Topic 和固定 JSON 协议。"
+
+      - alert: MineLocationRedisLatestFailuresPersistent
+        expr: >-
+          sum(increase(mine_telemetry_location_redis_latest_total
+          {result="failure"}[10m])) >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "定位当前位置缓存持续失败"
+          description: "最近 10 分钟 Redis 当前位置刷新至少失败 5 次；历史事实仍会保存，请检查 Redis 并确认缓存重建任务恢复。"
+
+      - alert: MineLocationQuarantineNearLimit
+        expr: mine_telemetry_location_quarantine_size >= 80000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "定位隔离区逼近处置上限"
+          description: "定位隔离区记录数已持续达到 80000，请按原因处理异常来源，并按批准流程清理已到期证据。"

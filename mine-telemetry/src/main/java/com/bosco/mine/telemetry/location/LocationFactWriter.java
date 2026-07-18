@@ -48,12 +48,32 @@ public class LocationFactWriter {
             CoordinateTransformRegistry transformRegistry,
             LocationQualityEvaluator qualityEvaluator
     ) {
+        this(dataSource, registry, transformRegistry, qualityEvaluator,
+                LocationPipelineMetrics.noop());
+    }
+
+    /**
+     * 创建带低基数转换指标的位置事实写入器。
+     *
+     * @param dataSource Telemetry 时序数据库
+     * @param registry 最后正确定位快照注册表
+     * @param transformRegistry 坐标转换算法注册表
+     * @param qualityEvaluator 定位质量判定器
+     * @param metrics 定位流水线指标
+     */
+    public LocationFactWriter(
+            DataSource dataSource,
+            LocationRuntimeRegistry registry,
+            CoordinateTransformRegistry transformRegistry,
+            LocationQualityEvaluator qualityEvaluator,
+            LocationPipelineMetrics metrics
+    ) {
         Objects.requireNonNull(dataSource, "定位事实数据源不能为空");
         this.jdbcTemplate = new JdbcTemplate(dataSource);
         this.transactionTemplate = new TransactionTemplate(
                 new DataSourceTransactionManager(dataSource));
         this.resolver = new LocationRuntimeResolver(
-                registry, transformRegistry, qualityEvaluator);
+                registry, transformRegistry, qualityEvaluator, metrics);
         this.idGenerator = IdGenerator.timeOrdered();
     }
 
@@ -125,7 +145,8 @@ public class LocationFactWriter {
                     null, null, QuarantineReason.INVALID_OBSERVATION,
                     payloadHash, Map.of("format", "INVALID_OBSERVATION"),
                     candidate.occurredAt(), candidate.receivedAt());
-            return new WriteResult(Outcome.QUARANTINED, null);
+            return new WriteResult(
+                    Outcome.QUARANTINED, null, QuarantineReason.INVALID_OBSERVATION);
         });
         return Objects.requireNonNull(result, "非法定位隔离事务不得返回空结果");
     }
@@ -236,7 +257,7 @@ public class LocationFactWriter {
                             "tagCode", observation.tagCode(),
                             "coordinateSystemCode", observation.coordinateSystemCode()),
                     observation.occurredAt(), observation.receivedAt());
-            return new WriteResult(Outcome.QUARANTINED, null);
+            return new WriteResult(Outcome.QUARANTINED, null, decision.reason());
         });
         return Objects.requireNonNull(result, "定位隔离事务不得返回空结果");
     }
@@ -415,13 +436,31 @@ public class LocationFactWriter {
      *
      * @param outcome 固定处理结果
      * @param event 已提交实时事件，隔离时为空
+     * @param quarantineReason 固定隔离原因，非隔离结果时为空
      */
-    public record WriteResult(Outcome outcome, RealtimeLocationEvent event) {
+    public record WriteResult(
+            Outcome outcome,
+            RealtimeLocationEvent event,
+            QuarantineReason quarantineReason
+    ) {
+        /**
+         * 创建不携带隔离原因的兼容处理结果。
+         *
+         * @param outcome 固定处理结果
+         * @param event 已提交实时事件
+         */
+        public WriteResult(Outcome outcome, RealtimeLocationEvent event) {
+            this(outcome, event, null);
+        }
+
         /** 校验处理结果与实时事件的一致性。 */
         public WriteResult {
             Objects.requireNonNull(outcome, "定位写入结果不能为空");
             if ((outcome == Outcome.QUARANTINED) != (event == null)) {
                 throw new IllegalArgumentException("定位写入结果与实时事件不一致");
+            }
+            if (outcome != Outcome.QUARANTINED && quarantineReason != null) {
+                throw new IllegalArgumentException("非隔离结果不得携带隔离原因");
             }
         }
     }

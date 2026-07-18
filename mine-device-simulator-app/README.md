@@ -8,6 +8,7 @@
 - MQTT / MQTTS 客户端，支持用户名、启动时临时密码、Topic 和 QoS 0/1/2。
 - TCP Client / TCP Server，支持普通连接与基于 JVM 信任库、密钥库的 TLS。
 - JSON / UTF-8 与 HEX 报文模板。
+- 固定种子的圆形/折线定位路线，以及低质量、重复、乱序、未绑定标签和越界异常场景。
 - 周期发送、单次发送、断开、重连、停止。
 - 连接状态、成功/失败计数及每台设备最近 200 条运行日志。
 - 密码不写入 YAML，也不写入浏览器存储。
@@ -78,8 +79,34 @@ JSON 和 HEX 模板发送前会替换以下变量：
 | `${productKey}` | 产品标识 |
 | `${deviceCode}` | 设备编码 |
 | `${clientId}` | MQTT Client ID |
+| `${locationTagCode}` | 定位场景生成的标签编码 |
+| `${locationBootId}` | 根据模拟器配置生成的稳定启动周期前缀 |
+| `${locationSequence}` | 场景生成的来源序号，重复/乱序场景可能回退 |
+| `${locationOccurredAt}` | 与来源序号一致的 ISO-8601 设备发生时间 |
+| `${locationX}` / `${locationY}` / `${locationZ}` | 固定路线生成的来源坐标 |
+| `${locationSpeed}` / `${locationHeading}` | 由相邻点和发送周期计算的速度与航向 |
+| `${locationAccuracy}` | 场景生成的精度半径（米） |
+| `${locationScenario:CIRCLE}` | 选择定位场景并输出稳定场景名 |
 
 HEX 模板允许空格和换行，例如 `68 01 00 02 FF 16`。
+
+定位变量只允许用于 JSON 模板。在设备向导的报文步骤选择“定位模拟场景”并应用模板，模拟器会生成平台固定
+JSON v1 报文；Topic 必须使用 `mine/v1/{productKey}/{clientId}/up/location`。模板默认来源坐标系编码是
+`uwb-local`，运行前必须改成控制面已发布快照中的实际来源坐标系编码。
+
+| 场景 | 行为 |
+|---|---|
+| `CIRCLE` | 可重复的圆形路线 |
+| `POLYLINE` | 可重复的矿区道路折线 |
+| `LOW_QUALITY` | 持续输出较差精度，用于验证降级历史与当前位置保护 |
+| `DUPLICATE` | 每 5 帧重复上一帧的序号、时间和坐标 |
+| `OUT_OF_ORDER` | 每 5 帧回退两个序号与发生时间 |
+| `UNBOUND_TAG` | 使用 `SIM-UNBOUND-718`；需先在矿区建档但不要绑定车辆或人员 |
+| `OUT_OF_BOUNDS` | 输出明显越过矿区边界的坐标，用于验证有界隔离 |
+
+完整准备、预期、指标和回退方法见
+[矿区定位运行与模拟验收手册](../docs/runbooks/mine-location-runtime.md)。模拟器是开发和自动化验收工具，不替代真实
+UWB 厂商协议、坐标标定、精度、容量、高可用和长稳验证。
 
 ## 协议边界
 

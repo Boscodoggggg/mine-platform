@@ -31,6 +31,23 @@ const templates = {
   TCP_SERVER: "68 01 00 08 10 20 30 40 16"
 };
 
+const locationTemplate = scenario => `{
+  "schemaVersion": 1,
+  "productKey": "${"${productKey}"}",
+  "deviceCode": "${"${deviceCode}"}",
+  "tagCode": "${"${locationTagCode}"}",
+  "coordinateSystemCode": "uwb-local",
+  "x": ${"${locationX}"},
+  "y": ${"${locationY}"},
+  "z": ${"${locationZ}"},
+  "speedMetersPerSecond": ${"${locationSpeed}"},
+  "headingDegrees": ${"${locationHeading}"},
+  "accuracyMeters": ${"${locationAccuracy}"},
+  "bootId": "${"${locationBootId}"}-${"${locationScenario:"}${scenario}}",
+  "sequence": ${"${locationSequence}"},
+  "occurredAt": "${"${locationOccurredAt}"}"
+}`;
+
 const transportPresets = {
   MQTT: {
     hostLabel: "Broker 地址", host: "127.0.0.1", hostPlaceholder: "例如：127.0.0.1 或 mqtt.example.com",
@@ -160,10 +177,11 @@ function deviceCard(profile, runtime) {
   const modeIcon = profile.transportMode === "MQTT"
     ? `<path d="M5 16a7 7 0 0 1 7-7M5 11a12 12 0 0 1 12-6M5 20h.01M9 20a4 4 0 0 1 4-4"/>`
     : `<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h2M15 10h2M15 14h2"/>`;
+  const simulatedLocation = locationScenario(profile);
   return `<article class="device-card ${state.selectedId === profile.id ? "selected" : ""}" data-profile-id="${escapeHtml(profile.id)}">
     <div class="card-top">
       <span class="device-type"><svg aria-hidden="true" viewBox="0 0 24 24">${modeIcon}</svg></span>
-      <div class="device-title"><h3>${escapeHtml(profile.name)}</h3><p>${escapeHtml(profile.deviceCode || profile.clientId || profile.id)}</p></div>
+      <div class="device-title"><h3>${escapeHtml(profile.name)}</h3><p>${escapeHtml(profile.deviceCode || profile.clientId || profile.id)}</p>${simulatedLocation ? `<em class="simulation-badge">模拟定位 · ${escapeHtml(simulatedLocation)}</em>` : ""}</div>
       <span class="status-badge status-${runtime.state}">${statusText[runtime.state] || runtime.state}</span>
     </div>
     <div class="device-meta">
@@ -248,14 +266,20 @@ function renderWizardSummary() {
   const reportTarget = mode === "MQTT"
     ? (form.elements.publishTopic.value || "尚未填写发布 Topic")
     : `${form.elements.host.value}:${form.elements.port.value}`;
+  const simulatedLocation = locationScenario({ payloadTemplate: form.elements.payloadTemplate.value });
   $("#wizardSummary").innerHTML = `
     <dl>
       <div><dt>设备名称</dt><dd>${escapeHtml(form.elements.name.value)}</dd></div>
       <div><dt>设备标识</dt><dd>${escapeHtml(identity)}</dd></div>
       <div><dt>连接方式</dt><dd>${escapeHtml(modeText)}</dd></div>
       <div><dt>${mode === "MQTT" ? "上报 Topic" : "连接端点"}</dt><dd>${escapeHtml(reportTarget)}</dd></div>
+      ${simulatedLocation ? `<div><dt>数据场景</dt><dd>模拟定位 · ${escapeHtml(simulatedLocation)}</dd></div>` : ""}
       <div><dt>发送计划</dt><dd>每 ${escapeHtml(formatInterval(Number(form.elements.intervalMillis.value)))}发送一帧 ${escapeHtml(form.elements.payloadFormat.value)} 报文</dd></div>
     </dl>`;
+}
+
+function locationScenario(profile) {
+  return profile?.payloadTemplate?.match(/\$\{locationScenario:([A-Z_]+)}/)?.[1] || "";
 }
 
 function viewFromHash() {
@@ -383,6 +407,18 @@ $("#refreshButton").addEventListener("click", async event => {
   toast("状态已刷新");
 });
 $("#transportMode").addEventListener("change", () => updateTransportFields(true));
+$("#applyLocationTemplateButton").addEventListener("click", () => {
+  const scenario = $("#locationScenarioPreset").value;
+  const productKey = form.elements.productKey.value.trim();
+  const clientId = form.elements.clientId.value.trim();
+  form.elements.payloadFormat.value = "JSON";
+  form.elements.intervalMillis.value = "1000";
+  form.elements.payloadTemplate.value = locationTemplate(scenario);
+  form.elements.publishTopic.value = `mine/v1/${productKey || "your-product"}/${clientId || "your-client-id"}/up/location`;
+  toast(productKey && clientId
+    ? `已应用 ${scenario} 模拟定位模板`
+    : "已应用定位模板；请补全产品标识和 Client ID 后核对 Topic");
+});
 $$('[name="connectionScenario"]', form).forEach(option => option.addEventListener("change", event => {
   form.elements.transportMode.value = event.currentTarget.value;
   form.elements.transportMode.dispatchEvent(new Event("change"));

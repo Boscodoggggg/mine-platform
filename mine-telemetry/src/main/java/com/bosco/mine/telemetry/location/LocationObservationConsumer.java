@@ -28,6 +28,7 @@ public final class LocationObservationConsumer implements ChannelAwareMessageLis
     private final LocationFactWriter writer;
     private final LocationLatestCache latestCache;
     private final CommittedEventObserver outboxObserver;
+    private final LocationPipelineMetrics metrics;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
     /**
@@ -42,10 +43,28 @@ public final class LocationObservationConsumer implements ChannelAwareMessageLis
             LocationLatestCache latestCache,
             CommittedEventObserver outboxObserver
     ) {
+        this(writer, latestCache, outboxObserver, LocationPipelineMetrics.noop());
+    }
+
+    /**
+     * 创建带固定处理结果指标的定位消费者。
+     *
+     * @param writer 位置事实事务写入器
+     * @param latestCache Redis 当前位置加速层
+     * @param outboxObserver 已提交实时 Outbox 唤醒器
+     * @param metrics 定位流水线指标
+     */
+    public LocationObservationConsumer(
+            LocationFactWriter writer,
+            LocationLatestCache latestCache,
+            CommittedEventObserver outboxObserver,
+            LocationPipelineMetrics metrics
+    ) {
         this.writer = Objects.requireNonNull(writer, "定位事实写入器不能为空");
         this.latestCache = Objects.requireNonNull(latestCache, "定位最新缓存不能为空");
         this.outboxObserver = Objects.requireNonNull(
                 outboxObserver, "定位 Outbox 观察器不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "定位流水线指标不能为空");
     }
 
     /** {@inheritDoc} */
@@ -56,29 +75,41 @@ public final class LocationObservationConsumer implements ChannelAwareMessageLis
         LocationFactWriter.WriteResult result;
         try {
             result = writer.write(decode(message));
+            recordWriteResult(result);
         } catch (InvalidObservationMessageException exception) {
             if (exception.candidate() != null) {
                 try {
-                    writer.quarantineInvalid(exception.candidate());
+                    recordWriteResult(writer.quarantineInvalid(exception.candidate()));
                 } catch (LocationFactWriter.PermanentLocationObservationException conflict) {
+                    metrics.ingest(LocationPipelineMetrics.IngestResult.PERMANENT_FAILURE,
+                            LocationPipelineMetrics.IngestReason.IDEMPOTENCY_CONFLICT);
                     LOGGER.warn("拒绝存在幂等冲突的非法定位观测: {}", conflict.getMessage());
                     reject(message, channel);
                     return;
                 } catch (RuntimeException storageException) {
+                    metrics.ingest(LocationPipelineMetrics.IngestResult.TRANSIENT_FAILURE,
+                            LocationPipelineMetrics.IngestReason.STORAGE_FAILURE);
                     LOGGER.error("非法定位观测暂时无法写入隔离区，消息将重新投递",
                             storageException);
                     nack(message, channel);
                     return;
                 }
+            } else {
+                metrics.ingest(LocationPipelineMetrics.IngestResult.INVALID_MESSAGE,
+                        LocationPipelineMetrics.IngestReason.INVALID_MESSAGE);
             }
             LOGGER.warn("拒绝不可重试的定位观测: {}", exception.getMessage());
             reject(message, channel);
             return;
         } catch (LocationFactWriter.PermanentLocationObservationException exception) {
+            metrics.ingest(LocationPipelineMetrics.IngestResult.PERMANENT_FAILURE,
+                    LocationPipelineMetrics.IngestReason.IDEMPOTENCY_CONFLICT);
             LOGGER.warn("拒绝不可重试的定位观测: {}", exception.getMessage());
             reject(message, channel);
             return;
         } catch (RuntimeException exception) {
+            metrics.ingest(LocationPipelineMetrics.IngestResult.TRANSIENT_FAILURE,
+                    LocationPipelineMetrics.IngestReason.STORAGE_FAILURE);
             LOGGER.error("定位观测暂时无法持久化，消息将重新投递", exception);
             nack(message, channel);
             return;
@@ -101,6 +132,21 @@ public final class LocationObservationConsumer implements ChannelAwareMessageLis
             LOGGER.warn("定位实时 Outbox 精确唤醒失败，将由恢复扫描接管: eventId={}",
                     result.event().eventId(), exception);
         }
+    }
+
+    private void recordWriteResult(LocationFactWriter.WriteResult result) {
+        LocationPipelineMetrics.IngestResult ingestResult = switch (result.outcome()) {
+            case STORED -> LocationPipelineMetrics.IngestResult.STORED;
+            case DUPLICATE -> LocationPipelineMetrics.IngestResult.DUPLICATE;
+            case QUARANTINED -> LocationPipelineMetrics.IngestResult.QUARANTINED;
+        };
+        LocationPipelineMetrics.IngestReason reason = result.quarantineReason() == null
+                ? (result.outcome() == LocationFactWriter.Outcome.QUARANTINED
+                ? LocationPipelineMetrics.IngestReason.UNKNOWN
+                : LocationPipelineMetrics.IngestReason.NONE)
+                : LocationPipelineMetrics.IngestReason.valueOf(
+                        result.quarantineReason().name());
+        metrics.ingest(ingestResult, reason);
     }
 
     private LocationObservation decode(Message message) {

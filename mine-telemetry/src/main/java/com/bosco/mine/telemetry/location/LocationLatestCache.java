@@ -51,6 +51,7 @@ public final class LocationLatestCache {
 
     private final StringRedisTemplate redisTemplate;
     private final JdbcTemplate jdbcTemplate;
+    private final LocationPipelineMetrics metrics;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
     /**
@@ -60,10 +61,26 @@ public final class LocationLatestCache {
      * @param dataSource Telemetry 时序数据库
      */
     public LocationLatestCache(StringRedisTemplate redisTemplate, DataSource dataSource) {
+        this(redisTemplate, dataSource, LocationPipelineMetrics.noop());
+    }
+
+    /**
+     * 创建带低基数刷新结果指标的当前位置缓存。
+     *
+     * @param redisTemplate Redis 字符串操作模板
+     * @param dataSource Telemetry 时序数据库
+     * @param metrics 定位流水线指标
+     */
+    public LocationLatestCache(
+            StringRedisTemplate redisTemplate,
+            DataSource dataSource,
+            LocationPipelineMetrics metrics
+    ) {
         this.redisTemplate = Objects.requireNonNull(
                 redisTemplate, "定位 Redis 操作模板不能为空");
         this.jdbcTemplate = new JdbcTemplate(Objects.requireNonNull(
                 dataSource, "定位缓存重建数据源不能为空"));
+        this.metrics = Objects.requireNonNull(metrics, "定位流水线指标不能为空");
     }
 
     /**
@@ -74,15 +91,24 @@ public final class LocationLatestCache {
      */
     public boolean updateIfNewer(RealtimeLocationEvent event) {
         Objects.requireNonNull(event, "定位实时事件不能为空");
-        Long updated = redisTemplate.execute(
-                UPDATE_IF_NEWER,
-                List.of(valueKey(event.siteId(), event.tagId()), indexKey(event.siteId())),
-                event.qualityStatus().name(),
-                Long.toString(event.occurredAt().toEpochMilli()),
-                Long.toString(event.sourceSequence()),
-                write(event),
-                event.tagId().toString());
-        return Long.valueOf(1L).equals(updated);
+        try {
+            Long updated = redisTemplate.execute(
+                    UPDATE_IF_NEWER,
+                    List.of(valueKey(event.siteId(), event.tagId()), indexKey(event.siteId())),
+                    event.qualityStatus().name(),
+                    Long.toString(event.occurredAt().toEpochMilli()),
+                    Long.toString(event.sourceSequence()),
+                    write(event),
+                    event.tagId().toString());
+            boolean changed = Long.valueOf(1L).equals(updated);
+            metrics.redisLatest(changed
+                    ? LocationPipelineMetrics.RedisResult.UPDATED
+                    : LocationPipelineMetrics.RedisResult.IGNORED);
+            return changed;
+        } catch (RuntimeException exception) {
+            metrics.redisLatest(LocationPipelineMetrics.RedisResult.FAILURE);
+            throw exception;
+        }
     }
 
     /**

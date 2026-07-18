@@ -53,3 +53,83 @@ tests:
             exp_annotations:
               summary: Gateway TCP 长时间没有成功遥测
               description: haul-truck-binary 监听器仍在线，进程已运行且连续 30 分钟没有完成解析、可靠发布和 ACK，请检查矿区设备、边缘网络及协议配置。
+
+  - name: 定位运行快照持续失败应触发严重告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_location_snapshot_result_total{job="mine-telemetry", outcome="transient_failure"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineLocationSnapshotFailuresPersistent
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: 定位运行快照持续失败
+              description: 最近 15 分钟定位运行快照至少失败 3 次，最后正确版本仍在运行；请检查控制面快照、服务令牌、网络和存储。
+
+  - name: 定位队列持续积压应触发容量告警
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{job="rabbitmq", queue="mine.location.q"}'
+        values: '6000+0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: MineLocationQueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              job: rabbitmq
+              queue: mine.location.q
+              severity: warning
+            exp_annotations:
+              summary: 定位观测队列持续积压
+              description: 定位观测待消费消息已连续 5 分钟超过 5000 条，请检查 Telemetry 消费、TimescaleDB 写入和 RabbitMQ 容量。
+
+  - name: 定位接入拒绝率在足量样本下突增应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_gateway_location_ingest_total{job="mine-gateway", result="accepted", reason="none"}'
+        values: '0+8x25'
+      - series: 'mine_gateway_location_ingest_total{job="mine-gateway", result="rejected", reason="invalid_message"}'
+        values: '0+2x25'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: MineLocationIngressRejectionRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 定位接入拒绝率突增
+              description: 最近 10 分钟定位接入样本不少于 100 条且拒绝率持续超过 5%，请检查凭据快照、Topic 和固定 JSON 协议。
+
+  - name: Redis当前位置持续失败应保留历史并触发恢复告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_location_redis_latest_total{job="mine-telemetry", result="failure"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineLocationRedisLatestFailuresPersistent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 定位当前位置缓存持续失败
+              description: 最近 10 分钟 Redis 当前位置刷新至少失败 5 次；历史事实仍会保存，请检查 Redis 并确认缓存重建任务恢复。
+
+  - name: 定位隔离区逼近默认处置上限应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_location_quarantine_size{job="mine-telemetry"}'
+        values: '90000+0x15'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: MineLocationQuarantineNearLimit
+        exp_alerts:
+          - exp_labels:
+              job: mine-telemetry
+              severity: warning
+            exp_annotations:
+              summary: 定位隔离区逼近处置上限
+              description: 定位隔离区记录数已持续达到 80000，请按原因处理异常来源，并按批准流程清理已到期证据。

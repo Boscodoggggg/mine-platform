@@ -16,6 +16,7 @@ import com.bosco.mine.telemetry.location.ConfirmedRealtimeLocationPublisher;
 import com.bosco.mine.telemetry.location.LocationFactWriter;
 import com.bosco.mine.telemetry.location.LocationLatestCache;
 import com.bosco.mine.telemetry.location.LocationObservationConsumer;
+import com.bosco.mine.telemetry.location.LocationPipelineMetrics;
 import com.bosco.mine.telemetry.location.LocationQualityEvaluator;
 import com.bosco.mine.telemetry.location.LocationRealtimeOutboxRelay;
 import com.bosco.mine.telemetry.location.LocationRecoveryCoordinator;
@@ -450,6 +451,18 @@ public class TelemetryStorageConfiguration {
         return new LocationSnapshotMetrics(meterRegistry);
     }
 
+    /** 创建定位处理、坐标转换、Redis 与隔离区低基数指标。 */
+    @Bean
+    @DependsOnDatabaseInitialization
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationPipelineMetrics locationPipelineMetrics(
+            MeterRegistry meterRegistry,
+            DataSource dataSource
+    ) {
+        return new LocationPipelineMetrics(meterRegistry, dataSource);
+    }
+
     /** 创建版本化坐标转换算法注册表。 */
     @Bean
     @ConditionalOnProperty(
@@ -556,10 +569,11 @@ public class TelemetryStorageConfiguration {
             DataSource dataSource,
             LocationRuntimeRegistry registry,
             CoordinateTransformRegistry transformRegistry,
-            LocationQualityEvaluator qualityEvaluator
+            LocationQualityEvaluator qualityEvaluator,
+            LocationPipelineMetrics metrics
     ) {
         return new LocationFactWriter(
-                dataSource, registry, transformRegistry, qualityEvaluator);
+                dataSource, registry, transformRegistry, qualityEvaluator, metrics);
     }
 
     /** 创建带顺序保护且可从可靠 Outbox 重建的 Redis 当前位置缓存。 */
@@ -568,9 +582,10 @@ public class TelemetryStorageConfiguration {
             prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
     public LocationLatestCache locationLatestCache(
             StringRedisTemplate redisTemplate,
-            DataSource dataSource
+            DataSource dataSource,
+            LocationPipelineMetrics metrics
     ) {
-        return new LocationLatestCache(redisTemplate, dataSource);
+        return new LocationLatestCache(redisTemplate, dataSource, metrics);
     }
 
     /** 创建只向实时交换机发布矿区位置白名单事件的确认发布器。 */
@@ -668,9 +683,10 @@ public class TelemetryStorageConfiguration {
     public LocationObservationConsumer locationObservationConsumer(
             LocationFactWriter writer,
             LocationLatestCache cache,
-            LocationObservationConsumer.CommittedEventObserver observer
+            LocationObservationConsumer.CommittedEventObserver observer,
+            LocationPipelineMetrics metrics
     ) {
-        return new LocationObservationConsumer(writer, cache, observer);
+        return new LocationObservationConsumer(writer, cache, observer, metrics);
     }
 
     /** 创建位置独立队列的单消息手工确认监听容器。 */

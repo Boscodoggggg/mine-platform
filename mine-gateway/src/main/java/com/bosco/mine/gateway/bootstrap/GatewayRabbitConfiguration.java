@@ -15,6 +15,7 @@ import com.bosco.mine.gateway.configuration.GatewayConfigurationDistributionProp
 import com.bosco.mine.gateway.configuration.HttpConfigurationSnapshotClient;
 import com.bosco.mine.gateway.configuration.ProtocolSnapshotRegistry;
 import com.bosco.mine.gateway.location.ConfirmedLocationPublisher;
+import com.bosco.mine.gateway.location.LocationIngestMetrics;
 import com.bosco.mine.gateway.location.LocationMessageConsumer;
 import com.bosco.mine.gateway.location.LocationMessageNormalizer;
 import com.bosco.mine.gateway.mqtt.ConfirmedTelemetryPublisher;
@@ -331,18 +332,34 @@ public class GatewayRabbitConfiguration {
     }
 
     /**
+     * 创建只使用固定结果和原因标签的定位接入指标；精简上下文使用本地注册表。
+     *
+     * @param registryProvider Micrometer 注册表提供器
+     * @return 定位接入指标
+     */
+    @Bean
+    public LocationIngestMetrics locationIngestMetrics(
+            ObjectProvider<MeterRegistry> registryProvider
+    ) {
+        return new LocationIngestMetrics(
+                registryProvider.getIfAvailable(SimpleMeterRegistry::new));
+    }
+
+    /**
      * 创建独立原始定位消息处理器。
      *
      * @param normalizer 定位报文标准化器
      * @param publisher 定位观测确认发布器
+     * @param metrics 定位接入低基数指标
      * @return 原始定位消息处理器
      */
     @Bean
     public LocationMessageConsumer locationMessageConsumer(
             LocationMessageNormalizer normalizer,
-            ConfirmedLocationPublisher publisher
+            ConfirmedLocationPublisher publisher,
+            LocationIngestMetrics metrics
     ) {
-        return new LocationMessageConsumer(normalizer, publisher);
+        return new LocationMessageConsumer(normalizer, publisher, metrics);
     }
 
     /**

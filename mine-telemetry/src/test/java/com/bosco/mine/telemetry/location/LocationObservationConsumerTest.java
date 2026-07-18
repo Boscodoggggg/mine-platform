@@ -3,6 +3,7 @@ package com.bosco.mine.telemetry.location;
 import com.bosco.mine.messaging.realtime.RealtimeLocationEvent;
 import com.bosco.mine.model.location.LocationObservation;
 import com.rabbitmq.client.Channel;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageBuilder;
@@ -12,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -30,16 +32,21 @@ class LocationObservationConsumerTest {
                 mock(LocationObservationConsumer.CommittedEventObserver.class);
         Channel channel = mock(Channel.class);
         RealtimeLocationEvent event = realtimeEvent();
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
         when(writer.write(any())).thenReturn(
                 new LocationFactWriter.WriteResult(LocationFactWriter.Outcome.STORED, event));
 
-        new LocationObservationConsumer(writer, cache, observer)
+        new LocationObservationConsumer(
+                writer, cache, observer, new LocationPipelineMetrics(registry, () -> 0D))
                 .onMessage(message(41L), channel);
 
         var ordered = inOrder(channel, cache, observer);
         ordered.verify(channel).basicAck(41L, false);
         ordered.verify(cache).updateIfNewer(event);
         ordered.verify(observer).observe(event.eventId());
+        assertThat(registry.get("mine.telemetry.location.ingest")
+                .tags("result", "stored", "reason", "none")
+                .counter().count()).isOne();
     }
 
     @Test

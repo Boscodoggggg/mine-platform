@@ -14,6 +14,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StaticInteractionContractTest {
 
     @Test
+    void 定位模拟器应清楚标识场景并提供受控异常模板() throws Exception {
+        String html = resource("/static/index.html");
+        String script = resource("/static/app.js");
+
+        assertThat(html).contains(
+                "id=\"locationScenarioPreset\"",
+                "id=\"applyLocationTemplateButton\"",
+                "模拟定位数据",
+                "LOW_QUALITY",
+                "DUPLICATE",
+                "OUT_OF_ORDER",
+                "UNBOUND_TAG",
+                "OUT_OF_BOUNDS");
+        assertThat(script).contains(
+                "locationTemplate",
+                "locationScenarioPreset",
+                "${locationScenario:");
+    }
+
+    @Test
     void 统计卡片应提供筛选或定位动作() throws Exception {
         String html = resource("/static/index.html");
 

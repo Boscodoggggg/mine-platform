@@ -49,6 +49,51 @@ class PayloadRendererTest {
                 .hasMessageContaining("十六进制");
     }
 
+    @Test
+    void 应把定位场景变量渲染为网关固定JSON协议() {
+        SimulatorProfile profile = profile(PayloadFormat.JSON, """
+                {
+                  "schemaVersion":1,
+                  "tagCode":"${locationTagCode}",
+                  "x":${locationX},"y":${locationY},"z":${locationZ},
+                  "speedMetersPerSecond":${locationSpeed},
+                  "headingDegrees":${locationHeading},
+                  "accuracyMeters":${locationAccuracy},
+                  "bootId":"${locationBootId}",
+                  "sequence":${locationSequence},
+                  "occurredAt":"${locationOccurredAt}",
+                  "scenario":"${locationScenario:DUPLICATE}"
+                }
+                """);
+
+        String previous = new String(renderer.render(
+                profile, 4L, Instant.parse("2026-07-18T08:00:04Z")), StandardCharsets.UTF_8);
+        String duplicate = new String(renderer.render(
+                profile, 5L, Instant.parse("2026-07-18T08:00:05Z")), StandardCharsets.UTF_8);
+
+        assertThat(previous).contains(
+                "\"tagCode\":\"truck-001\"",
+                "\"sequence\":4",
+                "\"occurredAt\":\"2026-07-18T08:00:04Z\"",
+                "\"scenario\":\"DUPLICATE\"");
+        assertThat(duplicate).contains(
+                "\"sequence\":4",
+                "\"occurredAt\":\"2026-07-18T08:00:04Z\"");
+        assertThat(duplicate).doesNotContain("${location");
+    }
+
+    @Test
+    void 未知定位场景应被拒绝且普通模板保持兼容() {
+        assertThatThrownBy(() -> renderer.render(
+                profile(PayloadFormat.JSON, "${locationScenario:UNKNOWN}"), 1L, Instant.EPOCH))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("定位模拟场景");
+        assertThat(new String(renderer.render(
+                profile(PayloadFormat.JSON, "{\"sequence\":${sequence}}"),
+                9L, Instant.EPOCH), StandardCharsets.UTF_8))
+                .isEqualTo("{\"sequence\":9}");
+    }
+
     private SimulatorProfile profile(PayloadFormat format, String template) {
         return new SimulatorProfile(
                 "profile-1", "测试设备", TransportMode.MQTT, "127.0.0.1", 1883, false,

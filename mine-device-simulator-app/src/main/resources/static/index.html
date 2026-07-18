@@ -159,9 +159,23 @@
             </label>
             <label>发送间隔（毫秒）<input name="intervalMillis" required type="number" min="100" value="5000"></label>
             <label class="mqtt-field">MQTT QoS<select name="qos"><option value="0">0 — 最多一次</option><option value="1" selected>1 — 至少一次</option><option value="2">2 — 恰好一次</option></select></label>
+            <div class="wide location-template-tool mqtt-field" aria-label="模拟定位数据模板">
+              <div><strong>模拟定位数据</strong><small>固定种子可重复；异常场景仅用于验收隔离、顺序和质量链路。</small></div>
+              <select id="locationScenarioPreset" aria-label="定位模拟场景">
+                <option value="CIRCLE">正常圆形路线</option>
+                <option value="POLYLINE">正常折线路线</option>
+                <option value="LOW_QUALITY">LOW_QUALITY · 低质量</option>
+                <option value="DUPLICATE">DUPLICATE · 重复帧</option>
+                <option value="OUT_OF_ORDER">OUT_OF_ORDER · 乱序帧</option>
+                <option value="UNBOUND_TAG">UNBOUND_TAG · 未绑定标签</option>
+                <option value="OUT_OF_BOUNDS">OUT_OF_BOUNDS · 越界坐标</option>
+              </select>
+              <button class="button secondary" id="applyLocationTemplateButton" type="button">应用定位模板</button>
+            </div>
             <label class="wide template-label">报文模板
               <textarea name="payloadTemplate" required rows="8" spellcheck="false"></textarea>
-              <small>变量：${sequence} · ${timestamp} · ${epochMillis} · ${productKey} · ${deviceCode} · ${clientId}</small>
+              <small>基础变量：${sequence} · ${timestamp} · ${epochMillis} · ${productKey} · ${deviceCode} · ${clientId}</small>
+              <small>定位变量：${locationX} · ${locationY} · ${locationSpeed} · ${locationHeading} · ${locationAccuracy}</small>
             </label>
           </div>
         </section>
