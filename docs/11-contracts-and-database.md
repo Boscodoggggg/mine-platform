@@ -202,18 +202,51 @@ POST             /internal/v1/aggregation-recomputations/{requestId}/complete
 ### 2.4 矿山业务
 
 ~~~text
-GET/POST/PATCH  /api/v1/vehicles
-GET/POST/PATCH  /api/v1/persons
-GET/POST        /api/v1/bindings
-POST            /api/v1/bindings/{id}/close
-GET/POST/PATCH  /api/v1/routes
-GET/POST/PATCH  /api/v1/waypoints
-GET/POST/PATCH  /api/v1/geofences
-GET/POST        /api/v1/work-orders
-GET             /api/v1/operation-records
-GET             /api/v1/location-points
-GET             /api/v1/tracks
+GET               /api/v1/mine/context
+GET/POST          /api/v1/mine/organizations
+PATCH             /api/v1/mine/organizations/{organizationId}
+POST              /api/v1/mine/organizations/{organizationId}/archive
+GET/POST          /api/v1/mine/organizations/{organizationId}/sites
+PATCH             /api/v1/mine/sites/{siteId}
+POST              /api/v1/mine/sites/{siteId}/archive
+GET/PUT/DELETE    /api/v1/mine/scope-grants
+
+GET/POST          /api/v1/mine/sites/{siteId}/vehicles
+PATCH             /api/v1/mine/sites/{siteId}/vehicles/{vehicleId}
+POST              /api/v1/mine/sites/{siteId}/vehicles/{vehicleId}/archive
+GET/POST          /api/v1/mine/sites/{siteId}/location-tags
+PATCH             /api/v1/mine/sites/{siteId}/location-tags/{tagId}
+POST              /api/v1/mine/sites/{siteId}/location-tags/{tagId}/archive
+GET/POST          /api/v1/mine/sites/{siteId}/coordinate-systems
+PATCH             /api/v1/mine/sites/{siteId}/coordinate-systems/{systemId}
+POST              /api/v1/mine/sites/{siteId}/coordinate-systems/{systemId}/archive
+GET/POST          /api/v1/mine/sites/{siteId}/coordinate-transforms
+PATCH             /api/v1/mine/sites/{siteId}/coordinate-transforms/{transformId}
+POST              /api/v1/mine/sites/{siteId}/coordinate-transforms/{transformId}/publish
+
+GET/POST          /api/v1/mine/sites/{siteId}/people
+GET/PATCH         /api/v1/mine/sites/{siteId}/people/{personId}
+POST              /api/v1/mine/sites/{siteId}/people/{personId}/archive
+GET/PATCH         /api/v1/mine/sites/{siteId}/people/{personId}/sensitive
+GET/POST          /api/v1/mine/sites/{siteId}/people/{personId}/qualifications
+POST              /api/v1/mine/sites/{siteId}/people/{personId}/qualifications/{qualificationId}/revoke
+
+POST              /api/v1/mine/sites/{siteId}/bindings/preview
+POST              /api/v1/mine/sites/{siteId}/bindings/switch
+GET               /api/v1/mine/sites/{siteId}/locations/current
+GET               /api/v1/mine/sites/{siteId}/locations/trajectory
+
+GET               /api/v1/internal/location-snapshots/latest
+GET               /api/v1/internal/location-snapshots/{snapshotId}
 ~~~
+
+以上路径以 `docs/openapi/mine-api.yaml` 为精确请求/响应契约。业务接口同时校验 Sa-Token 权限和用户组织/矿区数据范围；
+前端选择的 `siteId` 不是授权凭据。换绑必须先预览，再用 `Idempotency-Key` 原子执行；标签占用在车辆和人员绑定之间共享
+数据库排斥约束。坐标转换发布后不可修改，快照内部接口只接受只读文件加载的服务令牌。
+
+当前位置最多返回 10,000 个标签，默认 5,000；轨迹窗口最长 24 小时、每页最多 5,000 点，使用固定摄入水位和
+不透明游标稳定分页。首次 WebSocket 定位订阅先读 REST 快照，增量类型固定为 `realtime.location.updated` v1。
+路线、围栏、作业单和运营记录仍属于后续 Phase 3 切片，不得把上述已实现接口解释为整个矿山业务阶段完成。
 
 ### 2.5 命令与告警
 
@@ -658,24 +691,58 @@ CREATE INDEX idx_tn_device_property_time
 
 ~~~sql
 CREATE TABLE location_point (
-    time                  TIMESTAMPTZ NOT NULL,
-    device_id             UUID,
-    tag_id                UUID        NOT NULL,
-    x                     DOUBLE PRECISION NOT NULL,
-    y                     DOUBLE PRECISION NOT NULL,
-    z                     DOUBLE PRECISION,
-    speed                 DOUBLE PRECISION,
-    heading               DOUBLE PRECISION,
-    quality               SMALLINT NOT NULL,
-    coordinate_system_id  UUID NOT NULL,
-    boot_id               VARCHAR(64),
-    sequence              BIGINT,
-    event_id              UUID NOT NULL,
-    received_at           TIMESTAMPTZ NOT NULL
+    time                         TIMESTAMPTZ NOT NULL,
+    organization_id              UUID,
+    site_id                      UUID,
+    source_device_id             UUID,
+    tag_id                       UUID NOT NULL,
+    source_coordinate_system_id  UUID,
+    source_x                     DOUBLE PRECISION,
+    source_y                     DOUBLE PRECISION,
+    source_z                     DOUBLE PRECISION,
+    target_coordinate_system_id  UUID NOT NULL,
+    local_x                      DOUBLE PRECISION NOT NULL,
+    local_y                      DOUBLE PRECISION NOT NULL,
+    local_z                      DOUBLE PRECISION,
+    transform_version_id         UUID,
+    binding_type                 VARCHAR(32),
+    binding_id                   UUID,
+    vehicle_id                   UUID,
+    person_id                    UUID,
+    speed_meters_per_second      DOUBLE PRECISION,
+    heading_degrees              DOUBLE PRECISION,
+    accuracy_meters              DOUBLE PRECISION,
+    quality_status               VARCHAR(16) NOT NULL,
+    quality_reason               VARCHAR(128),
+    boot_id                      TEXT,
+    sequence                     BIGINT,
+    event_id                     UUID NOT NULL,
+    ingest_sequence              BIGINT NOT NULL,
+    received_at                  TIMESTAMPTZ NOT NULL
 );
 ~~~
 
-最终 chunk interval、分区和唯一约束必须依据写入基准测试决定，不能照抄示意值。
+V21～V24 将早期 hypertable 原位升级为双坐标事实；为兼容无法补齐快照证据的既有分区，新增运行字段保持物理可空，
+但 `ck_location_point_runtime_fact` 以 `NOT VALID` 约束强制迁移后的新增/更新事实必须具备组织、矿区、可信设备、标签、
+来源/目标坐标系、转换版本、启动周期和序号。模型允许活动但未绑定对象的标签级事实，并补充矿区/标签/车辆/人员/轨迹查询索引。
+`(source_device_id, boot_id, sequence, time)` 和事件标识承担设备周期与事件幂等，`ingest_sequence` 为当前位置、实时增量和
+稳定分页提供平台顺序。最终 chunk interval、压缩、分区和容量阈值仍必须依据现场写入基准测试决定。
+
+定位运行同时使用：
+
+- 管理 PostgreSQL `mine_organization`、`mine_site`、`mine_user_scope_grant`：客户与矿区数据范围。
+- 管理 PostgreSQL `mine_vehicle`、`mine_location_tag`、`mine_person`、`mine_driver_qualification`：矿区资产和人员主数据。
+- 管理 PostgreSQL `mine_coordinate_system`、`mine_coordinate_transform_version`：来源/统一双坐标和不可变转换版本。
+- 管理 PostgreSQL `mine_*_binding`、`mine_location_tag_binding_claim`、`mine_binding_switch_operation`：发生时绑定、跨对象标签排斥和幂等换绑。
+- 管理 PostgreSQL `mine_location_runtime_snapshot`、`mine_location_runtime_snapshot_item`：不含敏感字段的不可变矿区完整快照。
+- TimescaleDB `location_snapshot_stage`、`location_runtime_revision`：整包校验后原子激活的最后正确运行修订。
+- TimescaleDB `location_inbox`、`location_point`、`location_realtime_outbox`：幂等凭据、双坐标事实和同事务实时事件。
+- TimescaleDB `location_quarantine`：固定原因、有限证据和最长 30 天到期的隔离记录。
+- TimescaleDB `location_current_rebuild_watermark`：Redis 丢失后的有界重建顺序水位。
+
+上述新增表和每个字段均通过 `COMMENT ON TABLE/COLUMN` 提供中文注释，PostgreSQL/TimescaleDB 集成测试校验注释、
+排斥约束、不可变快照、幂等、边界、发生时绑定、查询水位和有界恢复。模拟与运维边界见
+[矿区定位运行与模拟验收手册](runbooks/mine-location-runtime.md)。
 
 数据保留运行新增：
 

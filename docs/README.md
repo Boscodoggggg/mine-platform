@@ -63,6 +63,8 @@ Phase 2 的 [数值聚合运行闭环验收报告](reports/phase-2-aggregation-r
 [数值聚合运行手册](runbooks/aggregation-runtime.md)。真实数据对账、容量基线、主备切换、备份恢复和 24/72 小时长稳仍须在现场完成，自动化通过不得解释为生产放行。
 Phase 2 的 [TCP 二进制插件纵向样例验收报告](reports/phase-2-tcp-binary-acceptance.md) 已完成稳定 SPI、矿卡黄金协议、可信身份、可靠 ACK、TLS/限流/指标和部署告警的非现场自动化基线；
 启用、模拟、告警、升级与回退遵循 [TCP 二进制 Gateway 运行手册](runbooks/tcp-binary-gateway.md)。真实厂商协议、原生 mTLS/设备证书身份、矿区网络、容量、双 Gateway 和长稳仍是生产阻断项。
+Phase 3 的 [矿区定位纵向闭环自动化验收报告](reports/phase-3-mine-location-acceptance.md) 已覆盖矿区作用域、资产、发生时绑定、双坐标、固定定位接入、历史/当前位置/实时链路、前端工作台和确定性模拟；
+运行准备、模拟场景、指标、告警和安全回退遵循 [矿区定位运行与模拟验收手册](runbooks/mine-location-runtime.md)。路线/围栏、作业闭环和三维场景仍待继续开发，真实 UWB、坐标标定、精度、容量、HA、备份恢复和长稳仍是生产阻断项。
 现场执行必须遵循 [MQTT 真实设备现场接入与 24 小时验收手册](runbooks/device-onboarding.md)，并按
 [Phase 1 真实设备验收记录契约](contracts/phase-1-device-acceptance-v1.schema.json) 留存结构化证据。
 
