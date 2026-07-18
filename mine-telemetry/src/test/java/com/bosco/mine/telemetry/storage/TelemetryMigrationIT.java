@@ -55,6 +55,8 @@ class TelemetryMigrationIT {
 
         MigrateResult baseline = baselineFlyway.migrate();
         insertLegacyTelemetry();
+        String legacyLocationTableOid = queryStrings(
+                "SELECT 'location_point'::regclass::oid::TEXT").getFirst();
         MigrateResult upgraded = flyway.migrate();
 
         assertThat(baseline.migrationsExecuted).isPositive();
@@ -122,7 +124,7 @@ class TelemetryMigrationIT {
                   AND NOT attribute.attisdropped
                 ORDER BY table_class.relname, attribute.attnum
                 """))
-                .hasSize(59)
+                .hasSize(73)
                 .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
         assertThat(queryStrings("""
                 SELECT COALESCE(obj_description(table_name::regclass, 'pg_class'), '')
@@ -189,6 +191,108 @@ class TelemetryMigrationIT {
                         "idx_tn_retention_device_time",
                         "idx_tn_aggregation_ingest_time"
                 );
+
+        assertThat(queryStrings("SELECT 'location_point'::regclass::oid::TEXT"))
+                .containsExactly(legacyLocationTableOid);
+        assertThat(queryStrings("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'location_point'
+                """))
+                .containsExactlyInAnyOrder(
+                        "time", "organization_id", "site_id", "source_device_id", "tag_id",
+                        "source_coordinate_system_id", "source_x", "source_y", "source_z",
+                        "target_coordinate_system_id", "local_x", "local_y", "local_z",
+                        "transform_version_id", "binding_type", "binding_id", "vehicle_id",
+                        "person_id", "speed_meters_per_second", "heading_degrees",
+                        "accuracy_meters", "quality_status", "quality_reason", "boot_id",
+                        "sequence", "event_id", "ingest_sequence", "received_at");
+        assertThat(queryStrings("""
+                SELECT local_x::TEXT || ':' || local_y::TEXT || ':' || local_z::TEXT
+                       || ':' || quality_status || ':' || (source_x IS NULL)::TEXT
+                FROM location_point
+                WHERE event_id = '019f63e2-071f-706a-bd12-4dad7150e772'
+                """))
+                .containsExactly("10:20:3:GOOD:true");
+        assertThat(queryStrings("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public' AND tablename = 'location_point'
+                ORDER BY indexname
+                """))
+                .contains(
+                        "uq_location_event_time",
+                        "uq_location_source_cycle_time",
+                        "idx_location_site_time",
+                        "idx_location_site_tag_time",
+                        "idx_location_site_vehicle_time",
+                        "idx_location_site_person_time");
+        assertThat(queryStrings("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name IN (
+                      'location_current_rebuild_watermark',
+                      'location_snapshot_stage',
+                      'location_runtime_revision',
+                      'location_inbox',
+                      'location_quarantine',
+                      'location_realtime_outbox'
+                  )
+                ORDER BY table_name
+                """))
+                .containsExactly(
+                        "location_current_rebuild_watermark",
+                        "location_inbox",
+                        "location_quarantine",
+                        "location_realtime_outbox",
+                        "location_runtime_revision",
+                        "location_snapshot_stage");
+        assertThat(queryStrings("""
+                SELECT COALESCE(obj_description(table_name::regclass, 'pg_class'), '')
+                FROM unnest(ARRAY[
+                    'location_point',
+                    'location_current_rebuild_watermark',
+                    'location_snapshot_stage',
+                    'location_runtime_revision',
+                    'location_inbox',
+                    'location_quarantine',
+                    'location_realtime_outbox'
+                ]) AS table_name
+                ORDER BY table_name
+                """))
+                .hasSize(7)
+                .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
+        assertThat(queryStrings("""
+                SELECT COALESCE(col_description(table_class.oid, attribute.attnum), '')
+                FROM pg_class table_class
+                JOIN pg_namespace namespace ON namespace.oid = table_class.relnamespace
+                JOIN pg_attribute attribute ON attribute.attrelid = table_class.oid
+                WHERE namespace.nspname = 'public'
+                  AND table_class.relname IN (
+                      'location_point',
+                      'location_current_rebuild_watermark',
+                      'location_snapshot_stage',
+                      'location_runtime_revision',
+                      'location_inbox',
+                      'location_quarantine',
+                      'location_realtime_outbox'
+                  )
+                  AND attribute.attnum > 0
+                  AND NOT attribute.attisdropped
+                ORDER BY table_class.relname, attribute.attnum
+                """))
+                .hasSizeGreaterThan(28)
+                .allSatisfy(comment -> assertThat(comment).containsPattern("[\\u4e00-\\u9fff]"));
+        assertThat(queryStrings("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conrelid = 'location_quarantine'::regclass
+                ORDER BY conname
+                """))
+                .anySatisfy(definition -> assertThat(definition)
+                        .contains("pg_column_size", "expires_at", "created_at"));
 
         assertThat(queryStrings("""
                 SELECT current_boot_id || ':' || highest_sequence
@@ -339,6 +443,19 @@ class TelemetryMigrationIT {
                      '019f63e2-071f-706a-bd12-4dad7150e75d', 'haul-truck',
                      'engine.rpm', 1600, 0, 'boot-a', 9,
                      '019f63e2-071f-706a-bd12-4dad7150e763', '2026-07-15T03:01:01Z');
+
+                INSERT INTO location_point (
+                    time, device_id, tag_id, x, y, z, speed, heading, quality,
+                    coordinate_system_id, boot_id, sequence, event_id, received_at
+                ) VALUES (
+                    '2026-07-15T03:00:00Z',
+                    '019f63e2-071f-706a-bd12-4dad7150e75d',
+                    '019f63e2-071f-706a-bd12-4dad7150e770',
+                    10, 20, 3, 6.5, 180, 0,
+                    '019f63e2-071f-706a-bd12-4dad7150e771',
+                    'boot-a', 7,
+                    '019f63e2-071f-706a-bd12-4dad7150e772',
+                    '2026-07-15T03:00:01Z');
                 """);
     }
 
