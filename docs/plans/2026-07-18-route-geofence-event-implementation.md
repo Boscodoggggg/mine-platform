@@ -74,6 +74,7 @@ Commit: `feat(mine): 建立路线与围栏版本模型`
 **Files:**
 - Create: `mine-device-model/src/main/java/com/bosco/mine/model/spatial/SpatialPoint.java`
 - Create: `mine-device-model/src/main/java/com/bosco/mine/model/spatial/SpatialZone.java`
+- Create: `mine-device-model/src/main/java/com/bosco/mine/model/spatial/SpatialClassification.java`
 - Create: `mine-device-model/src/main/java/com/bosco/mine/model/spatial/SpatialClassifier.java`
 - Create: `mine-device-model/src/main/java/com/bosco/mine/model/spatial/package-info.java`
 - Create: `mine-device-model/src/test/java/com/bosco/mine/model/spatial/SpatialClassifierTest.java`
