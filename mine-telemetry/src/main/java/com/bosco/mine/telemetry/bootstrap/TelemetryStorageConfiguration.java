@@ -12,6 +12,13 @@ import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapMetrics;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapObserver;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
+import com.bosco.mine.telemetry.location.ConfirmedRealtimeLocationPublisher;
+import com.bosco.mine.telemetry.location.LocationFactWriter;
+import com.bosco.mine.telemetry.location.LocationLatestCache;
+import com.bosco.mine.telemetry.location.LocationObservationConsumer;
+import com.bosco.mine.telemetry.location.LocationQualityEvaluator;
+import com.bosco.mine.telemetry.location.LocationRealtimeOutboxRelay;
+import com.bosco.mine.telemetry.location.LocationRecoveryCoordinator;
 import com.bosco.mine.telemetry.location.snapshot.HttpLocationSnapshotSource;
 import com.bosco.mine.telemetry.location.snapshot.LocationRuntimeRegistry;
 import com.bosco.mine.telemetry.location.snapshot.LocationSnapshotConsumer;
@@ -531,6 +538,186 @@ public class TelemetryStorageConfiguration {
         container.setAutoStartup(properties.resolvedAutoStartup());
         container.setMessageListener(consumer);
         return container;
+    }
+
+    /** 创建固定时间与精度阈值的定位质量判定器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationQualityEvaluator locationQualityEvaluator() {
+        return new LocationQualityEvaluator();
+    }
+
+    /** 创建位置幂等、历史、隔离和实时 Outbox 的事务写入器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationFactWriter locationFactWriter(
+            DataSource dataSource,
+            LocationRuntimeRegistry registry,
+            CoordinateTransformRegistry transformRegistry,
+            LocationQualityEvaluator qualityEvaluator
+    ) {
+        return new LocationFactWriter(
+                dataSource, registry, transformRegistry, qualityEvaluator);
+    }
+
+    /** 创建带顺序保护且可从可靠 Outbox 重建的 Redis 当前位置缓存。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationLatestCache locationLatestCache(
+            StringRedisTemplate redisTemplate,
+            DataSource dataSource
+    ) {
+        return new LocationLatestCache(redisTemplate, dataSource);
+    }
+
+    /** 创建只向实时交换机发布矿区位置白名单事件的确认发布器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public ConfirmedRealtimeLocationPublisher confirmedRealtimeLocationPublisher(
+            CachingConnectionFactory telemetryConnectionFactory,
+            TelemetryRabbitProperties properties
+    ) {
+        RabbitTemplate template = new RabbitTemplate(telemetryConnectionFactory);
+        template.setMandatory(true);
+        return new ConfirmedRealtimeLocationPublisher(
+                template,
+                positive(properties.resolvedConfirmTimeoutMillis(), "confirmTimeoutMillis"));
+    }
+
+    /** 创建位置专用重试和周期恢复调度器。 */
+    @Bean(name = "locationOutboxTaskScheduler", destroyMethod = "shutdown")
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public ThreadPoolTaskScheduler locationOutboxTaskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(2);
+        scheduler.setThreadNamePrefix("location-recovery-");
+        scheduler.setRemoveOnCancelPolicy(true);
+        return scheduler;
+    }
+
+    /** 创建与告警隔离的高频位置 Outbox 有界执行器。 */
+    @Bean(name = "locationOutboxExecutor", destroyMethod = "close")
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public ExecutorService locationOutboxExecutor(TelemetryRabbitProperties properties) {
+        TelemetryRabbitProperties.Outbox outbox = properties
+                .resolvedLocation().resolvedOutbox();
+        int concurrency = positive(
+                outbox.resolvedDispatchConcurrency(), "location.outbox.dispatchConcurrency");
+        int capacity = positive(
+                outbox.resolvedDispatchQueueCapacity(), "location.outbox.queueCapacity");
+        return new ThreadPoolExecutor(
+                concurrency, concurrency, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(capacity),
+                Thread.ofPlatform().name("location-outbox-dispatch-", 0).factory(),
+                new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    /** 创建只调度一个已知位置事件标识的进程内重试器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationRealtimeOutboxRelay.RetryScheduler locationOutboxRetryScheduler(
+            @Qualifier("locationOutboxTaskScheduler") ThreadPoolTaskScheduler scheduler,
+            ObjectProvider<LocationRealtimeOutboxRelay> relayProvider
+    ) {
+        return (eventId, retryAt) -> scheduler.schedule(
+                () -> relayProvider.getObject().publishById(eventId), retryAt);
+    }
+
+    /** 创建带数据库租约、指数退避和有界恢复的位置实时中继器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationRealtimeOutboxRelay locationRealtimeOutboxRelay(
+            DataSource dataSource,
+            ConfirmedRealtimeLocationPublisher publisher,
+            LocationRealtimeOutboxRelay.RetryScheduler retryScheduler,
+            TelemetryRabbitProperties properties
+    ) {
+        TelemetryRabbitProperties.Outbox outbox = properties
+                .resolvedLocation().resolvedOutbox();
+        return new LocationRealtimeOutboxRelay(
+                dataSource, publisher, retryScheduler,
+                outbox.resolvedInstanceId(), outbox.resolvedLeaseDuration(),
+                outbox.resolvedMaxAttempts(), outbox.resolvedRecoveryLimit(),
+                outbox.resolvedRetryBaseDelay(), outbox.resolvedRetryMaxDelay(),
+                Clock.systemUTC());
+    }
+
+    /** 创建事务提交后在独立有界执行器中精确发布位置事件的观察器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationObservationConsumer.CommittedEventObserver locationOutboxEventObserver(
+            LocationRealtimeOutboxRelay relay,
+            @Qualifier("locationOutboxExecutor") ExecutorService executor
+    ) {
+        return eventId -> executor.execute(() -> relay.publishById(eventId));
+    }
+
+    /** 创建位置观测事务消费者。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationObservationConsumer locationObservationConsumer(
+            LocationFactWriter writer,
+            LocationLatestCache cache,
+            LocationObservationConsumer.CommittedEventObserver observer
+    ) {
+        return new LocationObservationConsumer(writer, cache, observer);
+    }
+
+    /** 创建位置独立队列的单消息手工确认监听容器。 */
+    @Bean(destroyMethod = "destroy")
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public SimpleMessageListenerContainer locationObservationMessageListenerContainer(
+            CachingConnectionFactory telemetryConnectionFactory,
+            LocationObservationConsumer consumer,
+            TelemetryRabbitProperties properties
+    ) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(
+                telemetryConnectionFactory);
+        container.setQueueNames(MineTopology.LOCATION_QUEUE);
+        container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+        container.setPrefetchCount(positive(
+                properties.resolvedLocation().resolvedPrefetch(), "location.prefetch"));
+        container.setConcurrentConsumers(1);
+        container.setMaxConcurrentConsumers(1);
+        container.setDefaultRequeueRejected(true);
+        container.setMissingQueuesFatal(true);
+        container.setAutoStartup(properties.resolvedAutoStartup());
+        container.setMessageListener(consumer);
+        return container;
+    }
+
+    /** 创建启动、重连和固定周期的位置 Outbox 与缓存恢复协调器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationRecoveryCoordinator locationRecoveryCoordinator(
+            LocationRealtimeOutboxRelay relay,
+            LocationLatestCache cache,
+            CachingConnectionFactory telemetryConnectionFactory,
+            @Qualifier("locationOutboxExecutor") ExecutorService executor,
+            @Qualifier("locationOutboxTaskScheduler") ThreadPoolTaskScheduler scheduler,
+            TelemetryRabbitProperties properties
+    ) {
+        TelemetryRabbitProperties.Location location = properties.resolvedLocation();
+        return new LocationRecoveryCoordinator(
+                relay, cache, telemetryConnectionFactory, executor, scheduler,
+                location.resolvedOutbox().resolvedRecoveryInterval(),
+                location.resolvedCacheRecoveryInterval(),
+                positive(location.resolvedCacheRecoverySiteLimit(),
+                        "location.cacheRecoverySiteLimit"),
+                positive(location.resolvedCacheRecoveryTagLimit(),
+                        "location.cacheRecoveryTagLimit"));
     }
 
     private String readSecret(java.nio.file.Path path) {

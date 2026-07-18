@@ -57,6 +57,21 @@ mine:
         dispatch-concurrency: ${MINE_TELEMETRY_OUTBOX_DISPATCH_CONCURRENCY:4}
         dispatch-queue-capacity: ${MINE_TELEMETRY_OUTBOX_DISPATCH_QUEUE_CAPACITY:1000}
         recovery-interval: ${MINE_TELEMETRY_OUTBOX_RECOVERY_INTERVAL:10s}
+      location:
+        prefetch: ${MINE_TELEMETRY_LOCATION_PREFETCH:100}
+        outbox:
+          instance-id: ${MINE_TELEMETRY_LOCATION_INSTANCE_ID:${HOSTNAME:mine-telemetry}-location}
+          lease-duration: ${MINE_TELEMETRY_LOCATION_OUTBOX_LEASE_DURATION:30s}
+          max-attempts: ${MINE_TELEMETRY_LOCATION_OUTBOX_MAX_ATTEMPTS:8}
+          recovery-limit: ${MINE_TELEMETRY_LOCATION_OUTBOX_RECOVERY_LIMIT:2000}
+          retry-base-delay: ${MINE_TELEMETRY_LOCATION_OUTBOX_RETRY_BASE_DELAY:1s}
+          retry-max-delay: ${MINE_TELEMETRY_LOCATION_OUTBOX_RETRY_MAX_DELAY:5m}
+          dispatch-concurrency: ${MINE_TELEMETRY_LOCATION_OUTBOX_CONCURRENCY:4}
+          dispatch-queue-capacity: ${MINE_TELEMETRY_LOCATION_OUTBOX_QUEUE_CAPACITY:10000}
+          recovery-interval: ${MINE_TELEMETRY_LOCATION_OUTBOX_RECOVERY_INTERVAL:10s}
+        cache-recovery-interval: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_INTERVAL:5m}
+        cache-recovery-site-limit: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_SITE_LIMIT:100}
+        cache-recovery-tag-limit: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_TAG_LIMIT:10000}
     strategy-distribution:
       enabled: ${MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED:false}
       server-url: ${MINE_TELEMETRY_STRATEGY_SERVER_URL:http://mine-server:8080}

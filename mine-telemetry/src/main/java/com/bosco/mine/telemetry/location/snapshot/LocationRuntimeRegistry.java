@@ -243,10 +243,26 @@ public final class LocationRuntimeRegistry {
      * @return 包含该来源设备的当前快照
      */
     public Optional<RuntimeSnapshot> currentForSourceDevice(UUID sourceDeviceId) {
+        Objects.requireNonNull(sourceDeviceId, "来源设备标识不能为空");
         String itemKey = "SOURCE_DEVICE:" + sourceDeviceId;
-        return runtimes.values().stream()
+        List<RuntimeSnapshot> matches = runtimes.values().stream()
                 .filter(snapshot -> snapshot.items().containsKey(itemKey))
-                .findFirst();
+                .limit(2)
+                .toList();
+        if (matches.size() > 1) {
+            throw new PermanentLocationSnapshotException(
+                    "来源设备同时存在于多个激活矿区快照");
+        }
+        return matches.stream().findFirst();
+    }
+
+    /**
+     * 判断进程是否至少恢复或激活了一个矿区快照。
+     *
+     * @return 存在任意最后正确矿区快照时为真
+     */
+    public boolean hasActiveSnapshots() {
+        return !runtimes.isEmpty();
     }
 
     private RuntimeSnapshot buildRuntime(

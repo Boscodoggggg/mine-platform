@@ -17,6 +17,7 @@ import java.time.Duration;
  * @param confirmTimeoutMillis 等待实时事件发布确认的最大毫秒数
  * @param account             平台 vhost 遥测服务最小权限账号
  * @param outbox              告警 Outbox 租约、重试与恢复参数
+ * @param location            定位消费、Outbox 和缓存恢复参数
  */
 @ConfigurationProperties("mine.telemetry.rabbit")
 public record TelemetryRabbitProperties(
@@ -28,7 +29,8 @@ public record TelemetryRabbitProperties(
         Long receiveTimeoutMillis,
         Long confirmTimeoutMillis,
         Account account,
-        Outbox outbox) {
+        Outbox outbox,
+        Location location) {
 
     /**
      * @return 未显式关闭时自动启动
@@ -84,6 +86,13 @@ public record TelemetryRabbitProperties(
         return outbox == null
                 ? new Outbox(null, null, null, null, null, null, null, null, null)
                 : outbox;
+    }
+
+    /** @return 定位独立消费与恢复参数，未配置时使用安全默认值 */
+    public Location resolvedLocation() {
+        return location == null
+                ? new Location(null, null, null, null, null)
+                : location;
     }
 
     /**
@@ -162,6 +171,53 @@ public record TelemetryRabbitProperties(
         /** @return 持久待发布事件周期恢复间隔 */
         public Duration resolvedRecoveryInterval() {
             return recoveryInterval == null ? Duration.ofSeconds(10) : recoveryInterval;
+        }
+    }
+
+    /**
+     * 高频定位链路独立于告警的容量和恢复参数。
+     *
+     * @param prefetch 定位单消息消费者预取数量
+     * @param outbox 位置实时 Outbox 租约与退避参数
+     * @param cacheRecoveryInterval Redis 当前位置周期恢复间隔
+     * @param cacheRecoverySiteLimit 单次最多恢复矿区数
+     * @param cacheRecoveryTagLimit 每矿单次最多恢复标签数
+     */
+    public record Location(
+            Integer prefetch,
+            Outbox outbox,
+            Duration cacheRecoveryInterval,
+            Integer cacheRecoverySiteLimit,
+            Integer cacheRecoveryTagLimit
+    ) {
+        /** @return 定位消费者预取数量 */
+        public int resolvedPrefetch() {
+            return prefetch == null ? 100 : prefetch;
+        }
+
+        /** @return 位置实时 Outbox 参数 */
+        public Outbox resolvedOutbox() {
+            return outbox == null
+                    ? new Outbox(
+                    "mine-telemetry-location", null, null, 2_000,
+                    null, null, 4, 10_000, null)
+                    : outbox;
+        }
+
+        /** @return Redis 当前位置周期恢复间隔 */
+        public Duration resolvedCacheRecoveryInterval() {
+            return cacheRecoveryInterval == null
+                    ? Duration.ofMinutes(5) : cacheRecoveryInterval;
+        }
+
+        /** @return 单次最多恢复矿区数 */
+        public int resolvedCacheRecoverySiteLimit() {
+            return cacheRecoverySiteLimit == null ? 100 : cacheRecoverySiteLimit;
+        }
+
+        /** @return 每矿单次最多恢复标签数 */
+        public int resolvedCacheRecoveryTagLimit() {
+            return cacheRecoveryTagLimit == null ? 10_000 : cacheRecoveryTagLimit;
         }
     }
 }

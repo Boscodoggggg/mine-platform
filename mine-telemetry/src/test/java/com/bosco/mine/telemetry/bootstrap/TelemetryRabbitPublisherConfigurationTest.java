@@ -26,7 +26,7 @@ class TelemetryRabbitPublisherConfigurationTest {
         Path password = Files.writeString(tempDirectory.resolve("password"), "telemetry-secret\n");
         TelemetryRabbitProperties properties = new TelemetryRabbitProperties(
                 false, "rabbitmq", 5672, null, null, null, 3_000L,
-                new TelemetryRabbitProperties.Account("mine-telemetry", password), null);
+                new TelemetryRabbitProperties.Account("mine-telemetry", password), null, null);
         TelemetryStorageConfiguration configuration = new TelemetryStorageConfiguration();
 
         CachingConnectionFactory factory = configuration.telemetryConnectionFactory(properties);
