@@ -323,6 +323,60 @@ class PermissionIntegrationIT {
     }
 
     @Test
+    void 空间管理接口必须分别校验查看编辑和发布权限() throws Exception {
+        UUID userId = createUser("test-spatial-permission", "spatial-permission-password");
+        LoginSession session = login("test-spatial-permission", "spatial-permission-password");
+        UUID siteId = UUID.randomUUID();
+        UUID waypointId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/mine/sites/{siteId}/waypoints", siteId)
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+
+        grantPermission(userId, "mine:spatial:view");
+        mockMvc.perform(get("/api/v1/mine/sites/{siteId}/waypoints", siteId)
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
+
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/waypoints", siteId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"permission-waypoint\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+
+        grantPermission(userId, "mine:spatial:edit");
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/waypoints", siteId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"permission-waypoint\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
+
+        mockMvc.perform(post(
+                        "/api/v1/mine/sites/{siteId}/waypoints/{waypointId}/versions/{versionId}/publish",
+                        siteId, waypointId, versionId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+
+        grantPermission(userId, "mine:spatial:publish");
+        mockMvc.perform(post(
+                        "/api/v1/mine/sites/{siteId}/waypoints/{waypointId}/versions/{versionId}/publish",
+                        siteId, waypointId, versionId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
+    }
+
+    @Test
     void 应实时读取五表权限并区分缺权限和有权限() throws Exception {
         UUID userId = createUser("test-permission", "permission-password");
         LoginSession session = login("test-permission", "permission-password");

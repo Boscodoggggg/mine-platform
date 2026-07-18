@@ -1,6 +1,10 @@
 package com.bosco.mine.server.modules.mine.controller;
 
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.bosco.mine.server.modules.mine.spatial.SpatialRouteController;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
@@ -33,6 +37,24 @@ class MineManagementOpenApiTest {
                 "/mine/sites/{siteId}/location-tags",
                 "/mine/sites/{siteId}/coordinate-systems",
                 "/mine/sites/{siteId}/coordinate-transforms/{transformId}/publish",
+                "/mine/sites/{siteId}/waypoints",
+                "/mine/sites/{siteId}/waypoints/{waypointId}",
+                "/mine/sites/{siteId}/waypoints/{waypointId}/archive",
+                "/mine/sites/{siteId}/waypoints/{waypointId}/versions",
+                "/mine/sites/{siteId}/waypoints/{waypointId}/versions/{versionId}",
+                "/mine/sites/{siteId}/waypoints/{waypointId}/versions/{versionId}/publish",
+                "/mine/sites/{siteId}/routes",
+                "/mine/sites/{siteId}/routes/{routeId}",
+                "/mine/sites/{siteId}/routes/{routeId}/archive",
+                "/mine/sites/{siteId}/routes/{routeId}/versions",
+                "/mine/sites/{siteId}/routes/{routeId}/versions/{versionId}",
+                "/mine/sites/{siteId}/routes/{routeId}/versions/{versionId}/publish",
+                "/mine/sites/{siteId}/geofences",
+                "/mine/sites/{siteId}/geofences/{geofenceId}",
+                "/mine/sites/{siteId}/geofences/{geofenceId}/archive",
+                "/mine/sites/{siteId}/geofences/{geofenceId}/versions",
+                "/mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}",
+                "/mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}/publish",
                 "/mine/sites/{siteId}/people",
                 "/mine/sites/{siteId}/people/{personId}/sensitive",
                 "/mine/sites/{siteId}/bindings/preview",
@@ -62,11 +84,84 @@ class MineManagementOpenApiTest {
                 "MineContextResponse", "MineOrganizationPage", "MineSitePage",
                 "VehiclePage", "LocationTagPage", "CoordinateSystemPage",
                 "CoordinateTransformPage", "PersonPage", "BindingPreviewResponse",
-                "CurrentLocationResponse", "LocationTrajectoryResponse");
+                "CurrentLocationResponse", "LocationTrajectoryResponse",
+                "SpatialObjectRequest", "SpatialObjectResponse", "SpatialObjectPage",
+                "SpatialDetectionPolicy", "WaypointVersionRequest",
+                "WaypointVersionUpdateRequest", "WaypointVersionResponse",
+                "RouteVersionRequest", "RouteVersionUpdateRequest", "RouteVersionResponse",
+                "GeofenceVersionRequest", "GeofenceVersionUpdateRequest",
+                "GeofenceVersionResponse");
         assertThat(list(map(schemas.get("LocationSubjectType")).get("enum")))
                 .containsExactly("TAG", "VEHICLE", "PERSON");
         assertThat(map(map(schemas.get("LocationTrajectoryResponse")).get("properties")))
                 .containsKeys("watermark", "nextCursor", "sampled", "sourcePointCount", "items");
+
+        Map<String, Object> routeRequest = map(schemas.get("RouteVersionRequest"));
+        Map<String, Object> routeWaypoints = map(
+                map(routeRequest.get("properties")).get("waypoints"));
+        assertThat(routeWaypoints).containsEntry("minItems", 2).containsEntry("maxItems", 10000);
+        Map<String, Object> geofenceRequest = map(schemas.get("GeofenceVersionRequest"));
+        Map<String, Object> vertices = map(
+                map(geofenceRequest.get("properties")).get("vertices"));
+        assertThat(vertices).containsEntry("minItems", 3).containsEntry("maxItems", 10000);
+        assertThat(list(map(schemas.get("SpatialVersionStatus")).get("enum")))
+                .containsExactly("DRAFT", "PUBLISHED");
+    }
+
+    @Test
+    void 空间管理控制器必须使用精确权限和固定版本动作路径() {
+        assertPermission("findWaypoints", "mine:spatial:view");
+        assertPermission("findWaypoint", "mine:spatial:view");
+        assertPermission("findWaypointVersions", "mine:spatial:view");
+        assertPermission("findWaypointVersion", "mine:spatial:view");
+        assertPermission("createWaypoint", "mine:spatial:edit");
+        assertPermission("archiveWaypoint", "mine:spatial:edit");
+        assertPermission("createWaypointVersion", "mine:spatial:edit");
+        assertPermission("updateWaypointVersion", "mine:spatial:edit");
+        assertPermission("publishWaypointVersion", "mine:spatial:publish");
+
+        assertPermission("findRoutes", "mine:spatial:view");
+        assertPermission("findRoute", "mine:spatial:view");
+        assertPermission("findRouteVersions", "mine:spatial:view");
+        assertPermission("findRouteVersion", "mine:spatial:view");
+        assertPermission("createRoute", "mine:spatial:edit");
+        assertPermission("archiveRoute", "mine:spatial:edit");
+        assertPermission("createRouteVersion", "mine:spatial:edit");
+        assertPermission("updateRouteVersion", "mine:spatial:edit");
+        assertPermission("publishRouteVersion", "mine:spatial:publish");
+
+        assertPermission("findGeofences", "mine:spatial:view");
+        assertPermission("findGeofence", "mine:spatial:view");
+        assertPermission("findGeofenceVersions", "mine:spatial:view");
+        assertPermission("findGeofenceVersion", "mine:spatial:view");
+        assertPermission("createGeofence", "mine:spatial:edit");
+        assertPermission("archiveGeofence", "mine:spatial:edit");
+        assertPermission("createGeofenceVersion", "mine:spatial:edit");
+        assertPermission("updateGeofenceVersion", "mine:spatial:edit");
+        assertPermission("publishGeofenceVersion", "mine:spatial:publish");
+
+        assertThat(method("findWaypoints").getAnnotation(GetMapping.class).value())
+                .containsExactly("/waypoints");
+        assertThat(method("createWaypointVersion").getAnnotation(PostMapping.class).value())
+                .containsExactly("/waypoints/{waypointId}/versions");
+        assertThat(method("publishWaypointVersion").getAnnotation(PostMapping.class).value())
+                .containsExactly("/waypoints/{waypointId}/versions/{versionId}/publish");
+        assertThat(method("publishRouteVersion").getAnnotation(PostMapping.class).value())
+                .containsExactly("/routes/{routeId}/versions/{versionId}/publish");
+        assertThat(method("publishGeofenceVersion").getAnnotation(PostMapping.class).value())
+                .containsExactly("/geofences/{geofenceId}/versions/{versionId}/publish");
+    }
+
+    private void assertPermission(String methodName, String permission) {
+        assertThat(method(methodName).getAnnotation(SaCheckPermission.class).value())
+                .containsExactly(permission);
+    }
+
+    private java.lang.reflect.Method method(String name) {
+        return java.util.Arrays.stream(SpatialRouteController.class.getDeclaredMethods())
+                .filter(candidate -> candidate.getName().equals(name))
+                .findFirst()
+                .orElseThrow();
     }
 
     private Map<String, Object> namedParameter(Map<String, Object> operation, String name) {

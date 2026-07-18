@@ -57,6 +57,7 @@ public class MenuManagementService {
             new ComponentOption("mine-location-tag-management", "定位标签"),
             new ComponentOption("mine-binding-management", "绑定管理"),
             new ComponentOption("mine-location-monitor", "实时定位"),
+            new ComponentOption("mine-spatial-management", "路线与围栏"),
             new ComponentOption("system-user-list", "用户管理"),
             new ComponentOption("system-role-list", "角色管理"),
             new ComponentOption("system-menu-list", "菜单管理"),

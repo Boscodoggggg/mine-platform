@@ -44,6 +44,8 @@ tags:
     description: 车辆、人员、设备和定位标签的原子换绑
   - name: MineLocation
     description: 当前位置快照和有界历史轨迹
+  - name: MineSpatial
+    description: 途径点、路线和电子围栏的草稿及不可变发布版本
 paths:
   /dashboard/operations:
     get:
@@ -2389,6 +2391,490 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/MineResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/waypoints:
+    get:
+      tags: [MineSpatial]
+      operationId: listMineWaypoints
+      summary: 分页查询矿区途径点
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MineArchiveStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 途径点稳定对象分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectPage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineSpatial]
+      operationId: createMineWaypoint
+      summary: 创建途径点稳定对象
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectRequest' } } }
+      responses:
+        '201':
+          description: 途径点稳定对象已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/waypoints/{waypointId}:
+    get:
+      tags: [MineSpatial]
+      operationId: getMineWaypoint
+      summary: 查询途径点稳定对象
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/WaypointId' }
+      responses:
+        '200':
+          description: 途径点稳定对象。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+  /mine/sites/{siteId}/waypoints/{waypointId}/archive:
+    post:
+      tags: [MineSpatial]
+      operationId: archiveMineWaypoint
+      summary: 归档途径点稳定对象
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/WaypointId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 途径点已归档，版本历史继续保留。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/waypoints/{waypointId}/versions:
+    get:
+      tags: [MineSpatial]
+      operationId: listMineWaypointVersions
+      summary: 查询途径点全部版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/WaypointId' }
+      responses:
+        '200':
+          description: 按业务版本号升序排列的草稿和发布历史。
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/WaypointVersionResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    post:
+      tags: [MineSpatial]
+      operationId: createMineWaypointVersion
+      summary: 创建途径点草稿版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/WaypointId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/WaypointVersionRequest' } } }
+      responses:
+        '201':
+          description: 途径点草稿版本已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/WaypointVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/waypoints/{waypointId}/versions/{versionId}:
+    get:
+      tags: [MineSpatial]
+      operationId: getMineWaypointVersion
+      summary: 查询指定途径点版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/WaypointId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      responses:
+        '200':
+          description: 途径点版本详情。
+          content: { application/json: { schema: { $ref: '#/components/schemas/WaypointVersionResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    patch:
+      tags: [MineSpatial]
+      operationId: updateMineWaypointVersion
+      summary: 修改途径点草稿版本
+      description: 已发布版本永久不可修改。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/WaypointId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/WaypointVersionUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的途径点草稿。
+          content: { application/json: { schema: { $ref: '#/components/schemas/WaypointVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/waypoints/{waypointId}/versions/{versionId}/publish:
+    post:
+      tags: [MineSpatial]
+      operationId: publishMineWaypointVersion
+      summary: 发布并永久锁定途径点版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/WaypointId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '200':
+          description: 已发布途径点版本及其内容摘要。
+          content: { application/json: { schema: { $ref: '#/components/schemas/WaypointVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/routes:
+    get:
+      tags: [MineSpatial]
+      operationId: listMineRoutes
+      summary: 分页查询矿区路线
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MineArchiveStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 路线稳定对象分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectPage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineSpatial]
+      operationId: createMineRoute
+      summary: 创建路线稳定对象
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectRequest' } } }
+      responses:
+        '201':
+          description: 路线稳定对象已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/routes/{routeId}:
+    get:
+      tags: [MineSpatial]
+      operationId: getMineRoute
+      summary: 查询路线稳定对象
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/RouteId' }
+      responses:
+        '200':
+          description: 路线稳定对象。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+  /mine/sites/{siteId}/routes/{routeId}/archive:
+    post:
+      tags: [MineSpatial]
+      operationId: archiveMineRoute
+      summary: 归档路线稳定对象
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/RouteId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 路线已归档，版本历史继续保留。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/routes/{routeId}/versions:
+    get:
+      tags: [MineSpatial]
+      operationId: listMineRouteVersions
+      summary: 查询路线全部版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/RouteId' }
+      responses:
+        '200':
+          description: 按业务版本号升序排列的路线版本。
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/RouteVersionResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    post:
+      tags: [MineSpatial]
+      operationId: createMineRouteVersion
+      summary: 创建路线草稿版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/RouteId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RouteVersionRequest' } } }
+      responses:
+        '201':
+          description: 路线草稿版本已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/RouteVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/routes/{routeId}/versions/{versionId}:
+    get:
+      tags: [MineSpatial]
+      operationId: getMineRouteVersion
+      summary: 查询指定路线版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/RouteId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      responses:
+        '200':
+          description: 路线版本和有序途径点。
+          content: { application/json: { schema: { $ref: '#/components/schemas/RouteVersionResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    patch:
+      tags: [MineSpatial]
+      operationId: updateMineRouteVersion
+      summary: 修改路线草稿版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/RouteId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RouteVersionUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的路线草稿和有序途径点。
+          content: { application/json: { schema: { $ref: '#/components/schemas/RouteVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/routes/{routeId}/versions/{versionId}/publish:
+    post:
+      tags: [MineSpatial]
+      operationId: publishMineRouteVersion
+      summary: 发布并永久锁定路线版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/RouteId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '200':
+          description: 已发布路线版本及其内容摘要。
+          content: { application/json: { schema: { $ref: '#/components/schemas/RouteVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/geofences:
+    get:
+      tags: [MineSpatial]
+      operationId: listMineGeofences
+      summary: 分页查询矿区电子围栏
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/MineArchiveStatus' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200':
+          description: 电子围栏稳定对象分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectPage' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineSpatial]
+      operationId: createMineGeofence
+      summary: 创建电子围栏稳定对象
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectRequest' } } }
+      responses:
+        '201':
+          description: 电子围栏稳定对象已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/geofences/{geofenceId}:
+    get:
+      tags: [MineSpatial]
+      operationId: getMineGeofence
+      summary: 查询电子围栏稳定对象
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/GeofenceId' }
+      responses:
+        '200':
+          description: 电子围栏稳定对象。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialObjectResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+  /mine/sites/{siteId}/geofences/{geofenceId}/archive:
+    post:
+      tags: [MineSpatial]
+      operationId: archiveMineGeofence
+      summary: 归档电子围栏稳定对象
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/GeofenceId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '204': { description: 电子围栏已归档，版本历史继续保留。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/geofences/{geofenceId}/versions:
+    get:
+      tags: [MineSpatial]
+      operationId: listMineGeofenceVersions
+      summary: 查询电子围栏全部版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/GeofenceId' }
+      responses:
+        '200':
+          description: 按业务版本号升序排列的电子围栏版本。
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/GeofenceVersionResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    post:
+      tags: [MineSpatial]
+      operationId: createMineGeofenceVersion
+      summary: 创建电子围栏草稿版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/GeofenceId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/GeofenceVersionRequest' } } }
+      responses:
+        '201':
+          description: 电子围栏草稿版本已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/GeofenceVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}:
+    get:
+      tags: [MineSpatial]
+      operationId: getMineGeofenceVersion
+      summary: 查询指定电子围栏版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/GeofenceId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      responses:
+        '200':
+          description: 电子围栏版本和有序顶点。
+          content: { application/json: { schema: { $ref: '#/components/schemas/GeofenceVersionResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    patch:
+      tags: [MineSpatial]
+      operationId: updateMineGeofenceVersion
+      summary: 修改电子围栏草稿版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/GeofenceId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/GeofenceVersionUpdateRequest' } } }
+      responses:
+        '200':
+          description: 修改后的电子围栏草稿和有序顶点。
+          content: { application/json: { schema: { $ref: '#/components/schemas/GeofenceVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}/publish:
+    post:
+      tags: [MineSpatial]
+      operationId: publishMineGeofenceVersion
+      summary: 发布并永久锁定电子围栏版本
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/GeofenceId' }
+        - { $ref: '#/components/parameters/SpatialVersionId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '200':
+          description: 已发布电子围栏版本及其内容摘要。
+          content: { application/json: { schema: { $ref: '#/components/schemas/GeofenceVersionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /mine/sites/{siteId}/people:
     get:
       tags: [MinePeople]
@@ -2771,6 +3257,30 @@ components:
       in: path
       required: true
       description: 坐标转换版本 UUID。
+      schema: { type: string, format: uuid }
+    WaypointId:
+      name: waypointId
+      in: path
+      required: true
+      description: 途径点稳定对象 UUID。
+      schema: { type: string, format: uuid }
+    RouteId:
+      name: routeId
+      in: path
+      required: true
+      description: 路线稳定对象 UUID。
+      schema: { type: string, format: uuid }
+    GeofenceId:
+      name: geofenceId
+      in: path
+      required: true
+      description: 电子围栏稳定对象 UUID。
+      schema: { type: string, format: uuid }
+    SpatialVersionId:
+      name: versionId
+      in: path
+      required: true
+      description: 空间对象版本 UUID。
       schema: { type: string, format: uuid }
     PersonId:
       name: personId
@@ -3166,6 +3676,406 @@ components:
         page: { type: integer, minimum: 1 }
         size: { type: integer, minimum: 1, maximum: 100 }
         total: { type: integer, format: int64, minimum: 0 }
+    SpatialObjectRequest:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: { type: string, pattern: '^[A-Za-z][A-Za-z0-9-]{1,63}$' }
+    SpatialObjectResponse:
+      type: object
+      required: [id, organizationId, siteId, code, status, archivedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        code: { type: string }
+        status: { $ref: '#/components/schemas/MineArchiveStatus' }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    SpatialObjectPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SpatialObjectResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    SpatialVersionStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED]
+    SpatialDetectionPolicy:
+      type: object
+      additionalProperties: false
+      required:
+        - boundaryToleranceMeters
+        - enterConfirmPoints
+        - exitConfirmPoints
+        - dwellSeconds
+        - allowedLatenessSeconds
+        - idleFlushSeconds
+      properties:
+        boundaryToleranceMeters: { type: number, format: double, minimum: 0, maximum: 1000 }
+        enterConfirmPoints: { type: integer, minimum: 1, maximum: 20 }
+        exitConfirmPoints: { type: integer, minimum: 1, maximum: 20 }
+        dwellSeconds: { type: integer, minimum: 0, maximum: 86400 }
+        allowedLatenessSeconds: { type: integer, minimum: 0, maximum: 300 }
+        idleFlushSeconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          description: 必须大于 allowedLatenessSeconds。
+    WaypointType:
+      type: string
+      enum: [LOAD, UNLOAD, CHECK, WAIT, ENTRY, EXIT]
+    WaypointVersionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - coordinateSystemId
+        - versionNumber
+        - name
+        - waypointType
+        - x
+        - y
+        - radiusMeters
+        - detectionPolicy
+        - validFrom
+      properties:
+        coordinateSystemId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        waypointType: { $ref: '#/components/schemas/WaypointType' }
+        x: { type: number, format: double }
+        y: { type: number, format: double }
+        z: { type: [number, 'null'], format: double }
+        radiusMeters: { type: number, format: double, exclusiveMinimum: 0, maximum: 10000 }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+        detectionPolicy: { $ref: '#/components/schemas/SpatialDetectionPolicy' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+    WaypointVersionUpdateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - coordinateSystemId
+        - name
+        - waypointType
+        - x
+        - y
+        - radiusMeters
+        - detectionPolicy
+        - validFrom
+        - version
+      properties:
+        coordinateSystemId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        waypointType: { $ref: '#/components/schemas/WaypointType' }
+        x: { type: number, format: double }
+        y: { type: number, format: double }
+        z: { type: [number, 'null'], format: double }
+        radiusMeters: { type: number, format: double, exclusiveMinimum: 0, maximum: 10000 }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+        detectionPolicy: { $ref: '#/components/schemas/SpatialDetectionPolicy' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    WaypointVersionResponse:
+      type: object
+      required:
+        - id
+        - waypointId
+        - organizationId
+        - siteId
+        - coordinateSystemId
+        - versionNumber
+        - name
+        - waypointType
+        - x
+        - y
+        - z
+        - radiusMeters
+        - minZ
+        - maxZ
+        - detectionPolicy
+        - validFrom
+        - validTo
+        - status
+        - contentHash
+        - publishedAt
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        waypointId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        coordinateSystemId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        name: { type: string }
+        waypointType: { $ref: '#/components/schemas/WaypointType' }
+        x: { type: number, format: double }
+        y: { type: number, format: double }
+        z: { type: [number, 'null'], format: double }
+        radiusMeters: { type: number, format: double }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+        detectionPolicy: { $ref: '#/components/schemas/SpatialDetectionPolicy' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        status: { $ref: '#/components/schemas/SpatialVersionStatus' }
+        contentHash: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    RouteDirection:
+      type: string
+      enum: [FORWARD, REVERSE, BIDIRECTIONAL]
+    SpatialRouteWaypointRequest:
+      type: object
+      additionalProperties: false
+      required: [sequenceNumber, waypointVersionId, stopRequired]
+      properties:
+        sequenceNumber: { type: integer, minimum: 1, maximum: 10000 }
+        waypointVersionId: { type: string, format: uuid }
+        stopRequired: { type: boolean }
+        expectedDwellSeconds: { type: [integer, 'null'], minimum: 0, maximum: 86400 }
+    SpatialRouteWaypointResponse:
+      type: object
+      required: [sequenceNumber, waypointVersionId, stopRequired, expectedDwellSeconds]
+      properties:
+        sequenceNumber: { type: integer, minimum: 1, maximum: 10000 }
+        waypointVersionId: { type: string, format: uuid }
+        stopRequired: { type: boolean }
+        expectedDwellSeconds: { type: [integer, 'null'], minimum: 0, maximum: 86400 }
+    RouteVersionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - coordinateSystemId
+        - versionNumber
+        - name
+        - direction
+        - applicableVehicleTypes
+        - validFrom
+        - waypoints
+      properties:
+        coordinateSystemId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        direction: { $ref: '#/components/schemas/RouteDirection' }
+        applicableVehicleTypes:
+          type: array
+          minItems: 1
+          maxItems: 16
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/VehicleType' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        waypoints:
+          type: array
+          minItems: 2
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/SpatialRouteWaypointRequest' }
+    RouteVersionUpdateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - coordinateSystemId
+        - name
+        - direction
+        - applicableVehicleTypes
+        - validFrom
+        - waypoints
+        - version
+      properties:
+        coordinateSystemId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        direction: { $ref: '#/components/schemas/RouteDirection' }
+        applicableVehicleTypes:
+          type: array
+          minItems: 1
+          maxItems: 16
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/VehicleType' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        waypoints:
+          type: array
+          minItems: 2
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/SpatialRouteWaypointRequest' }
+        version: { type: integer, format: int64, minimum: 0 }
+    RouteVersionResponse:
+      type: object
+      required:
+        - id
+        - routeId
+        - organizationId
+        - siteId
+        - coordinateSystemId
+        - versionNumber
+        - name
+        - direction
+        - applicableVehicleTypes
+        - validFrom
+        - validTo
+        - status
+        - contentHash
+        - publishedAt
+        - waypoints
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        routeId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        coordinateSystemId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        name: { type: string }
+        direction: { $ref: '#/components/schemas/RouteDirection' }
+        applicableVehicleTypes:
+          type: array
+          items: { $ref: '#/components/schemas/VehicleType' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        status: { $ref: '#/components/schemas/SpatialVersionStatus' }
+        contentHash: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        waypoints:
+          type: array
+          minItems: 2
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/SpatialRouteWaypointResponse' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    GeofenceType:
+      type: string
+      enum: [RESTRICTED, WORK, LOAD, UNLOAD, WAIT, SAFETY, OTHER]
+    SpatialVertexRequest:
+      type: object
+      additionalProperties: false
+      required: [sequenceNumber, x, y]
+      properties:
+        sequenceNumber: { type: integer, minimum: 1, maximum: 10000 }
+        x: { type: number, format: double }
+        y: { type: number, format: double }
+    SpatialVertexResponse:
+      type: object
+      required: [sequenceNumber, x, y]
+      properties:
+        sequenceNumber: { type: integer, minimum: 1, maximum: 10000 }
+        x: { type: number, format: double }
+        y: { type: number, format: double }
+    GeofenceVersionRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - coordinateSystemId
+        - versionNumber
+        - name
+        - geofenceType
+        - detectionPolicy
+        - validFrom
+        - vertices
+      properties:
+        coordinateSystemId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        geofenceType: { $ref: '#/components/schemas/GeofenceType' }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+        detectionPolicy: { $ref: '#/components/schemas/SpatialDetectionPolicy' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        vertices:
+          type: array
+          minItems: 3
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/SpatialVertexRequest' }
+    GeofenceVersionUpdateRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - coordinateSystemId
+        - name
+        - geofenceType
+        - detectionPolicy
+        - validFrom
+        - vertices
+        - version
+      properties:
+        coordinateSystemId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        geofenceType: { $ref: '#/components/schemas/GeofenceType' }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+        detectionPolicy: { $ref: '#/components/schemas/SpatialDetectionPolicy' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        vertices:
+          type: array
+          minItems: 3
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/SpatialVertexRequest' }
+        version: { type: integer, format: int64, minimum: 0 }
+    GeofenceVersionResponse:
+      type: object
+      required:
+        - id
+        - geofenceId
+        - organizationId
+        - siteId
+        - coordinateSystemId
+        - versionNumber
+        - name
+        - geofenceType
+        - minZ
+        - maxZ
+        - detectionPolicy
+        - validFrom
+        - validTo
+        - status
+        - contentHash
+        - publishedAt
+        - vertices
+        - createdAt
+        - updatedAt
+        - version
+      properties:
+        id: { type: string, format: uuid }
+        geofenceId: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        coordinateSystemId: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        name: { type: string }
+        geofenceType: { $ref: '#/components/schemas/GeofenceType' }
+        minZ: { type: [number, 'null'], format: double }
+        maxZ: { type: [number, 'null'], format: double }
+        detectionPolicy: { $ref: '#/components/schemas/SpatialDetectionPolicy' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        status: { $ref: '#/components/schemas/SpatialVersionStatus' }
+        contentHash: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        vertices:
+          type: array
+          minItems: 3
+          maxItems: 10000
+          items: { $ref: '#/components/schemas/SpatialVertexResponse' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
     PersonType:
       type: string
       enum: [DRIVER, OPERATOR, SUPERVISOR, WORKER, VISITOR, OTHER]

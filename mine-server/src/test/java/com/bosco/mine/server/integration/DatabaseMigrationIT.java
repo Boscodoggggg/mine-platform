@@ -754,6 +754,7 @@ class DatabaseMigrationIT {
                 "mine-location-tag-management",
                 "mine-person-management",
                 "mine-site-archive",
+                "mine-spatial-management",
                 "mine-vehicle-management",
                 "retention-governance",
                 "system-dictionary-list",
@@ -878,6 +879,11 @@ class DatabaseMigrationIT {
                 "mine:scope:assign",
                 "mine:site:edit",
                 "mine:site:view",
+                "mine:spatial:edit",
+                "mine:spatial:event:view",
+                "mine:spatial:publish",
+                "mine:spatial:replay",
+                "mine:spatial:view",
                 "mine:vehicle:edit",
                 "mine:vehicle:view"
         );
@@ -902,8 +908,18 @@ class DatabaseMigrationIT {
                 "mine-person-management",
                 "mine-location-tag-management",
                 "mine-binding-management",
-                "mine-location-monitor"
+                "mine-location-monitor",
+                "mine-spatial-management"
         );
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT name, path, component_key, permission, i18n_key, protected_node
+                FROM sys_menu
+                WHERE component_key = 'mine-spatial-management'
+                """)).containsEntry("name", "路线与围栏")
+                .containsEntry("path", "/mine/spatial")
+                .containsEntry("permission", "mine:spatial:view")
+                .containsEntry("i18n_key", "mine.menu.mineSpatial")
+                .containsEntry("protected_node", true);
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu child
