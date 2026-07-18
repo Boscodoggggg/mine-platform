@@ -74,6 +74,11 @@ class DatabaseMigrationIT {
             "mine_location_tag",
             "mine_coordinate_system",
             "mine_coordinate_transform_version",
+            "mine_vehicle_device_binding",
+            "mine_location_tag_binding_claim",
+            "mine_vehicle_tag_binding",
+            "mine_person_tag_binding",
+            "mine_person_vehicle_binding",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -243,6 +248,78 @@ class DatabaseMigrationIT {
                         "source_coordinate_system_id",
                         "target_coordinate_system_id",
                         "version_number");
+    }
+
+    @Test
+    void 矿区时间绑定必须启用排斥约束生成区间及延迟一致性触发器() {
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM pg_extension WHERE extname = 'btree_gist'
+                """, Long.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'mine_vehicle_device_binding', 'mine_location_tag_binding_claim',
+                    'mine_vehicle_tag_binding', 'mine_person_tag_binding',
+                    'mine_person_vehicle_binding'
+                )
+                ORDER BY class.relname
+                """, String.class))
+                .hasSize(5)
+                .allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN (
+                    'mine_vehicle_device_binding'::regclass,
+                    'mine_location_tag_binding_claim'::regclass,
+                    'mine_vehicle_tag_binding'::regclass,
+                    'mine_person_tag_binding'::regclass,
+                    'mine_person_vehicle_binding'::regclass
+                )
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT table_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND column_name = 'valid_period'
+                  AND is_generated = 'ALWAYS'
+                  AND table_name IN (
+                    'mine_vehicle_device_binding', 'mine_location_tag_binding_claim',
+                    'mine_vehicle_tag_binding', 'mine_person_tag_binding',
+                    'mine_person_vehicle_binding'
+                  )
+                ORDER BY table_name
+                """, String.class)).hasSize(5);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT conname
+                FROM pg_constraint
+                WHERE contype = 'x'
+                  AND conname IN (
+                    'ex_mine_vehicle_device_binding_device',
+                    'ex_mine_vehicle_device_binding_primary',
+                    'ex_mine_location_tag_binding_claim_tag',
+                    'ex_mine_vehicle_tag_binding_vehicle',
+                    'ex_mine_person_tag_binding_person',
+                    'ex_mine_person_vehicle_binding_person',
+                    'ex_mine_person_vehicle_binding_primary'
+                  )
+                ORDER BY conname
+                """, String.class)).hasSize(7);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_trigger
+                WHERE tgname IN (
+                    'ctg_mine_location_tag_claim_consistency',
+                    'ctg_mine_vehicle_tag_claim_consistency',
+                    'ctg_mine_person_tag_claim_consistency'
+                )
+                  AND tgdeferrable
+                  AND tginitdeferred
+                """, Long.class)).isEqualTo(3);
     }
 
     @Test
