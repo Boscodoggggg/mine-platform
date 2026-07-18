@@ -39,6 +39,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
 
@@ -52,6 +54,8 @@ public class MineAssetCommandService {
             new ErrorCode("MINE-ASSET-422-002", "矿区资产或坐标参数不合法");
     private static final ErrorCode COORDINATE_SCOPE_MISMATCH =
             new ErrorCode("MINE-ASSET-422-003", "坐标系不属于当前矿区或不可用");
+    private static final ErrorCode COORDINATE_TRANSFORM_INVALID =
+            new ErrorCode("MINE-ASSET-422-004", "坐标转换算法、坐标语义或参数不兼容");
     private static final ErrorCode VEHICLE_NOT_FOUND =
             new ErrorCode("MINE-ASSET-404-001", "车辆不存在或不可用");
     private static final ErrorCode TAG_NOT_FOUND =
@@ -294,8 +298,11 @@ public class MineAssetCommandService {
             UUID siteId, CoordinateTransformRequest request
     ) {
         MineSite site = authorizer.requireSite(siteId);
-        requireCoordinateSystem(site, request.sourceCoordinateSystemId(), true);
-        requireCoordinateSystem(site, request.targetCoordinateSystemId(), true);
+        MineCoordinateSystem source = requireCoordinateSystem(
+                site, request.sourceCoordinateSystemId(), true);
+        MineCoordinateSystem target = requireCoordinateSystem(
+                site, request.targetCoordinateSystemId(), true);
+        validateCoordinateTransform(source, target, request.algorithm(), request.parameters());
         UUID id = idGenerator.next();
         try {
             mapper.insertCoordinateTransform(
@@ -320,6 +327,11 @@ public class MineAssetCommandService {
         MineSite site = authorizer.requireSite(siteId);
         MineCoordinateTransform before = requireCoordinateTransform(site, transformId);
         if (!"DRAFT".equals(before.status())) throw transformConflict(transformId);
+        MineCoordinateSystem source = requireCoordinateSystem(
+                site, before.sourceCoordinateSystemId(), true);
+        MineCoordinateSystem target = requireCoordinateSystem(
+                site, before.targetCoordinateSystemId(), true);
+        validateCoordinateTransform(source, target, request.algorithm(), request.parameters());
         try {
             int changed = mapper.updateCoordinateTransform(
                     site.organizationId(), site.id(), transformId, upper(request.algorithm()),
@@ -346,8 +358,12 @@ public class MineAssetCommandService {
         if (!"DRAFT".equals(before.status()) || before.version() != version) {
             throw transformConflict(transformId);
         }
-        requireCoordinateSystem(site, before.sourceCoordinateSystemId(), true);
-        requireCoordinateSystem(site, before.targetCoordinateSystemId(), true);
+        MineCoordinateSystem source = requireCoordinateSystem(
+                site, before.sourceCoordinateSystemId(), true);
+        MineCoordinateSystem target = requireCoordinateSystem(
+                site, before.targetCoordinateSystemId(), true);
+        validateCoordinateTransform(
+                source, target, before.algorithm(), readParameters(before.parametersJson()));
         String contentHash = contentHash(before);
         try {
             if (mapper.publishCoordinateTransform(
@@ -459,6 +475,79 @@ public class MineAssetCommandService {
         } catch (JacksonException exception) {
             throw new MineException(ASSET_INVALID, Map.of());
         }
+    }
+
+    private JsonNode readParameters(String parametersJson) {
+        try {
+            return objectMapper.readTree(parametersJson);
+        } catch (JacksonException exception) {
+            throw new MineException(COORDINATE_TRANSFORM_INVALID, Map.of());
+        }
+    }
+
+    private void validateCoordinateTransform(
+            MineCoordinateSystem source,
+            MineCoordinateSystem target,
+            String algorithmValue,
+            JsonNode parameters
+    ) {
+        String algorithm = upper(algorithmValue);
+        boolean valid = parameters != null && parameters.isObject();
+        if (valid) {
+            valid = switch (algorithm) {
+                case "IDENTITY" -> sameCoordinateSemantics(source, target)
+                        && parameters.size() == 0;
+                case "AFFINE_3D" -> isCartesian(source)
+                        && isCartesian(target)
+                        && numericArray(parameters.get("matrix"), 16);
+                case "WGS84_ENU" -> "WGS84".equals(source.coordinateType())
+                        && "DEGREE".equals(source.unit())
+                        && Objects.equals(4326, source.epsgCode())
+                        && isCartesian(target)
+                        && "METER".equals(target.unit())
+                        && finiteNumber(parameters.get("originLongitude"), -180D, 180D)
+                        && finiteNumber(parameters.get("originLatitude"), -90D, 90D)
+                        && finiteNumber(parameters.get("originAltitude"),
+                                -20_000D, 100_000D);
+                default -> false;
+            };
+        }
+        if (!valid || source.id().equals(target.id())) {
+            throw new MineException(COORDINATE_TRANSFORM_INVALID, Map.of("algorithm", algorithm));
+        }
+    }
+
+    private boolean sameCoordinateSemantics(
+            MineCoordinateSystem source, MineCoordinateSystem target
+    ) {
+        return source.coordinateType().equals(target.coordinateType())
+                && source.unit().equals(target.unit())
+                && Objects.equals(source.epsgCode(), target.epsgCode());
+    }
+
+    private boolean isCartesian(MineCoordinateSystem system) {
+        return Set.of("LOCAL_CARTESIAN", "ENU").contains(system.coordinateType())
+                && Set.of("METER", "MILLIMETER").contains(system.unit());
+    }
+
+    private boolean numericArray(JsonNode value, int expectedSize) {
+        if (value == null || !value.isArray() || value.size() != expectedSize) {
+            return false;
+        }
+        for (JsonNode element : value) {
+            if (!finiteNumber(element, -Double.MAX_VALUE, Double.MAX_VALUE)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean finiteNumber(JsonNode value, double minimum, double maximum) {
+        if (value == null || !value.isNumber()) {
+            return false;
+        }
+        double number = value.doubleValue();
+        return Double.isFinite(number) && number >= minimum && number <= maximum;
     }
 
     private void audit(

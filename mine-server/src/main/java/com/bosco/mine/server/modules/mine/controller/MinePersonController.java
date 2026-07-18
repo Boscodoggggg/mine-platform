@@ -8,6 +8,7 @@ import com.bosco.mine.server.modules.mine.dto.MineArchiveRequest;
 import com.bosco.mine.server.modules.mine.dto.PersonCreateRequest;
 import com.bosco.mine.server.modules.mine.dto.PersonResponse;
 import com.bosco.mine.server.modules.mine.dto.PersonSensitiveResponse;
+import com.bosco.mine.server.modules.mine.dto.PersonSensitiveUpdateRequest;
 import com.bosco.mine.server.modules.mine.dto.PersonUpdateRequest;
 import com.bosco.mine.server.modules.mine.service.MinePersonService;
 import jakarta.validation.Valid;
@@ -15,6 +16,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -114,11 +116,25 @@ public class MinePersonController {
     /** 通过独立权限显式读取人员敏感字段。 */
     @GetMapping("/people/{personId}/sensitive")
     @SaCheckPermission("mine:person:sensitive:view")
-    public PersonSensitiveResponse readSensitive(
+    public ResponseEntity<PersonSensitiveResponse> readSensitive(
             @PathVariable UUID siteId,
             @PathVariable UUID personId
     ) {
-        return personService.readSensitive(siteId, personId);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore().cachePrivate())
+                .header("Pragma", "no-cache")
+                .body(personService.readSensitive(siteId, personId));
+    }
+
+    /** 通过独立权限更新人员敏感字段。 */
+    @PatchMapping("/people/{personId}/sensitive")
+    @SaCheckPermission("mine:person:sensitive:edit")
+    public PersonResponse updateSensitive(
+            @PathVariable UUID siteId,
+            @PathVariable UUID personId,
+            @Valid @RequestBody PersonSensitiveUpdateRequest request
+    ) {
+        return personService.updateSensitive(siteId, personId, request);
     }
 
     /** 查询人员司机资质。 */

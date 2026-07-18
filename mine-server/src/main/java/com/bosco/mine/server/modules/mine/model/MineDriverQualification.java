@@ -9,7 +9,6 @@ import java.util.UUID;
  *
  * @param id 资质标识
  * @param organizationId 所属组织标识
- * @param siteId 所属矿区标识
  * @param personId 人员标识
  * @param qualificationCode 资质编码
  * @param name 资质名称
@@ -25,7 +24,6 @@ import java.util.UUID;
 public record MineDriverQualification(
         UUID id,
         UUID organizationId,
-        UUID siteId,
         UUID personId,
         String qualificationCode,
         String name,

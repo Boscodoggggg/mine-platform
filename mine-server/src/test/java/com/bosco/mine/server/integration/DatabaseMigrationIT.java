@@ -74,6 +74,8 @@ class DatabaseMigrationIT {
             "mine_location_tag",
             "mine_coordinate_system",
             "mine_coordinate_transform_version",
+            "mine_person_site_assignment",
+            "mine_sensitive_data_key_guard",
             "mine_vehicle_device_binding",
             "mine_location_tag_binding_claim",
             "mine_vehicle_tag_binding",
@@ -315,11 +317,48 @@ class DatabaseMigrationIT {
                 WHERE tgname IN (
                     'ctg_mine_location_tag_claim_consistency',
                     'ctg_mine_vehicle_tag_claim_consistency',
-                    'ctg_mine_person_tag_claim_consistency'
+                    'ctg_mine_person_tag_claim_consistency',
+                    'ctg_mine_person_tag_site_assignment',
+                    'ctg_mine_person_vehicle_site_assignment',
+                    'ctg_mine_person_site_assignment_binding_coverage'
                 )
                   AND tgdeferrable
                   AND tginitdeferred
-                """, Long.class)).isEqualTo(3);
+                """, Long.class)).isEqualTo(6);
+    }
+
+    @Test
+    void 人员必须使用组织主档和跨矿区时态任职() {
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'mine_person'
+                  AND column_name IN ('site_id', 'employment_from', 'employment_to')
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_mine_person_organization_scope"))
+                .containsExactly("id", "organization_id");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT obj_description('mine_person_site_assignment'::regclass, 'pg_class')
+                """, String.class)).matches(".*[\\u4e00-\\u9fff].*");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid = 'mine_person_site_assignment'::regclass
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT conname
+                FROM pg_constraint
+                WHERE conname IN (
+                    'ex_mine_person_site_assignment_person',
+                    'fk_mine_person_tag_binding_person_organization',
+                    'fk_mine_person_vehicle_binding_person_organization'
+                )
+                ORDER BY conname
+                """, String.class)).hasSize(3);
     }
 
     @Test
@@ -1211,6 +1250,181 @@ class DatabaseMigrationIT {
     @Test
     void 重复执行迁移时不应修改数据库结构() {
         assertThat(flyway.migrate().migrationsExecuted).isZero();
+    }
+
+    @Test
+    void 从三十六版升级时必须保留人员并回填矿区任职() throws Exception {
+        String schema = "person_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        UUID organizationId = UUID.randomUUID();
+        UUID siteId = UUID.randomUUID();
+        UUID personId = UUID.randomUUID();
+        UUID qualificationId = UUID.randomUUID();
+        try {
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .target("36")
+                    .load()
+                    .migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                statement.execute("""
+                        INSERT INTO mine_organization (id, organization_code, name)
+                        VALUES ('%s', 'person-upgrade-group', '人员升级集团')
+                        """.formatted(organizationId));
+                statement.execute("""
+                        INSERT INTO mine_site (
+                            id, organization_id, site_code, name, timezone
+                        ) VALUES (
+                            '%s', '%s', 'person-upgrade-pit', '人员升级矿区', 'Asia/Shanghai'
+                        )
+                        """.formatted(siteId, organizationId));
+                statement.execute("""
+                        INSERT INTO mine_person (
+                            id, organization_id, site_id, person_code, name, person_type,
+                            phone_ciphertext, phone_masked, certificate_ciphertext,
+                            certificate_masked, employment_from, employment_to
+                        ) VALUES (
+                            '%s', '%s', '%s', 'upgrade-driver', '升级司机', 'DRIVER',
+                            'v1:bm9uY2U:Y2lwaGVydGV4dA', '138****8000',
+                            'v1:bm9uY2U:Y2lwaGVydGV4dA', '410***********1234',
+                            DATE '2025-01-01', DATE '2025-01-31'
+                        )
+                        """.formatted(personId, organizationId, siteId));
+                statement.execute("""
+                        INSERT INTO mine_driver_qualification (
+                            id, organization_id, site_id, person_id, qualification_code,
+                            name, allowed_vehicle_types, valid_from, valid_to
+                        ) VALUES (
+                            '%s', '%s', '%s', '%s', 'upgrade-license', '升级驾驶资质',
+                            '["HAUL_TRUCK"]'::JSONB, DATE '2025-01-01', DATE '2028-12-31'
+                        )
+                        """.formatted(qualificationId, organizationId, siteId, personId));
+            }
+
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate();
+
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                try (ResultSet result = statement.executeQuery("""
+                        SELECT person.id, person.phone_ciphertext,
+                               assignment.site_id, assignment.valid_from, assignment.valid_to,
+                               qualification.id AS qualification_id
+                        FROM mine_person person
+                        JOIN mine_person_site_assignment assignment
+                          ON assignment.person_id = person.id
+                        JOIN mine_driver_qualification qualification
+                          ON qualification.person_id = person.id
+                        WHERE person.id = '%s'
+                        """.formatted(personId))) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(UUID.fromString(result.getString("id"))).isEqualTo(personId);
+                    assertThat(result.getString("phone_ciphertext")).startsWith("v1:");
+                    assertThat(UUID.fromString(result.getString("site_id"))).isEqualTo(siteId);
+                    assertThat(result.getObject("valid_from", java.time.OffsetDateTime.class).toInstant())
+                            .isEqualTo(Instant.parse("2024-12-31T16:00:00Z"));
+                    assertThat(result.getObject("valid_to", java.time.OffsetDateTime.class).toInstant())
+                            .isEqualTo(Instant.parse("2025-01-31T16:00:00Z"));
+                    assertThat(UUID.fromString(result.getString("qualification_id")))
+                            .isEqualTo(qualificationId);
+                    assertThat(result.next()).isFalse();
+                }
+                try (ResultSet result = statement.executeQuery("""
+                        SELECT COUNT(*)
+                        FROM information_schema.columns
+                        WHERE table_schema = '%s'
+                          AND table_name = 'mine_person'
+                          AND column_name IN ('employment_from', 'employment_to')
+                        """.formatted(schema))) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getLong(1)).isZero();
+                }
+            }
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        }
+    }
+
+    @Test
+    void 从三十六版升级时必须拒绝超出任职区间的存量人员绑定() throws Exception {
+        String schema = "person_binding_upgrade_" + UUID.randomUUID().toString().replace("-", "");
+        UUID organizationId = UUID.randomUUID();
+        UUID siteId = UUID.randomUUID();
+        UUID personId = UUID.randomUUID();
+        UUID vehicleId = UUID.randomUUID();
+        try {
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .target("36")
+                    .load()
+                    .migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                statement.execute("""
+                        INSERT INTO mine_organization (id, organization_code, name)
+                        VALUES ('%s', 'invalid-binding-group', '非法绑定升级集团')
+                        """.formatted(organizationId));
+                statement.execute("""
+                        INSERT INTO mine_site (id, organization_id, site_code, name, timezone)
+                        VALUES ('%s', '%s', 'invalid-binding-pit', '非法绑定升级矿区', 'Asia/Shanghai')
+                        """.formatted(siteId, organizationId));
+                statement.execute("""
+                        INSERT INTO mine_person (
+                            id, organization_id, site_id, person_code, name, person_type,
+                            phone_ciphertext, phone_masked, certificate_ciphertext,
+                            certificate_masked, employment_from, employment_to
+                        ) VALUES (
+                            '%s', '%s', '%s', 'invalid-binding-driver', '非法绑定司机', 'DRIVER',
+                            'v1:bm9uY2U:Y2lwaGVydGV4dA', '138****8000',
+                            'v1:bm9uY2U:Y2lwaGVydGV4dA', '410***********1234',
+                            DATE '2025-01-01', DATE '2025-01-31'
+                        )
+                        """.formatted(personId, organizationId, siteId));
+                statement.execute("""
+                        INSERT INTO mine_vehicle (
+                            id, organization_id, site_id, vehicle_code, name, vehicle_type
+                        ) VALUES ('%s', '%s', '%s', 'invalid-binding-truck', '非法绑定车辆', 'HAUL_TRUCK')
+                        """.formatted(vehicleId, organizationId, siteId));
+                statement.execute("""
+                        INSERT INTO mine_person_vehicle_binding (
+                            id, organization_id, site_id, person_id, vehicle_id,
+                            assignment_role, valid_from, valid_to, reason
+                        ) VALUES (
+                            gen_random_uuid(), '%s', '%s', '%s', '%s', 'PRIMARY_DRIVER',
+                            TIMESTAMPTZ '2025-02-01 00:00:00+08',
+                            TIMESTAMPTZ '2025-02-02 00:00:00+08', '存量非法绑定'
+                        )
+                        """.formatted(organizationId, siteId, personId, vehicleId));
+            }
+
+            assertThatThrownBy(() -> Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate())
+                    .hasStackTraceContaining("既有人员绑定未被矿区任职区间完整覆盖");
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        }
     }
 
     @Test

@@ -15,8 +15,8 @@ import java.time.LocalDate;
  * @param personType 人员岗位类型
  * @param phone 手机号码明文，仅用于本次写入加密
  * @param certificateNumber 证件号码明文，仅用于本次写入加密
- * @param employmentFrom 任职开始日期
- * @param employmentTo 任职结束日期
+ * @param assignmentFrom 初始矿区任职开始日期
+ * @param assignmentTo 初始矿区任职结束日期
  */
 public record PersonCreateRequest(
         @NotBlank @Pattern(regexp = "[A-Za-z][A-Za-z0-9-]{1,63}") String personCode,
@@ -24,7 +24,7 @@ public record PersonCreateRequest(
         @NotBlank @Pattern(regexp = "DRIVER|OPERATOR|SUPERVISOR|WORKER|VISITOR|OTHER") String personType,
         @NotBlank @Size(max = 32) String phone,
         @NotBlank @Size(max = 64) String certificateNumber,
-        @NotNull LocalDate employmentFrom,
-        LocalDate employmentTo
+        @NotNull LocalDate assignmentFrom,
+        LocalDate assignmentTo
 ) {
 }

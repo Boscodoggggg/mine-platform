@@ -9,6 +9,7 @@ import com.bosco.mine.server.modules.mine.dto.DriverQualificationResponse;
 import com.bosco.mine.server.modules.mine.dto.PersonCreateRequest;
 import com.bosco.mine.server.modules.mine.dto.PersonResponse;
 import com.bosco.mine.server.modules.mine.dto.PersonSensitiveResponse;
+import com.bosco.mine.server.modules.mine.dto.PersonSensitiveUpdateRequest;
 import com.bosco.mine.server.modules.mine.dto.PersonUpdateRequest;
 import com.bosco.mine.server.modules.mine.model.MineDriverQualification;
 import com.bosco.mine.server.modules.mine.model.MinePerson;
@@ -23,7 +24,9 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -96,24 +99,31 @@ public class MinePersonService {
     @Transactional
     public PersonResponse createPerson(UUID siteId, PersonCreateRequest request) {
         MineSite site = authorizer.requireSite(siteId);
-        validatePerson(
-                request.name(), request.personType(), request.phone(), request.certificateNumber(),
-                request.employmentFrom(), request.employmentTo(), "ACTIVE");
+        validatePerson(request.name(), request.personType(), "ACTIVE");
+        validateAssignment(request.assignmentFrom(), request.assignmentTo());
+        validateSensitive(request.phone(), request.certificateNumber());
         UUID id = idGenerator.next();
+        UUID operatorId = authorizer.currentUserId();
         try {
             mapper.insertPerson(
-                    id, site.organizationId(), site.id(), normalizeCode(request.personCode()),
+                    id, site.organizationId(), normalizeCode(request.personCode()),
                     required(request.name()), upper(request.personType()),
-                    cipher.encrypt(required(request.phone())), maskPhone(request.phone()),
-                    cipher.encrypt(required(request.certificateNumber())),
-                    maskCertificate(request.certificateNumber()), request.employmentFrom(),
-                    request.employmentTo(), authorizer.currentUserId());
+                    cipher.encrypt(id, SensitiveFieldCipher.FieldType.PHONE, required(request.phone())),
+                    maskPhone(request.phone()),
+                    cipher.encrypt(id, SensitiveFieldCipher.FieldType.CERTIFICATE,
+                            required(request.certificateNumber())),
+                    maskCertificate(request.certificateNumber()), operatorId);
+            mapper.insertSiteAssignment(
+                    idGenerator.next(), site.organizationId(), site.id(), id,
+                    startOfDay(request.assignmentFrom(), site.timezone()),
+                    endExclusive(request.assignmentTo(), site.timezone()),
+                    "INITIAL_EMPLOYMENT", operatorId);
         } catch (DuplicateKeyException exception) {
             throw new MineException(PERSON_CODE_CONFLICT, Map.of());
         } catch (DataIntegrityViolationException exception) {
             throw invalidPerson();
         }
-        PersonResponse created = response(requirePerson(site, id));
+        PersonResponse created = response(requireHistoricalPerson(site, id));
         audit("CREATE_PERSON", "mine:person:edit", "MINE_PERSON", id,
                 Map.of(), personSummary(created));
         return created;
@@ -135,11 +145,11 @@ public class MinePersonService {
             throw invalidPerson();
         }
         String normalizedKeyword = optional(keyword);
-        int offset = Math.multiplyExact(page - 1, size);
+        long offset = (long) (page - 1) * size;
         return new PageResponse<>(
                 mapper.findPeople(
                                 site.organizationId(), site.id(), normalizedKeyword,
-                                normalizedStatus, offset, size)
+                                normalizedStatus, offset, size, site.timezone())
                         .stream().map(MinePersonService::response).toList(),
                 page,
                 size,
@@ -151,24 +161,19 @@ public class MinePersonService {
     @Transactional(readOnly = true)
     public PersonResponse findPerson(UUID siteId, UUID personId) {
         MineSite site = authorizer.requireSite(siteId);
-        return response(requirePerson(site, personId));
+        return response(requireHistoricalPerson(site, personId));
     }
 
-    /** 使用乐观锁修改人员档案并重新加密敏感字段。 */
+    /** 使用乐观锁修改人员普通档案并保留已有敏感密文。 */
     @Transactional
     public PersonResponse updatePerson(UUID siteId, UUID personId, PersonUpdateRequest request) {
         MineSite site = authorizer.requireSite(siteId);
-        MinePerson before = requirePerson(site, personId);
-        validatePerson(
-                request.name(), request.personType(), request.phone(), request.certificateNumber(),
-                request.employmentFrom(), request.employmentTo(), request.status());
+        MinePerson before = requireCurrentPerson(site, personId);
+        validatePerson(request.name(), request.personType(), request.status());
         try {
             int changed = mapper.updatePerson(
                     site.organizationId(), site.id(), personId, required(request.name()),
-                    upper(request.personType()), cipher.encrypt(required(request.phone())),
-                    maskPhone(request.phone()), cipher.encrypt(required(request.certificateNumber())),
-                    maskCertificate(request.certificateNumber()), request.employmentFrom(),
-                    request.employmentTo(), upper(request.status()), request.version(),
+                    upper(request.personType()), upper(request.status()), request.version(),
                     authorizer.currentUserId());
             if (changed == 0) {
                 throw new MineException(PERSON_VERSION_CONFLICT, Map.of("personId", personId));
@@ -176,9 +181,39 @@ public class MinePersonService {
         } catch (DataIntegrityViolationException exception) {
             throw invalidPerson();
         }
-        PersonResponse updated = response(requirePerson(site, personId));
+        PersonResponse updated = response(requireCurrentPerson(site, personId));
         audit("UPDATE_PERSON", "mine:person:edit", "MINE_PERSON", personId,
                 personSummary(response(before)), personSummary(updated));
+        return updated;
+    }
+
+    /** 使用独立权限和乐观锁更新人员敏感字段。 */
+    @Transactional
+    public PersonResponse updateSensitive(
+            UUID siteId, UUID personId, PersonSensitiveUpdateRequest request
+    ) {
+        MineSite site = authorizer.requireSite(siteId);
+        MinePerson before = requireCurrentPerson(site, personId);
+        validateSensitive(request.phone(), request.certificateNumber());
+        String phone = required(request.phone());
+        String certificate = required(request.certificateNumber());
+        int changed = mapper.updateSensitive(
+                site.organizationId(), site.id(), personId,
+                cipher.encrypt(personId, SensitiveFieldCipher.FieldType.PHONE, phone),
+                maskPhone(phone),
+                cipher.encrypt(personId, SensitiveFieldCipher.FieldType.CERTIFICATE, certificate),
+                maskCertificate(certificate), request.version(), authorizer.currentUserId());
+        if (changed == 0) {
+            throw new MineException(PERSON_VERSION_CONFLICT, Map.of("personId", personId));
+        }
+        PersonResponse updated = response(requireCurrentPerson(site, personId));
+        audit("UPDATE_PERSON_SENSITIVE", "mine:person:sensitive:edit", "MINE_PERSON", personId,
+                Map.of(
+                        "phoneMasked", before.phoneMasked(),
+                        "certificateMasked", before.certificateMasked()),
+                Map.of(
+                        "phoneMasked", updated.phoneMasked(),
+                        "certificateMasked", updated.certificateMasked()));
         return updated;
     }
 
@@ -186,7 +221,7 @@ public class MinePersonService {
     @Transactional
     public void archivePerson(UUID siteId, UUID personId, long version) {
         MineSite site = authorizer.requireSite(siteId);
-        MinePerson before = requirePerson(site, personId);
+        MinePerson before = requireCurrentPerson(site, personId);
         if (mapper.archivePerson(
                 site.organizationId(), site.id(), personId, version,
                 authorizer.currentUserId()) == 0) {
@@ -204,10 +239,14 @@ public class MinePersonService {
     @Transactional
     public PersonSensitiveResponse readSensitive(UUID siteId, UUID personId) {
         MineSite site = authorizer.requireSite(siteId);
-        MinePerson person = requirePerson(site, personId);
+        MinePerson person = requireCurrentPerson(site, personId);
         PersonSensitiveResponse result = new PersonSensitiveResponse(
-                person.id(), cipher.decrypt(person.phoneCiphertext()),
-                cipher.decrypt(person.certificateCiphertext()));
+                person.id(),
+                cipher.decrypt(
+                        person.id(), SensitiveFieldCipher.FieldType.PHONE, person.phoneCiphertext()),
+                cipher.decrypt(
+                        person.id(), SensitiveFieldCipher.FieldType.CERTIFICATE,
+                        person.certificateCiphertext()));
         audit("READ_PERSON_SENSITIVE", "mine:person:sensitive:view", "MINE_PERSON", personId,
                 Map.of(), Map.of("siteId", site.id(), "personId", person.id(), "result", "GRANTED"));
         return result;
@@ -219,12 +258,12 @@ public class MinePersonService {
             UUID siteId, UUID personId, DriverQualificationRequest request
     ) {
         MineSite site = authorizer.requireSite(siteId);
-        requirePerson(site, personId);
+        requireCurrentPerson(site, personId);
         List<String> vehicleTypes = validateQualification(request);
         UUID id = idGenerator.next();
         try {
             mapper.insertQualification(
-                    id, site.organizationId(), site.id(), personId,
+                    id, site.organizationId(), personId,
                     normalizeCode(request.qualificationCode()), required(request.name()),
                     writeJson(vehicleTypes), request.validFrom(), request.validTo(),
                     authorizer.currentUserId());
@@ -244,8 +283,8 @@ public class MinePersonService {
     @Transactional(readOnly = true)
     public List<DriverQualificationResponse> findQualifications(UUID siteId, UUID personId) {
         MineSite site = authorizer.requireSite(siteId);
-        requirePerson(site, personId);
-        return mapper.findQualifications(site.organizationId(), site.id(), personId)
+        requireHistoricalPerson(site, personId);
+        return mapper.findQualifications(site.organizationId(), personId)
                 .stream().map(this::qualification).toList();
     }
 
@@ -255,11 +294,11 @@ public class MinePersonService {
             UUID siteId, UUID personId, UUID qualificationId, long version
     ) {
         MineSite site = authorizer.requireSite(siteId);
-        requirePerson(site, personId);
+        requireCurrentPerson(site, personId);
         DriverQualificationResponse before = qualification(
                 requireQualification(site, personId, qualificationId));
         if (mapper.revokeQualification(
-                site.organizationId(), site.id(), personId, qualificationId, version,
+                site.organizationId(), personId, qualificationId, version,
                 authorizer.currentUserId()) == 0) {
             throw new MineException(QUALIFICATION_CONFLICT, Map.of("qualificationId", qualificationId));
         }
@@ -268,8 +307,16 @@ public class MinePersonService {
                 qualificationSummary(before), Map.of("status", "REVOKED"));
     }
 
-    private MinePerson requirePerson(MineSite site, UUID personId) {
-        return mapper.findPerson(site.organizationId(), site.id(), personId)
+    private MinePerson requireHistoricalPerson(MineSite site, UUID personId) {
+        return mapper.findPerson(
+                        site.organizationId(), site.id(), personId, site.timezone())
+                .orElseThrow(() -> new MineException(PERSON_NOT_FOUND, Map.of("personId", personId)));
+    }
+
+    private MinePerson requireCurrentPerson(MineSite site, UUID personId) {
+        mapper.lockPersonTimeline(personId);
+        return mapper.findCurrentPerson(
+                        site.organizationId(), site.id(), personId, site.timezone())
                 .orElseThrow(() -> new MineException(PERSON_NOT_FOUND, Map.of("personId", personId)));
     }
 
@@ -277,26 +324,29 @@ public class MinePersonService {
             MineSite site, UUID personId, UUID qualificationId
     ) {
         return mapper.findQualification(
-                        site.organizationId(), site.id(), personId, qualificationId)
+                        site.organizationId(), personId, qualificationId)
                 .orElseThrow(() -> new MineException(
                         QUALIFICATION_NOT_FOUND, Map.of("qualificationId", qualificationId)));
     }
 
-    private void validatePerson(
-            String name,
-            String personType,
-            String phone,
-            String certificate,
-            LocalDate employmentFrom,
-            LocalDate employmentTo,
-            String status
-    ) {
-        if (blank(name) || blank(phone) || blank(certificate)
-                || name.trim().length() > 128 || phone.trim().length() > 32
-                || certificate.trim().length() > 64 || employmentFrom == null
-                || (employmentTo != null && employmentTo.isBefore(employmentFrom))
+    private void validatePerson(String name, String personType, String status) {
+        if (blank(name) || name.trim().length() > 128
                 || !PERSON_TYPES.contains(upper(personType))
                 || !PERSON_STATUSES.contains(upper(status))) {
+            throw invalidPerson();
+        }
+    }
+
+    private void validateAssignment(LocalDate assignmentFrom, LocalDate assignmentTo) {
+        if (assignmentFrom == null
+                || (assignmentTo != null && assignmentTo.isBefore(assignmentFrom))) {
+            throw invalidPerson();
+        }
+    }
+
+    private void validateSensitive(String phone, String certificate) {
+        if (blank(phone) || blank(certificate)
+                || phone.trim().length() > 32 || certificate.trim().length() > 64) {
             throw invalidPerson();
         }
     }
@@ -343,7 +393,7 @@ public class MinePersonService {
         return new PersonResponse(
                 person.id(), person.organizationId(), person.siteId(), person.personCode(),
                 person.name(), person.personType(), person.phoneMasked(), person.certificateMasked(),
-                person.employmentFrom(), person.employmentTo(), person.status(), person.archivedAt(),
+                person.assignmentFrom(), person.assignmentTo(), person.status(), person.archivedAt(),
                 person.createdAt(), person.updatedAt(), person.version());
     }
 
@@ -432,5 +482,13 @@ public class MinePersonService {
 
     private MineException invalidQualification() {
         return new MineException(QUALIFICATION_INVALID, Map.of());
+    }
+
+    private Instant startOfDay(LocalDate date, String timezone) {
+        return date.atStartOfDay(ZoneId.of(timezone)).toInstant();
+    }
+
+    private Instant endExclusive(LocalDate date, String timezone) {
+        return date == null ? null : startOfDay(date.plusDays(1), timezone);
     }
 }

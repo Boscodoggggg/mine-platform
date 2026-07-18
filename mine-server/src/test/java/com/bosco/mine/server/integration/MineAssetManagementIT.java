@@ -178,6 +178,8 @@ class MineAssetManagementIT {
         assertThat(queryService.findVehicles(firstSiteId, null, "ARCHIVED", 1, 20).items())
                 .extracting(VehicleResponse::id)
                 .containsExactly(firstVehicle.id());
+        assertThat(queryService.findVehicles(
+                firstSiteId, null, null, Integer.MAX_VALUE, 100).items()).isEmpty();
         assertThat(queryService.findLocationTags(firstSiteId, null, "ARCHIVED", 1, 20).items())
                 .extracting(LocationTagResponse::id)
                 .containsExactly(tag.id());
@@ -215,11 +217,50 @@ class MineAssetManagementIT {
                 .isInstanceOfSatisfying(MineException.class, exception ->
                         assertThat(exception.errorCode().code()).isEqualTo("MINE-ASSET-422-003"));
 
+        assertThatThrownBy(() -> commandService.createCoordinateTransform(
+                firstSiteId,
+                new CoordinateTransformRequest(
+                        source.id(), target.id(), 2, "WGS84_ENU",
+                        objectMapper.readTree("""
+                                {"originLongitude":116.3,"originLatitude":39.9,"originAltitude":80}
+                                """), Instant.parse("2026-01-01T00:00:00Z"), null)))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-ASSET-422-004"));
+
         CoordinateTransformResponse draft = commandService.createCoordinateTransform(
                 firstSiteId,
                 new CoordinateTransformRequest(
                         source.id(), target.id(), 1, "IDENTITY",
                         objectMapper.readTree("{}"), Instant.parse("2026-01-01T00:00:00Z"), null));
+        assertThatThrownBy(() -> commandService.updateCoordinateTransform(
+                firstSiteId,
+                draft.id(),
+                new CoordinateTransformUpdateRequest(
+                        "WGS84_ENU",
+                        objectMapper.readTree("""
+                                {"originLongitude":116.3,"originLatitude":39.9,"originAltitude":80}
+                                """),
+                        Instant.parse("2026-01-01T00:00:00Z"), null, draft.version())))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-ASSET-422-004"));
+
+        CoordinateTransformResponse tamperedDraft = commandService.createCoordinateTransform(
+                firstSiteId,
+                new CoordinateTransformRequest(
+                        source.id(), target.id(), 3, "IDENTITY",
+                        objectMapper.readTree("{}"), Instant.parse("2026-01-01T00:00:00Z"), null));
+        jdbcTemplate.update("""
+                UPDATE mine_coordinate_transform_version
+                SET algorithm = 'WGS84_ENU',
+                    parameters = '{"originLongitude":116.3,"originLatitude":39.9,
+                                   "originAltitude":80}'::JSONB
+                WHERE id = ?
+                """, tamperedDraft.id());
+        assertThatThrownBy(() -> commandService.publishCoordinateTransform(
+                firstSiteId, tamperedDraft.id(), tamperedDraft.version()))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-ASSET-422-004"));
+
         CoordinateTransformResponse updated = commandService.updateCoordinateTransform(
                 firstSiteId,
                 draft.id(),

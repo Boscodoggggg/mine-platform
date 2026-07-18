@@ -61,7 +61,7 @@ public class MineAssetQueryService {
         MineSite site = requirePageAndSite(siteId, page, size);
         String normalizedKeyword = optional(keyword);
         String normalizedStatus = optionalUpper(status);
-        int offset = Math.multiplyExact(page - 1, size);
+        long offset = (long) (page - 1) * size;
         return new PageResponse<>(
                 mapper.findVehicles(
                                 site.organizationId(), site.id(), normalizedKeyword,
@@ -81,7 +81,7 @@ public class MineAssetQueryService {
         MineSite site = requirePageAndSite(siteId, page, size);
         String normalizedKeyword = optional(keyword);
         String normalizedStatus = optionalUpper(status);
-        int offset = Math.multiplyExact(page - 1, size);
+        long offset = (long) (page - 1) * size;
         return new PageResponse<>(
                 mapper.findLocationTags(
                                 site.organizationId(), site.id(), normalizedKeyword,
@@ -101,7 +101,7 @@ public class MineAssetQueryService {
         MineSite site = requirePageAndSite(siteId, page, size);
         String normalizedKeyword = optional(keyword);
         String normalizedStatus = optionalUpper(status);
-        int offset = Math.multiplyExact(page - 1, size);
+        long offset = (long) (page - 1) * size;
         return new PageResponse<>(
                 mapper.findCoordinateSystems(
                                 site.organizationId(), site.id(), normalizedKeyword,
@@ -120,7 +120,7 @@ public class MineAssetQueryService {
     ) {
         MineSite site = requirePageAndSite(siteId, page, size);
         String normalizedStatus = optionalUpper(status);
-        int offset = Math.multiplyExact(page - 1, size);
+        long offset = (long) (page - 1) * size;
         return new PageResponse<>(
                 mapper.findCoordinateTransforms(
                                 site.organizationId(), site.id(), normalizedStatus, offset, size)

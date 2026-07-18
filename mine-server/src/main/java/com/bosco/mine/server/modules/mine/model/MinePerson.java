@@ -17,8 +17,8 @@ import java.util.UUID;
  * @param phoneMasked 脱敏手机号
  * @param certificateCiphertext 证件号码密文
  * @param certificateMasked 脱敏证件号码
- * @param employmentFrom 任职开始日期
- * @param employmentTo 任职结束日期
+ * @param assignmentFrom 当前查询矿区的任职开始日期
+ * @param assignmentTo 当前查询矿区的任职结束日期
  * @param status 人员状态
  * @param archivedAt 归档时间
  * @param createdAt 创建时间
@@ -36,8 +36,8 @@ public record MinePerson(
         String phoneMasked,
         String certificateCiphertext,
         String certificateMasked,
-        LocalDate employmentFrom,
-        LocalDate employmentTo,
+        LocalDate assignmentFrom,
+        LocalDate assignmentTo,
         String status,
         Instant archivedAt,
         Instant createdAt,

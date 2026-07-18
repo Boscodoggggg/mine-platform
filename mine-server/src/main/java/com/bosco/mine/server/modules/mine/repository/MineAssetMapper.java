@@ -64,7 +64,7 @@ public interface MineAssetMapper {
             @Param("siteId") UUID siteId,
             @Param("keyword") String keyword,
             @Param("status") String status,
-            @Param("offset") int offset,
+            @Param("offset") long offset,
             @Param("limit") int limit);
 
     /** 统计矿区车辆。 */
@@ -192,7 +192,7 @@ public interface MineAssetMapper {
             @Param("siteId") UUID siteId,
             @Param("keyword") String keyword,
             @Param("status") String status,
-            @Param("offset") int offset,
+            @Param("offset") long offset,
             @Param("limit") int limit);
 
     /** 统计定位标签。 */
@@ -314,7 +314,7 @@ public interface MineAssetMapper {
             @Param("siteId") UUID siteId,
             @Param("keyword") String keyword,
             @Param("status") String status,
-            @Param("offset") int offset,
+            @Param("offset") long offset,
             @Param("limit") int limit);
 
     /** 统计坐标系。 */
@@ -448,7 +448,7 @@ public interface MineAssetMapper {
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
             @Param("status") String status,
-            @Param("offset") int offset,
+            @Param("offset") long offset,
             @Param("limit") int limit);
 
     /** 统计坐标转换版本。 */

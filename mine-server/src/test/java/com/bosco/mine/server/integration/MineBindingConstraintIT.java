@@ -15,6 +15,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.time.Instant;
@@ -73,6 +74,7 @@ class MineBindingConstraintIT {
                 TRUNCATE TABLE
                     mine_person_vehicle_binding,
                     mine_person_tag_binding,
+                    mine_person_site_assignment,
                     mine_vehicle_tag_binding,
                     mine_location_tag_binding_claim,
                     mine_vehicle_device_binding,
@@ -203,6 +205,53 @@ class MineBindingConstraintIT {
         assertThat(primaryDriverConflict.getSQLState()).isEqualTo("23P01");
     }
 
+    @Test
+    void 人员标签和司机绑定必须完整落在同矿区任职区间() {
+        UUID unassignedPersonId = insertPersonMaster("binding-person-unassigned");
+        assertCommitRejected(connection -> insertPersonVehicle(
+                connection,
+                unassignedPersonId,
+                firstVehicleId,
+                "PRIMARY_DRIVER",
+                T0,
+                T1));
+    }
+
+    @Test
+    void 任职收缩与司机绑定并发写入必须按人员时间线串行化() throws Exception {
+        try (Connection firstConnection = connection();
+             Connection secondConnection = connection();
+             var executor = Executors.newSingleThreadExecutor()) {
+            firstConnection.setAutoCommit(false);
+            secondConnection.setAutoCommit(false);
+            int secondBackendPid = backendPid(secondConnection);
+            insertPersonVehicle(
+                    firstConnection, firstPersonId, firstVehicleId, "PRIMARY_DRIVER", T0, T2);
+
+            CountDownLatch ready = new CountDownLatch(1);
+            Future<SQLException> result = executor.submit(() -> {
+                ready.countDown();
+                try {
+                    shortenAssignment(secondConnection, firstPersonId, T1);
+                    secondConnection.commit();
+                    return null;
+                } catch (SQLException exception) {
+                    secondConnection.rollback();
+                    return exception;
+                }
+            });
+
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(awaitLockWait(secondBackendPid))
+                    .as("任职收缩必须等待同一人员尚未提交的绑定写入")
+                    .isTrue();
+            firstConnection.commit();
+            SQLException exception = result.get(10, TimeUnit.SECONDS);
+            assertThat((Throwable) exception).isNotNull();
+            assertThat(exception.getSQLState()).isEqualTo("23514");
+        }
+    }
+
     private UUID insertVehicle(String code) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
@@ -232,18 +281,29 @@ class MineBindingConstraintIT {
     }
 
     private UUID insertPerson(String code) {
+        UUID id = insertPersonMaster(code);
+        jdbcTemplate.update("""
+                INSERT INTO mine_person_site_assignment (
+                    id, organization_id, site_id, person_id, valid_from, reason
+                ) VALUES (?, ?, ?, ?, ?, '绑定测试任职')
+                """, UUID.randomUUID(), organizationId, siteId, id,
+                T0.minusSeconds(1).atOffset(ZoneOffset.UTC));
+        return id;
+    }
+
+    private UUID insertPersonMaster(String code) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
                 INSERT INTO mine_person (
-                    id, organization_id, site_id, person_code, name, person_type,
+                    id, organization_id, person_code, name, person_type,
                     phone_ciphertext, phone_masked, certificate_ciphertext,
-                    certificate_masked, employment_from
+                    certificate_masked
                 ) VALUES (
-                    ?, ?, ?, ?, ?, 'DRIVER',
-                    'v1:bm9uY2U:Y2lwaGVydGV4dA', '138****8000',
-                    'v1:bm9uY2U:Y2lwaGVydGV4dA', '410***********1234', DATE '2025-01-01'
+                    ?, ?, ?, ?, 'DRIVER',
+                    'v2:bm9uY2U:Y2lwaGVydGV4dA', '138****8000',
+                    'v2:bm9uY2U:Y2lwaGVydGV4dA', '410***********1234'
                 )
-                """, id, organizationId, siteId, code, code);
+                """, id, organizationId, code, code);
         return id;
     }
 
@@ -388,12 +448,29 @@ class MineBindingConstraintIT {
         }
     }
 
+    private void shortenAssignment(
+            Connection connection, UUID personId, Instant validTo
+    ) throws SQLException {
+        try (var statement = connection.prepareStatement("""
+                UPDATE mine_person_site_assignment
+                SET valid_to = ?
+                WHERE organization_id = ? AND site_id = ? AND person_id = ?
+                """)) {
+            setInstant(statement, 1, validTo);
+            statement.setObject(2, organizationId);
+            statement.setObject(3, siteId);
+            statement.setObject(4, personId);
+            statement.executeUpdate();
+        }
+    }
+
     private SQLException concurrentConflict(SqlOperation first, SqlOperation second) throws Exception {
         try (Connection firstConnection = connection();
              Connection secondConnection = connection();
              var executor = Executors.newSingleThreadExecutor()) {
             firstConnection.setAutoCommit(false);
             secondConnection.setAutoCommit(false);
+            int secondBackendPid = backendPid(secondConnection);
             first.execute(firstConnection);
             CountDownLatch ready = new CountDownLatch(1);
             Future<SQLException> result = executor.submit(() -> {
@@ -408,11 +485,38 @@ class MineBindingConstraintIT {
                 }
             });
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(awaitLockWait(secondBackendPid))
+                    .as("第二事务必须在首事务提交前进入数据库锁等待")
+                    .isTrue();
             firstConnection.commit();
             SQLException exception = result.get(10, TimeUnit.SECONDS);
             assertThat((Throwable) exception).as("重叠绑定必须由数据库拒绝").isNotNull();
             return exception;
         }
+    }
+
+    private int backendPid(Connection connection) throws SQLException {
+        try (var statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("SELECT pg_backend_pid()")) {
+            resultSet.next();
+            return resultSet.getInt(1);
+        }
+    }
+
+    private boolean awaitLockWait(int backendPid) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Boolean waiting = jdbcTemplate.queryForObject("""
+                    SELECT wait_event_type = 'Lock'
+                    FROM pg_stat_activity
+                    WHERE pid = ?
+                    """, Boolean.class, backendPid);
+            if (Boolean.TRUE.equals(waiting)) {
+                return true;
+            }
+            Thread.sleep(10);
+        }
+        return false;
     }
 
     private void inTransaction(SqlOperation operation) throws Exception {
