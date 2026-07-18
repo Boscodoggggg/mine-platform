@@ -20,6 +20,7 @@ import com.bosco.mine.server.modules.mine.model.MineCoordinateTransform;
 import com.bosco.mine.server.modules.mine.model.MineLocationTag;
 import com.bosco.mine.server.modules.mine.model.MineSite;
 import com.bosco.mine.server.modules.mine.model.MineVehicle;
+import com.bosco.mine.server.modules.mine.location.LocationSnapshotService;
 import com.bosco.mine.server.modules.mine.repository.MineAssetMapper;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -82,6 +83,7 @@ public class MineAssetCommandService {
     private final MineAssetQueryService queryService;
     private final OperationAuditService auditService;
     private final ObjectMapper objectMapper;
+    private final LocationSnapshotService locationSnapshotService;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -92,19 +94,22 @@ public class MineAssetCommandService {
      * @param queryService 资产查询服务
      * @param auditService 操作审计服务
      * @param objectMapper JSON 映射器
+     * @param locationSnapshotService 定位运行快照服务
      */
     public MineAssetCommandService(
             MineAssetMapper mapper,
             MineScopeAuthorizer authorizer,
             MineAssetQueryService queryService,
             OperationAuditService auditService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            LocationSnapshotService locationSnapshotService
     ) {
         this.mapper = mapper;
         this.authorizer = authorizer;
         this.queryService = queryService;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.locationSnapshotService = locationSnapshotService;
     }
 
     /** 创建矿区车辆。 */
@@ -127,6 +132,7 @@ public class MineAssetCommandService {
         VehicleResponse created = vehicle(site, id);
         audit("CREATE_VEHICLE", "mine:vehicle:edit", "MINE_VEHICLE", id,
                 Map.of(), vehicleSummary(created));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.ASSET_CHANGE);
         return created;
     }
 
@@ -151,6 +157,7 @@ public class MineAssetCommandService {
         VehicleResponse updated = vehicle(site, vehicleId);
         audit("UPDATE_VEHICLE", "mine:vehicle:edit", "MINE_VEHICLE", vehicleId,
                 vehicleSummary(MineAssetQueryService.toResponse(before)), vehicleSummary(updated));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.ASSET_CHANGE);
         return updated;
     }
 
@@ -167,6 +174,7 @@ public class MineAssetCommandService {
         VehicleResponse archived = vehicle(site, vehicleId);
         audit("ARCHIVE_VEHICLE", "mine:vehicle:edit", "MINE_VEHICLE", vehicleId,
                 vehicleSummary(MineAssetQueryService.toResponse(before)), vehicleSummary(archived));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.ASSET_CHANGE);
     }
 
     /** 创建定位标签。 */
@@ -188,6 +196,7 @@ public class MineAssetCommandService {
         LocationTagResponse created = locationTag(site, id);
         audit("CREATE_LOCATION_TAG", "mine:location-tag:edit", "MINE_LOCATION_TAG", id,
                 Map.of(), tagSummary(created));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.ASSET_CHANGE);
         return created;
     }
 
@@ -210,6 +219,7 @@ public class MineAssetCommandService {
         LocationTagResponse updated = locationTag(site, tagId);
         audit("UPDATE_LOCATION_TAG", "mine:location-tag:edit", "MINE_LOCATION_TAG", tagId,
                 tagSummary(MineAssetQueryService.toResponse(before)), tagSummary(updated));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.ASSET_CHANGE);
         return updated;
     }
 
@@ -226,6 +236,7 @@ public class MineAssetCommandService {
         LocationTagResponse archived = locationTag(site, tagId);
         audit("ARCHIVE_LOCATION_TAG", "mine:location-tag:edit", "MINE_LOCATION_TAG", tagId,
                 tagSummary(MineAssetQueryService.toResponse(before)), tagSummary(archived));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.ASSET_CHANGE);
     }
 
     /** 创建坐标系。 */
@@ -249,6 +260,7 @@ public class MineAssetCommandService {
         CoordinateSystemResponse created = coordinateSystem(site, id);
         audit("CREATE_COORDINATE_SYSTEM", "mine:coordinate:edit", "MINE_COORDINATE_SYSTEM", id,
                 Map.of(), coordinateSummary(created));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.COORDINATE_CHANGE);
         return created;
     }
 
@@ -274,6 +286,7 @@ public class MineAssetCommandService {
         CoordinateSystemResponse updated = coordinateSystem(site, systemId);
         audit("UPDATE_COORDINATE_SYSTEM", "mine:coordinate:edit", "MINE_COORDINATE_SYSTEM", systemId,
                 coordinateSummary(MineAssetQueryService.toResponse(before)), coordinateSummary(updated));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.COORDINATE_CHANGE);
         return updated;
     }
 
@@ -290,6 +303,7 @@ public class MineAssetCommandService {
         CoordinateSystemResponse archived = coordinateSystem(site, systemId);
         audit("ARCHIVE_COORDINATE_SYSTEM", "mine:coordinate:edit", "MINE_COORDINATE_SYSTEM", systemId,
                 coordinateSummary(MineAssetQueryService.toResponse(before)), coordinateSummary(archived));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.COORDINATE_CHANGE);
     }
 
     /** 创建坐标转换草稿。 */
@@ -316,6 +330,7 @@ public class MineAssetCommandService {
         CoordinateTransformResponse created = coordinateTransform(site, id);
         audit("CREATE_COORDINATE_TRANSFORM", "mine:coordinate:edit",
                 "MINE_COORDINATE_TRANSFORM", id, Map.of(), transformSummary(created));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.COORDINATE_CHANGE);
         return created;
     }
 
@@ -345,6 +360,7 @@ public class MineAssetCommandService {
         audit("UPDATE_COORDINATE_TRANSFORM", "mine:coordinate:edit",
                 "MINE_COORDINATE_TRANSFORM", transformId,
                 transformSummary(queryService.toResponse(before)), transformSummary(updated));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.COORDINATE_CHANGE);
         return updated;
     }
 
@@ -378,7 +394,15 @@ public class MineAssetCommandService {
         audit("PUBLISH_COORDINATE_TRANSFORM", "mine:coordinate:publish",
                 "MINE_COORDINATE_TRANSFORM", transformId,
                 transformSummary(queryService.toResponse(before)), transformSummary(published));
+        refreshLocationSnapshot(site, LocationSnapshotService.ChangeReason.COORDINATE_CHANGE);
         return published;
+    }
+
+    private void refreshLocationSnapshot(
+            MineSite site,
+            LocationSnapshotService.ChangeReason reason
+    ) {
+        locationSnapshotService.captureSite(site.organizationId(), site.id(), reason);
     }
 
     private MineVehicle requireVehicle(MineSite site, UUID id) {

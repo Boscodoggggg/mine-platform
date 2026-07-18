@@ -33,6 +33,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -86,6 +88,9 @@ class MineAssetManagementIT {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private UUID firstUserId;
     private UUID secondUserId;
@@ -186,6 +191,52 @@ class MineAssetManagementIT {
         assertThat(auditActions()).contains(
                 "CREATE_VEHICLE", "UPDATE_VEHICLE", "ARCHIVE_VEHICLE",
                 "CREATE_LOCATION_TAG", "ARCHIVE_LOCATION_TAG");
+    }
+
+    @Test
+    void 资产事务只能在整体成功时提交快照和刷新事件() {
+        long initialSnapshotCount = snapshotCount(firstSiteId);
+        long initialOutboxCount = locationOutboxCount(firstSiteId);
+
+        VehicleResponse committed = commandService.createVehicle(
+                firstSiteId,
+                new VehicleRequest(
+                        "snapshot-committed", "已提交快照车辆", "HAUL_TRUCK", "S-001", null,
+                        "测试品牌", "S90", new BigDecimal("90.000")));
+
+        assertThat(snapshotCount(firstSiteId)).isEqualTo(initialSnapshotCount + 1);
+        assertThat(locationOutboxCount(firstSiteId)).isEqualTo(initialOutboxCount + 1);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM mine_location_runtime_snapshot_item item
+                JOIN mine_location_runtime_snapshot snapshot ON snapshot.id = item.snapshot_id
+                WHERE snapshot.site_id = ?
+                  AND snapshot.revision = (
+                      SELECT MAX(latest.revision)
+                      FROM mine_location_runtime_snapshot latest
+                      WHERE latest.site_id = ?
+                  )
+                  AND item.item_key = ?
+                """, Long.class, firstSiteId, firstSiteId, "VEHICLE:" + committed.id()))
+                .isEqualTo(1L);
+
+        long committedSnapshotCount = snapshotCount(firstSiteId);
+        long committedOutboxCount = locationOutboxCount(firstSiteId);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.executeWithoutResult(status -> {
+            commandService.createVehicle(
+                    firstSiteId,
+                    new VehicleRequest(
+                            "snapshot-rolled-back", "回滚快照车辆", "HAUL_TRUCK", "S-002", null,
+                            "测试品牌", "S95", new BigDecimal("95.000")));
+            status.setRollbackOnly();
+        });
+
+        assertThat(snapshotCount(firstSiteId)).isEqualTo(committedSnapshotCount);
+        assertThat(locationOutboxCount(firstSiteId)).isEqualTo(committedOutboxCount);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM mine_vehicle WHERE site_id = ? AND vehicle_code = ?",
+                Long.class, firstSiteId, "snapshot-rolled-back")).isZero();
     }
 
     @Test
@@ -325,6 +376,26 @@ class MineAssetManagementIT {
                 WHERE module = 'MINE_MANAGEMENT'
                 ORDER BY occurred_at, id
                 """, String.class);
+    }
+
+    private long snapshotCount(UUID siteId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM mine_location_runtime_snapshot
+                WHERE site_id = ?
+                """, Long.class, siteId);
+    }
+
+    private long locationOutboxCount(UUID siteId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM sys_outbox_event event
+                JOIN mine_location_runtime_snapshot snapshot
+                  ON snapshot.id = event.aggregate_id
+                WHERE event.aggregate_type = 'LOCATION_RUNTIME_SNAPSHOT'
+                  AND snapshot.site_id = ?
+                  AND event.event_type = 'location.runtime.changed'
+                """, Long.class, siteId);
     }
 
     private Method method(String name) {

@@ -20,19 +20,23 @@ class RoutingOutboxEventPublisherTest {
         OutboxEventPublisher commandPublisher = mock(OutboxEventPublisher.class);
         OutboxEventPublisher configurationPublisher = mock(OutboxEventPublisher.class);
         OutboxEventPublisher strategyPublisher = mock(OutboxEventPublisher.class);
+        OutboxEventPublisher locationPublisher = mock(OutboxEventPublisher.class);
         RoutingOutboxEventPublisher publisher = new RoutingOutboxEventPublisher(
-                commandPublisher, configurationPublisher, strategyPublisher);
+                commandPublisher, configurationPublisher, strategyPublisher, locationPublisher);
         OutboxEvent command = event("command.dispatch.requested");
         OutboxEvent configuration = event("config.release.created");
         OutboxEvent strategy = event("strategy.runtime.changed");
+        OutboxEvent location = event("location.runtime.changed");
 
         publisher.publish(command);
         publisher.publish(configuration);
         publisher.publish(strategy);
+        publisher.publish(location);
 
         verify(commandPublisher).publish(command);
         verify(configurationPublisher).publish(configuration);
         verify(strategyPublisher).publish(strategy);
+        verify(locationPublisher).publish(location);
     }
 
     @Test
@@ -40,12 +44,14 @@ class RoutingOutboxEventPublisherTest {
         OutboxEventPublisher commandPublisher = mock(OutboxEventPublisher.class);
         OutboxEventPublisher configurationPublisher = mock(OutboxEventPublisher.class);
         OutboxEventPublisher strategyPublisher = mock(OutboxEventPublisher.class);
+        OutboxEventPublisher locationPublisher = mock(OutboxEventPublisher.class);
         RoutingOutboxEventPublisher publisher = new RoutingOutboxEventPublisher(
-                commandPublisher, configurationPublisher, strategyPublisher);
+                commandPublisher, configurationPublisher, strategyPublisher, locationPublisher);
 
         assertThatThrownBy(() -> publisher.publish(event("unknown.event")))
                 .isInstanceOf(IllegalArgumentException.class);
-        verifyNoInteractions(commandPublisher, configurationPublisher, strategyPublisher);
+        verifyNoInteractions(
+                commandPublisher, configurationPublisher, strategyPublisher, locationPublisher);
     }
 
     private OutboxEvent event(String eventType) {

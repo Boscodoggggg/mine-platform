@@ -82,6 +82,8 @@ class DatabaseMigrationIT {
             "mine_person_tag_binding",
             "mine_person_vehicle_binding",
             "mine_binding_switch_operation",
+            "mine_location_runtime_snapshot",
+            "mine_location_runtime_snapshot_item",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -344,6 +346,36 @@ class DatabaseMigrationIT {
                 """, Long.class)).isZero();
         assertThat(constraintColumns("uk_mine_binding_switch_operation_idempotency"))
                 .containsExactly("operator_id", "idempotency_key");
+    }
+
+    @Test
+    void 定位运行快照表必须注释完整且禁止原地修改() {
+        for (String table : List.of(
+                "mine_location_runtime_snapshot",
+                "mine_location_runtime_snapshot_item")) {
+            assertThat(jdbcTemplate.queryForObject("""
+                    SELECT obj_description(CAST(? AS regclass), 'pg_class')
+                    """, String.class, table))
+                    .matches(".*[\\u4e00-\\u9fff].*");
+            assertThat(jdbcTemplate.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM pg_attribute
+                    WHERE attrelid = CAST(? AS regclass)
+                      AND attnum > 0
+                      AND NOT attisdropped
+                      AND COALESCE(col_description(attrelid, attnum), '') = ''
+                    """, Long.class, table)).isZero();
+        }
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_trigger
+                WHERE tgrelid IN (
+                    'mine_location_runtime_snapshot'::regclass,
+                    'mine_location_runtime_snapshot_item'::regclass
+                )
+                  AND NOT tgisinternal
+                  AND tgname LIKE 'trg_mine_location_runtime_snapshot%immutable'
+                """, Long.class)).isEqualTo(2);
     }
 
     @Test

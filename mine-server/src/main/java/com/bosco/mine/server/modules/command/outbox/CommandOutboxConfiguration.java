@@ -71,7 +71,8 @@ public class CommandOutboxConfiguration {
         return new RoutingOutboxEventPublisher(
                 new RabbitCommandOutboxPublisher(rabbitTemplate, confirmTimeoutMillis),
                 new RabbitConfigurationOutboxPublisher(rabbitTemplate, confirmTimeoutMillis),
-                new RabbitStrategyOutboxPublisher(rabbitTemplate, confirmTimeoutMillis)
+                new RabbitStrategyOutboxPublisher(rabbitTemplate, confirmTimeoutMillis),
+                new RabbitLocationSnapshotOutboxPublisher(rabbitTemplate, confirmTimeoutMillis)
         );
     }
 

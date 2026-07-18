@@ -4,11 +4,11 @@ import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.common.time.MineClock;
-import com.bosco.mine.server.modules.command.outbox.OutboxCommitNotifier;
 import com.bosco.mine.server.modules.device.model.Device;
 import com.bosco.mine.server.modules.device.repository.DeviceMapper;
 import com.bosco.mine.server.modules.mine.dto.BindingPreviewResponse;
 import com.bosco.mine.server.modules.mine.dto.BindingSwitchRequest;
+import com.bosco.mine.server.modules.mine.location.LocationSnapshotService;
 import com.bosco.mine.server.modules.mine.model.MineLocationTag;
 import com.bosco.mine.server.modules.mine.model.MineSite;
 import com.bosco.mine.server.modules.mine.model.MineVehicle;
@@ -80,7 +80,7 @@ public class MineBindingService {
     private final DeviceMapper deviceMapper;
     private final MineScopeAuthorizer authorizer;
     private final OperationAuditService auditService;
-    private final OutboxCommitNotifier commitNotifier;
+    private final LocationSnapshotService locationSnapshotService;
     private final ObjectMapper objectMapper;
     private final MineClock clock;
     private final IdGenerator idGenerator;
@@ -93,7 +93,7 @@ public class MineBindingService {
      * @param deviceMapper 设备台账数据访问接口
      * @param authorizer 矿区作用域授权器
      * @param auditService 操作审计服务
-     * @param commitNotifier Outbox 提交后通知器
+     * @param locationSnapshotService 定位运行快照服务
      * @param objectMapper JSON 映射器
      */
     @Autowired
@@ -103,12 +103,13 @@ public class MineBindingService {
             DeviceMapper deviceMapper,
             MineScopeAuthorizer authorizer,
             OperationAuditService auditService,
-            OutboxCommitNotifier commitNotifier,
+            LocationSnapshotService locationSnapshotService,
             ObjectMapper objectMapper
     ) {
         this(
                 mapper, assetMapper, deviceMapper, authorizer, auditService,
-                commitNotifier, objectMapper, MineClock.systemUtc(), IdGenerator.timeOrdered());
+                locationSnapshotService, objectMapper,
+                MineClock.systemUtc(), IdGenerator.timeOrdered());
     }
 
     /**
@@ -120,7 +121,7 @@ public class MineBindingService {
             DeviceMapper deviceMapper,
             MineScopeAuthorizer authorizer,
             OperationAuditService auditService,
-            OutboxCommitNotifier commitNotifier,
+            LocationSnapshotService locationSnapshotService,
             ObjectMapper objectMapper,
             MineClock clock,
             IdGenerator idGenerator
@@ -130,7 +131,8 @@ public class MineBindingService {
         this.deviceMapper = Objects.requireNonNull(deviceMapper, "设备数据访问接口不能为空");
         this.authorizer = Objects.requireNonNull(authorizer, "矿区授权器不能为空");
         this.auditService = Objects.requireNonNull(auditService, "操作审计服务不能为空");
-        this.commitNotifier = Objects.requireNonNull(commitNotifier, "Outbox 通知器不能为空");
+        this.locationSnapshotService = Objects.requireNonNull(
+                locationSnapshotService, "定位快照服务不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "JSON 映射器不能为空");
         this.clock = Objects.requireNonNull(clock, "业务时钟不能为空");
         this.idGenerator = Objects.requireNonNull(idGenerator, "标识生成器不能为空");
@@ -220,11 +222,12 @@ public class MineBindingService {
         try {
             closePrevious(previous, command.effectiveAt(), operatorId);
             insertNew(site, command, context.proposedValidTo(), newBindingId, operatorId);
-            mapper.insertOutbox(
-                    outboxEventId, operationId,
-                    outboxPayload(operationId, newBindingId, previous, site, command));
+            locationSnapshotService.captureSite(
+                            site.organizationId(), site.id(),
+                            LocationSnapshotService.ChangeReason.BINDING_SWITCH,
+                            outboxEventId)
+                    .orElseThrow(() -> new IllegalStateException("换绑后定位运行快照未发生变化"));
             audit(operationId, previous, newBindingId, site, command, outboxEventId);
-            commitNotifier.notifyAfterCommit(outboxEventId);
         } catch (DataIntegrityViolationException exception) {
             throw new MineException(BINDING_CONFLICT, Map.of());
         }
@@ -659,32 +662,6 @@ public class MineBindingService {
         auditService.recordSuccess(
                 "MINE_MANAGEMENT", "SWITCH_BINDING", "mine:binding:switch",
                 "MINE_BINDING_SWITCH", operationId, before, after);
-    }
-
-    private String outboxPayload(
-            UUID operationId,
-            UUID newBindingId,
-            BindingRecord previous,
-            MineSite site,
-            NormalizedCommand command
-    ) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("operationId", operationId);
-        payload.put("organizationId", site.organizationId());
-        payload.put("siteId", site.id());
-        payload.put("bindingType", command.type().name());
-        payload.put("resourceId", command.resourceId());
-        payload.put("targetId", command.targetId());
-        payload.put("role", command.role());
-        payload.put("effectiveAt", command.effectiveAt());
-        payload.put("reason", command.reason());
-        payload.put("previousBindingId", previous == null ? null : previous.bindingId());
-        payload.put("newBindingId", newBindingId);
-        try {
-            return objectMapper.writeValueAsString(payload);
-        } catch (JacksonException exception) {
-            throw new IllegalStateException("换绑 Outbox 载荷序列化失败", exception);
-        }
     }
 
     private String writeResponse(BindingPreviewResponse response) {

@@ -45,6 +45,9 @@ public final class MineTopology {
     /** 运行策略变更交换机。 */
     public static final String STRATEGY_EXCHANGE = "mine.strategy.x";
 
+    /** 定位运行快照变更交换机。 */
+    public static final String LOCATION_CONFIG_EXCHANGE = "mine.location-config.x";
+
     /** 已持久化最新值的实时通知交换机。 */
     public static final String REALTIME_EXCHANGE = "mine.realtime.x";
 
@@ -95,6 +98,12 @@ public final class MineTopology {
 
     /** 运行策略变更路由模式。 */
     public static final String STRATEGY_ROUTING_PATTERN = "strategy.runtime.#";
+
+    /** 定位运行快照变更路由键前缀。 */
+    public static final String LOCATION_RUNTIME_ROUTING_PREFIX = "location.runtime.";
+
+    /** 定位运行快照变更路由模式。 */
+    public static final String LOCATION_RUNTIME_ROUTING_PATTERN = "location.runtime.#";
 
     /** 告警触发稳定路由键。 */
     public static final String ALARM_RAISED_ROUTING_KEY = "alarm.raised";

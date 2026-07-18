@@ -79,6 +79,24 @@ class InternalServiceTokenFilterTest {
     }
 
     @Test
+    void 定位运行快照接口缺少服务令牌时必须拒绝() throws Exception {
+        Path tokenFile = tempDir.resolve("configuration-token");
+        String token = "configuration-token-with-at-least-32-bytes";
+        Files.writeString(tokenFile, token);
+        InternalServiceTokenFilter filter = new InternalServiceTokenFilter(
+                new ConfigurationDistributionProperties(true, tokenFile));
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/v1/internal/location-snapshots/latest");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        FilterChain chain = mock(FilterChain.class);
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(response.getStatus()).isEqualTo(401);
+        verify(chain, never()).doFilter(request, response);
+    }
+
+    @Test
     void 同一服务令牌必须保护聚合重算认领接口() throws Exception {
         Path tokenFile = tempDir.resolve("configuration-token");
         String token = "configuration-token-with-at-least-32-bytes";

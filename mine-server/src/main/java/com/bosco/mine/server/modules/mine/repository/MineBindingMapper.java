@@ -612,22 +612,6 @@ public interface MineBindingMapper {
             @Param("operatorId") UUID operatorId
     );
 
-    /** 在换绑业务事务内写入待可靠发布事件。 */
-    @Insert("""
-            INSERT INTO sys_outbox_event (
-                id, aggregate_type, aggregate_id, event_type,
-                schema_version, payload, headers
-            ) VALUES (
-                #{eventId}, 'MINE_BINDING', #{operationId}, 'mine.binding.switched',
-                1, CAST(#{payloadJson} AS JSONB), '{}'::JSONB
-            )
-            """)
-    int insertOutbox(
-            @Param("eventId") UUID eventId,
-            @Param("operationId") UUID operationId,
-            @Param("payloadJson") String payloadJson
-    );
-
     /** 统一的四类绑定投影。 */
     record BindingRecord(
             UUID bindingId,

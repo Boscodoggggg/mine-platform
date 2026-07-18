@@ -94,6 +94,8 @@ class MineBindingServiceIT {
     void 准备可换绑的矿区资产() {
         jdbcTemplate.execute("""
                 TRUNCATE TABLE
+                    mine_location_runtime_snapshot_item,
+                    mine_location_runtime_snapshot,
                     mine_binding_switch_operation,
                     mine_person_vehicle_binding,
                     mine_person_tag_binding,
@@ -141,6 +143,13 @@ class MineBindingServiceIT {
         insertQualification(
                 personId, List.of("HAUL_TRUCK"),
                 localDate(effectiveAt).minusDays(1), localDate(effectiveAt).plusDays(1));
+        jdbcTemplate.execute("""
+                TRUNCATE TABLE
+                    mine_location_runtime_snapshot_item,
+                    mine_location_runtime_snapshot,
+                    sys_outbox_event
+                CASCADE
+                """);
         jdbcTemplate.update("DELETE FROM sys_operation_log");
     }
 
@@ -401,6 +410,22 @@ class MineBindingServiceIT {
                     assertThat(resolved.bindingId())
                             .isEqualTo(switched.proposedBinding().bindingId());
                 });
+        String snapshotContent = jdbcTemplate.queryForObject("""
+                SELECT string_agg(item.content::TEXT, '')
+                FROM mine_location_runtime_snapshot_item item
+                JOIN mine_location_runtime_snapshot snapshot ON snapshot.id = item.snapshot_id
+                WHERE snapshot.site_id = ?
+                  AND snapshot.revision = (
+                      SELECT MAX(latest.revision)
+                      FROM mine_location_runtime_snapshot latest
+                      WHERE latest.site_id = ?
+                  )
+                """, String.class, firstSiteId, firstSiteId);
+        assertThat(snapshotContent)
+                .contains(personId.toString())
+                .doesNotContain(
+                        "换绑测试司机", "138****8000", "410***********1234",
+                        "phone", "certificate", "ciphertext");
     }
 
     @Test
@@ -486,7 +511,7 @@ class MineBindingServiceIT {
                 "SELECT COUNT(*) FROM mine_vehicle_device_binding", Long.class)).isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM sys_outbox_event
-                WHERE event_type = 'mine.binding.switched'
+                WHERE event_type = 'location.runtime.changed'
                 """, Long.class)).isOne();
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM sys_operation_log
@@ -562,7 +587,7 @@ class MineBindingServiceIT {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM mine_binding_switch_operation", Long.class)).isOne();
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM sys_outbox_event WHERE event_type = 'mine.binding.switched'",
+                "SELECT COUNT(*) FROM sys_outbox_event WHERE event_type = 'location.runtime.changed'",
                 Long.class)).isOne();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM sys_operation_log WHERE action = 'SWITCH_BINDING'",
@@ -620,7 +645,7 @@ class MineBindingServiceIT {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM mine_binding_switch_operation", Long.class)).isZero();
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM sys_outbox_event WHERE event_type = 'mine.binding.switched'",
+                "SELECT COUNT(*) FROM sys_outbox_event WHERE event_type = 'location.runtime.changed'",
                 Long.class)).isZero();
     }
 

@@ -14,6 +14,7 @@ import com.bosco.mine.server.modules.mine.dto.PersonUpdateRequest;
 import com.bosco.mine.server.modules.mine.model.MineDriverQualification;
 import com.bosco.mine.server.modules.mine.model.MinePerson;
 import com.bosco.mine.server.modules.mine.model.MineSite;
+import com.bosco.mine.server.modules.mine.location.LocationSnapshotService;
 import com.bosco.mine.server.modules.mine.repository.MinePersonMapper;
 import com.bosco.mine.server.modules.mine.security.SensitiveFieldCipher;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
@@ -70,6 +71,7 @@ public class MinePersonService {
     private final SensitiveFieldCipher cipher;
     private final OperationAuditService auditService;
     private final ObjectMapper objectMapper;
+    private final LocationSnapshotService locationSnapshotService;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -80,19 +82,22 @@ public class MinePersonService {
      * @param cipher 敏感字段加密器
      * @param auditService 操作审计服务
      * @param objectMapper JSON 映射器
+     * @param locationSnapshotService 定位运行快照服务
      */
     public MinePersonService(
             MinePersonMapper mapper,
             MineScopeAuthorizer authorizer,
             SensitiveFieldCipher cipher,
             OperationAuditService auditService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            LocationSnapshotService locationSnapshotService
     ) {
         this.mapper = mapper;
         this.authorizer = authorizer;
         this.cipher = cipher;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.locationSnapshotService = locationSnapshotService;
     }
 
     /** 创建加密存储敏感字段的人员档案。 */
@@ -126,6 +131,7 @@ public class MinePersonService {
         PersonResponse created = response(requireHistoricalPerson(site, id));
         audit("CREATE_PERSON", "mine:person:edit", "MINE_PERSON", id,
                 Map.of(), personSummary(created));
+        refreshLocationSnapshot(site);
         return created;
     }
 
@@ -184,6 +190,7 @@ public class MinePersonService {
         PersonResponse updated = response(requireCurrentPerson(site, personId));
         audit("UPDATE_PERSON", "mine:person:edit", "MINE_PERSON", personId,
                 personSummary(response(before)), personSummary(updated));
+        refreshLocationSnapshot(site);
         return updated;
     }
 
@@ -229,6 +236,7 @@ public class MinePersonService {
         }
         audit("ARCHIVE_PERSON", "mine:person:edit", "MINE_PERSON", personId,
                 personSummary(response(before)), Map.of("status", "ARCHIVED"));
+        refreshLocationSnapshot(site);
     }
 
     /**
@@ -311,6 +319,12 @@ public class MinePersonService {
         return mapper.findPerson(
                         site.organizationId(), site.id(), personId, site.timezone())
                 .orElseThrow(() -> new MineException(PERSON_NOT_FOUND, Map.of("personId", personId)));
+    }
+
+    private void refreshLocationSnapshot(MineSite site) {
+        locationSnapshotService.captureSite(
+                site.organizationId(), site.id(),
+                LocationSnapshotService.ChangeReason.ASSET_CHANGE);
     }
 
     private MinePerson requireCurrentPerson(MineSite site, UUID personId) {

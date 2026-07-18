@@ -7,6 +7,7 @@ import com.bosco.mine.server.modules.mine.dto.MineOrganizationResponse;
 import com.bosco.mine.server.modules.mine.dto.MineSiteResponse;
 import com.bosco.mine.server.modules.mine.model.MineOrganization;
 import com.bosco.mine.server.modules.mine.model.MineSite;
+import com.bosco.mine.server.modules.mine.location.LocationSnapshotService;
 import com.bosco.mine.server.modules.mine.repository.MineScopeMapper;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -45,6 +46,7 @@ public class MineScopeCommandService {
     private final MineScopeMapper mapper;
     private final MineScopeAuthorizer authorizer;
     private final OperationAuditService auditService;
+    private final LocationSnapshotService locationSnapshotService;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -53,15 +55,18 @@ public class MineScopeCommandService {
      * @param mapper 作用域数据访问接口
      * @param authorizer 数据作用域授权器
      * @param auditService 操作审计服务
+     * @param locationSnapshotService 定位运行快照服务
      */
     public MineScopeCommandService(
             MineScopeMapper mapper,
             MineScopeAuthorizer authorizer,
-            OperationAuditService auditService
+            OperationAuditService auditService,
+            LocationSnapshotService locationSnapshotService
     ) {
         this.mapper = mapper;
         this.authorizer = authorizer;
         this.auditService = auditService;
+        this.locationSnapshotService = locationSnapshotService;
     }
 
     /** 创建组织并给创建者组织级数据授权。 */
@@ -141,6 +146,9 @@ public class MineScopeCommandService {
         MineSiteResponse created = siteById(siteId);
         audit("CREATE_SITE", "mine:site:edit", "MINE_SITE", siteId,
                 Map.of(), siteSummary(created));
+        locationSnapshotService.captureSite(
+                created.organizationId(), created.id(),
+                LocationSnapshotService.ChangeReason.SITE_CHANGE);
         return created;
     }
 
@@ -167,6 +175,9 @@ public class MineScopeCommandService {
         MineSiteResponse updated = siteById(siteId);
         audit("UPDATE_SITE", "mine:site:edit", "MINE_SITE", siteId,
                 siteSummary(MineScopeQueryService.toResponse(before)), siteSummary(updated));
+        locationSnapshotService.captureSite(
+                updated.organizationId(), updated.id(),
+                LocationSnapshotService.ChangeReason.SITE_CHANGE);
         return updated;
     }
 
@@ -181,6 +192,9 @@ public class MineScopeCommandService {
         MineSiteResponse archived = siteById(siteId);
         audit("ARCHIVE_SITE", "mine:site:edit", "MINE_SITE", siteId,
                 siteSummary(MineScopeQueryService.toResponse(before)), siteSummary(archived));
+        locationSnapshotService.captureSite(
+                archived.organizationId(), archived.id(),
+                LocationSnapshotService.ChangeReason.SITE_CHANGE);
     }
 
     /** 幂等授予组织级或矿区级数据范围。 */

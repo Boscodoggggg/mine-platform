@@ -52,6 +52,10 @@ public class OutboxRelayRepository {
                   AND (
                     (aggregate_type = 'COMMAND' AND event_type = 'command.dispatch.requested')
                     OR (aggregate_type = 'CONFIG_RELEASE' AND event_type = 'config.release.created')
+                    OR (aggregate_type = 'STRATEGY_RUNTIME_SNAPSHOT'
+                        AND event_type = 'strategy.runtime.changed')
+                    OR (aggregate_type = 'LOCATION_RUNTIME_SNAPSHOT'
+                        AND event_type = 'location.runtime.changed')
                   )
                   AND (
                     (status IN ('PENDING', 'FAILED') AND next_attempt_at <= CURRENT_TIMESTAMP)
@@ -128,6 +132,10 @@ public class OutboxRelayRepository {
                 WHERE (
                     (aggregate_type = 'COMMAND' AND event_type = 'command.dispatch.requested')
                     OR (aggregate_type = 'CONFIG_RELEASE' AND event_type = 'config.release.created')
+                    OR (aggregate_type = 'STRATEGY_RUNTIME_SNAPSHOT'
+                        AND event_type = 'strategy.runtime.changed')
+                    OR (aggregate_type = 'LOCATION_RUNTIME_SNAPSHOT'
+                        AND event_type = 'location.runtime.changed')
                   )
                   AND (
                     (status IN ('PENDING', 'FAILED') AND next_attempt_at <= CURRENT_TIMESTAMP)

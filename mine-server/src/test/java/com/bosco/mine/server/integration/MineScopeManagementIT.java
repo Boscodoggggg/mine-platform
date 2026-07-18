@@ -68,6 +68,13 @@ class MineScopeManagementIT {
 
     @BeforeEach
     void 准备用户并清理矿区数据() {
+        jdbcTemplate.execute("""
+                TRUNCATE TABLE
+                    mine_location_runtime_snapshot_item,
+                    mine_location_runtime_snapshot
+                CASCADE
+                """);
+        jdbcTemplate.update("DELETE FROM sys_outbox_event WHERE event_type = 'location.runtime.changed'");
         jdbcTemplate.update("DELETE FROM mine_user_scope_grant");
         jdbcTemplate.update("DELETE FROM mine_site");
         jdbcTemplate.update("DELETE FROM mine_organization");
