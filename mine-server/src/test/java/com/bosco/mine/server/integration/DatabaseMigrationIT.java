@@ -67,6 +67,9 @@ class DatabaseMigrationIT {
             "dev_aggregation_recompute_request",
             "dev_strategy_runtime_snapshot",
             "dev_strategy_runtime_snapshot_item",
+            "mine_organization",
+            "mine_site",
+            "mine_user_scope_grant",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -114,6 +117,89 @@ class DatabaseMigrationIT {
         assertThat(constraintColumns("pk_sys_inbox_event"))
                 .containsExactly("consumer_name", "event_id");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_role", Long.class)).isZero();
+    }
+
+    @Test
+    void 组织矿区和数据授权必须具备作用域约束及完整中文注释() {
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'mine_organization', 'mine_site', 'mine_user_scope_grant'
+                )
+                ORDER BY class.relname
+                """, String.class))
+                .hasSize(3)
+                .allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN (
+                    'mine_organization'::regclass,
+                    'mine_site'::regclass,
+                    'mine_user_scope_grant'::regclass
+                )
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_mine_organization_code"))
+                .containsExactly("organization_code");
+        assertThat(constraintColumns("uk_mine_site_organization_code"))
+                .containsExactly("organization_id", "site_code");
+        assertThat(constraintColumns("uk_mine_site_id_organization"))
+                .containsExactly("id", "organization_id");
+        assertThat(constraintColumns("uk_mine_user_scope_grant_scope"))
+                .containsExactly("user_id", "organization_id", "site_id");
+        assertThat(constraintColumns("fk_mine_scope_grant_site_organization"))
+                .containsExactly("site_id", "organization_id");
+
+        UUID userId = UUID.randomUUID();
+        UUID firstOrganizationId = UUID.randomUUID();
+        UUID secondOrganizationId = UUID.randomUUID();
+        UUID firstSiteId = UUID.randomUUID();
+        UUID secondSiteId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO sys_user (id, username, password_hash, display_name)
+                VALUES (?, ?, 'bcrypt:test', '矿区作用域测试用户')
+                """, userId, "mine-scope-" + userId);
+        jdbcTemplate.update("""
+                INSERT INTO mine_organization (id, organization_code, name)
+                VALUES (?, 'north-group', '北方矿业集团'), (?, 'south-group', '南方矿业集团')
+                """, firstOrganizationId, secondOrganizationId);
+        jdbcTemplate.update("""
+                INSERT INTO mine_site (id, organization_id, site_code, name, timezone)
+                VALUES (?, ?, 'main-pit', '北方一号矿', 'Asia/Shanghai'),
+                       (?, ?, 'main-pit', '南方一号矿', 'Asia/Shanghai')
+                """, firstSiteId, firstOrganizationId, secondSiteId, secondOrganizationId);
+
+        jdbcTemplate.update("""
+                INSERT INTO mine_user_scope_grant (id, user_id, organization_id, site_id)
+                VALUES (?, ?, ?, NULL), (?, ?, ?, ?)
+                """, UUID.randomUUID(), userId, firstOrganizationId,
+                UUID.randomUUID(), userId, secondOrganizationId, secondSiteId);
+
+        assertRejected("""
+                INSERT INTO mine_user_scope_grant (id, user_id, organization_id, site_id)
+                VALUES (?, ?, ?, NULL)
+                """, UUID.randomUUID(), userId, firstOrganizationId);
+        assertRejected("""
+                INSERT INTO mine_user_scope_grant (id, user_id, organization_id, site_id)
+                VALUES (?, ?, ?, ?)
+                """, UUID.randomUUID(), userId, secondOrganizationId, firstSiteId);
+        assertRejected("""
+                INSERT INTO mine_organization (id, organization_code, name)
+                VALUES (?, 'NORTH-GROUP', '未归一化编码')
+                """, UUID.randomUUID());
+        assertRejected("""
+                INSERT INTO mine_site (id, organization_id, site_code, name, timezone)
+                VALUES (?, ?, 'invalid-site', '非法时区矿区', 'Mars/Olympus')
+                """, UUID.randomUUID(), firstOrganizationId);
+        assertRejected("""
+                UPDATE mine_site
+                   SET status = 'ARCHIVED', archived_at = NULL
+                 WHERE id = ?
+                """, firstSiteId);
     }
 
     @Test

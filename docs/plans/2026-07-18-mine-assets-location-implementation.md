@@ -40,7 +40,7 @@
 - 授权矿区必须属于同一个 `organization_id`；
 - 状态、时区、归档时间和更新时间约束不能被非法数据绕过。
 
-Run: `./mvnw -pl mine-server -Dtest=DatabaseMigrationIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=DatabaseMigrationIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: FAIL，提示三张表或约束不存在。
 
@@ -61,7 +61,7 @@ ALTER TABLE mine_user_scope_grant ADD CONSTRAINT fk_mine_scope_site_organization
 
 **Step 3: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=DatabaseMigrationIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=DatabaseMigrationIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: PASS。
 
@@ -91,7 +91,7 @@ Commit: `feat(mine): 建立组织矿区与数据授权表`
 
 覆盖 Bootstrap 管理员全局访问、组织级授权覆盖所属矿区、矿区级授权只允许单矿、跨组织伪造 `siteId` 拒绝、禁用用户/归档矿区拒绝、创建组织时给创建者组织级授权、授权增删幂等、列表只返回可见范围、所有成功写操作产生脱敏审计。
 
-Run: `./mvnw -pl mine-server -Dtest=MineScopeAuthorizerTest,MineScopeManagementIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=MineScopeAuthorizerTest,MineScopeManagementIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: FAIL，类型和 Bean 尚不存在。
 
@@ -112,7 +112,7 @@ Expected: FAIL，类型和 Bean 尚不存在。
 
 **Step 4: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=MineScopeAuthorizerTest,MineScopeManagementIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=MineScopeAuthorizerTest,MineScopeManagementIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: PASS。
 
@@ -130,7 +130,7 @@ Commit: `feat(mine): 提供矿区作用域与档案接口`
 
 覆盖 `mine_vehicle`、`mine_location_tag`、`mine_coordinate_system`、`mine_coordinate_transform_version` 的表/字段中文注释，矿区内编码唯一、跨矿可重用；统一坐标系每矿最多一个；源/目标坐标系必须属于同一矿区；发布版本参数、摘要、有效期不可原地修改；本地坐标边界必须满足 `min < max`。
 
-Run: `./mvnw -pl mine-server -Dtest=DatabaseMigrationIT,MineAssetConstraintIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=DatabaseMigrationIT,MineAssetConstraintIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: FAIL。
 
@@ -140,7 +140,7 @@ Expected: FAIL。
 
 **Step 3: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=DatabaseMigrationIT,MineAssetConstraintIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=DatabaseMigrationIT,MineAssetConstraintIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: PASS。
 
@@ -172,7 +172,7 @@ API 使用 `/api/v1/mine/sites/{siteId}/vehicles`、`/location-tags`、`/coordin
 
 **Step 3: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=MineAssetManagementIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=MineAssetManagementIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: PASS。
 
@@ -205,7 +205,7 @@ Commit: `feat(mine): 提供车辆标签与坐标管理接口`
 
 **Step 3: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=AesGcmSensitiveFieldCipherTest,MinePersonManagementIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=AesGcmSensitiveFieldCipherTest,MinePersonManagementIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: PASS。
 
@@ -237,7 +237,7 @@ Commit: `feat(mine): 管理人员资质并保护敏感字段`
 
 **Step 3: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=DatabaseMigrationIT,MineBindingConstraintIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=DatabaseMigrationIT,MineBindingConstraintIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: PASS。
 
@@ -264,7 +264,7 @@ Commit: `feat(mine): 建立矿区资产时间绑定约束`
 
 **Step 3: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=MineBindingServiceIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=MineBindingServiceIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: PASS。
 
@@ -517,7 +517,7 @@ Commit: `feat(location): 打通模拟定位存储与实时链路`
 
 **Step 3: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=LocationQueryIT,RealtimeWebSocketHandlerTest test`
+Run: `./mvnw -pl mine-server -am -Dtest=LocationQueryIT,RealtimeWebSocketHandlerTest -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Expected: PASS。
 
@@ -552,7 +552,7 @@ Pinia 只保存当前会话选中的 `siteId`，候选列表每次由 `/mine/con
 
 **Step 4: 验证并提交**
 
-Run: `./mvnw -pl mine-server -Dtest=DatabaseMigrationIT test`
+Run: `./mvnw -pl mine-server -am -Dtest=DatabaseMigrationIT -Dsurefire.failIfNoSpecifiedTests=false test`
 
 Run: `pnpm --dir mine-web test:unit -- src/app/router/dynamic-routes.test.ts src/modules/mine/stores/mine-context.test.ts`
 
