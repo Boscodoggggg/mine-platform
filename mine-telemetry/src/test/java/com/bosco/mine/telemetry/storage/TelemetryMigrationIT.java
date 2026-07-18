@@ -293,6 +293,15 @@ class TelemetryMigrationIT {
                 """))
                 .anySatisfy(definition -> assertThat(definition)
                         .contains("pg_column_size", "expires_at", "created_at"));
+        assertThat(queryStrings("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conrelid = 'location_snapshot_stage'::regclass
+                  AND conname = 'ck_location_snapshot_stage_type'
+                """))
+                .singleElement()
+                .satisfies(definition -> assertThat(definition)
+                        .contains("'SOURCE_DEVICE'::character varying"));
 
         assertThat(queryStrings("""
                 SELECT current_boot_id || ':' || highest_sequence

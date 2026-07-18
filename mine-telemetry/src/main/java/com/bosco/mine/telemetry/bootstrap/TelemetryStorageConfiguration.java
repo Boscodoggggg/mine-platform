@@ -12,6 +12,12 @@ import com.bosco.mine.telemetry.consumer.NormalizedTelemetryConsumer;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapMetrics;
 import com.bosco.mine.telemetry.consumer.TelemetrySequenceGapObserver;
 import com.bosco.mine.telemetry.latest.LatestValueRepository;
+import com.bosco.mine.telemetry.location.snapshot.HttpLocationSnapshotSource;
+import com.bosco.mine.telemetry.location.snapshot.LocationRuntimeRegistry;
+import com.bosco.mine.telemetry.location.snapshot.LocationSnapshotConsumer;
+import com.bosco.mine.telemetry.location.snapshot.LocationSnapshotLoader;
+import com.bosco.mine.telemetry.location.snapshot.LocationSnapshotMetrics;
+import com.bosco.mine.telemetry.location.transform.CoordinateTransformRegistry;
 import com.bosco.mine.telemetry.quality.DataQualityEvaluator;
 import com.bosco.mine.telemetry.quality.DataQualityPolicyRepository;
 import com.bosco.mine.telemetry.quality.QualityEvidenceMetrics;
@@ -28,6 +34,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -49,7 +56,11 @@ import java.util.concurrent.TimeUnit;
  * 装配遥测服务的 RabbitMQ 批消费者、Redis 最新值仓储和 TimescaleDB 历史批写器。
  */
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties({TelemetryRabbitProperties.class, StrategyDistributionProperties.class})
+@EnableConfigurationProperties({
+        TelemetryRabbitProperties.class,
+        StrategyDistributionProperties.class,
+        LocationDistributionProperties.class
+})
 @ConditionalOnProperty(prefix = "mine.telemetry.rabbit", name = "enabled", havingValue = "true")
 public class TelemetryStorageConfiguration {
 
@@ -413,6 +424,104 @@ public class TelemetryStorageConfiguration {
         SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(
                 telemetryConnectionFactory);
         container.setQueueNames(MineTopology.TELEMETRY_STRATEGY_QUEUE);
+        container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
+        container.setPrefetchCount(1);
+        container.setConcurrentConsumers(1);
+        container.setMaxConcurrentConsumers(1);
+        container.setDefaultRequeueRejected(true);
+        container.setMissingQueuesFatal(true);
+        container.setAutoStartup(properties.resolvedAutoStartup());
+        container.setMessageListener(consumer);
+        return container;
+    }
+
+    /** 创建定位快照固定阶段和最终结果的低基数指标。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationSnapshotMetrics locationSnapshotMetrics(MeterRegistry meterRegistry) {
+        return new LocationSnapshotMetrics(meterRegistry);
+    }
+
+    /** 创建版本化坐标转换算法注册表。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public CoordinateTransformRegistry coordinateTransformRegistry() {
+        return new CoordinateTransformRegistry();
+    }
+
+    /** 创建并从数据库恢复最后正确定位运行快照。 */
+    @Bean
+    @DependsOnDatabaseInitialization
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationRuntimeRegistry locationRuntimeRegistry(
+            DataSource dataSource,
+            CoordinateTransformRegistry transformRegistry,
+            LocationSnapshotMetrics metrics
+    ) {
+        LocationRuntimeRegistry registry = new LocationRuntimeRegistry(
+                dataSource, transformRegistry);
+        try {
+            registry.restore();
+            metrics.stage(LocationSnapshotMetrics.Stage.RESTORE,
+                    LocationSnapshotMetrics.Result.SUCCESS);
+        } catch (RuntimeException exception) {
+            metrics.stage(LocationSnapshotMetrics.Stage.RESTORE,
+                    LocationSnapshotMetrics.Result.FAILURE);
+            throw exception;
+        }
+        return registry;
+    }
+
+    /** 创建使用服务令牌拉取定位运行快照的控制面客户端。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public HttpLocationSnapshotSource locationSnapshotSource(
+            LocationDistributionProperties properties
+    ) {
+        return new HttpLocationSnapshotSource(properties);
+    }
+
+    /** 创建完整校验并原子激活定位运行快照的加载器。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationSnapshotLoader locationSnapshotLoader(
+            LocationRuntimeRegistry registry,
+            HttpLocationSnapshotSource source,
+            LocationDistributionProperties properties,
+            LocationSnapshotMetrics metrics
+    ) {
+        return new LocationSnapshotLoader(
+                registry, source, properties.resolvedPageSize(), metrics);
+    }
+
+    /** 创建定位运行变更消息消费者。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public LocationSnapshotConsumer locationSnapshotConsumer(
+            LocationSnapshotLoader loader,
+            LocationSnapshotMetrics metrics
+    ) {
+        return new LocationSnapshotConsumer(loader, metrics);
+    }
+
+    /** 创建单消息手工确认的定位运行快照监听容器。 */
+    @Bean(destroyMethod = "destroy")
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public SimpleMessageListenerContainer locationSnapshotMessageListenerContainer(
+            CachingConnectionFactory telemetryConnectionFactory,
+            LocationSnapshotConsumer consumer,
+            TelemetryRabbitProperties properties
+    ) {
+        SimpleMessageListenerContainer container = new SimpleMessageListenerContainer(
+                telemetryConnectionFactory);
+        container.setQueueNames(MineTopology.TELEMETRY_LOCATION_CONFIG_QUEUE);
         container.setAcknowledgeMode(AcknowledgeMode.MANUAL);
         container.setPrefetchCount(1);
         container.setConcurrentConsumers(1);

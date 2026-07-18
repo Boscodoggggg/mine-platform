@@ -256,6 +256,8 @@ services:
       MINE_TELEMETRY_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_telemetry_password
       MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED: "true"
       MINE_TELEMETRY_STRATEGY_SERVER_URL: http://mine-server:8080
+      MINE_TELEMETRY_LOCATION_DISTRIBUTION_ENABLED: "true"
+      MINE_TELEMETRY_LOCATION_SERVER_URL: http://mine-server:8080
       MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
       MINE_TELEMETRY_RETENTION_ENABLED: "true"
       MINE_TELEMETRY_RETENTION_INSTANCE_ID: standalone-telemetry
