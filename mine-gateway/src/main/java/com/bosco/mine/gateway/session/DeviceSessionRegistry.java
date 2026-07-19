@@ -20,6 +20,8 @@ public final class DeviceSessionRegistry {
 
     private static final Pattern TOPIC_SEGMENT = Pattern.compile("[A-Za-z0-9_-]{1,64}");
     private static final Pattern SHA_256 = Pattern.compile("[a-f0-9]{64}");
+    private static final Pattern TCP_USERNAME = Pattern.compile("[A-Za-z0-9_.:@-]{1,128}");
+    private static final Pattern BCRYPT_HASH = Pattern.compile("\\$2[aby]\\$[0-9]{2}\\$.{53}");
 
     private final AtomicReference<IdentitySnapshot> snapshot =
             new AtomicReference<>(new IdentitySnapshot(
@@ -213,6 +215,8 @@ public final class DeviceSessionRegistry {
      * @param deviceCode 厂商报文和矿区台账使用的设备自然编码
      * @param tenantScope 矿区隔离范围
      * @param protocolVersion 当前解析协议版本
+     * @param tcpUsername 统一 TCP 登录用户名，未启用时为空
+     * @param tcpSecretHash 统一 TCP 登录 BCrypt 散列，未启用时为空
      */
     public record DeviceIdentity(
             String productKey,
@@ -220,7 +224,9 @@ public final class DeviceSessionRegistry {
             String deviceId,
             String deviceCode,
             String tenantScope,
-            String protocolVersion
+            String protocolVersion,
+            String tcpUsername,
+            String tcpSecretHash
     ) {
         /**
          * 创建并校验设备身份。
@@ -232,6 +238,26 @@ public final class DeviceSessionRegistry {
             deviceCode = requireText(deviceCode, "deviceCode");
             tenantScope = requireText(tenantScope, "tenantScope");
             protocolVersion = requireText(protocolVersion, "protocolVersion");
+            boolean noTcpCredential = tcpUsername == null && tcpSecretHash == null;
+            boolean validTcpCredential = tcpUsername != null && TCP_USERNAME.matcher(tcpUsername).matches()
+                    && tcpSecretHash != null && BCRYPT_HASH.matcher(tcpSecretHash).matches();
+            if (!noTcpCredential && !validTcpCredential) {
+                throw new IllegalArgumentException("统一 TCP 用户名和 BCrypt 散列必须成对配置");
+            }
+        }
+
+        /**
+         * 创建不启用统一 TCP 登录的兼容设备身份。
+         */
+        public DeviceIdentity(
+                String productKey,
+                String clientId,
+                String deviceId,
+                String deviceCode,
+                String tenantScope,
+                String protocolVersion
+        ) {
+            this(productKey, clientId, deviceId, deviceCode, tenantScope, protocolVersion, null, null);
         }
     }
 

@@ -61,7 +61,9 @@ public final class DeviceIdentitySnapshotLoader {
                     text(device, "deviceId"),
                     text(device, "deviceCode"),
                     text(device, "tenantScope"),
-                    text(device, "protocolVersion")
+                    text(device, "protocolVersion"),
+                    optionalText(device, "tcpUsername"),
+                    optionalText(device, "tcpSecretHash")
             ));
         }
         return registry.activate(version, loaded.sha256(), identities);
@@ -106,6 +108,15 @@ public final class DeviceIdentitySnapshotLoader {
         JsonNode value = node.get(field);
         if (value == null || !value.isString() || value.asString().isBlank()) {
             throw new IllegalArgumentException("设备身份字段 " + field + " 不能为空");
+        }
+        return value.asString();
+    }
+
+    private String optionalText(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) return null;
+        if (!value.isString() || value.asString().isBlank()) {
+            throw new IllegalArgumentException("设备身份字段 " + field + " 必须是非空字符串");
         }
         return value.asString();
     }
