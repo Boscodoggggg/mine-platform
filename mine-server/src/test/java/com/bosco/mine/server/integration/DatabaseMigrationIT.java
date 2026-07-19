@@ -1085,6 +1085,21 @@ class DatabaseMigrationIT {
         assertThat(constraintColumns("uk_dev_protocol_field_source"))
                 .containsExactly("mapping_version_id", "source_path");
         assertThat(jdbcTemplate.queryForObject("""
+                SELECT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'ck_dev_protocol_mapping_runtime_binding'
+                )
+                """, Boolean.class)).isTrue();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'dev_protocol_mapping_version'
+                  AND column_name IN ('parser_type', 'plugin_key', 'plugin_version', 'routing_mode')
+                ORDER BY column_name
+                """, String.class)).containsExactly(
+                "parser_type", "plugin_key", "plugin_version", "routing_mode");
+        assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM pg_attribute
                 WHERE attrelid IN (

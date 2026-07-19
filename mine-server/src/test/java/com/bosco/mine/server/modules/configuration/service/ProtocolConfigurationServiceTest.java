@@ -1,6 +1,11 @@
 package com.bosco.mine.server.modules.configuration.service;
 
 import com.bosco.mine.common.error.MineException;
+import com.bosco.mine.protocol.engine.mqtt.MqttBinaryProtocolPluginRegistry;
+import com.bosco.mine.protocol.engine.tcp.TcpProtocolPluginRegistry;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryDecodeContext;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryDecodedMessage;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryProtocolPlugin;
 import com.bosco.mine.server.modules.command.outbox.OutboxCommitNotifier;
 import com.bosco.mine.server.modules.configuration.repository.ProtocolConfigurationMapper;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
@@ -10,6 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -122,6 +128,50 @@ class ProtocolConfigurationServiceTest {
         verify(mapper).insertReleaseOutbox(any(), eq(release.id()), any(), any());
         verify(mapper).lockProduct(productId);
         verify(commitNotifier).notifyAfterCommit(any());
+    }
+
+    @Test
+    void Mqtt二进制插件通过样本门禁后应发布V2产品绑定快照() {
+        MqttBinaryProtocolPlugin plugin = new MqttBinaryProtocolPlugin() {
+            @Override public String protocolKey() { return "vendor-a"; }
+            @Override public String protocolVersion() { return "2.1.0"; }
+            @Override public MqttBinaryDecodedMessage decode(MqttBinaryDecodeContext context, byte[] payload) {
+                return new MqttBinaryDecodedMessage(
+                        "boot-1", 1L, Instant.parse("2026-07-16T00:00:00Z"), false,
+                        Map.of("engineRpm", 1200));
+            }
+        };
+        service = new ProtocolConfigurationService(
+                mapper,
+                mock(OperationAuditService.class),
+                JsonMapper.builder().findAndAddModules().build(),
+                commitNotifier,
+                new MqttBinaryProtocolPluginRegistry(List.of(plugin)),
+                new TcpProtocolPluginRegistry(List.of())
+        );
+        when(mapper.findReleaseByIdempotency(null, "publish-binary")).thenReturn(Optional.empty());
+        when(mapper.findDefinitionForUpdate(mappingVersionId)).thenReturn(Optional.of(binaryDefinition()));
+        when(mapper.findPublishedModel(productId)).thenReturn(Optional.of(
+                new ProtocolConfigurationMapper.ModelVersionRecord(modelVersionId, productId, 2)));
+        when(mapper.findSamples(mappingVersionId)).thenReturn(List.of(
+                new ProtocolConfigurationMapper.SampleRecord(
+                        UUID.randomUUID(), mappingVersionId, "binary-valid",
+                        "{\"payloadHex\":\"01\",\"deviceCode\":\"truck-001\"}", true,
+                        "{\"engineRpm\":1200}", null, 0, 0)));
+        when(mapper.nextPackageSequence(productId)).thenReturn(1L);
+        when(mapper.nextReleaseSequence(productId)).thenReturn(1L);
+        when(mapper.findPackageByHash(eq(productId), any())).thenReturn(Optional.empty());
+
+        ProtocolConfigurationService.ReleaseView release = service.publish(
+                new ProtocolConfigurationService.PublishCommand(
+                        productId, mappingVersionId, "启用二进制插件", "publish-binary"));
+
+        assertThat(release.snapshotJson()).contains(
+                "\"schemaVersion\":2",
+                "\"parserType\":\"JAVA_PLUGIN\"",
+                "\"pluginKey\":\"vendor-a\"",
+                "\"pluginVersion\":\"2.1.0\"");
+        assertThat(release.snapshotJson()).doesNotContain("\"definition\"");
     }
 
     @Test
@@ -268,12 +318,23 @@ class ProtocolConfigurationServiceTest {
                 1,
                 status,
                 "MQTT_JSON",
+                "CONFIGURATION",
+                null,
+                null,
+                "TRUSTED_IDENTITY",
                 """
                         {"productKeyPath":"productKey","deviceCodePath":"deviceCode",
                          "bootIdPath":"bootId","sequencePath":"sequence",
                          "occurredAtPath":"occurredAt","replayedPath":"replayed"}
                         """,
                 0
+        );
+    }
+
+    private ProtocolConfigurationMapper.ProtocolDefinitionRecord binaryDefinition() {
+        return new ProtocolConfigurationMapper.ProtocolDefinitionRecord(
+                mappingVersionId, productId, "haul-truck", "vendor-a", 1, "PUBLISHED",
+                "MQTT_BINARY", "JAVA_PLUGIN", "vendor-a", "2.1.0", "TRUSTED_IDENTITY", "{}", 0
         );
     }
 

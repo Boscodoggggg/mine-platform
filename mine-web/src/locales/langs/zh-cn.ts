@@ -1483,6 +1483,9 @@ const local: App.I18n.Schema = {
         profileName: '协议配置名称',
         protocolType: '协议类型',
         messageType: '消息类型',
+        pluginKey: 'SDK 插件键',
+        pluginVersion: 'SDK 插件版本',
+        routingMode: 'TCP 接入模式',
         topicOrFrame: 'MQTT Topic 模板 / TCP 帧类型',
         sourcePath: '原始字段路径',
         sourceType: '原始数据类型',
@@ -1503,6 +1506,12 @@ const local: App.I18n.Schema = {
       },
       access: { read: '只读', write: '只写', read_write: '读写' },
       protocol: { mqtt_json: 'MQTT JSON', mqtt_binary: 'MQTT 二进制', tcp_binary: 'TCP 二进制' },
+      routing: { trusted_identity: '统一端口（可信身份路由）', legacy_listener: '兼容端口（监听器绑定）' },
+      binding: {
+        configuration: '当前产品使用前台字段映射解析；MQTT 共用平台入口，不按产品开放端口。',
+        plugin: '当前产品绑定 SDK 插件 {plugin} · {version}，接入模式：{routing}。',
+        pluginHelp: '插件由后端审核并随服务部署；前台只负责把产品绑定到插件。统一入口按可信产品身份选插件，不会为每个插件开放端口。'
+      },
       messageType: { telemetry: '遥测', state: '状态', event: '事件', command_reply: '命令回复' },
       transform: {
         none: '不转换',
@@ -1512,12 +1521,16 @@ const local: App.I18n.Schema = {
         enum: '枚举映射',
         expression: '受限表达式'
       },
-      validation: { required: '请填写字段标识、名称和映射目标' },
+      validation: {
+        required: '请填写字段标识、名称和映射目标',
+        pluginRequired: '二进制协议必须填写已部署的 SDK 插件键和版本'
+      },
       confirmPublishModel: '确认发布当前物模型吗？旧发布版本会自动退役。',
       confirmPublishProtocol: '确认发布当前协议映射吗？系统会校验所有目标字段。',
       samples: {
         title: '协议黄金样本',
         subtitle: '用真实厂商报文锁定解析行为；发布前由 Gateway 同源引擎逐条回放。',
+        binaryPayloadHelp: '二进制样本使用 JSON 外壳：payloadHex 填完整报文十六进制；MQTT 可另填 clientId 和 deviceCode。示例：{"payloadHex":"A501...","deviceCode":"truck-001"}',
         unsaved: '样本草稿尚未保存。保存后才能运行发布门禁。',
         empty: '添加第一条真实报文，建立可重复验证的协议基线',
         editorTitle: '样本草稿',

@@ -1602,6 +1602,9 @@ const local: App.I18n.Schema = {
         profileName: 'Profile Name',
         protocolType: 'Protocol Type',
         messageType: 'Message Type',
+        pluginKey: 'SDK Plugin Key',
+        pluginVersion: 'SDK Plugin Version',
+        routingMode: 'TCP Ingress Mode',
         topicOrFrame: 'MQTT Topic Template / TCP Frame Type',
         sourcePath: 'Source Field Path',
         sourceType: 'Source Data Type',
@@ -1622,6 +1625,12 @@ const local: App.I18n.Schema = {
       },
       access: { read: 'Read', write: 'Write', read_write: 'Read/Write' },
       protocol: { mqtt_json: 'MQTT JSON', mqtt_binary: 'MQTT Binary', tcp_binary: 'TCP Binary' },
+      routing: { trusted_identity: 'Unified Port (Trusted Identity)', legacy_listener: 'Compatibility Port (Listener Binding)' },
+      binding: {
+        configuration: 'This product uses UI-managed field mapping. MQTT products share the platform ingress.',
+        plugin: 'This product binds SDK plugin {plugin} · {version}; ingress mode: {routing}.',
+        pluginHelp: 'Plugins are reviewed and deployed with backend services. The UI only binds products to plugins. Trusted product identity selects the plugin on a shared ingress, so plugins do not require dedicated ports.'
+      },
       messageType: { telemetry: 'Telemetry', state: 'State', event: 'Event', command_reply: 'Command Reply' },
       transform: {
         none: 'None',
@@ -1631,13 +1640,17 @@ const local: App.I18n.Schema = {
         enum: 'Enum Mapping',
         expression: 'Restricted Expression'
       },
-      validation: { required: 'Complete the field identifier, name, and mapping target' },
+      validation: {
+        required: 'Complete the field identifier, name, and mapping target',
+        pluginRequired: 'Binary protocols require the key and version of a deployed SDK plugin'
+      },
       confirmPublishModel: 'Publish this thing model? The previous published version will be retired.',
       confirmPublishProtocol: 'Publish this protocol mapping? All target fields will be validated.',
       samples: {
         title: 'Protocol Golden Samples',
         subtitle:
           'Lock parsing behavior with real vendor payloads and replay them through the Gateway engine before release.',
+        binaryPayloadHelp: 'Binary samples use a JSON envelope: payloadHex contains the full message in hexadecimal; MQTT may also include clientId and deviceCode. Example: {"payloadHex":"A501...","deviceCode":"truck-001"}',
         unsaved: 'Sample changes are not saved. Save them before running the release gate.',
         empty: 'Add the first real payload to establish a repeatable protocol baseline',
         editorTitle: 'Sample Draft',

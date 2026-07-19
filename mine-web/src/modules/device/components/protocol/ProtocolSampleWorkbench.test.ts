@@ -80,6 +80,7 @@ function mountWorkbench() {
     props: {
       mappingVersionId: 'protocol-1',
       mappingVersion: 3,
+      protocolType: 'MQTT_JSON',
       editable: true,
       canEdit: true,
       canTest: true

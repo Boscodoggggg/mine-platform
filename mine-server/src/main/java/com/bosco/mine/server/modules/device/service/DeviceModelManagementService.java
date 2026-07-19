@@ -50,6 +50,8 @@ public class DeviceModelManagementService {
             Set.of("NONE", "SCALE", "OFFSET", "SCALE_OFFSET", "ENUM", "EXPRESSION");
     private static final Pattern IDENTIFIER = Pattern.compile("^[a-z][A-Za-z0-9_]{1,127}$");
     private static final Pattern PROFILE_KEY = Pattern.compile("^[a-z][a-z0-9_-]{2,63}$");
+    private static final Pattern PLUGIN_KEY = Pattern.compile("^[a-z][a-z0-9-]{2,63}$");
+    private static final Pattern PLUGIN_VERSION = Pattern.compile("^[A-Za-z0-9_.:-]{1,128}$");
     private static final Pattern SAFE_EXPRESSION = Pattern.compile("^[A-Za-z0-9_+\\-*/(). ]{1,1000}$");
 
     private final DeviceModelManagementMapper mapper;
@@ -161,14 +163,19 @@ public class DeviceModelManagementService {
         requireProduct(productId);
         if (!PROFILE_KEY.matcher(command.profileKey()).matches()
                 || !PROTOCOL_TYPES.contains(command.protocolType())
-                || !MESSAGE_TYPES.contains(command.messageType())) {
+                || !MESSAGE_TYPES.contains(command.messageType())
+                || !validProtocolBinding(command)) {
             throw new MineException(MAPPING_INVALID, Map.of());
         }
+        String parserType = "MQTT_JSON".equals(command.protocolType()) ? "CONFIGURATION" : "JAVA_PLUGIN";
+        String routingMode = normalizeRoutingMode(command);
         UUID id = idGenerator.next();
         try {
             mapper.insertProtocolVersion(
                     id, productId, command.profileKey(), command.name().strip(), command.protocolType(),
-                    command.messageType(), mapper.nextProtocolVersionNumber(productId, command.profileKey()),
+                    command.messageType(), parserType, normalize(command.pluginKey()),
+                    normalize(command.pluginVersion()), routingMode,
+                    mapper.nextProtocolVersionNumber(productId, command.profileKey()),
                     normalize(command.topicOrFrame()), normalize(command.description()), currentOperatorId()
             );
         } catch (DuplicateKeyException exception) {
@@ -215,11 +222,13 @@ public class DeviceModelManagementService {
     public void publishProtocol(UUID versionId, long versionNumber) {
         DeviceModelManagementMapper.ProtocolVersionRecord version = requireDraftProtocol(versionId);
         List<DeviceModelManagementMapper.ProtocolFieldRecord> fields = mapper.findProtocolFields(versionId);
-        List<String> identifiers = fields.stream()
-                .map(DeviceModelManagementMapper.ProtocolFieldRecord::targetIdentifier).distinct().toList();
-        if (identifiers.isEmpty()
-                || mapper.countPublishedModelIdentifiers(version.productId(), identifiers) != identifiers.size()) {
-            throw new MineException(MAPPING_INVALID, Map.of("versionId", versionId));
+        if ("CONFIGURATION".equals(version.parserType())) {
+            List<String> identifiers = fields.stream()
+                    .map(DeviceModelManagementMapper.ProtocolFieldRecord::targetIdentifier).distinct().toList();
+            if (identifiers.isEmpty()
+                    || mapper.countPublishedModelIdentifiers(version.productId(), identifiers) != identifiers.size()) {
+                throw new MineException(MAPPING_INVALID, Map.of("versionId", versionId));
+            }
         }
         UUID operatorId = currentOperatorId();
         mapper.retirePublishedProtocol(version.productId(), version.profileKey(), operatorId);
@@ -260,6 +269,28 @@ public class DeviceModelManagementService {
                 throw new MineException(MAPPING_INVALID, Map.of("sourcePath", field.sourcePath()));
             }
         }
+    }
+
+    private boolean validProtocolBinding(ProtocolDraftCommand command) {
+        String routingMode = normalizeRoutingMode(command);
+        if ("MQTT_JSON".equals(command.protocolType())) {
+            return normalize(command.pluginKey()) == null
+                    && normalize(command.pluginVersion()) == null
+                    && "TRUSTED_IDENTITY".equals(routingMode);
+        }
+        boolean pluginValid = normalize(command.pluginKey()) != null
+                && PLUGIN_KEY.matcher(command.pluginKey().strip()).matches()
+                && normalize(command.pluginVersion()) != null
+                && PLUGIN_VERSION.matcher(command.pluginVersion().strip()).matches();
+        if (!pluginValid) return false;
+        return "MQTT_BINARY".equals(command.protocolType())
+                ? "TRUSTED_IDENTITY".equals(routingMode)
+                : Set.of("TRUSTED_IDENTITY", "LEGACY_LISTENER").contains(routingMode);
+    }
+
+    private String normalizeRoutingMode(ProtocolDraftCommand command) {
+        String requested = normalize(command.routingMode());
+        return requested == null ? "TRUSTED_IDENTITY" : requested;
     }
 
     private void requireProduct(UUID productId) {
@@ -331,6 +362,7 @@ public class DeviceModelManagementService {
     /** 协议映射草稿创建命令。 */
     public record ProtocolDraftCommand(
             String profileKey, String name, String protocolType, String messageType,
+            String pluginKey, String pluginVersion, String routingMode,
             String topicOrFrame, String description
     ) {
     }

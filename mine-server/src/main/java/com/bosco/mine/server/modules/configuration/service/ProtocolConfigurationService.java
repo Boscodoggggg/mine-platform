@@ -4,16 +4,25 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
+import com.bosco.mine.protocol.engine.binding.ProductProtocolBinding;
 import com.bosco.mine.protocol.engine.json.FieldTransform;
 import com.bosco.mine.protocol.engine.json.MqttJsonExecutionPlan;
 import com.bosco.mine.protocol.engine.json.MqttJsonProtocolCompiler;
 import com.bosco.mine.protocol.engine.json.MqttJsonProtocolDefinition;
 import com.bosco.mine.protocol.engine.sample.ProtocolSample;
 import com.bosco.mine.protocol.engine.sample.ProtocolSampleRunner;
+import com.bosco.mine.protocol.engine.mqtt.MqttBinaryProtocolPluginRegistry;
 import com.bosco.mine.protocol.engine.snapshot.ProtocolSnapshotHasher;
+import com.bosco.mine.protocol.engine.tcp.TcpProtocolPluginRegistry;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryDecodeContext;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryProtocolException;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryProtocolPlugin;
+import com.bosco.mine.protocol.sdk.tcp.TcpProtocolException;
+import com.bosco.mine.protocol.sdk.tcp.TcpProtocolPlugin;
 import com.bosco.mine.server.modules.command.outbox.OutboxCommitNotifier;
 import com.bosco.mine.server.modules.configuration.repository.ProtocolConfigurationMapper;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.slf4j.MDC;
@@ -26,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +75,8 @@ public class ProtocolConfigurationService {
     private final OperationAuditService auditService;
     private final ObjectMapper objectMapper;
     private final OutboxCommitNotifier commitNotifier;
+    private final MqttBinaryProtocolPluginRegistry mqttPluginRegistry;
+    private final TcpProtocolPluginRegistry tcpPluginRegistry;
     private final MqttJsonProtocolCompiler compiler = new MqttJsonProtocolCompiler();
     private final ProtocolSampleRunner sampleRunner = new ProtocolSampleRunner();
     private final ProtocolSnapshotHasher snapshotHasher = new ProtocolSnapshotHasher();
@@ -78,6 +90,7 @@ public class ProtocolConfigurationService {
      * @param objectMapper JSON 序列化器
      * @param commitNotifier Outbox 事务提交通知器
      */
+    @Autowired
     public ProtocolConfigurationService(
             ProtocolConfigurationMapper mapper,
             OperationAuditService auditService,
@@ -88,6 +101,28 @@ public class ProtocolConfigurationService {
         this.auditService = auditService;
         this.objectMapper = objectMapper;
         this.commitNotifier = commitNotifier;
+        ClassLoader classLoader = ProtocolConfigurationService.class.getClassLoader();
+        this.mqttPluginRegistry = MqttBinaryProtocolPluginRegistry.load(classLoader);
+        this.tcpPluginRegistry = TcpProtocolPluginRegistry.load(classLoader);
+    }
+
+    /**
+     * 使用显式插件注册表创建便于隔离验证的协议配置服务。
+     */
+    ProtocolConfigurationService(
+            ProtocolConfigurationMapper mapper,
+            OperationAuditService auditService,
+            ObjectMapper objectMapper,
+            OutboxCommitNotifier commitNotifier,
+            MqttBinaryProtocolPluginRegistry mqttPluginRegistry,
+            TcpProtocolPluginRegistry tcpPluginRegistry
+    ) {
+        this.mapper = mapper;
+        this.auditService = auditService;
+        this.objectMapper = objectMapper;
+        this.commitNotifier = commitNotifier;
+        this.mqttPluginRegistry = mqttPluginRegistry;
+        this.tcpPluginRegistry = tcpPluginRegistry;
     }
 
     /**
@@ -211,14 +246,15 @@ public class ProtocolConfigurationService {
             );
         }
 
-        String snapshotJson = writeJson(Map.of(
-                "schemaVersion", 1,
-                "productId", bundle.definition().productId(),
-                "productKey", bundle.definition().productKey(),
-                "modelVersionId", bundle.model().id(),
-                "protocolMappingVersionId", bundle.definition().mappingVersionId(),
-                "definition", bundle.compiledDefinition()
-        ));
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("schemaVersion", 2);
+        snapshot.put("productId", bundle.definition().productId());
+        snapshot.put("productKey", bundle.definition().productKey());
+        snapshot.put("modelVersionId", bundle.model().id());
+        snapshot.put("protocolMappingVersionId", bundle.definition().mappingVersionId());
+        snapshot.put("binding", bundle.binding());
+        if (bundle.compiledDefinition() != null) snapshot.put("definition", bundle.compiledDefinition());
+        String snapshotJson = writeJson(snapshot);
         String contentHash = snapshotHasher.sha256(snapshotJson);
         ProtocolConfigurationMapper.PackageRecord configPackage = mapper
                 .findPackageByHash(command.productId(), contentHash)
@@ -376,24 +412,17 @@ public class ProtocolConfigurationService {
         Instant startedAt = Instant.now();
         List<ProtocolSampleRunner.SampleResult> results = new ArrayList<>();
         for (ProtocolConfigurationMapper.SampleRecord sample : bundle.samples()) {
-            String deviceCode = textAt(
-                    sample.rawPayloadJson(), bundle.compiledDefinition().metadata().deviceCodePath());
-            ProtocolSample protocolSample = new ProtocolSample(
-                    sample.name(), sample.rawPayloadJson().getBytes(StandardCharsets.UTF_8),
-                    sample.expectedSuccess(), readMap(sample.expectedPropertiesJson()), sample.expectedErrorCode()
-            );
-            ProtocolSampleRunner.TestReport report = sampleRunner.run(
-                    bundle.plan(),
-                    new MqttJsonExecutionPlan.TrustedIdentity(
-                            bundle.definition().productKey(), deviceCode),
-                    List.of(protocolSample)
-            );
-            results.add(report.results().getFirst());
+            results.add(bundle.binding().usesConfiguration()
+                    ? executeConfigurationSample(bundle, sample)
+                    : executePluginSample(bundle, sample));
         }
         int passed = (int) results.stream().filter(ProtocolSampleRunner.SampleResult::passed).count();
         int failed = results.size() - passed;
         UUID runId = idGenerator.next();
-        String definitionHash = snapshotHasher.sha256(writeJson(bundle.compiledDefinition()));
+        String definitionHash = snapshotHasher.sha256(writeJson(Map.of(
+                "binding", bundle.binding(),
+                "definition", bundle.compiledDefinition() == null ? Map.of() : bundle.compiledDefinition()
+        )));
         Instant completedAt = Instant.now();
         mapper.insertTestRun(
                 runId, bundle.definition().mappingVersionId(), definitionHash,
@@ -403,10 +432,94 @@ public class ProtocolConfigurationService {
         return new TestRunView(runId, failed == 0, results.size(), passed, failed, results);
     }
 
+    private ProtocolSampleRunner.SampleResult executeConfigurationSample(
+            Bundle bundle,
+            ProtocolConfigurationMapper.SampleRecord sample
+    ) {
+        String deviceCode = textAt(
+                sample.rawPayloadJson(), bundle.compiledDefinition().metadata().deviceCodePath());
+        ProtocolSample protocolSample = new ProtocolSample(
+                sample.name(), sample.rawPayloadJson().getBytes(StandardCharsets.UTF_8),
+                sample.expectedSuccess(), readMap(sample.expectedPropertiesJson()), sample.expectedErrorCode()
+        );
+        ProtocolSampleRunner.TestReport report = sampleRunner.run(
+                bundle.plan(),
+                new MqttJsonExecutionPlan.TrustedIdentity(bundle.definition().productKey(), deviceCode),
+                List.of(protocolSample)
+        );
+        return report.results().getFirst();
+    }
+
+    private ProtocolSampleRunner.SampleResult executePluginSample(
+            Bundle bundle,
+            ProtocolConfigurationMapper.SampleRecord sample
+    ) {
+        Map<String, Object> envelope = readMap(sample.rawPayloadJson());
+        Object hexValue = envelope.get("payloadHex");
+        if (!(hexValue instanceof String payloadHex) || payloadHex.isBlank()) {
+            return pluginSampleResult(sample, false, null, "SAMPLE_PAYLOAD_INVALID");
+        }
+        try {
+            byte[] payload = HexFormat.of().parseHex(payloadHex);
+            Map<String, Object> properties;
+            if (bundle.binding().transport() == ProductProtocolBinding.Transport.MQTT) {
+                MqttBinaryProtocolPlugin plugin = mqttPluginRegistry.require(bundle.binding().pluginKey());
+                String clientId = stringValue(envelope, "clientId", "sample-client");
+                String deviceCode = stringValue(envelope, "deviceCode", "sample-device");
+                properties = plugin.decode(new MqttBinaryDecodeContext(
+                        bundle.definition().productKey(), clientId, deviceCode), payload).properties();
+            } else {
+                TcpProtocolPlugin plugin = tcpPluginRegistry.require(bundle.binding().pluginKey());
+                properties = plugin.openSession().decode(payload).properties();
+            }
+            return pluginSampleResult(sample, true, properties, null);
+        } catch (MqttBinaryProtocolException exception) {
+            return pluginSampleResult(sample, false, null, exception.errorCode().name());
+        } catch (TcpProtocolException exception) {
+            return pluginSampleResult(sample, false, null, exception.errorCode().name());
+        } catch (IllegalArgumentException exception) {
+            return pluginSampleResult(sample, false, null, "SAMPLE_PAYLOAD_INVALID");
+        } catch (RuntimeException exception) {
+            return pluginSampleResult(sample, false, null, "PLUGIN_EXECUTION_FAILED");
+        }
+    }
+
+    private ProtocolSampleRunner.SampleResult pluginSampleResult(
+            ProtocolConfigurationMapper.SampleRecord sample,
+            boolean actualSuccess,
+            Map<String, Object> actualProperties,
+            String actualErrorCode
+    ) {
+        if (sample.expectedSuccess() != actualSuccess) {
+            return new ProtocolSampleRunner.SampleResult(
+                    sample.name(), false, "成功状态不符合预期", actualErrorCode);
+        }
+        if (actualSuccess && !jsonEquivalent(readMap(sample.expectedPropertiesJson()), actualProperties)) {
+            return new ProtocolSampleRunner.SampleResult(sample.name(), false, "解析属性不符合预期", null);
+        }
+        if (!actualSuccess && !java.util.Objects.equals(sample.expectedErrorCode(), actualErrorCode)) {
+            return new ProtocolSampleRunner.SampleResult(
+                    sample.name(), false, "错误码不符合预期", actualErrorCode);
+        }
+        return new ProtocolSampleRunner.SampleResult(sample.name(), true, "通过", actualErrorCode);
+    }
+
+    private boolean jsonEquivalent(Object expected, Object actual) {
+        try {
+            return objectMapper.readTree(writeJson(expected)).equals(objectMapper.readTree(writeJson(actual)));
+        } catch (JacksonException exception) {
+            return false;
+        }
+    }
+
+    private String stringValue(Map<String, Object> values, String key, String defaultValue) {
+        Object value = values.get(key);
+        return value instanceof String text && !text.isBlank() ? text : defaultValue;
+    }
+
     private Bundle loadBundle(UUID mappingVersionId, UUID expectedProductId, boolean requirePublished) {
         ProtocolConfigurationMapper.ProtocolDefinitionRecord definition = requireDefinition(mappingVersionId);
-        if (!"MQTT_JSON".equals(definition.protocolType())
-                || requirePublished && !"PUBLISHED".equals(definition.status())
+        if (requirePublished && !"PUBLISHED".equals(definition.status())
                 || expectedProductId != null && !expectedProductId.equals(definition.productId())) {
             throw new MineException(RELEASE_INVALID, Map.of("mappingVersionId", mappingVersionId));
         }
@@ -418,12 +531,45 @@ public class ProtocolConfigurationService {
             throw new MineException(SAMPLE_INVALID, Map.of("reason", "至少需要一条黄金样本"));
         }
         try {
-            MqttJsonProtocolDefinition compiledDefinition = buildDefinition(
-                    definition, mapper.findModelFields(model.id()), mapper.findProtocolFields(mappingVersionId));
-            return new Bundle(
-                    definition, model, compiledDefinition, compiler.compile(compiledDefinition), samples);
+            ProductProtocolBinding binding = binding(definition);
+            if (binding.usesConfiguration()) {
+                MqttJsonProtocolDefinition compiledDefinition = buildDefinition(
+                        definition, mapper.findModelFields(model.id()), mapper.findProtocolFields(mappingVersionId));
+                return new Bundle(
+                        definition, model, binding, compiledDefinition,
+                        compiler.compile(compiledDefinition), samples);
+            }
+            requireInstalledPlugin(binding);
+            return new Bundle(definition, model, binding, null, null, samples);
         } catch (IllegalArgumentException exception) {
             throw new MineException(DEFINITION_INVALID, Map.of("reason", safeMessage(exception)));
+        }
+    }
+
+    private ProductProtocolBinding binding(ProtocolConfigurationMapper.ProtocolDefinitionRecord definition) {
+        ProductProtocolBinding.Transport transport = "TCP_BINARY".equals(definition.protocolType())
+                ? ProductProtocolBinding.Transport.TCP : ProductProtocolBinding.Transport.MQTT;
+        ProductProtocolBinding.PayloadFormat payloadFormat = "MQTT_JSON".equals(definition.protocolType())
+                ? ProductProtocolBinding.PayloadFormat.JSON : ProductProtocolBinding.PayloadFormat.BINARY;
+        return new ProductProtocolBinding(
+                transport,
+                payloadFormat,
+                ProductProtocolBinding.RoutingMode.valueOf(definition.routingMode()),
+                ProductProtocolBinding.ParserType.valueOf(definition.parserType()),
+                definition.pluginKey(),
+                definition.pluginVersion()
+        );
+    }
+
+    private void requireInstalledPlugin(ProductProtocolBinding binding) {
+        String installedVersion;
+        if (binding.transport() == ProductProtocolBinding.Transport.MQTT) {
+            installedVersion = mqttPluginRegistry.require(binding.pluginKey()).protocolVersion();
+        } else {
+            installedVersion = tcpPluginRegistry.require(binding.pluginKey()).protocolVersion();
+        }
+        if (!binding.pluginVersion().equals(installedVersion)) {
+            throw new IllegalArgumentException("配置要求的插件版本与控制面安装版本不一致");
         }
     }
 
@@ -725,6 +871,7 @@ public class ProtocolConfigurationService {
     private record Bundle(
             ProtocolConfigurationMapper.ProtocolDefinitionRecord definition,
             ProtocolConfigurationMapper.ModelVersionRecord model,
+            ProductProtocolBinding binding,
             MqttJsonProtocolDefinition compiledDefinition,
             MqttJsonExecutionPlan plan,
             List<ProtocolConfigurationMapper.SampleRecord> samples

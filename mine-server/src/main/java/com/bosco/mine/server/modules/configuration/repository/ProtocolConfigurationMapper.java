@@ -25,6 +25,8 @@ public interface ProtocolConfigurationMapper {
                    product.product_key AS productKey, mapping.profile_key AS profileKey,
                    mapping.version_number AS versionNumber, mapping.status,
                    mapping.protocol_type AS protocolType,
+                   mapping.parser_type AS parserType, mapping.plugin_key AS pluginKey,
+                   mapping.plugin_version AS pluginVersion, mapping.routing_mode AS routingMode,
                    mapping.metadata_paths::TEXT AS metadataPathsJson, mapping.version
             FROM dev_protocol_mapping_version mapping
             JOIN dev_product product ON product.id = mapping.product_id
@@ -40,6 +42,8 @@ public interface ProtocolConfigurationMapper {
                    product.product_key AS productKey, mapping.profile_key AS profileKey,
                    mapping.version_number AS versionNumber, mapping.status,
                    mapping.protocol_type AS protocolType,
+                   mapping.parser_type AS parserType, mapping.plugin_key AS pluginKey,
+                   mapping.plugin_version AS pluginVersion, mapping.routing_mode AS routingMode,
                    mapping.metadata_paths::TEXT AS metadataPathsJson, mapping.version
             FROM dev_protocol_mapping_version mapping
             JOIN dev_product product ON product.id = mapping.product_id
@@ -357,6 +361,10 @@ public interface ProtocolConfigurationMapper {
             int versionNumber,
             String status,
             String protocolType,
+            String parserType,
+            String pluginKey,
+            String pluginVersion,
+            String routingMode,
             String metadataPathsJson,
             long version
     ) {

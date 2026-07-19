@@ -5640,6 +5640,8 @@ components:
         - name
         - protocolType
         - messageType
+        - parserType
+        - routingMode
         - versionNumber
         - status
         - version
@@ -5650,6 +5652,10 @@ components:
         name: { type: string, maxLength: 128 }
         protocolType: { type: string, enum: [MQTT_JSON, MQTT_BINARY, TCP_BINARY] }
         messageType: { type: string, enum: [TELEMETRY, STATE, EVENT, COMMAND_REPLY] }
+        parserType: { type: string, enum: [CONFIGURATION, JAVA_PLUGIN] }
+        pluginKey: { type: [string, 'null'], pattern: '^[a-z][a-z0-9-]{2,63}$' }
+        pluginVersion: { type: [string, 'null'], pattern: '^[A-Za-z0-9_.:-]{1,128}$' }
+        routingMode: { type: string, enum: [TRUSTED_IDENTITY, LEGACY_LISTENER] }
         versionNumber: { type: integer, minimum: 1 }
         status: { $ref: '#/components/schemas/ConfigurationVersionStatus' }
         topicOrFrame: { type: [string, 'null'], maxLength: 255 }
@@ -5688,6 +5694,9 @@ components:
         name: { type: string, minLength: 1, maxLength: 128 }
         protocolType: { type: string, enum: [MQTT_JSON, MQTT_BINARY, TCP_BINARY] }
         messageType: { type: string, enum: [TELEMETRY, STATE, EVENT, COMMAND_REPLY] }
+        pluginKey: { type: [string, 'null'], pattern: '^[a-z][a-z0-9-]{2,63}$' }
+        pluginVersion: { type: [string, 'null'], pattern: '^[A-Za-z0-9_.:-]{1,128}$' }
+        routingMode: { type: [string, 'null'], enum: [TRUSTED_IDENTITY, LEGACY_LISTENER] }
         topicOrFrame: { type: [string, 'null'], maxLength: 255 }
         description: { type: [string, 'null'], maxLength: 500 }
     ProtocolMappingFieldsRequest:

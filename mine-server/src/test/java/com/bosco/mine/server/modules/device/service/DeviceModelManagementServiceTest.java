@@ -11,6 +11,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -54,7 +57,8 @@ class DeviceModelManagementServiceTest {
         when(mapper.findProtocolVersion(mappingId)).thenReturn(Optional.of(
                 new DeviceModelManagementMapper.ProtocolVersionRecord(
                         mappingId, productId, "vendor-a", "Vendor A", "MQTT_JSON",
-                        "TELEMETRY", 1, "DRAFT", "devices/+/telemetry", null, 0
+                        "TELEMETRY", "CONFIGURATION", null, null, "TRUSTED_IDENTITY",
+                        1, "DRAFT", "devices/+/telemetry", null, 0
                 )
         ));
         when(mapper.findProtocolFields(mappingId)).thenReturn(List.of(
@@ -69,5 +73,54 @@ class DeviceModelManagementServiceTest {
                 .isInstanceOfSatisfying(MineException.class, exception ->
                         org.assertj.core.api.Assertions.assertThat(exception.errorCode().code())
                                 .isEqualTo("DEVICE-MODEL-422-002"));
+    }
+
+    @Test
+    void 二进制协议必须声明插件键和版本() {
+        UUID productId = UUID.randomUUID();
+        when(mapper.productExists(productId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.createProtocolDraft(
+                productId,
+                new DeviceModelManagementService.ProtocolDraftCommand(
+                        "vendor-a", "Vendor A", "MQTT_BINARY", "TELEMETRY",
+                        null, null, "TRUSTED_IDENTITY", "devices/+/telemetry", null
+                )
+        )).isInstanceOfSatisfying(MineException.class, exception ->
+                org.assertj.core.api.Assertions.assertThat(exception.errorCode().code())
+                        .isEqualTo("DEVICE-MODEL-422-002"));
+
+        verify(mapper, never()).insertProtocolVersion(
+                any(), eq(productId), any(), any(), any(), any(), any(), any(), any(), any(),
+                anyInt(), any(), any(), any()
+        );
+    }
+
+    @Test
+    void 新建Mqtt二进制草稿时应固定为插件解析和可信身份路由() {
+        UUID productId = UUID.randomUUID();
+        when(mapper.productExists(productId)).thenReturn(true);
+        when(mapper.nextProtocolVersionNumber(productId, "vendor-a")).thenReturn(3);
+        when(mapper.findProtocolVersion(any())).thenAnswer(invocation -> Optional.of(
+                new DeviceModelManagementMapper.ProtocolVersionRecord(
+                        invocation.getArgument(0), productId, "vendor-a", "Vendor A", "MQTT_BINARY",
+                        "TELEMETRY", "JAVA_PLUGIN", "vendor-a", "2.1.0", "TRUSTED_IDENTITY",
+                        3, "DRAFT", "devices/+/telemetry", null, 0
+                )
+        ));
+
+        service.createProtocolDraft(
+                productId,
+                new DeviceModelManagementService.ProtocolDraftCommand(
+                        "vendor-a", "Vendor A", "MQTT_BINARY", "TELEMETRY",
+                        "vendor-a", "2.1.0", null, "devices/+/telemetry", null
+                )
+        );
+
+        verify(mapper).insertProtocolVersion(
+                any(), eq(productId), eq("vendor-a"), eq("Vendor A"), eq("MQTT_BINARY"), eq("TELEMETRY"),
+                eq("JAVA_PLUGIN"), eq("vendor-a"), eq("2.1.0"), eq("TRUSTED_IDENTITY"),
+                eq(3), eq("devices/+/telemetry"), eq(null), eq(null)
+        );
     }
 }

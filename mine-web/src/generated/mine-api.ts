@@ -3987,6 +3987,12 @@ export interface components {
             protocolType: "MQTT_JSON" | "MQTT_BINARY" | "TCP_BINARY";
             /** @enum {string} */
             messageType: "TELEMETRY" | "STATE" | "EVENT" | "COMMAND_REPLY";
+            /** @enum {string} */
+            parserType: "CONFIGURATION" | "JAVA_PLUGIN";
+            pluginKey?: string | null;
+            pluginVersion?: string | null;
+            /** @enum {string} */
+            routingMode: "TRUSTED_IDENTITY" | "LEGACY_LISTENER";
             versionNumber: number;
             status: components["schemas"]["ConfigurationVersionStatus"];
             topicOrFrame?: string | null;
@@ -4020,6 +4026,10 @@ export interface components {
             protocolType: "MQTT_JSON" | "MQTT_BINARY" | "TCP_BINARY";
             /** @enum {string} */
             messageType: "TELEMETRY" | "STATE" | "EVENT" | "COMMAND_REPLY";
+            pluginKey?: string | null;
+            pluginVersion?: string | null;
+            /** @enum {string|null} */
+            routingMode?: "TRUSTED_IDENTITY" | "LEGACY_LISTENER" | null;
             topicOrFrame?: string | null;
             description?: string | null;
         };

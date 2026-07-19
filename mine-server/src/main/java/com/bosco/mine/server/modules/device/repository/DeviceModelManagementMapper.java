@@ -135,6 +135,8 @@ public interface DeviceModelManagementMapper {
     @Select("""
             SELECT id, product_id AS productId, profile_key AS profileKey, name,
                    protocol_type AS protocolType, message_type AS messageType,
+                   parser_type AS parserType, plugin_key AS pluginKey,
+                   plugin_version AS pluginVersion, routing_mode AS routingMode,
                    version_number AS versionNumber, status,
                    topic_or_frame AS topicOrFrame, description, version
             FROM dev_protocol_mapping_version WHERE product_id = #{productId}
@@ -146,6 +148,8 @@ public interface DeviceModelManagementMapper {
     @Select("""
             SELECT id, product_id AS productId, profile_key AS profileKey, name,
                    protocol_type AS protocolType, message_type AS messageType,
+                   parser_type AS parserType, plugin_key AS pluginKey,
+                   plugin_version AS pluginVersion, routing_mode AS routingMode,
                    version_number AS versionNumber, status,
                    topic_or_frame AS topicOrFrame, description, version
             FROM dev_protocol_mapping_version WHERE id = #{id}
@@ -164,9 +168,11 @@ public interface DeviceModelManagementMapper {
     @Insert("""
             INSERT INTO dev_protocol_mapping_version (
                 id, product_id, profile_key, name, protocol_type, message_type,
+                parser_type, plugin_key, plugin_version, routing_mode,
                 version_number, topic_or_frame, description, created_by, updated_by
             ) VALUES (
                 #{id}, #{productId}, #{profileKey}, #{name}, #{protocolType}, #{messageType},
+                #{parserType}, #{pluginKey}, #{pluginVersion}, #{routingMode},
                 #{versionNumber}, #{topicOrFrame}, #{description}, #{operatorId}, #{operatorId}
             )
             """)
@@ -177,6 +183,10 @@ public interface DeviceModelManagementMapper {
             @Param("name") String name,
             @Param("protocolType") String protocolType,
             @Param("messageType") String messageType,
+            @Param("parserType") String parserType,
+            @Param("pluginKey") String pluginKey,
+            @Param("pluginVersion") String pluginVersion,
+            @Param("routingMode") String routingMode,
             @Param("versionNumber") int versionNumber,
             @Param("topicOrFrame") String topicOrFrame,
             @Param("description") String description,
@@ -285,7 +295,8 @@ public interface DeviceModelManagementMapper {
     /** 协议映射版本投影。 */
     record ProtocolVersionRecord(
             UUID id, UUID productId, String profileKey, String name, String protocolType,
-            String messageType, int versionNumber, String status, String topicOrFrame,
+            String messageType, String parserType, String pluginKey, String pluginVersion,
+            String routingMode, int versionNumber, String status, String topicOrFrame,
             String description, long version
     ) {
     }

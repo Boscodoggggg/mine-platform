@@ -1461,6 +1461,9 @@ declare namespace App {
             | 'profileName'
             | 'protocolType'
             | 'messageType'
+            | 'pluginKey'
+            | 'pluginVersion'
+            | 'routingMode'
             | 'topicOrFrame'
             | 'sourcePath'
             | 'sourceType'
@@ -1474,14 +1477,17 @@ declare namespace App {
           dataType: Record<'integer' | 'decimal' | 'boolean' | 'string' | 'enum' | 'datetime' | 'geo_point', string>;
           access: Record<'read' | 'write' | 'read_write', string>;
           protocol: Record<'mqtt_json' | 'mqtt_binary' | 'tcp_binary', string>;
+          routing: Record<'trusted_identity' | 'legacy_listener', string>;
+          binding: { configuration: string; plugin: string; pluginHelp: string };
           messageType: Record<'telemetry' | 'state' | 'event' | 'command_reply', string>;
           transform: Record<'none' | 'scale' | 'offset' | 'scale_offset' | 'enum' | 'expression', string>;
-          validation: Record<'required', string>;
+          validation: Record<'required' | 'pluginRequired', string>;
           confirmPublishModel: string;
           confirmPublishProtocol: string;
           samples: {
             title: string;
             subtitle: string;
+            binaryPayloadHelp: string;
             unsaved: string;
             empty: string;
             editorTitle: string;

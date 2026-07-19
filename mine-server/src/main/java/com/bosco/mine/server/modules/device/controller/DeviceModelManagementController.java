@@ -154,13 +154,17 @@ public class DeviceModelManagementController {
             @NotBlank @Size(max = 128) String name,
             @NotBlank @Pattern(regexp = "MQTT_JSON|MQTT_BINARY|TCP_BINARY") String protocolType,
             @NotBlank @Pattern(regexp = "TELEMETRY|STATE|EVENT|COMMAND_REPLY") String messageType,
+            @Pattern(regexp = "[a-z][a-z0-9-]{2,63}") String pluginKey,
+            @Pattern(regexp = "[A-Za-z0-9_.:-]{1,128}") String pluginVersion,
+            @Pattern(regexp = "TRUSTED_IDENTITY|LEGACY_LISTENER") String routingMode,
             @Size(max = 255) String topicOrFrame,
             @Size(max = 500) String description
     ) {
         /** 转换为应用层命令。 */
         DeviceModelManagementService.ProtocolDraftCommand toCommand() {
             return new DeviceModelManagementService.ProtocolDraftCommand(
-                    profileKey, name, protocolType, messageType, topicOrFrame, description
+                    profileKey, name, protocolType, messageType,
+                    pluginKey, pluginVersion, routingMode, topicOrFrame, description
             );
         }
     }

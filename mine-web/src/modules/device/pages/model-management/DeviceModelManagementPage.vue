@@ -71,6 +71,9 @@ const protocolDraftForm = reactive({
   name: '',
   protocolType: 'MQTT_JSON' as ProtocolType,
   messageType: 'TELEMETRY' as ProtocolVersion['messageType'],
+  pluginKey: '',
+  pluginVersion: '',
+  routingMode: 'TRUSTED_IDENTITY' as ProtocolVersion['routingMode'],
   topicOrFrame: '',
   description: ''
 });
@@ -116,6 +119,13 @@ const accessOptions = computed<SelectOption[]>(() =>
 const protocolTypeOptions = computed<SelectOption[]>(() =>
   ['MQTT_JSON', 'MQTT_BINARY', 'TCP_BINARY'].map(value => ({
     label: t(`mine.models.protocol.${value.toLowerCase()}`),
+    value
+  }))
+);
+const usesPlugin = computed(() => protocolDraftForm.protocolType !== 'MQTT_JSON');
+const routingModeOptions = computed<SelectOption[]>(() =>
+  (['TRUSTED_IDENTITY', 'LEGACY_LISTENER'] as ProtocolVersion['routingMode'][]).map(value => ({
+    label: t(`mine.models.routing.${value.toLowerCase()}`),
     value
   }))
 );
@@ -268,9 +278,17 @@ async function releaseModel() {
 
 async function newProtocolDraft() {
   if (!productId.value) return;
+  if (usesPlugin.value && (!protocolDraftForm.pluginKey.trim() || !protocolDraftForm.pluginVersion.trim())) {
+    window.$message?.warning(t('mine.models.validation.pluginRequired'));
+    return;
+  }
   try {
     const created = await createProtocolDraft(productId.value, {
       ...protocolDraftForm,
+      pluginKey: usesPlugin.value ? protocolDraftForm.pluginKey.trim() : null,
+      pluginVersion: usesPlugin.value ? protocolDraftForm.pluginVersion.trim() : null,
+      routingMode:
+        protocolDraftForm.protocolType === 'TCP_BINARY' ? protocolDraftForm.routingMode : 'TRUSTED_IDENTITY',
       topicOrFrame: protocolDraftForm.topicOrFrame.trim() || null,
       description: protocolDraftForm.description.trim() || null
     });
@@ -280,6 +298,15 @@ async function newProtocolDraft() {
     syncProtocolFields();
   } catch (error) {
     showError(error);
+  }
+}
+
+function changeProtocolType(protocolType: ProtocolType) {
+  protocolDraftForm.protocolType = protocolType;
+  if (protocolType !== 'TCP_BINARY') protocolDraftForm.routingMode = 'TRUSTED_IDENTITY';
+  if (protocolType === 'MQTT_JSON') {
+    protocolDraftForm.pluginKey = '';
+    protocolDraftForm.pluginVersion = '';
   }
 }
 
@@ -455,14 +482,14 @@ function showError(error: unknown) {
             <template #header-extra>
               <NSpace v-if="currentProtocol?.status === 'DRAFT'">
                 <NButton
-                  v-if="can('device:model:edit')"
+                  v-if="can('device:model:edit') && currentProtocol.parserType === 'CONFIGURATION'"
                   :disabled="!publishedTargetOptions.length"
                   @click="protocolFieldModal = true"
                 >
                   {{ t('mine.models.action.addMapping') }}
                 </NButton>
                 <NButton
-                  v-if="can('device:model:edit')"
+                  v-if="can('device:model:edit') && currentProtocol.parserType === 'CONFIGURATION'"
                   type="primary"
                   :loading="saving"
                   @click="persistProtocolFields"
@@ -474,12 +501,24 @@ function showError(error: unknown) {
                 </NButton>
               </NSpace>
             </template>
+            <NAlert v-if="currentProtocol" type="info" :bordered="false">
+              {{
+                currentProtocol.parserType === 'CONFIGURATION'
+                  ? t('mine.models.binding.configuration')
+                  : t('mine.models.binding.plugin', {
+                      plugin: currentProtocol.pluginKey,
+                      version: currentProtocol.pluginVersion,
+                      routing: t(`mine.models.routing.${currentProtocol.routingMode.toLowerCase()}`)
+                    })
+              }}
+            </NAlert>
             <NDataTable :columns="protocolColumns" :data="protocolFields" :loading="loading" />
           </NCard>
           <ProtocolSampleWorkbench
             v-if="currentProtocol"
             :mapping-version-id="currentProtocol.id"
             :mapping-version="currentProtocol.version"
+            :protocol-type="currentProtocol.protocolType"
             :editable="currentProtocol.status === 'DRAFT'"
             :can-edit="can('device:protocol:sample:edit')"
             :can-test="can('device:protocol:test')"
@@ -613,6 +652,7 @@ function showError(error: unknown) {
                 v-model:value="protocolDraftForm.protocolType"
                 :options="protocolTypeOptions"
                 :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.protocolType') })"
+                @update:value="changeProtocolType"
               />
             </NFormItem>
           </NGi>
@@ -624,6 +664,34 @@ function showError(error: unknown) {
                 :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.messageType') })"
               />
             </NFormItem>
+          </NGi>
+          <NGi v-if="usesPlugin">
+            <NFormItem :label="t('mine.models.field.pluginKey')">
+              <NInput
+                v-model:value="protocolDraftForm.pluginKey"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.pluginKey') })"
+              />
+            </NFormItem>
+          </NGi>
+          <NGi v-if="usesPlugin">
+            <NFormItem :label="t('mine.models.field.pluginVersion')">
+              <NInput
+                v-model:value="protocolDraftForm.pluginVersion"
+                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.models.field.pluginVersion') })"
+              />
+            </NFormItem>
+          </NGi>
+          <NGi v-if="protocolDraftForm.protocolType === 'TCP_BINARY'" :span="2">
+            <NFormItem :label="t('mine.models.field.routingMode')">
+              <NSelect
+                v-model:value="protocolDraftForm.routingMode"
+                :options="routingModeOptions"
+                :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.models.field.routingMode') })"
+              />
+            </NFormItem>
+          </NGi>
+          <NGi v-if="usesPlugin" :span="2">
+            <NAlert type="info" :bordered="false">{{ t('mine.models.binding.pluginHelp') }}</NAlert>
           </NGi>
           <NGi :span="2">
             <NFormItem :label="t('mine.models.field.topicOrFrame')">

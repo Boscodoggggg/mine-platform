@@ -28,12 +28,14 @@ import {
 } from '@/modules/device/api/device-model';
 import type {
   ProtocolSampleInput,
-  ProtocolTestRun
+  ProtocolTestRun,
+  ProtocolType
 } from '@/modules/device/api/device-model';
 
 const props = defineProps<{
   mappingVersionId: string;
   mappingVersion: number;
+  protocolType: ProtocolType;
   editable: boolean;
   canEdit: boolean;
   canTest: boolean;
@@ -333,6 +335,9 @@ function showError(error: unknown) {
     </template>
 
     <NSpace vertical :size="16">
+      <NAlert v-if="protocolType !== 'MQTT_JSON'" type="info" :bordered="false">
+        {{ t('mine.models.samples.binaryPayloadHelp') }}
+      </NAlert>
       <NAlert v-if="dirty" type="warning" :bordered="false">
         {{ t('mine.models.samples.unsaved') }}
       </NAlert>
