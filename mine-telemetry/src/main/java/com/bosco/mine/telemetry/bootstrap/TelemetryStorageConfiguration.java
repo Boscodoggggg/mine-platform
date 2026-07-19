@@ -30,6 +30,12 @@ import com.bosco.mine.telemetry.quality.DataQualityEvaluator;
 import com.bosco.mine.telemetry.quality.DataQualityPolicyRepository;
 import com.bosco.mine.telemetry.quality.QualityEvidenceMetrics;
 import com.bosco.mine.telemetry.realtime.ConfirmedRealtimePublisher;
+import com.bosco.mine.telemetry.spatial.ConfirmedSpatialEventPublisher;
+import com.bosco.mine.telemetry.spatial.SpatialEvaluationQueue;
+import com.bosco.mine.telemetry.spatial.SpatialEvaluationWorker;
+import com.bosco.mine.telemetry.spatial.SpatialEventOutboxRelay;
+import com.bosco.mine.telemetry.spatial.SpatialEventRuntimeCoordinator;
+import com.bosco.mine.telemetry.spatial.SpatialRuntimeCatalog;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
 import com.bosco.mine.telemetry.strategy.HttpStrategySnapshotSource;
 import com.bosco.mine.telemetry.strategy.StrategyPolicyRepository;
@@ -41,6 +47,7 @@ import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.beans.factory.ObjectProvider;
@@ -55,6 +62,7 @@ import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -561,6 +569,28 @@ public class TelemetryStorageConfiguration {
         return new LocationQualityEvaluator();
     }
 
+    /** 创建在位置事实事务内固化精确发布区域修订的空间运行目录。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public SpatialRuntimeCatalog spatialRuntimeCatalog(
+            DataSource dataSource,
+            LocationRuntimeRegistry registry
+    ) {
+        return new SpatialRuntimeCatalog(dataSource, registry);
+    }
+
+    /** 创建采用发布版本迟到策略和空闲刷新的持久空间评估队列。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public SpatialEvaluationQueue spatialEvaluationQueue(
+            DataSource dataSource,
+            SpatialRuntimeCatalog runtimeCatalog
+    ) {
+        return new SpatialEvaluationQueue(dataSource, runtimeCatalog);
+    }
+
     /** 创建位置幂等、历史、隔离和实时 Outbox 的事务写入器。 */
     @Bean
     @ConditionalOnProperty(
@@ -570,10 +600,147 @@ public class TelemetryStorageConfiguration {
             LocationRuntimeRegistry registry,
             CoordinateTransformRegistry transformRegistry,
             LocationQualityEvaluator qualityEvaluator,
-            LocationPipelineMetrics metrics
+            LocationPipelineMetrics metrics,
+            SpatialEvaluationQueue spatialEvaluationQueue
     ) {
         return new LocationFactWriter(
-                dataSource, registry, transformRegistry, qualityEvaluator, metrics);
+                dataSource, registry, transformRegistry, qualityEvaluator,
+                metrics, spatialEvaluationQueue);
+    }
+
+    /** 创建按事件时间推进区域状态并原子写入空间事件 Outbox 的评估器。 */
+    @Bean
+    @ConditionalOnExpression(
+            "${mine.telemetry.location-distribution.enabled:false}"
+                    + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
+    public SpatialEvaluationWorker spatialEvaluationWorker(
+            DataSource dataSource,
+            SpatialRuntimeCatalog runtimeCatalog,
+            SpatialEvaluationQueue queue,
+            TelemetryRabbitProperties properties
+    ) {
+        TelemetryRabbitProperties.Outbox runtime = properties.resolvedLocation()
+                .resolvedSpatial().resolvedOutbox();
+        return new SpatialEvaluationWorker(
+                dataSource, runtimeCatalog, queue,
+                runtime.resolvedInstanceId() + "-evaluation",
+                runtime.resolvedLeaseDuration(), runtime.resolvedMaxAttempts(),
+                runtime.resolvedRetryBaseDelay(), runtime.resolvedRetryMaxDelay());
+    }
+
+    /** 创建只向实时交换机发布矿区空间白名单事件的确认发布器。 */
+    @Bean
+    @ConditionalOnExpression(
+            "${mine.telemetry.location-distribution.enabled:false}"
+                    + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
+    public ConfirmedSpatialEventPublisher confirmedSpatialEventPublisher(
+            CachingConnectionFactory telemetryConnectionFactory,
+            TelemetryRabbitProperties properties
+    ) {
+        RabbitTemplate template = new RabbitTemplate(telemetryConnectionFactory);
+        template.setMandatory(true);
+        return new ConfirmedSpatialEventPublisher(
+                template,
+                positive(properties.resolvedConfirmTimeoutMillis(), "confirmTimeoutMillis"));
+    }
+
+    /** 创建空间评估、精确重试和周期恢复的独立调度器。 */
+    @Bean(name = "spatialEventTaskScheduler", destroyMethod = "shutdown")
+    @ConditionalOnExpression(
+            "${mine.telemetry.location-distribution.enabled:false}"
+                    + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
+    public ThreadPoolTaskScheduler spatialEventTaskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(2);
+        scheduler.setThreadNamePrefix("spatial-event-schedule-");
+        scheduler.setRemoveOnCancelPolicy(true);
+        return scheduler;
+    }
+
+    /** 创建与位置发布隔离的空间事件有界执行器。 */
+    @Bean(name = "spatialEventExecutor", destroyMethod = "close")
+    @ConditionalOnExpression(
+            "${mine.telemetry.location-distribution.enabled:false}"
+                    + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
+    public ExecutorService spatialEventExecutor(TelemetryRabbitProperties properties) {
+        TelemetryRabbitProperties.Outbox outbox = properties.resolvedLocation()
+                .resolvedSpatial().resolvedOutbox();
+        int concurrency = Math.max(2, positive(
+                outbox.resolvedDispatchConcurrency(),
+                "location.spatial.outbox.dispatchConcurrency"));
+        int capacity = positive(
+                outbox.resolvedDispatchQueueCapacity(),
+                "location.spatial.outbox.dispatchQueueCapacity");
+        return new ThreadPoolExecutor(
+                concurrency, concurrency, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(capacity),
+                Thread.ofPlatform().name("spatial-event-runtime-", 0).factory(),
+                new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    /** 创建只调度一个已知空间事件标识的进程内重试器。 */
+    @Bean
+    @ConditionalOnExpression(
+            "${mine.telemetry.location-distribution.enabled:false}"
+                    + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
+    public SpatialEventOutboxRelay.RetryScheduler spatialOutboxRetryScheduler(
+            @Qualifier("spatialEventTaskScheduler") ThreadPoolTaskScheduler scheduler,
+            ObjectProvider<SpatialEventOutboxRelay> relayProvider
+    ) {
+        return (eventId, retryAt) -> scheduler.schedule(
+                () -> relayProvider.getObject().publishById(eventId), retryAt);
+    }
+
+    /** 创建带防旧租约、确认发布、指数退避和 DEAD 状态的空间事件中继器。 */
+    @Bean
+    @ConditionalOnExpression(
+            "${mine.telemetry.location-distribution.enabled:false}"
+                    + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
+    public SpatialEventOutboxRelay spatialEventOutboxRelay(
+            DataSource dataSource,
+            ConfirmedSpatialEventPublisher publisher,
+            SpatialEventOutboxRelay.RetryScheduler retryScheduler,
+            @Qualifier("spatialEventExecutor") ExecutorService executor,
+            TelemetryRabbitProperties properties
+    ) {
+        TelemetryRabbitProperties.Outbox outbox = properties.resolvedLocation()
+                .resolvedSpatial().resolvedOutbox();
+        Duration leaseDuration = outbox.resolvedLeaseDuration();
+        long confirmTimeoutMillis = positive(
+                properties.resolvedConfirmTimeoutMillis(), "confirmTimeoutMillis");
+        if (leaseDuration.toMillis() <= confirmTimeoutMillis + 1_000L) {
+            throw new IllegalArgumentException(
+                    "空间 Outbox 租约必须至少比发布确认超时长 1 秒");
+        }
+        return new SpatialEventOutboxRelay(
+                dataSource, publisher, retryScheduler, executor,
+                outbox.resolvedInstanceId(), leaseDuration,
+                outbox.resolvedMaxAttempts(), outbox.resolvedRecoveryLimit(),
+                outbox.resolvedRetryBaseDelay(), outbox.resolvedRetryMaxDelay(),
+                Clock.systemUTC());
+    }
+
+    /** 创建启动即运行、固定轮询和 RabbitMQ 重连恢复的空间后台协调器。 */
+    @Bean
+    @ConditionalOnExpression(
+            "${mine.telemetry.location-distribution.enabled:false}"
+                    + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
+    public SpatialEventRuntimeCoordinator spatialEventRuntimeCoordinator(
+            SpatialEvaluationWorker worker,
+            SpatialEventOutboxRelay relay,
+            CachingConnectionFactory telemetryConnectionFactory,
+            @Qualifier("spatialEventExecutor") ExecutorService executor,
+            @Qualifier("spatialEventTaskScheduler") ThreadPoolTaskScheduler scheduler,
+            TelemetryRabbitProperties properties
+    ) {
+        TelemetryRabbitProperties.Spatial spatial = properties.resolvedLocation()
+                .resolvedSpatial();
+        return new SpatialEventRuntimeCoordinator(
+                worker, relay, telemetryConnectionFactory, executor, scheduler,
+                spatial.resolvedEvaluationInterval(),
+                positive(spatial.resolvedEvaluationBatchSize(),
+                        "location.spatial.evaluationBatchSize"),
+                spatial.resolvedOutbox().resolvedRecoveryInterval());
     }
 
     /** 创建带顺序保护且可从可靠 Outbox 重建的 Redis 当前位置缓存。 */

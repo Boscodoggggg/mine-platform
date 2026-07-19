@@ -5,6 +5,7 @@ import com.bosco.mine.messaging.realtime.RealtimeLocationEvent;
 import com.bosco.mine.model.location.LocationObservation;
 import com.bosco.mine.telemetry.location.snapshot.LocationRuntimeRegistry;
 import com.bosco.mine.telemetry.location.transform.CoordinateTransformRegistry;
+import com.bosco.mine.telemetry.spatial.SpatialEvaluationQueue;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
@@ -31,6 +33,8 @@ public class LocationFactWriter {
     private final JdbcTemplate jdbcTemplate;
     private final TransactionTemplate transactionTemplate;
     private final LocationRuntimeResolver resolver;
+    private final SpatialEvaluationQueue spatialEvaluationQueue;
+    private final Clock clock;
     private final IdGenerator idGenerator;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
@@ -49,7 +53,7 @@ public class LocationFactWriter {
             LocationQualityEvaluator qualityEvaluator
     ) {
         this(dataSource, registry, transformRegistry, qualityEvaluator,
-                LocationPipelineMetrics.noop());
+                LocationPipelineMetrics.noop(), null, Clock.systemUTC());
     }
 
     /**
@@ -68,12 +72,80 @@ public class LocationFactWriter {
             LocationQualityEvaluator qualityEvaluator,
             LocationPipelineMetrics metrics
     ) {
+        this(dataSource, registry, transformRegistry, qualityEvaluator,
+                metrics, null, Clock.systemUTC());
+    }
+
+    /**
+     * 创建把已提交定位事实原子加入空间评估队列的写入器。
+     *
+     * @param dataSource Telemetry 时序数据库
+     * @param registry 最后正确定位快照注册表
+     * @param transformRegistry 坐标转换算法注册表
+     * @param qualityEvaluator 定位质量判定器
+     * @param spatialEvaluationQueue 空间评估队列
+     */
+    public LocationFactWriter(
+            DataSource dataSource,
+            LocationRuntimeRegistry registry,
+            CoordinateTransformRegistry transformRegistry,
+            LocationQualityEvaluator qualityEvaluator,
+            SpatialEvaluationQueue spatialEvaluationQueue
+    ) {
+        this(dataSource, registry, transformRegistry, qualityEvaluator,
+                LocationPipelineMetrics.noop(), spatialEvaluationQueue, Clock.systemUTC());
+    }
+
+    /**
+     * 创建带定位指标和原子空间入队能力的完整事实写入器。
+     *
+     * @param dataSource Telemetry 时序数据库
+     * @param registry 最后正确定位快照注册表
+     * @param transformRegistry 坐标转换算法注册表
+     * @param qualityEvaluator 定位质量判定器
+     * @param metrics 定位流水线指标
+     * @param spatialEvaluationQueue 可选空间评估队列
+     */
+    public LocationFactWriter(
+            DataSource dataSource,
+            LocationRuntimeRegistry registry,
+            CoordinateTransformRegistry transformRegistry,
+            LocationQualityEvaluator qualityEvaluator,
+            LocationPipelineMetrics metrics,
+            SpatialEvaluationQueue spatialEvaluationQueue
+    ) {
+        this(dataSource, registry, transformRegistry, qualityEvaluator,
+                metrics, spatialEvaluationQueue, Clock.systemUTC());
+    }
+
+    /**
+     * 创建可注入平台可信时钟的完整定位事实写入器。
+     *
+     * @param dataSource Telemetry 时序数据库
+     * @param registry 最后正确定位快照注册表
+     * @param transformRegistry 坐标转换算法注册表
+     * @param qualityEvaluator 定位质量判定器
+     * @param metrics 定位流水线指标
+     * @param spatialEvaluationQueue 可选空间评估队列
+     * @param clock 平台可信时钟，用于记录事实进入空间队列的实际时间
+     */
+    public LocationFactWriter(
+            DataSource dataSource,
+            LocationRuntimeRegistry registry,
+            CoordinateTransformRegistry transformRegistry,
+            LocationQualityEvaluator qualityEvaluator,
+            LocationPipelineMetrics metrics,
+            SpatialEvaluationQueue spatialEvaluationQueue,
+            Clock clock
+    ) {
         Objects.requireNonNull(dataSource, "定位事实数据源不能为空");
         this.jdbcTemplate = new JdbcTemplate(dataSource);
         this.transactionTemplate = new TransactionTemplate(
                 new DataSourceTransactionManager(dataSource));
         this.resolver = new LocationRuntimeResolver(
                 registry, transformRegistry, qualityEvaluator, metrics);
+        this.spatialEvaluationQueue = spatialEvaluationQueue;
+        this.clock = Objects.requireNonNull(clock, "定位事实平台时钟不能为空");
         this.idGenerator = IdGenerator.timeOrdered();
     }
 
@@ -225,6 +297,12 @@ public class LocationFactWriter {
                         "partitionKey", fact.siteId().toString(),
                         "tagId", fact.tagId().toString())),
                 Timestamp.from(event.occurredAt()));
+        if (spatialEvaluationQueue != null) {
+            spatialEvaluationQueue.enqueue(new SpatialEvaluationQueue.EnqueueCommand(
+                    observation.observationId(), fact.organizationId(), fact.siteId(),
+                    fact.tagId(), observation.occurredAt(), ingestSequence,
+                    fact.runtimeRevision(), clock.instant()));
+        }
         return new WriteResult(Outcome.STORED, event);
     }
 

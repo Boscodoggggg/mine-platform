@@ -91,7 +91,7 @@ public record TelemetryRabbitProperties(
     /** @return 定位独立消费与恢复参数，未配置时使用安全默认值 */
     public Location resolvedLocation() {
         return location == null
-                ? new Location(null, null, null, null, null)
+                ? new Location(null, null, null, null, null, null)
                 : location;
     }
 
@@ -182,13 +182,15 @@ public record TelemetryRabbitProperties(
      * @param cacheRecoveryInterval Redis 当前位置周期恢复间隔
      * @param cacheRecoverySiteLimit 单次最多恢复矿区数
      * @param cacheRecoveryTagLimit 每矿单次最多恢复标签数
+     * @param spatial 空间评估、事件 Outbox 和后台运行参数
      */
     public record Location(
             Integer prefetch,
             Outbox outbox,
             Duration cacheRecoveryInterval,
             Integer cacheRecoverySiteLimit,
-            Integer cacheRecoveryTagLimit
+            Integer cacheRecoveryTagLimit,
+            Spatial spatial
     ) {
         /** @return 定位消费者预取数量 */
         public int resolvedPrefetch() {
@@ -218,6 +220,52 @@ public record TelemetryRabbitProperties(
         /** @return 每矿单次最多恢复标签数 */
         public int resolvedCacheRecoveryTagLimit() {
             return cacheRecoveryTagLimit == null ? 10_000 : cacheRecoveryTagLimit;
+        }
+
+        /** @return 空间事件运行参数 */
+        public Spatial resolvedSpatial() {
+            return spatial == null
+                    ? new Spatial(null, null, null, null)
+                    : spatial;
+        }
+    }
+
+    /**
+     * 定位事实的事件时间评估和空间事件可靠发布参数。
+     *
+     * @param enabled 是否启用空间评估和事件发布后台任务
+     * @param evaluationInterval 空间评估轮询周期
+     * @param evaluationBatchSize 单轮空间评估最大事实数
+     * @param outbox 空间事件 Outbox 租约、退避和恢复参数
+     */
+    public record Spatial(
+            Boolean enabled,
+            Duration evaluationInterval,
+            Integer evaluationBatchSize,
+            Outbox outbox
+    ) {
+        /** @return 未显式关闭时启用空间评估和事件发布 */
+        public boolean resolvedEnabled() {
+            return !Boolean.FALSE.equals(enabled);
+        }
+
+        /** @return 空间评估轮询周期 */
+        public Duration resolvedEvaluationInterval() {
+            return evaluationInterval == null ? Duration.ofSeconds(1) : evaluationInterval;
+        }
+
+        /** @return 单轮空间评估最大事实数 */
+        public int resolvedEvaluationBatchSize() {
+            return evaluationBatchSize == null ? 500 : evaluationBatchSize;
+        }
+
+        /** @return 空间事件 Outbox 参数 */
+        public Outbox resolvedOutbox() {
+            return outbox == null
+                    ? new Outbox(
+                    "mine-telemetry-spatial", null, null, 2_000,
+                    null, null, 2, 5_000, null)
+                    : outbox;
         }
     }
 }

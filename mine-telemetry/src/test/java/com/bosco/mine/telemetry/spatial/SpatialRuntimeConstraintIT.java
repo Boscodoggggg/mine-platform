@@ -47,10 +47,12 @@ class SpatialRuntimeConstraintIT {
     }
 
     @Test
-    void 应创建六张运行表并补齐全部中文注释() {
+    void 应创建八张运行表并补齐全部中文注释() {
         List<String> tables = List.of(
                 "spatial_evaluation_queue",
                 "spatial_subject_watermark",
+                "spatial_runtime_snapshot",
+                "spatial_runtime_snapshot_item",
                 "spatial_zone_state",
                 "spatial_event",
                 "spatial_event_outbox",
@@ -61,6 +63,7 @@ class SpatialRuntimeConstraintIT {
                 FROM information_schema.tables
                 WHERE table_schema = 'public' AND table_name IN (
                     'spatial_evaluation_queue', 'spatial_subject_watermark',
+                    'spatial_runtime_snapshot', 'spatial_runtime_snapshot_item',
                     'spatial_zone_state', 'spatial_event',
                     'spatial_event_outbox', 'spatial_replay_request'
                 )
@@ -71,6 +74,7 @@ class SpatialRuntimeConstraintIT {
                 SELECT COALESCE(obj_description(table_name::regclass, 'pg_class'), '')
                 FROM unnest(ARRAY[
                     'spatial_evaluation_queue', 'spatial_subject_watermark',
+                    'spatial_runtime_snapshot', 'spatial_runtime_snapshot_item',
                     'spatial_zone_state', 'spatial_event',
                     'spatial_event_outbox', 'spatial_replay_request'
                 ]) AS table_name
@@ -86,6 +90,7 @@ class SpatialRuntimeConstraintIT {
                 WHERE namespace.nspname = 'public'
                   AND table_class.relname IN (
                     'spatial_evaluation_queue', 'spatial_subject_watermark',
+                    'spatial_runtime_snapshot', 'spatial_runtime_snapshot_item',
                     'spatial_zone_state', 'spatial_event',
                     'spatial_event_outbox', 'spatial_replay_request'
                   )
@@ -117,7 +122,9 @@ class SpatialRuntimeConstraintIT {
                 .anySatisfy(value -> assertThat(value).contains(
                         "realtime.spatial.event.created", "schema_version"))
                 .anySatisfy(value -> assertThat(value).contains(
-                        "PENDING", "PUBLISHING", "PUBLISHED", "FAILED", "DEAD"));
+                        "PENDING", "PUBLISHING", "PUBLISHED", "FAILED", "DEAD"))
+                .anySatisfy(value -> assertThat(value).contains(
+                        "lease_token", "locked_by", "locked_at", "lease_expires_at"));
     }
 
     @Test

@@ -19,8 +19,11 @@ public final class SpatialWatermarkPolicy {
      * @param idleFlushAfter  流量停止后刷新剩余事实的时长
      */
     public SpatialWatermarkPolicy(Duration allowedLateness, Duration idleFlushAfter) {
-        this.allowedLateness = requirePositive(allowedLateness, "允许迟到时长");
+        this.allowedLateness = requireNonNegative(allowedLateness, "允许迟到时长");
         this.idleFlushAfter = requirePositive(idleFlushAfter, "空闲刷新时长");
+        if (this.idleFlushAfter.compareTo(this.allowedLateness) <= 0) {
+            throw new IllegalArgumentException("空闲刷新时长必须大于允许迟到时长");
+        }
     }
 
     /**
@@ -155,6 +158,14 @@ public final class SpatialWatermarkPolicy {
         Objects.requireNonNull(value, name + "不能为空");
         if (value.isZero() || value.isNegative()) {
             throw new IllegalArgumentException(name + "必须为正数");
+        }
+        return value;
+    }
+
+    private static Duration requireNonNegative(Duration value, String name) {
+        Objects.requireNonNull(value, name + "不能为空");
+        if (value.isNegative()) {
+            throw new IllegalArgumentException(name + "不得为负数");
         }
         return value;
     }

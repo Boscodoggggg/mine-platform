@@ -52,15 +52,31 @@ class TelemetryMigrationIT {
                 .dataSource(TIMESCALE.getJdbcUrl(), TIMESCALE.getUsername(), TIMESCALE.getPassword())
                 .locations("classpath:db/migration")
                 .load();
+        Flyway preSpatialPipelineFlyway = Flyway.configure()
+                .dataSource(TIMESCALE.getJdbcUrl(), TIMESCALE.getUsername(), TIMESCALE.getPassword())
+                .locations("classpath:db/migration")
+                .target(MigrationVersion.fromVersion("25"))
+                .load();
 
         MigrateResult baseline = baselineFlyway.migrate();
         insertLegacyTelemetry();
         String legacyLocationTableOid = queryStrings(
                 "SELECT 'location_point'::regclass::oid::TEXT").getFirst();
+        MigrateResult preSpatialPipeline = preSpatialPipelineFlyway.migrate();
+        insertLegacyPublishingSpatialOutbox();
         MigrateResult upgraded = flyway.migrate();
 
         assertThat(baseline.migrationsExecuted).isPositive();
+        assertThat(preSpatialPipeline.migrationsExecuted).isPositive();
         assertThat(upgraded.migrationsExecuted).isPositive();
+        assertThat(queryStrings("""
+                SELECT status || ':' || (lease_token IS NULL)::TEXT || ':'
+                       || (locked_by IS NULL)::TEXT || ':'
+                       || COALESCE(last_error, '')
+                FROM spatial_event_outbox
+                WHERE event_id = '019f7b51-9b63-70b8-b0e2-581e4f819001'
+                """))
+                .containsExactly("FAILED:true:true:LEASE_TOKEN_MIGRATION_RECOVERY");
         assertThat(queryStrings("SELECT extname FROM pg_extension WHERE extname = 'timescaledb'"))
                 .containsExactly("timescaledb");
         assertThat(queryStrings("SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'"))
@@ -445,6 +461,7 @@ class TelemetryMigrationIT {
                 WHERE table_schema = 'public'
                   AND table_name IN (
                     'spatial_evaluation_queue', 'spatial_subject_watermark',
+                    'spatial_runtime_snapshot', 'spatial_runtime_snapshot_item',
                     'spatial_zone_state', 'spatial_event',
                     'spatial_event_outbox', 'spatial_replay_request'
                   )
@@ -455,9 +472,72 @@ class TelemetryMigrationIT {
                         "spatial_event",
                         "spatial_event_outbox",
                         "spatial_replay_request",
+                        "spatial_runtime_snapshot",
+                        "spatial_runtime_snapshot_item",
                         "spatial_subject_watermark",
                         "spatial_zone_state"
                 );
+    }
+
+    /**
+     * 在 V25 结构中写入发布中的空间 Outbox，验证 V26 能安全回收无令牌旧租约。
+     */
+    private void insertLegacyPublishingSpatialOutbox() throws Exception {
+        execute("""
+                INSERT INTO location_inbox (
+                    event_id, source_device_id, boot_id, source_sequence,
+                    payload_hash, occurred_at, received_at, result, ingest_sequence
+                ) VALUES (
+                    '019f7b51-9b63-70b8-b0e2-581e4f819101',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819102',
+                    'spatial-upgrade-boot', 1,
+                    'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+                    '2026-07-19T01:00:00Z', '2026-07-19T01:00:01Z', 'STORED', 9001
+                );
+
+                INSERT INTO spatial_evaluation_queue (
+                    location_event_id, organization_id, site_id, tag_id,
+                    occurred_at, ingest_sequence, runtime_revision,
+                    status, processed_at
+                ) VALUES (
+                    '019f7b51-9b63-70b8-b0e2-581e4f819101',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819103',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819104',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819105',
+                    '2026-07-19T01:00:00Z', 9001, 1,
+                    'PROCESSED', '2026-07-19T01:00:02Z'
+                );
+
+                INSERT INTO spatial_event (
+                    event_id, organization_id, site_id, zone_type, zone_id,
+                    zone_version_id, tag_id, event_type,
+                    anchor_location_event_id, previous_state, current_state,
+                    confirmation_points, runtime_revision, occurred_at, evidence
+                ) VALUES (
+                    '019f7b51-9b63-70b8-b0e2-581e4f819001',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819103',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819104', 'GEOFENCE',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819106',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819107',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819105', 'ENTER',
+                    '019f7b51-9b63-70b8-b0e2-581e4f819101',
+                    'OUTSIDE', 'INSIDE', 2, 1,
+                    '2026-07-19T01:00:00Z', '{}'::JSONB
+                );
+
+                INSERT INTO spatial_event_outbox (
+                    event_id, event_type, schema_version, payload, payload_hash,
+                    headers, status, attempts, next_attempt_at,
+                    locked_by, locked_at, lease_expires_at, occurred_at
+                ) VALUES (
+                    '019f7b51-9b63-70b8-b0e2-581e4f819001',
+                    'realtime.spatial.event.created', 1, '{}'::JSONB,
+                    'sha256:1111111111111111111111111111111111111111111111111111111111111111',
+                    '{}'::JSONB, 'PUBLISHING', 1, '2026-07-19T01:00:00Z',
+                    'legacy-spatial-relay', '2026-07-19T01:00:02Z',
+                    '2026-07-19T01:01:02Z', '2026-07-19T01:00:00Z'
+                );
+                """);
     }
 
     private void insertLegacyTelemetry() throws Exception {

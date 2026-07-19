@@ -204,7 +204,8 @@ final class LocationRuntimeResolver {
                             transformId, algorithm, parameters, declaredTarget.bounds()))));
         }
         return new RuntimeModel(
-                snapshot.organizationId(), snapshot.siteId(), Map.copyOf(sourceDevices),
+                snapshot.organizationId(), snapshot.siteId(), snapshot.revision(),
+                Map.copyOf(sourceDevices),
                 Map.copyOf(tags), Map.copyOf(systems), target,
                 List.copyOf(deviceBindings), List.copyOf(tagBindings),
                 List.copyOf(transforms));
@@ -354,6 +355,7 @@ final class LocationRuntimeResolver {
     record ResolvedFact(
             UUID organizationId,
             UUID siteId,
+            long runtimeRevision,
             UUID tagId,
             String tagCode,
             UUID sourceCoordinateSystemId,
@@ -365,6 +367,12 @@ final class LocationRuntimeResolver {
             UUID personId,
             LocationQualityEvaluator.Evaluation quality
     ) {
+        /** 校验已解析事实必须携带正数运行修订。 */
+        ResolvedFact {
+            if (runtimeRevision < 1L) {
+                throw new IllegalArgumentException("定位事实运行修订必须为正数");
+            }
+        }
     }
 
     /** 需要持久隔离且不可通过重投修复的运行语义判定。 */
@@ -412,6 +420,7 @@ final class LocationRuntimeResolver {
     private record RuntimeModel(
             UUID organizationId,
             UUID siteId,
+            long runtimeRevision,
             Map<UUID, String> sourceDevices,
             Map<String, Tag> tags,
             Map<String, CoordinateSystem> systems,
@@ -489,7 +498,7 @@ final class LocationRuntimeResolver {
             }
             TagBinding binding = selectedBindings.isEmpty() ? null : selectedBindings.getFirst();
             return new ResolvedFact(
-                    organizationId, siteId, tag.id(), observation.tagCode(),
+                    organizationId, siteId, runtimeRevision, tag.id(), observation.tagCode(),
                     source.id(), unified.id(), coordinate,
                     binding == null ? null : binding.type(),
                     binding == null ? null : binding.id(),

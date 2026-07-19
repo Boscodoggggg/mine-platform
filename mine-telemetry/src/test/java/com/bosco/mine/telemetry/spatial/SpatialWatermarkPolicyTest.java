@@ -71,4 +71,17 @@ class SpatialWatermarkPolicyTest {
         assertThat(policy.isTooLate(
                 watermark, Instant.parse("2026-07-19T10:00:20Z"), 21)).isFalse();
     }
+
+    @Test
+    void 应允许发布版本明确配置零秒迟到窗口() {
+        SpatialWatermarkPolicy immediate = new SpatialWatermarkPolicy(
+                Duration.ZERO, Duration.ofSeconds(1));
+        SpatialWatermarkPolicy.Watermark watermark = new SpatialWatermarkPolicy.Watermark(
+                Instant.parse("2026-07-19T10:00:20Z"), 20,
+                Instant.parse("2026-07-19T10:00:21Z"), null, null);
+
+        assertThat(immediate.processingCutoff(
+                watermark, Instant.parse("2026-07-19T10:00:21Z")))
+                .isEqualTo(watermark.maxOccurredAt());
+    }
 }

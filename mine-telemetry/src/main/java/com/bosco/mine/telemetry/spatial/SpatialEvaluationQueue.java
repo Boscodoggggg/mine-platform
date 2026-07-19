@@ -28,7 +28,7 @@ public final class SpatialEvaluationQueue {
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
-    private final SpatialWatermarkPolicy watermarkPolicy;
+    private final PolicyResolver policyResolver;
 
     /**
      * 创建使用本地数据库事务和 PostgreSQL 行锁的空间评估队列。
@@ -37,10 +37,34 @@ public final class SpatialEvaluationQueue {
      * @param watermarkPolicy 事件时间水位策略
      */
     public SpatialEvaluationQueue(DataSource dataSource, SpatialWatermarkPolicy watermarkPolicy) {
+        this(dataSource, fixedPolicy(watermarkPolicy));
+    }
+
+    /**
+     * 创建使用精确空间运行目录解析发布版本迟到策略的持久队列。
+     *
+     * @param dataSource Telemetry 数据源
+     * @param runtimeCatalog 入队时原子固化精确空间修订的运行目录
+     */
+    public SpatialEvaluationQueue(
+            DataSource dataSource,
+            SpatialRuntimeCatalog runtimeCatalog
+    ) {
+        this(dataSource, Objects.requireNonNull(
+                runtimeCatalog, "空间运行目录不能为空")::capture);
+    }
+
+    /**
+     * 创建使用可替换策略解析器的持久空间评估队列。
+     *
+     * @param dataSource Telemetry 数据源
+     * @param policyResolver 入队命令对应的精确运行策略解析器
+     */
+    public SpatialEvaluationQueue(DataSource dataSource, PolicyResolver policyResolver) {
         Objects.requireNonNull(dataSource, "数据源不能为空");
         this.jdbc = new JdbcTemplate(dataSource);
         this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
-        this.watermarkPolicy = Objects.requireNonNull(watermarkPolicy, "水位策略不能为空");
+        this.policyResolver = Objects.requireNonNull(policyResolver, "水位策略解析器不能为空");
     }
 
     /**
@@ -52,31 +76,39 @@ public final class SpatialEvaluationQueue {
     public boolean enqueue(EnqueueCommand command) {
         Objects.requireNonNull(command, "入队命令不能为空");
         Boolean inserted = transactions.execute(status -> {
+            Optional<ResolvedPolicy> resolved = policyResolver.resolve(command);
+            if (resolved.isEmpty()) {
+                return false;
+            }
+            ResolvedPolicy policy = resolved.get();
             lockSubject(command.siteId(), command.tagId());
             Optional<SpatialWatermarkPolicy.Watermark> previous = findWatermark(
                     command.siteId(), command.tagId());
             boolean tooLate = previous
-                    .map(watermark -> watermarkPolicy.isTooLate(
+                    .map(watermark -> policy.watermarkPolicy().isTooLate(
                             watermark, command.occurredAt(), command.ingestSequence()))
                     .orElse(false);
             int changed = jdbc.update("""
                     INSERT INTO spatial_evaluation_queue (
                         location_event_id, organization_id, site_id, tag_id,
                         occurred_at, ingest_sequence, runtime_revision,
+                        allowed_lateness_millis, idle_flush_millis,
                         status, result_reason, next_attempt_at, enqueued_at, processed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT (location_event_id) DO NOTHING
                     """,
                     command.locationEventId(), command.organizationId(), command.siteId(),
                     command.tagId(), sqlTime(command.occurredAt()), command.ingestSequence(),
-                    command.runtimeRevision(), tooLate ? "SKIPPED" : "PENDING",
+                    policy.runtimeRevision(), policy.watermarkPolicy().allowedLateness().toMillis(),
+                    policy.watermarkPolicy().idleFlushAfter().toMillis(),
+                    tooLate ? "SKIPPED" : "PENDING",
                     tooLate ? "TOO_LATE" : null, sqlTime(command.arrivedAt()),
                     sqlTime(command.arrivedAt()), tooLate ? sqlTime(command.arrivedAt()) : null);
             if (changed == 0) {
                 return false;
             }
             SpatialWatermarkPolicy.Watermark observed = previous
-                    .map(current -> watermarkPolicy.observe(
+                    .map(current -> policy.watermarkPolicy().observe(
                             current, command.occurredAt(), command.ingestSequence(), command.arrivedAt()))
                     .orElseGet(() -> new SpatialWatermarkPolicy.Watermark(
                             command.occurredAt(), command.ingestSequence(), command.arrivedAt(),
@@ -114,18 +146,30 @@ public final class SpatialEvaluationQueue {
             recoverExpiredLeases(now);
             List<ClaimedItem> candidates = jdbc.query("""
                     SELECT q.location_event_id, q.organization_id, q.site_id, q.tag_id,
-                           q.occurred_at, q.ingest_sequence, q.runtime_revision, q.attempts
+                           q.occurred_at, q.ingest_sequence, q.runtime_revision, q.attempts,
+                           ordering_policy.allowed_lateness_millis,
+                           ordering_policy.idle_flush_millis
                     FROM spatial_evaluation_queue q
                     JOIN spatial_subject_watermark watermark
                       ON watermark.site_id = q.site_id AND watermark.tag_id = q.tag_id
+                    JOIN LATERAL (
+                        SELECT MAX(policy.allowed_lateness_millis)
+                                   AS allowed_lateness_millis,
+                               MAX(policy.idle_flush_millis) AS idle_flush_millis
+                        FROM spatial_evaluation_queue policy
+                        WHERE policy.site_id = q.site_id AND policy.tag_id = q.tag_id
+                          AND policy.status IN ('PENDING', 'PROCESSING', 'FAILED')
+                    ) ordering_policy ON ordering_policy.allowed_lateness_millis IS NOT NULL
                     WHERE q.status IN ('PENDING', 'FAILED')
                       AND q.next_attempt_at <= ?
                       AND q.occurred_at <= CASE
                           WHEN ? >= watermark.last_arrival_at
-                              + (? * INTERVAL '1 millisecond')
+                              + (ordering_policy.idle_flush_millis
+                                 * INTERVAL '1 millisecond')
                           THEN watermark.max_occurred_at
                           ELSE watermark.max_occurred_at
-                              - (? * INTERVAL '1 millisecond')
+                              - (ordering_policy.allowed_lateness_millis
+                                 * INTERVAL '1 millisecond')
                       END
                       AND NOT EXISTS (
                           SELECT 1
@@ -140,8 +184,7 @@ public final class SpatialEvaluationQueue {
                     FOR UPDATE OF q, watermark SKIP LOCKED
                     LIMIT ?
                     """, (rs, rowNum) -> mapClaimedItem(rs),
-                    sqlTime(now), sqlTime(now), watermarkPolicy.idleFlushAfter().toMillis(),
-                    watermarkPolicy.allowedLateness().toMillis(), limit);
+                    sqlTime(now), sqlTime(now), limit);
             Instant leaseExpiresAt = now.plus(safeLease);
             List<ClaimedItem> claimed = new ArrayList<>(candidates.size());
             for (ClaimedItem candidate : candidates) {
@@ -309,7 +352,10 @@ public final class SpatialEvaluationQueue {
                     max_occurred_at = EXCLUDED.max_occurred_at,
                     max_ingest_sequence = EXCLUDED.max_ingest_sequence,
                     last_arrival_at = EXCLUDED.last_arrival_at,
-                    updated_at = EXCLUDED.updated_at
+                    updated_at = GREATEST(
+                        spatial_subject_watermark.updated_at,
+                        EXCLUDED.updated_at
+                    )
                 """, command.organizationId(), command.siteId(), command.tagId(),
                 sqlTime(observed.maxOccurredAt()), observed.maxIngestSequence(),
                 sqlTime(observed.lastArrivalAt()), sqlTime(command.arrivedAt()));
@@ -330,7 +376,7 @@ public final class SpatialEvaluationQueue {
                     OR (finalized_occurred_at, finalized_ingest_sequence) <= (?, ?)
                   )
                 """, sqlTime(item.occurredAt()), item.ingestSequence(), sqlTime(now),
-                watermarkPolicy.idleFlushAfter().toMillis(), sqlTime(now), sqlTime(now),
+                item.idleFlushMillis(), sqlTime(now), sqlTime(now),
                 item.siteId(), item.tagId(), sqlTime(item.occurredAt()), item.ingestSequence());
         requireChanged(changed, "空间事件时间前沿未能随领取记录推进");
     }
@@ -345,6 +391,8 @@ public final class SpatialEvaluationQueue {
                 rs.getLong("ingest_sequence"),
                 rs.getLong("runtime_revision"),
                 rs.getInt("attempts"),
+                rs.getLong("allowed_lateness_millis"),
+                rs.getLong("idle_flush_millis"),
                 null
         );
     }
@@ -402,6 +450,13 @@ public final class SpatialEvaluationQueue {
         return value;
     }
 
+    private static PolicyResolver fixedPolicy(SpatialWatermarkPolicy watermarkPolicy) {
+        SpatialWatermarkPolicy safePolicy = Objects.requireNonNull(
+                watermarkPolicy, "水位策略不能为空");
+        return command -> Optional.of(new ResolvedPolicy(
+                safePolicy, command.runtimeRevision()));
+    }
+
     /**
      * 已持久化位置事实的空间评估入队命令。
      *
@@ -452,6 +507,8 @@ public final class SpatialEvaluationQueue {
      * @param ingestSequence  平台摄入序号
      * @param runtimeRevision 定位运行快照修订号
      * @param attempts        包含本次领取的尝试次数
+     * @param allowedLatenessMillis 入队时固化的允许迟到毫秒数
+     * @param idleFlushMillis 入队时固化的空闲刷新毫秒数
      * @param leaseToken      本次领取唯一且防止旧执行完成新租约的令牌
      */
     public record ClaimedItem(
@@ -463,6 +520,8 @@ public final class SpatialEvaluationQueue {
             long ingestSequence,
             long runtimeRevision,
             int attempts,
+            long allowedLatenessMillis,
+            long idleFlushMillis,
             UUID leaseToken
     ) {
 
@@ -470,7 +529,37 @@ public final class SpatialEvaluationQueue {
             return new ClaimedItem(
                     locationEventId, organizationId, siteId, tagId,
                     occurredAt, ingestSequence, runtimeRevision,
-                    updatedAttempts, updatedLeaseToken);
+                    updatedAttempts, allowedLatenessMillis, idleFlushMillis,
+                    updatedLeaseToken);
+        }
+    }
+
+    /** 入队时解析发布区域策略并固化运行修订的函数。 */
+    @FunctionalInterface
+    public interface PolicyResolver {
+        /**
+         * @param command 已解析的位置事实命令
+         * @return 无生效区域时返回空，否则返回精确修订与水位策略
+         */
+        Optional<ResolvedPolicy> resolve(EnqueueCommand command);
+    }
+
+    /**
+     * 入队位置事实应使用的精确运行修订和事件时间水位策略。
+     *
+     * @param watermarkPolicy 发布区域合并后的保守水位策略
+     * @param runtimeRevision 已固化的精确空间运行修订号
+     */
+    public record ResolvedPolicy(
+            SpatialWatermarkPolicy watermarkPolicy,
+            long runtimeRevision
+    ) {
+        /** 校验运行策略完整且修订号为正数。 */
+        public ResolvedPolicy {
+            Objects.requireNonNull(watermarkPolicy, "空间水位策略不能为空");
+            if (runtimeRevision < 1) {
+                throw new IllegalArgumentException("空间运行修订号必须为正数");
+            }
         }
     }
 }

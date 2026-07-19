@@ -72,6 +72,20 @@ mine:
         cache-recovery-interval: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_INTERVAL:5m}
         cache-recovery-site-limit: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_SITE_LIMIT:100}
         cache-recovery-tag-limit: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_TAG_LIMIT:10000}
+        spatial:
+          enabled: ${MINE_TELEMETRY_SPATIAL_ENABLED:true}
+          evaluation-interval: ${MINE_TELEMETRY_SPATIAL_EVALUATION_INTERVAL:1s}
+          evaluation-batch-size: ${MINE_TELEMETRY_SPATIAL_EVALUATION_BATCH_SIZE:500}
+          outbox:
+            instance-id: ${MINE_TELEMETRY_SPATIAL_INSTANCE_ID:${HOSTNAME:mine-telemetry}-spatial}
+            lease-duration: ${MINE_TELEMETRY_SPATIAL_LEASE_DURATION:30s}
+            max-attempts: ${MINE_TELEMETRY_SPATIAL_MAX_ATTEMPTS:8}
+            recovery-limit: ${MINE_TELEMETRY_SPATIAL_RECOVERY_LIMIT:2000}
+            retry-base-delay: ${MINE_TELEMETRY_SPATIAL_RETRY_BASE_DELAY:1s}
+            retry-max-delay: ${MINE_TELEMETRY_SPATIAL_RETRY_MAX_DELAY:5m}
+            dispatch-concurrency: ${MINE_TELEMETRY_SPATIAL_DISPATCH_CONCURRENCY:2}
+            dispatch-queue-capacity: ${MINE_TELEMETRY_SPATIAL_DISPATCH_QUEUE_CAPACITY:5000}
+            recovery-interval: ${MINE_TELEMETRY_SPATIAL_RECOVERY_INTERVAL:10s}
     strategy-distribution:
       enabled: ${MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED:false}
       server-url: ${MINE_TELEMETRY_STRATEGY_SERVER_URL:http://mine-server:8080}
