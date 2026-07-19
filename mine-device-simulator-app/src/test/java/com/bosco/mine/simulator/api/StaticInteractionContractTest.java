@@ -26,7 +26,11 @@ class StaticInteractionContractTest {
                 "DUPLICATE",
                 "OUT_OF_ORDER",
                 "UNBOUND_TAG",
-                "OUT_OF_BOUNDS");
+                "OUT_OF_BOUNDS",
+                "CROSS_BOUNDARY",
+                "BOUNDARY_JITTER",
+                "DWELL",
+                "LATE");
         assertThat(script).contains(
                 "locationTemplate",
                 "locationScenarioPreset",

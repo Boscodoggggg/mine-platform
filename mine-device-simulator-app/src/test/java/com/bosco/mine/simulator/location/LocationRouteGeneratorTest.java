@@ -2,6 +2,7 @@ package com.bosco.mine.simulator.location;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,6 +73,69 @@ class LocationRouteGeneratorTest {
         assertThat(unbound.tagCode()).startsWith("SIM-UNBOUND-");
         assertThat(Math.abs(outside.x())).isGreaterThan(100_000D);
         assertThat(Math.abs(outside.y())).isGreaterThan(100_000D);
+    }
+
+    @Test
+    void 跨边界场景应稳定产生围栏外进入围栏内再离开的轨迹() {
+        LocationRouteGenerator.Sample outside = generator.generate(
+                LocationRouteGenerator.Scenario.CROSS_BOUNDARY, 2L, NOW, 1000L, "tag-001");
+        LocationRouteGenerator.Sample inside = generator.generate(
+                LocationRouteGenerator.Scenario.CROSS_BOUNDARY, 5L, NOW.plusSeconds(3),
+                1000L, "tag-001");
+        LocationRouteGenerator.Sample exited = generator.generate(
+                LocationRouteGenerator.Scenario.CROSS_BOUNDARY, 11L, NOW.plusSeconds(9),
+                1000L, "tag-001");
+
+        assertThat(outside.x()).isLessThan(500D);
+        assertThat(inside.x()).isGreaterThan(500D);
+        assertThat(exited.x()).isLessThan(500D);
+        assertThat(outside.y()).isEqualTo(inside.y()).isEqualTo(exited.y());
+    }
+
+    @Test
+    void 边界抖动场景应在固定容差带两侧交替且保持可重复() {
+        LocationRouteGenerator.Sample odd = generator.generate(
+                LocationRouteGenerator.Scenario.BOUNDARY_JITTER, 3L, NOW, 1000L, "tag-001");
+        LocationRouteGenerator.Sample even = generator.generate(
+                LocationRouteGenerator.Scenario.BOUNDARY_JITTER, 4L, NOW.plusSeconds(1),
+                1000L, "tag-001");
+
+        assertThat(odd.x()).isBetween(499.5D, 500.5D);
+        assertThat(even.x()).isBetween(499.5D, 500.5D);
+        assertThat(odd.x()).isNotEqualTo(even.x());
+        assertThat(new LocationRouteGenerator(20260718L).generate(
+                LocationRouteGenerator.Scenario.BOUNDARY_JITTER, 3L, NOW,
+                1000L, "tag-001")).isEqualTo(odd);
+    }
+
+    @Test
+    void 停留场景进入后应保持静止并为单次停留事件提供连续确认点() {
+        LocationRouteGenerator.Sample entered = generator.generate(
+                LocationRouteGenerator.Scenario.DWELL, 5L, NOW, 1000L, "tag-001");
+        LocationRouteGenerator.Sample dwelling = generator.generate(
+                LocationRouteGenerator.Scenario.DWELL, 70L, NOW.plusSeconds(65),
+                1000L, "tag-001");
+
+        assertThat(entered.x()).isGreaterThan(500D);
+        assertThat(dwelling.x()).isEqualTo(entered.x());
+        assertThat(dwelling.y()).isEqualTo(entered.y());
+        assertThat(dwelling.speedMetersPerSecond()).isZero();
+        assertThat(Duration.between(entered.occurredAt(), dwelling.occurredAt()))
+                .isGreaterThanOrEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
+    void 迟到场景应保持来源序号递增但周期性回退发生时间() {
+        LocationRouteGenerator.Sample previous = generator.generate(
+                LocationRouteGenerator.Scenario.LATE, 4L, NOW, 1000L, "tag-001");
+        LocationRouteGenerator.Sample late = generator.generate(
+                LocationRouteGenerator.Scenario.LATE, 5L, NOW.plusSeconds(1),
+                1000L, "tag-001");
+
+        assertThat(late.sourceSequence()).isEqualTo(5L);
+        assertThat(late.occurredAt()).isBefore(previous.occurredAt());
+        assertThat(Duration.between(late.occurredAt(), previous.occurredAt()).getSeconds())
+                .isGreaterThanOrEqualTo(30L);
     }
 
     @Test

@@ -150,6 +150,21 @@ class SpatialRuntimeConstraintIT {
     }
 
     @Test
+    void 应为Outbox死信指标提供部分索引() {
+        assertThat(jdbc.queryForList("""
+                SELECT indexdef
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'spatial_event_outbox'
+                  AND indexname = 'idx_spatial_event_outbox_dead'
+                """, String.class))
+                .singleElement()
+                .satisfies(definition -> assertThat(definition)
+                        .contains("USING btree (event_id)")
+                        .contains("WHERE ((status)::text = 'DEAD'::text)"));
+    }
+
+    @Test
     void 应拒绝非法租约和超限重放窗口() {
         assertThatThrownBy(() -> jdbc.update("""
                 INSERT INTO spatial_evaluation_queue (

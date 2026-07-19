@@ -3,6 +3,8 @@ package com.bosco.mine.telemetry.spatial;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
@@ -29,6 +31,7 @@ public final class SpatialEvaluationQueue {
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final PolicyResolver policyResolver;
+    private final SpatialEventMetrics metrics;
 
     /**
      * 创建使用本地数据库事务和 PostgreSQL 行锁的空间评估队列。
@@ -37,7 +40,22 @@ public final class SpatialEvaluationQueue {
      * @param watermarkPolicy 事件时间水位策略
      */
     public SpatialEvaluationQueue(DataSource dataSource, SpatialWatermarkPolicy watermarkPolicy) {
-        this(dataSource, fixedPolicy(watermarkPolicy));
+        this(dataSource, fixedPolicy(watermarkPolicy), SpatialEventMetrics.noop());
+    }
+
+    /**
+     * 创建带空间运行指标的固定水位策略队列。
+     *
+     * @param dataSource Telemetry 数据源
+     * @param watermarkPolicy 事件时间水位策略
+     * @param metrics 空间事件运行指标
+     */
+    public SpatialEvaluationQueue(
+            DataSource dataSource,
+            SpatialWatermarkPolicy watermarkPolicy,
+            SpatialEventMetrics metrics
+    ) {
+        this(dataSource, fixedPolicy(watermarkPolicy), metrics);
     }
 
     /**
@@ -51,7 +69,24 @@ public final class SpatialEvaluationQueue {
             SpatialRuntimeCatalog runtimeCatalog
     ) {
         this(dataSource, Objects.requireNonNull(
-                runtimeCatalog, "空间运行目录不能为空")::capture);
+                runtimeCatalog, "空间运行目录不能为空")::capture,
+                SpatialEventMetrics.noop());
+    }
+
+    /**
+     * 创建带空间运行指标并按发布版本解析策略的持久队列。
+     *
+     * @param dataSource Telemetry 数据源
+     * @param runtimeCatalog 空间运行目录
+     * @param metrics 空间事件运行指标
+     */
+    public SpatialEvaluationQueue(
+            DataSource dataSource,
+            SpatialRuntimeCatalog runtimeCatalog,
+            SpatialEventMetrics metrics
+    ) {
+        this(dataSource, Objects.requireNonNull(
+                runtimeCatalog, "空间运行目录不能为空")::capture, metrics);
     }
 
     /**
@@ -61,10 +96,26 @@ public final class SpatialEvaluationQueue {
      * @param policyResolver 入队命令对应的精确运行策略解析器
      */
     public SpatialEvaluationQueue(DataSource dataSource, PolicyResolver policyResolver) {
+        this(dataSource, policyResolver, SpatialEventMetrics.noop());
+    }
+
+    /**
+     * 创建使用可替换策略解析器并记录运行指标的持久队列。
+     *
+     * @param dataSource Telemetry 数据源
+     * @param policyResolver 入队命令对应的精确运行策略解析器
+     * @param metrics 空间事件运行指标
+     */
+    public SpatialEvaluationQueue(
+            DataSource dataSource,
+            PolicyResolver policyResolver,
+            SpatialEventMetrics metrics
+    ) {
         Objects.requireNonNull(dataSource, "数据源不能为空");
         this.jdbc = new JdbcTemplate(dataSource);
         this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
         this.policyResolver = Objects.requireNonNull(policyResolver, "水位策略解析器不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "空间事件运行指标不能为空");
     }
 
     /**
@@ -75,10 +126,10 @@ public final class SpatialEvaluationQueue {
      */
     public boolean enqueue(EnqueueCommand command) {
         Objects.requireNonNull(command, "入队命令不能为空");
-        Boolean inserted = transactions.execute(status -> {
+        EnqueueOutcome outcome = transactions.execute(status -> {
             Optional<ResolvedPolicy> resolved = policyResolver.resolve(command);
             if (resolved.isEmpty()) {
-                return false;
+                return EnqueueOutcome.NO_ACTIVE_ZONE;
             }
             ResolvedPolicy policy = resolved.get();
             lockSubject(command.siteId(), command.tagId());
@@ -105,7 +156,7 @@ public final class SpatialEvaluationQueue {
                     tooLate ? "TOO_LATE" : null, sqlTime(command.arrivedAt()),
                     sqlTime(command.arrivedAt()), tooLate ? sqlTime(command.arrivedAt()) : null);
             if (changed == 0) {
-                return false;
+                return EnqueueOutcome.DUPLICATE;
             }
             SpatialWatermarkPolicy.Watermark observed = previous
                     .map(current -> policy.watermarkPolicy().observe(
@@ -114,9 +165,11 @@ public final class SpatialEvaluationQueue {
                             command.occurredAt(), command.ingestSequence(), command.arrivedAt(),
                             null, null));
             upsertWatermark(command, observed);
-            return true;
+            return tooLate ? EnqueueOutcome.TOO_LATE : EnqueueOutcome.SUCCESS;
         });
-        return Boolean.TRUE.equals(inserted);
+        EnqueueOutcome committed = Objects.requireNonNull(outcome, "空间评估入队事务结果不能为空");
+        afterCommit(() -> metrics.queue(committed.result, committed.reason));
+        return committed.inserted;
     }
 
     /**
@@ -235,6 +288,8 @@ public final class SpatialEvaluationQueue {
                 """, sqlTime(processedAt), locationEventId, safeWorkerId,
                 leaseToken, sqlTime(processedAt));
         requireChanged(changed, "空间评估记录不属于当前实例或已离开处理中状态");
+        afterCommit(() -> metrics.stage(SpatialEventMetrics.Stage.EVALUATION,
+                SpatialEventMetrics.Result.SUCCESS, SpatialEventMetrics.Reason.NONE));
     }
 
     /**
@@ -272,7 +327,7 @@ public final class SpatialEvaluationQueue {
             throw new IllegalArgumentException("最大尝试次数必须在 1 到 100 之间");
         }
         String safeReason = requireReasonCode(reasonCode);
-        transactions.executeWithoutResult(status -> {
+        Boolean dead = transactions.execute(status -> {
             Integer attempts = jdbc.query("""
                     SELECT attempts
                     FROM spatial_evaluation_queue
@@ -284,7 +339,7 @@ public final class SpatialEvaluationQueue {
             if (attempts == null) {
                 throw new IllegalStateException("空间评估记录不属于当前实例或已离开处理中状态");
             }
-            boolean dead = attempts >= maxAttempts;
+            boolean isDead = attempts >= maxAttempts;
             Duration backoff = boundedBackoff(safeBase, safeMax, attempts);
             int changed = jdbc.update("""
                     UPDATE spatial_evaluation_queue
@@ -293,11 +348,44 @@ public final class SpatialEvaluationQueue {
                         lease_expires_at = NULL
                     WHERE location_event_id = ? AND status = 'PROCESSING'
                       AND locked_by = ? AND lease_token = ? AND lease_expires_at > ?
-                    """, dead ? "DEAD" : "FAILED", safeReason,
-                    sqlTime(failedAt.plus(backoff)), dead ? sqlTime(failedAt) : null,
+                    """, isDead ? "DEAD" : "FAILED", safeReason,
+                    sqlTime(failedAt.plus(backoff)), isDead ? sqlTime(failedAt) : null,
                     locationEventId, safeWorkerId, leaseToken, sqlTime(failedAt));
             requireChanged(changed, "空间评估失败状态更新发生并发冲突");
+            return isDead;
         });
+        afterCommit(() -> metrics.stage(SpatialEventMetrics.Stage.EVALUATION,
+                Boolean.TRUE.equals(dead)
+                    ? SpatialEventMetrics.Result.DEAD
+                    : SpatialEventMetrics.Result.FAILURE,
+                SpatialEventMetrics.Reason.STATE_RECOVERY));
+    }
+
+    /** 空间事实入队事务的固定结果。 */
+    private enum EnqueueOutcome {
+        /** 正常进入等待队列。 */
+        SUCCESS(true, SpatialEventMetrics.Result.SUCCESS, SpatialEventMetrics.Reason.NONE),
+        /** 事件已存在。 */
+        DUPLICATE(false, SpatialEventMetrics.Result.SKIPPED, SpatialEventMetrics.Reason.DUPLICATE),
+        /** 当前没有生效区域。 */
+        NO_ACTIVE_ZONE(false, SpatialEventMetrics.Result.SKIPPED,
+                SpatialEventMetrics.Reason.NO_ACTIVE_ZONE),
+        /** 事件晚于已完成水位，记录审计但不再评估。 */
+        TOO_LATE(true, SpatialEventMetrics.Result.SKIPPED, SpatialEventMetrics.Reason.TOO_LATE);
+
+        private final boolean inserted;
+        private final SpatialEventMetrics.Result result;
+        private final SpatialEventMetrics.Reason reason;
+
+        EnqueueOutcome(
+                boolean inserted,
+                SpatialEventMetrics.Result result,
+                SpatialEventMetrics.Reason reason
+        ) {
+            this.inserted = inserted;
+            this.result = result;
+            this.reason = reason;
+        }
     }
 
     private void recoverExpiredLeases(Instant now) {
@@ -308,6 +396,26 @@ public final class SpatialEvaluationQueue {
                     lease_expires_at = NULL
                 WHERE status = 'PROCESSING' AND lease_expires_at <= ?
                 """, sqlTime(now), sqlTime(now));
+    }
+
+    /**
+     * 当前线程存在外层事务时延迟到提交成功后执行，否则立即执行。
+     *
+     * @param action 只允许执行低风险内存指标更新的动作
+     */
+    private void afterCommit(Runnable action) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            action.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        action.run();
+                    }
+                });
     }
 
     private void lockSubject(UUID siteId, UUID tagId) {

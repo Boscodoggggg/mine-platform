@@ -410,3 +410,57 @@ groups:
         annotations:
           summary: "定位隔离区逼近处置上限"
           description: "定位隔离区记录数已持续达到 80000，请按原因处理异常来源，并按批准流程清理已到期证据。"
+
+  - name: mine-spatial-runtime
+    rules:
+      - alert: MineSpatialEvaluationQueueBacklogHigh
+        expr: mine_telemetry_spatial_queue_backlog > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "空间评估队列持续积压"
+          description: "空间评估待处理或待重试记录已连续 5 分钟超过 1000 条，请检查评估线程、TimescaleDB 锁竞争和区域配置复杂度。"
+
+      - alert: MineSpatialTooLateRateHigh
+        expr: >-
+          (sum(rate(mine_telemetry_spatial_queue_events_total
+          {reason="too_late"}[10m]))
+          / clamp_min(sum(rate(mine_telemetry_spatial_queue_events_total[10m])), 0.001)
+          > 0.05)
+          and (sum(increase(mine_telemetry_spatial_queue_events_total[10m])) >= 100)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "空间评估过晚定位比例升高"
+          description: "最近 10 分钟空间评估样本不少于 100 条且过晚定位比例持续超过 5%，请检查设备时钟、边缘缓存、网络延迟和水位策略。"
+
+      - alert: MineSpatialOutboxDead
+        expr: mine_telemetry_spatial_outbox_dead > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "空间事件可靠发布出现死信"
+          description: "空间事件 Outbox 存在 DEAD 记录，事件已停止自动重试；请检查 RabbitMQ、发布确认和脱敏错误后按审计流程恢复。"
+
+      - alert: MineSpatialStateRecoveryFailures
+        expr: >-
+          sum(increase(mine_telemetry_spatial_stage_events_total
+          {stage="evaluation",result=~"failure|dead",reason="state_recovery"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "空间区域状态推进失败"
+          description: "最近 10 分钟空间区域状态评估发生失败或死信，请检查精确运行快照、队列租约、位置事实和数据库事务。"
+
+      - alert: MineSpatialReplayTimeout
+        expr: mine_telemetry_spatial_replay_oldest_active_age_seconds > 1800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "空间历史重放长时间未完成"
+          description: "最老活动空间重放请求已持续超过 30 分钟，请检查重放租约、查询计划、批量上限和失败退避。"

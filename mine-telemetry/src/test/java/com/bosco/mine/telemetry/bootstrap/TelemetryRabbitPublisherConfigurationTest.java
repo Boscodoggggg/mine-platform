@@ -2,6 +2,7 @@ package com.bosco.mine.telemetry.bootstrap;
 
 import com.bosco.mine.telemetry.alarm.outbox.RabbitAlarmOutboxPublisher;
 import com.bosco.mine.telemetry.spatial.ConfirmedSpatialEventPublisher;
+import com.bosco.mine.telemetry.spatial.SpatialEventMetrics;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.amqp.core.Message;
@@ -92,7 +93,7 @@ class TelemetryRabbitPublisherConfigurationTest {
         assertThatThrownBy(() -> configuration.spatialEventOutboxRelay(
                 mock(DataSource.class), mock(ConfirmedSpatialEventPublisher.class),
                 mock(com.bosco.mine.telemetry.spatial.SpatialEventOutboxRelay.RetryScheduler.class),
-                mock(ExecutorService.class), properties))
+                mock(ExecutorService.class), mock(SpatialEventMetrics.class), properties))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("发布确认超时");
     }

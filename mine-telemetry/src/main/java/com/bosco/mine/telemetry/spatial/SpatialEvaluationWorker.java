@@ -55,6 +55,7 @@ public final class SpatialEvaluationWorker {
     private final Duration retryBaseDelay;
     private final Duration retryMaxDelay;
     private final Clock clock;
+    private final SpatialEventMetrics metrics;
     private final ConcurrentHashMap<UUID, CachedZones> zoneCache = new ConcurrentHashMap<>();
 
     /**
@@ -81,7 +82,7 @@ public final class SpatialEvaluationWorker {
     ) {
         this(dataSource, exactCurrentSource(registry), queue, workerId,
                 leaseDuration, maxAttempts, retryBaseDelay, retryMaxDelay,
-                Clock.systemUTC());
+                Clock.systemUTC(), SpatialEventMetrics.noop());
     }
 
     /**
@@ -109,7 +110,37 @@ public final class SpatialEvaluationWorker {
         this(dataSource, Objects.requireNonNull(
                         runtimeCatalog, "空间运行目录不能为空")::find,
                 queue, workerId, leaseDuration, maxAttempts,
-                retryBaseDelay, retryMaxDelay, Clock.systemUTC());
+                retryBaseDelay, retryMaxDelay, Clock.systemUTC(), SpatialEventMetrics.noop());
+    }
+
+    /**
+     * 创建从持久空间目录读取精确修订并记录已提交业务事件的生产评估器。
+     *
+     * @param dataSource Telemetry 时序数据库
+     * @param runtimeCatalog 精确空间运行快照目录
+     * @param queue 空间事件时间排序队列
+     * @param workerId 当前服务实例标识
+     * @param leaseDuration 单条位置事实处理租约
+     * @param maxAttempts 最大处理尝试次数
+     * @param retryBaseDelay 首次失败退避时长
+     * @param retryMaxDelay 最大失败退避时长
+     * @param metrics 空间事件运行指标
+     */
+    public SpatialEvaluationWorker(
+            DataSource dataSource,
+            SpatialRuntimeCatalog runtimeCatalog,
+            SpatialEvaluationQueue queue,
+            String workerId,
+            Duration leaseDuration,
+            int maxAttempts,
+            Duration retryBaseDelay,
+            Duration retryMaxDelay,
+            SpatialEventMetrics metrics
+    ) {
+        this(dataSource, Objects.requireNonNull(
+                        runtimeCatalog, "空间运行目录不能为空")::find,
+                queue, workerId, leaseDuration, maxAttempts,
+                retryBaseDelay, retryMaxDelay, Clock.systemUTC(), metrics);
     }
 
     /**
@@ -137,7 +168,8 @@ public final class SpatialEvaluationWorker {
             Clock clock
     ) {
         this(dataSource, exactCurrentSource(registry), queue, workerId,
-                leaseDuration, maxAttempts, retryBaseDelay, retryMaxDelay, clock);
+                leaseDuration, maxAttempts, retryBaseDelay, retryMaxDelay, clock,
+                SpatialEventMetrics.noop());
     }
 
     private SpatialEvaluationWorker(
@@ -149,7 +181,8 @@ public final class SpatialEvaluationWorker {
             int maxAttempts,
             Duration retryBaseDelay,
             Duration retryMaxDelay,
-            Clock clock
+            Clock clock,
+            SpatialEventMetrics metrics
     ) {
         Objects.requireNonNull(dataSource, "空间评估数据源不能为空");
         this.jdbc = new JdbcTemplate(dataSource);
@@ -169,6 +202,7 @@ public final class SpatialEvaluationWorker {
         }
         this.maxAttempts = maxAttempts;
         this.clock = Objects.requireNonNull(clock, "空间评估时钟不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "空间事件运行指标不能为空");
     }
 
     /**
@@ -201,12 +235,16 @@ public final class SpatialEvaluationWorker {
 
     private void processClaimed(SpatialEvaluationQueue.ClaimedItem item, Instant claimedAt) {
         try {
-            transactions.executeWithoutResult(status -> {
-                evaluate(item);
+            List<EventMetric> emitted = transactions.execute(status -> {
+                List<EventMetric> events = evaluate(item);
                 Instant completedAt = currentTime(claimedAt);
                 queue.markProcessed(
                         item.locationEventId(), workerId, item.leaseToken(), completedAt);
+                return events;
             });
+            Objects.requireNonNull(emitted, "空间评估事务结果不能为空").forEach(event ->
+                    metrics.event(event.zoneType(), event.eventType(),
+                            SpatialEventMetrics.Result.SUCCESS));
         } catch (RuntimeException exception) {
             Instant failedAt = currentTime(claimedAt);
             queue.markFailed(
@@ -218,7 +256,8 @@ public final class SpatialEvaluationWorker {
         }
     }
 
-    private void evaluate(SpatialEvaluationQueue.ClaimedItem item) {
+    private List<EventMetric> evaluate(SpatialEvaluationQueue.ClaimedItem item) {
+        List<EventMetric> emitted = new ArrayList<>();
         LocationRuntimeRegistry.RuntimeSnapshot snapshot = snapshotSource.find(
                         item.siteId(), item.runtimeRevision())
                 .orElseThrow(() -> new IllegalStateException("空间评估缺少精确运行快照"));
@@ -241,8 +280,19 @@ public final class SpatialEvaluationWorker {
             persistState(item, zone, transition.state());
             for (SpatialEventStateMachine.EmittedEvent event : transition.events()) {
                 persistEvent(item, fact, zone, transition, event);
+                emitted.add(new EventMetric(
+                        SpatialEventMetrics.ZoneType.valueOf(zone.zoneType()),
+                        SpatialEventMetrics.EventType.valueOf(event.type().name())));
             }
         }
+        return List.copyOf(emitted);
+    }
+
+    /** 已提交空间业务事件对应的固定低基数指标维度。 */
+    private record EventMetric(
+            SpatialEventMetrics.ZoneType zoneType,
+            SpatialEventMetrics.EventType eventType
+    ) {
     }
 
     private PersistedLocationFact loadFact(SpatialEvaluationQueue.ClaimedItem item) {

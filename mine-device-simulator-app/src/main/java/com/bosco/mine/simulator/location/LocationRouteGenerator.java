@@ -12,6 +12,7 @@ import java.util.Objects;
 public final class LocationRouteGenerator {
 
     private static final int CIRCLE_STEPS = 120;
+    private static final int DWELL_STEPS = 120;
     private static final int POLYLINE_SEGMENT_STEPS = 30;
     private static final double[][] POLYLINE = {
             {100D, 100D}, {500D, 100D}, {500D, 400D}, {100D, 400D}
@@ -60,6 +61,9 @@ public final class LocationRouteGenerator {
         long sourceSequence = effectiveSequence(scenario, sequence);
         long offsetMillis = Math.multiplyExact(sequence - sourceSequence, intervalMillis);
         Instant occurredAt = timestamp.minusMillis(offsetMillis);
+        if (scenario == Scenario.LATE && sequence % 5L == 0L) {
+            occurredAt = occurredAt.minusSeconds(90L);
+        }
         Coordinate coordinate = coordinate(scenario, sourceSequence);
         Coordinate previous = coordinate(scenario, Math.max(1L, sourceSequence - 1L));
         double deltaX = coordinate.x - previous.x;
@@ -100,10 +104,36 @@ public final class LocationRouteGenerator {
         if (scenario == Scenario.POLYLINE) {
             return polyline(sequence);
         }
+        if (scenario == Scenario.CROSS_BOUNDARY || scenario == Scenario.LATE) {
+            return crossBoundary(sequence);
+        }
+        if (scenario == Scenario.BOUNDARY_JITTER) {
+            return boundaryJitter(sequence);
+        }
+        if (scenario == Scenario.DWELL) {
+            return dwell(sequence);
+        }
         if (scenario == Scenario.OUT_OF_BOUNDS) {
             return new Coordinate(1_000_000D + sequence, -1_000_000D - sequence, 6D);
         }
         return circle(sequence);
+    }
+
+    private Coordinate crossBoundary(long sequence) {
+        long step = Math.floorMod(sequence - 1L, 12L);
+        double x = step < 3L || step >= 9L ? 480D : 520D;
+        return new Coordinate(x, 400D, 6D);
+    }
+
+    private Coordinate boundaryJitter(long sequence) {
+        double offset = sequence % 2L == 0L ? 0.2D : -0.2D;
+        return new Coordinate(500D + offset, 400D, 6D);
+    }
+
+    private Coordinate dwell(long sequence) {
+        long step = Math.floorMod(sequence - 1L, DWELL_STEPS);
+        double x = step < 3L || step >= 90L ? 480D : 520D;
+        return new Coordinate(x, 400D, 6D);
     }
 
     private Coordinate circle(long sequence) {
@@ -153,7 +183,15 @@ public final class LocationRouteGenerator {
         /** 使用需预先建档但不绑定车辆或人员的固定标签编码。 */
         UNBOUND_TAG,
         /** 生成明显超出正常矿区边界的坐标。 */
-        OUT_OF_BOUNDS
+        OUT_OF_BOUNDS,
+        /** 穿过固定模拟边界后再离开，用于进入和离开事件。 */
+        CROSS_BOUNDARY,
+        /** 在固定模拟边界容差带两侧交替，用于验证消抖。 */
+        BOUNDARY_JITTER,
+        /** 进入固定模拟区域后持续静止，用于单次停留事件。 */
+        DWELL,
+        /** 每五帧保持序号递增但回退发生时间，用于迟到排序。 */
+        LATE
     }
 
     /**

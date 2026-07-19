@@ -42,6 +42,7 @@ public final class SpatialEventOutboxRelay {
     private final Duration retryBaseDelay;
     private final Duration retryMaxDelay;
     private final Clock clock;
+    private final SpatialEventMetrics metrics;
     private final Set<UUID> dispatching = ConcurrentHashMap.newKeySet();
 
     /**
@@ -72,7 +73,7 @@ public final class SpatialEventOutboxRelay {
     ) {
         this(dataSource, publisher, retryScheduler, Runnable::run,
                 instanceId, leaseDuration, maxAttempts, recoveryLimit,
-                retryBaseDelay, retryMaxDelay, clock);
+                retryBaseDelay, retryMaxDelay, clock, SpatialEventMetrics.noop());
     }
 
     /**
@@ -103,6 +104,41 @@ public final class SpatialEventOutboxRelay {
             Duration retryMaxDelay,
             Clock clock
     ) {
+        this(dataSource, publisher, retryScheduler, dispatchExecutor,
+                instanceId, leaseDuration, maxAttempts, recoveryLimit,
+                retryBaseDelay, retryMaxDelay, clock, SpatialEventMetrics.noop());
+    }
+
+    /**
+     * 创建带低基数运行指标的生产空间事件中继器。
+     *
+     * @param dataSource Telemetry 时序数据库
+     * @param publisher 等待 RabbitMQ 发布确认的发布器
+     * @param retryScheduler 精确事件重试调度器
+     * @param dispatchExecutor 空间事件有界发布执行器
+     * @param instanceId 当前服务实例标识
+     * @param leaseDuration 发布认领租约
+     * @param maxAttempts 最大发布尝试次数
+     * @param recoveryLimit 单次恢复扫描上限
+     * @param retryBaseDelay 首次失败退避时长
+     * @param retryMaxDelay 最大失败退避时长
+     * @param clock 平台可信时钟
+     * @param metrics 空间事件运行指标
+     */
+    public SpatialEventOutboxRelay(
+            DataSource dataSource,
+            Publisher publisher,
+            RetryScheduler retryScheduler,
+            Executor dispatchExecutor,
+            String instanceId,
+            Duration leaseDuration,
+            int maxAttempts,
+            int recoveryLimit,
+            Duration retryBaseDelay,
+            Duration retryMaxDelay,
+            Clock clock,
+            SpatialEventMetrics metrics
+    ) {
         this.jdbc = new JdbcTemplate(Objects.requireNonNull(
                 dataSource, "空间 Outbox 数据源不能为空"));
         this.publisher = Objects.requireNonNull(publisher, "空间事件发布器不能为空");
@@ -124,6 +160,7 @@ public final class SpatialEventOutboxRelay {
         this.maxAttempts = maxAttempts;
         this.recoveryLimit = recoveryLimit;
         this.clock = Objects.requireNonNull(clock, "空间 Outbox 时钟不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "空间事件运行指标不能为空");
     }
 
     /**
@@ -217,6 +254,8 @@ public final class SpatialEventOutboxRelay {
                        AND lease_expires_at > CURRENT_TIMESTAMP
                     """, event.eventId(), instanceId, event.leaseToken()),
                     event.eventId(), "发布成功");
+            metrics.stage(SpatialEventMetrics.Stage.OUTBOX,
+                    SpatialEventMetrics.Result.SUCCESS, SpatialEventMetrics.Reason.NONE);
         } catch (RuntimeException exception) {
             String error = safeError(exception);
             if (event.attempts() >= maxAttempts) {
@@ -245,6 +284,9 @@ public final class SpatialEventOutboxRelay {
                 """, retryAt.atOffset(java.time.ZoneOffset.UTC), error,
                 event.eventId(), instanceId, event.leaseToken()),
                 event.eventId(), "记录发布失败");
+        metrics.stage(SpatialEventMetrics.Stage.OUTBOX,
+                SpatialEventMetrics.Result.FAILURE,
+                SpatialEventMetrics.Reason.PUBLISH_FAILED);
     }
 
     private void markDead(ClaimedEvent event, String error) {
@@ -258,6 +300,9 @@ public final class SpatialEventOutboxRelay {
                    AND lease_expires_at > CURRENT_TIMESTAMP
                 """, error, event.eventId(), instanceId, event.leaseToken()),
                 event.eventId(), "转入死信");
+        metrics.stage(SpatialEventMetrics.Stage.OUTBOX,
+                SpatialEventMetrics.Result.DEAD,
+                SpatialEventMetrics.Reason.RETRY_EXHAUSTED);
     }
 
     private ClaimedEvent mapEvent(ResultSet rs, int rowNumber) throws SQLException {

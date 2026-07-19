@@ -5,6 +5,7 @@ import com.bosco.mine.telemetry.location.LocationFactWriter;
 import com.bosco.mine.telemetry.location.LocationQualityEvaluator;
 import com.bosco.mine.telemetry.location.snapshot.LocationRuntimeRegistry;
 import com.bosco.mine.telemetry.location.transform.CoordinateTransformRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -100,6 +101,8 @@ class SpatialEventPipelineIT {
     private LocationFactWriter writer;
     private SpatialEvaluationWorker worker;
     private SpatialReplayExecutor replayExecutor;
+    private SimpleMeterRegistry meterRegistry;
+    private SpatialEventMetrics metrics;
     private Binding spatialBinding;
 
     @BeforeAll
@@ -130,21 +133,23 @@ class SpatialEventPipelineIT {
         Flyway.configure().dataSource(dataSource).locations("classpath:db/migration")
                 .load().migrate();
         jdbc = new JdbcTemplate(dataSource);
+        meterRegistry = new SimpleMeterRegistry();
+        metrics = new SpatialEventMetrics(meterRegistry, dataSource);
 
         CoordinateTransformRegistry transforms = new CoordinateTransformRegistry();
         registry = new LocationRuntimeRegistry(dataSource, transforms);
         activateSnapshot(7L, true);
         runtimeCatalog = new SpatialRuntimeCatalog(dataSource, registry);
-        queue = new SpatialEvaluationQueue(dataSource, runtimeCatalog);
+        queue = new SpatialEvaluationQueue(dataSource, runtimeCatalog, metrics);
         writer = new LocationFactWriter(
                 dataSource, registry, transforms, new LocationQualityEvaluator(), queue);
         worker = new SpatialEvaluationWorker(
                 dataSource, runtimeCatalog, queue, "spatial-pipeline-it",
                 Duration.ofSeconds(30), 3,
-                Duration.ofMillis(10), Duration.ofSeconds(1));
+                Duration.ofMillis(10), Duration.ofSeconds(1), metrics);
         replayExecutor = new SpatialReplayExecutor(
                 dataSource, "spatial-replay-it", Duration.ofSeconds(30), 3, 2,
-                Duration.ofMillis(10), Duration.ofSeconds(1), Clock.systemUTC());
+                Duration.ofMillis(10), Duration.ofSeconds(1), Clock.systemUTC(), metrics);
 
         rabbitAdmin.deleteQueue(TEST_QUEUE);
         TopicExchange exchange = new TopicExchange(REALTIME_EXCHANGE, true, false);
@@ -218,6 +223,8 @@ class SpatialEventPipelineIT {
 
         assertThat(worker.processReady(processAt, 100)).isEqualTo(4);
         UUID enterEventId = singleEventId("ENTER");
+        assertThat(counter("mine.telemetry.spatial.events", "zoneType", "geofence",
+                "eventType", "enter", "result", "success")).isOne();
         assertThat(queryText("""
                 SELECT stable_state || ':' || candidate_count
                 FROM spatial_zone_state
@@ -274,6 +281,8 @@ class SpatialEventPipelineIT {
                 FROM spatial_evaluation_queue
                 WHERE location_event_id = ?
                 """, uuid(206))).containsExactly("FAILED:EVALUATION_FAILED");
+        assertThat(counter("mine.telemetry.spatial.stage.events", "stage", "evaluation",
+                "result", "failure", "reason", "state_recovery")).isOne();
 
         jdbc.execute("DROP TRIGGER reject_spatial_outbox_trigger ON spatial_event_outbox");
         jdbc.execute("DROP FUNCTION reject_spatial_outbox()");
@@ -308,6 +317,8 @@ class SpatialEventPipelineIT {
                 SELECT status || ':' || attempts
                 FROM spatial_event_outbox WHERE event_id = ?
                 """, eventId)).containsExactly("PUBLISHED:1");
+        assertThat(counter("mine.telemetry.spatial.stage.events", "stage", "outbox",
+                "result", "success", "reason", "none")).isOne();
     }
 
     @Test
@@ -340,6 +351,8 @@ class SpatialEventPipelineIT {
                 SELECT status || ':' || attempts
                 FROM spatial_event_outbox WHERE event_id = ?
                 """, eventId)).containsExactly("DEAD:2");
+        assertThat(counter("mine.telemetry.spatial.stage.events", "stage", "outbox",
+                "result", "dead", "reason", "retry_exhausted")).isOne();
     }
 
     @Test
@@ -438,6 +451,8 @@ class SpatialEventPipelineIT {
         } while (result.processed() && !result.completed());
 
         assertThat(result.completed()).isTrue();
+        assertThat(counter("mine.telemetry.spatial.stage.events", "stage", "replay",
+                "result", "success", "reason", "none")).isGreaterThanOrEqualTo(1D);
         assertThat(queryText("""
                 SELECT status || ':' || scanned_points || ':' || emitted_events
                 FROM spatial_replay_request WHERE request_id = ?
@@ -847,8 +862,15 @@ class SpatialEventPipelineIT {
     ) {
         return new SpatialEventOutboxRelay(
                 dataSource, publisher, (eventId, retryAt) -> retryTimes.add(retryAt),
-                "spatial-outbox-it", Duration.ofSeconds(30), maxAttempts, 100,
-                Duration.ofMillis(10), Duration.ofSeconds(1), clock);
+                Runnable::run, "spatial-outbox-it", Duration.ofSeconds(30), maxAttempts, 100,
+                Duration.ofMillis(10), Duration.ofSeconds(1), clock, metrics);
+    }
+
+    /**
+     * 查询固定标签组合的空间计数器值。
+     */
+    private double counter(String name, String... tags) {
+        return meterRegistry.get(name).tags(tags).counter().count();
     }
 
     private UUID createEnterEvent(int baseId) {

@@ -13,12 +13,22 @@ required_alerts=(
   MineLocationIngressRejectionRateHigh
   MineLocationRedisLatestFailuresPersistent
   MineLocationQuarantineNearLimit
+  MineSpatialEvaluationQueueBacklogHigh
+  MineSpatialTooLateRateHigh
+  MineSpatialOutboxDead
+  MineSpatialStateRecoveryFailures
+  MineSpatialReplayTimeout
 )
 required_metrics=(
   mine_telemetry_location_snapshot_result_total
   mine_gateway_location_ingest_total
   mine_telemetry_location_redis_latest_total
   mine_telemetry_location_quarantine_size
+  mine_telemetry_spatial_queue_backlog
+  mine_telemetry_spatial_queue_events_total
+  mine_telemetry_spatial_outbox_dead
+  mine_telemetry_spatial_stage_events_total
+  mine_telemetry_spatial_replay_oldest_active_age_seconds
 )
 
 for alert in "${required_alerts[@]}"; do
@@ -31,8 +41,8 @@ for metric in "${required_metrics[@]}"; do
 done
 
 location_rules="$(awk '
-  /^  - name: mine-location-runtime$/ { capture=1 }
-  capture && /^  - name:/ && $0 !~ /mine-location-runtime/ { exit }
+  /^  - name: mine-(location|spatial)-runtime$/ { capture=1 }
+  capture && /^  - name:/ && $0 !~ /mine-(location|spatial)-runtime/ { capture=0 }
   capture { print }
 ' "${RULES_FILE}")"
 if grep -Eq '(^|[,{[:space:]])(site|device|tag|person|vehicle|coordinate|exception|error_text)=' \
@@ -57,4 +67,4 @@ else
     test rules platform.test.yml
 fi
 
-echo "PASS: 定位低基数告警规则和 PromQL 行为测试通过"
+echo "PASS: 定位与空间低基数告警规则和 PromQL 行为测试通过"

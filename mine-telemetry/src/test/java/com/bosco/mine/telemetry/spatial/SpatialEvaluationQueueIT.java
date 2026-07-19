@@ -1,11 +1,14 @@
 package com.bosco.mine.telemetry.spatial;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -42,7 +45,10 @@ class SpatialEvaluationQueueIT {
             .withPassword("mine-timescale-test-password");
 
     private static JdbcTemplate jdbc;
-    private static SpatialEvaluationQueue queue;
+    private static DriverManagerDataSource dataSource;
+
+    private SpatialEvaluationQueue queue;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeAll
     static void migrate() {
@@ -51,11 +57,9 @@ class SpatialEvaluationQueueIT {
                 .locations("classpath:db/migration")
                 .load()
                 .migrate();
-        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+        dataSource = new DriverManagerDataSource(
                 TIMESCALE.getJdbcUrl(), TIMESCALE.getUsername(), TIMESCALE.getPassword());
         jdbc = new JdbcTemplate(dataSource);
-        queue = new SpatialEvaluationQueue(dataSource,
-                new SpatialWatermarkPolicy(Duration.ofSeconds(5), Duration.ofSeconds(30)));
     }
 
     @BeforeEach
@@ -65,6 +69,10 @@ class SpatialEvaluationQueueIT {
                     spatial_evaluation_queue, spatial_subject_watermark,
                     spatial_replay_request, location_inbox CASCADE
                 """);
+        meterRegistry = new SimpleMeterRegistry();
+        queue = new SpatialEvaluationQueue(dataSource,
+                new SpatialWatermarkPolicy(Duration.ofSeconds(5), Duration.ofSeconds(30)),
+                new SpatialEventMetrics(meterRegistry, () -> 0D, () -> 0D, () -> 0D));
     }
 
     @Test
@@ -165,6 +173,89 @@ class SpatialEvaluationQueueIT {
         assertThat(status(eventId)).isEqualTo("DEAD:EVALUATION_ERROR");
     }
 
+    @Test
+    void 应在事务提交后记录低基数入队和评估结果() {
+        Instant arrivedAt = Instant.parse("2026-07-19T13:00:21Z");
+        UUID event10 = enqueue(50, "2026-07-19T13:00:10Z", arrivedAt);
+        enqueue(51, "2026-07-19T13:00:20Z", arrivedAt.plusSeconds(1));
+
+        SpatialEvaluationQueue.ClaimedItem claimed = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(2), Duration.ofSeconds(10), 1).getFirst();
+        queue.markProcessed(event10, "worker-a", claimed.leaseToken(), arrivedAt.plusSeconds(3));
+        UUID tooLate = enqueue(52, "2026-07-19T13:00:09Z", arrivedAt.plusSeconds(4));
+        assertThat(queue.enqueue(command(event10, 50,
+                Instant.parse("2026-07-19T13:00:10Z"), arrivedAt.plusSeconds(5)))).isFalse();
+
+        assertThat(status(tooLate)).isEqualTo("SKIPPED:TOO_LATE");
+        assertThat(counter("mine.telemetry.spatial.queue.events", "result", "success",
+                "reason", "none")).isEqualTo(2D);
+        assertThat(counter("mine.telemetry.spatial.queue.events", "result", "skipped",
+                "reason", "too_late")).isEqualTo(1D);
+        assertThat(counter("mine.telemetry.spatial.queue.events", "result", "skipped",
+                "reason", "duplicate")).isEqualTo(1D);
+        assertThat(counter("mine.telemetry.spatial.stage.events", "stage", "evaluation",
+                "result", "success", "reason", "none")).isEqualTo(1D);
+    }
+
+    @Test
+    void 外层事务回滚时不得虚增评估成功指标() {
+        Instant arrivedAt = Instant.parse("2026-07-19T14:00:00Z");
+        UUID eventId = enqueue(60, "2026-07-19T14:00:00Z", arrivedAt);
+        SpatialEvaluationQueue.ClaimedItem claimed = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(31), Duration.ofSeconds(10), 1).getFirst();
+        TransactionTemplate transaction = new TransactionTemplate(
+                new DataSourceTransactionManager(dataSource));
+
+        transaction.executeWithoutResult(status -> {
+            queue.markProcessed(eventId, "worker-a", claimed.leaseToken(), arrivedAt.plusSeconds(32));
+            status.setRollbackOnly();
+        });
+
+        assertThat(status(eventId)).isEqualTo("PROCESSING:");
+        assertThat(meterRegistry.find("mine.telemetry.spatial.stage.events")
+                .tags("stage", "evaluation", "result", "success", "reason", "none")
+                .counter()).isNull();
+
+        transaction.executeWithoutResult(status -> {
+            queue.markFailed(eventId, "worker-a", claimed.leaseToken(), arrivedAt.plusSeconds(32),
+                    Duration.ofSeconds(5), Duration.ofSeconds(20), 3, "EVALUATION_ERROR");
+            status.setRollbackOnly();
+        });
+
+        assertThat(status(eventId)).isEqualTo("PROCESSING:");
+        assertThat(meterRegistry.find("mine.telemetry.spatial.stage.events")
+                .tags("stage", "evaluation", "result", "failure", "reason", "state_recovery")
+                .counter()).isNull();
+    }
+
+    @Test
+    void 外层事务回滚时不得保留入队记录或虚增入队指标() {
+        Instant arrivedAt = Instant.parse("2026-07-19T15:00:00Z");
+        UUID eventId = UUID.randomUUID();
+        TransactionTemplate transaction = new TransactionTemplate(
+                new DataSourceTransactionManager(dataSource));
+
+        transaction.executeWithoutResult(status -> {
+            jdbc.update("""
+                    INSERT INTO location_inbox (
+                        event_id, source_device_id, boot_id, source_sequence, payload_hash,
+                        occurred_at, received_at, result, ingest_sequence
+                    ) VALUES (?, ?, 'boot-spatial', ?, ?, ?, ?, 'STORED', ?)
+                    """, eventId, SOURCE_DEVICE_ID, 70L,
+                    "sha256:" + "a".repeat(64), Timestamp.from(arrivedAt),
+                    Timestamp.from(arrivedAt), 70L);
+            assertThat(queue.enqueue(command(eventId, 70L, arrivedAt, arrivedAt))).isTrue();
+            status.setRollbackOnly();
+        });
+
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM spatial_evaluation_queue WHERE location_event_id = ?
+                """, Long.class, eventId)).isZero();
+        assertThat(meterRegistry.find("mine.telemetry.spatial.queue.events")
+                .tags("result", "success", "reason", "none")
+                .counter()).isNull();
+    }
+
     /**
      * 写入定位 Inbox 后把事实加入待评估队列。
      */
@@ -202,5 +293,12 @@ class SpatialEvaluationQueueIT {
                 FROM spatial_evaluation_queue
                 WHERE location_event_id = ?
                 """, String.class, eventId);
+    }
+
+    /**
+     * 查询固定标签组合的空间计数器值。
+     */
+    private double counter(String name, String... tags) {
+        return meterRegistry.get(name).tags(tags).counter().count();
     }
 }

@@ -34,6 +34,7 @@ import com.bosco.mine.telemetry.spatial.ConfirmedSpatialEventPublisher;
 import com.bosco.mine.telemetry.spatial.SpatialEvaluationQueue;
 import com.bosco.mine.telemetry.spatial.SpatialEvaluationWorker;
 import com.bosco.mine.telemetry.spatial.SpatialEventOutboxRelay;
+import com.bosco.mine.telemetry.spatial.SpatialEventMetrics;
 import com.bosco.mine.telemetry.spatial.SpatialEventRuntimeCoordinator;
 import com.bosco.mine.telemetry.spatial.SpatialReplayExecutor;
 import com.bosco.mine.telemetry.spatial.SpatialRuntimeCatalog;
@@ -581,15 +582,27 @@ public class TelemetryStorageConfiguration {
         return new SpatialRuntimeCatalog(dataSource, registry);
     }
 
+    /** 创建空间队列、事件、Outbox 和重放的低基数运行指标。 */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
+    public SpatialEventMetrics spatialEventMetrics(
+            MeterRegistry meterRegistry,
+            DataSource dataSource
+    ) {
+        return new SpatialEventMetrics(meterRegistry, dataSource);
+    }
+
     /** 创建采用发布版本迟到策略和空闲刷新的持久空间评估队列。 */
     @Bean
     @ConditionalOnProperty(
             prefix = "mine.telemetry.location-distribution", name = "enabled", havingValue = "true")
     public SpatialEvaluationQueue spatialEvaluationQueue(
             DataSource dataSource,
-            SpatialRuntimeCatalog runtimeCatalog
+            SpatialRuntimeCatalog runtimeCatalog,
+            SpatialEventMetrics metrics
     ) {
-        return new SpatialEvaluationQueue(dataSource, runtimeCatalog);
+        return new SpatialEvaluationQueue(dataSource, runtimeCatalog, metrics);
     }
 
     /** 创建位置幂等、历史、隔离和实时 Outbox 的事务写入器。 */
@@ -618,6 +631,7 @@ public class TelemetryStorageConfiguration {
             DataSource dataSource,
             SpatialRuntimeCatalog runtimeCatalog,
             SpatialEvaluationQueue queue,
+            SpatialEventMetrics metrics,
             TelemetryRabbitProperties properties
     ) {
         TelemetryRabbitProperties.Outbox runtime = properties.resolvedLocation()
@@ -626,7 +640,7 @@ public class TelemetryStorageConfiguration {
                 dataSource, runtimeCatalog, queue,
                 runtime.resolvedInstanceId() + "-evaluation",
                 runtime.resolvedLeaseDuration(), runtime.resolvedMaxAttempts(),
-                runtime.resolvedRetryBaseDelay(), runtime.resolvedRetryMaxDelay());
+                runtime.resolvedRetryBaseDelay(), runtime.resolvedRetryMaxDelay(), metrics);
     }
 
     /** 创建固定源水位、持久游标和防旧租约的空间历史重放执行器。 */
@@ -636,6 +650,7 @@ public class TelemetryStorageConfiguration {
                     + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
     public SpatialReplayExecutor spatialReplayExecutor(
             DataSource dataSource,
+            SpatialEventMetrics metrics,
             TelemetryRabbitProperties properties
     ) {
         TelemetryRabbitProperties.Spatial spatial = properties.resolvedLocation()
@@ -647,7 +662,7 @@ public class TelemetryStorageConfiguration {
                 positive(spatial.resolvedEvaluationBatchSize(),
                         "location.spatial.evaluationBatchSize"),
                 runtime.resolvedRetryBaseDelay(), runtime.resolvedRetryMaxDelay(),
-                Clock.systemUTC());
+                Clock.systemUTC(), metrics);
     }
 
     /** 创建只向实时交换机发布矿区空间白名单事件的确认发布器。 */
@@ -723,6 +738,7 @@ public class TelemetryStorageConfiguration {
             ConfirmedSpatialEventPublisher publisher,
             SpatialEventOutboxRelay.RetryScheduler retryScheduler,
             @Qualifier("spatialEventExecutor") ExecutorService executor,
+            SpatialEventMetrics metrics,
             TelemetryRabbitProperties properties
     ) {
         TelemetryRabbitProperties.Outbox outbox = properties.resolvedLocation()
@@ -739,7 +755,7 @@ public class TelemetryStorageConfiguration {
                 outbox.resolvedInstanceId(), leaseDuration,
                 outbox.resolvedMaxAttempts(), outbox.resolvedRecoveryLimit(),
                 outbox.resolvedRetryBaseDelay(), outbox.resolvedRetryMaxDelay(),
-                Clock.systemUTC());
+                Clock.systemUTC(), metrics);
     }
 
     /** 创建启动即运行、固定轮询和 RabbitMQ 重连恢复的空间后台协调器。 */

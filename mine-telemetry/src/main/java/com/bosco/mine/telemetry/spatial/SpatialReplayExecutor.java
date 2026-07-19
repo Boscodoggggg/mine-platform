@@ -53,6 +53,7 @@ public final class SpatialReplayExecutor {
     private final Duration retryBaseDelay;
     private final Duration retryMaxDelay;
     private final Clock clock;
+    private final SpatialEventMetrics metrics;
     private final SpatialEventStateMachine stateMachine = new SpatialEventStateMachine();
     private final SpatialZoneCompiler zoneCompiler = new SpatialZoneCompiler();
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
@@ -80,6 +81,34 @@ public final class SpatialReplayExecutor {
             Duration retryMaxDelay,
             Clock clock
     ) {
+        this(dataSource, instanceId, leaseDuration, maxAttempts, batchSize,
+                retryBaseDelay, retryMaxDelay, clock, SpatialEventMetrics.noop());
+    }
+
+    /**
+     * 创建带低基数运行指标的多实例安全历史重放执行器。
+     *
+     * @param dataSource Telemetry 时序数据库
+     * @param instanceId 当前服务实例标识
+     * @param leaseDuration 单次认领租约时长
+     * @param maxAttempts 最大批次失败尝试次数
+     * @param batchSize 单事务最大位置事实数
+     * @param retryBaseDelay 首次失败退避时长
+     * @param retryMaxDelay 最大失败退避时长
+     * @param clock 平台可信时钟
+     * @param metrics 空间事件运行指标
+     */
+    public SpatialReplayExecutor(
+            DataSource dataSource,
+            String instanceId,
+            Duration leaseDuration,
+            int maxAttempts,
+            int batchSize,
+            Duration retryBaseDelay,
+            Duration retryMaxDelay,
+            Clock clock,
+            SpatialEventMetrics metrics
+    ) {
         Objects.requireNonNull(dataSource, "空间重放数据源不能为空");
         this.jdbc = new JdbcTemplate(dataSource);
         this.transactions = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
@@ -99,6 +128,7 @@ public final class SpatialReplayExecutor {
         this.maxAttempts = maxAttempts;
         this.batchSize = batchSize;
         this.clock = Objects.requireNonNull(clock, "空间重放时钟不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "空间事件运行指标不能为空");
     }
 
     /**
@@ -116,8 +146,11 @@ public final class SpatialReplayExecutor {
         }
         ReplayLease lease = claimed.get();
         try {
-            return Objects.requireNonNull(transactions.execute(
+            BatchResult result = Objects.requireNonNull(transactions.execute(
                     status -> processBatch(lease, currentTime(operationAt))));
+            metrics.stage(SpatialEventMetrics.Stage.REPLAY,
+                    SpatialEventMetrics.Result.SUCCESS, SpatialEventMetrics.Reason.NONE);
+            return result;
         } catch (RuntimeException exception) {
             markFailed(lease, currentTime(operationAt), exception);
             LOGGER.warn(
@@ -529,7 +562,7 @@ public final class SpatialReplayExecutor {
     private void markFailed(ReplayLease lease, Instant now, RuntimeException exception) {
         Duration delay = retryDelay(lease.attempts());
         boolean dead = lease.attempts() >= maxAttempts;
-        transactions.executeWithoutResult(status -> {
+        Boolean updated = transactions.execute(status -> {
             int changed = jdbc.update("""
                 UPDATE spatial_replay_request
                 SET status = ?, next_attempt_at = ?, lease_token = NULL,
@@ -546,7 +579,14 @@ public final class SpatialReplayExecutor {
                 jdbc.update("DELETE FROM spatial_replay_subject_state WHERE request_id = ?",
                         lease.requestId());
             }
+            return changed == 1;
         });
+        if (Boolean.TRUE.equals(updated)) {
+            metrics.stage(SpatialEventMetrics.Stage.REPLAY,
+                    dead ? SpatialEventMetrics.Result.DEAD : SpatialEventMetrics.Result.FAILURE,
+                    dead ? SpatialEventMetrics.Reason.RETRY_EXHAUSTED
+                            : SpatialEventMetrics.Reason.STATE_RECOVERY);
+        }
     }
 
     private Duration retryDelay(int attempts) {

@@ -133,3 +133,162 @@ tests:
             exp_annotations:
               summary: 定位隔离区逼近处置上限
               description: 定位隔离区记录数已持续达到 80000，请按原因处理异常来源，并按批准流程清理已到期证据。
+
+  - name: 空间评估队列持续积压应触发容量告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_backlog{job="mine-telemetry"}'
+        values: '1500+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineSpatialEvaluationQueueBacklogHigh
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: MineSpatialEvaluationQueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              job: mine-telemetry
+              severity: warning
+            exp_annotations:
+              summary: 空间评估队列持续积压
+              description: 空间评估待处理或待重试记录已连续 5 分钟超过 1000 条，请检查评估线程、TimescaleDB 锁竞争和区域配置复杂度。
+
+  - name: 空间过晚定位在足量样本下升高应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="success", reason="none"}'
+        values: '0+8x25'
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="skipped", reason="too_late"}'
+        values: '0+2x25'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: MineSpatialTooLateRateHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MineSpatialTooLateRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 空间评估过晚定位比例升高
+              description: 最近 10 分钟空间评估样本不少于 100 条且过晚定位比例持续超过 5%，请检查设备时钟、边缘缓存、网络延迟和水位策略。
+
+  - name: 空间事件Outbox死信应立即触发严重告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_outbox_dead{job="mine-telemetry"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: MineSpatialOutboxDead
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: MineSpatialOutboxDead
+        exp_alerts:
+          - exp_labels:
+              job: mine-telemetry
+              severity: critical
+            exp_annotations:
+              summary: 空间事件可靠发布出现死信
+              description: 空间事件 Outbox 存在 DEAD 记录，事件已停止自动重试；请检查 RabbitMQ、发布确认和脱敏错误后按审计流程恢复。
+
+  - name: 空间区域状态推进失败应触发恢复告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_stage_events_total{job="mine-telemetry", stage="evaluation", result="failure", reason="state_recovery"}'
+        values: '0+1x10'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: MineSpatialStateRecoveryFailures
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: MineSpatialStateRecoveryFailures
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: 空间区域状态推进失败
+              description: 最近 10 分钟空间区域状态评估发生失败或死信，请检查精确运行快照、队列租约、位置事实和数据库事务。
+
+  - name: 空间历史重放超时应触发持续时间告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_replay_oldest_active_age_seconds{job="mine-telemetry"}'
+        values: '1900+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineSpatialReplayTimeout
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: MineSpatialReplayTimeout
+        exp_alerts:
+          - exp_labels:
+              job: mine-telemetry
+              severity: warning
+            exp_annotations:
+              summary: 空间历史重放长时间未完成
+              description: 最老活动空间重放请求已持续超过 30 分钟，请检查重放租约、查询计划、批量上限和失败退避。
+
+  - name: 空间评估队列未超过阈值不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_backlog{job="mine-telemetry"}'
+        values: '1000+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineSpatialEvaluationQueueBacklogHigh
+        exp_alerts: []
+
+  - name: 空间过晚定位样本不足时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="success", reason="none"}'
+        values: '0+8x9'
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="skipped", reason="too_late"}'
+        values: '0+2x9'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MineSpatialTooLateRateHigh
+        exp_alerts: []
+
+  - name: 空间过晚定位比例等于阈值时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="success", reason="none"}'
+        values: '0+95x20'
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="skipped", reason="too_late"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: MineSpatialTooLateRateHigh
+        exp_alerts: []
+
+  - name: 空间Outbox无死信时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_outbox_dead{job="mine-telemetry"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: MineSpatialOutboxDead
+        exp_alerts: []
+
+  - name: 空间区域状态没有失败时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_stage_events_total{job="mine-telemetry", stage="evaluation", result="failure", reason="state_recovery"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineSpatialStateRecoveryFailures
+        exp_alerts: []
+
+  - name: 空间历史重放未超过阈值不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_replay_oldest_active_age_seconds{job="mine-telemetry"}'
+        values: '1800+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineSpatialReplayTimeout
+        exp_alerts: []
