@@ -101,9 +101,15 @@ public final class SpatialEventStateMachine {
         }
 
         StableState previous = current.stableState();
+        Instant enteredAt = desired == StableState.INSIDE ? fact.occurredAt() : null;
+        if (previous == StableState.UNKNOWN) {
+            ZoneState baseline = advance(
+                    current, fact, desired, null, 0, enteredAt, null);
+            return new TransitionResult(
+                    baseline, List.of(), classification, SkipReason.NONE);
+        }
         EventType eventType = desired == StableState.INSIDE
                 ? EventType.ENTER : EventType.EXIT;
-        Instant enteredAt = desired == StableState.INSIDE ? fact.occurredAt() : null;
         ZoneState next = advance(
                 current, fact, desired, null, 0, enteredAt, null);
         return new TransitionResult(
@@ -280,9 +286,9 @@ public final class SpatialEventStateMachine {
             if (stableState == StableState.INSIDE && enteredAt == null) {
                 throw new IllegalArgumentException("区域内状态必须保留进入时间");
             }
-            if (stableState == StableState.OUTSIDE
+            if (stableState != StableState.INSIDE
                     && (enteredAt != null || dwellEmittedAt != null)) {
-                throw new IllegalArgumentException("区域外状态不得保留进入或停留时间");
+                throw new IllegalArgumentException("未知或区域外状态不得保留进入或停留时间");
             }
             if (dwellEmittedAt != null
                     && (enteredAt == null || dwellEmittedAt.isBefore(enteredAt))) {
@@ -299,7 +305,7 @@ public final class SpatialEventStateMachine {
 
         private static ZoneState initial(UUID zoneVersionId) {
             return new ZoneState(
-                    zoneVersionId, StableState.OUTSIDE, null, 0,
+                    zoneVersionId, StableState.UNKNOWN, null, 0,
                     null, null, null, null, 0);
         }
     }
@@ -372,6 +378,8 @@ public final class SpatialEventStateMachine {
 
     /** 区域稳定状态。 */
     public enum StableState {
+        /** 尚未用连续优质位置点建立区域内外基线。 */
+        UNKNOWN,
         /** 稳定区域外。 */
         OUTSIDE,
         /** 稳定区域内。 */

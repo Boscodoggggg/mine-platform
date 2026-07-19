@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * 使用真实 PostgreSQL 锁语义验证空间评估队列的确定性排序、租约和退避。
@@ -73,11 +74,11 @@ class SpatialEvaluationQueueIT {
         UUID event07 = enqueue(11, "2026-07-19T10:00:07Z", arrivedAt.plusSeconds(1));
         enqueue(12, "2026-07-19T10:00:20Z", arrivedAt.plusSeconds(2));
 
-        assertThat(queue.claimReady("worker-a", arrivedAt.plusSeconds(3),
-                Duration.ofSeconds(10), 10))
-                .extracting(SpatialEvaluationQueue.ClaimedItem::locationEventId)
-                .containsExactly(event07);
-        queue.markProcessed(event07, "worker-a", arrivedAt.plusSeconds(4));
+        SpatialEvaluationQueue.ClaimedItem claimed07 = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(3), Duration.ofSeconds(10), 10).getFirst();
+        assertThat(claimed07.locationEventId()).isEqualTo(event07);
+        queue.markProcessed(
+                event07, "worker-a", claimed07.leaseToken(), arrivedAt.plusSeconds(4));
         assertThat(queue.claimReady("worker-a", arrivedAt.plusSeconds(5),
                 Duration.ofSeconds(10), 10))
                 .extracting(SpatialEvaluationQueue.ClaimedItem::locationEventId)
@@ -95,11 +96,10 @@ class SpatialEvaluationQueueIT {
 
         assertThat(queue.enqueue(command(first, 20,
                 Instant.parse("2026-07-19T10:00:00Z"), arrivedAt.plusSeconds(1)))).isFalse();
-        assertThat(queue.claimReady("worker-a", arrivedAt.plusSeconds(31),
-                Duration.ofSeconds(10), 10))
-                .extracting(SpatialEvaluationQueue.ClaimedItem::locationEventId)
-                .containsExactly(first);
-        queue.markProcessed(first, "worker-a", arrivedAt.plusSeconds(32));
+        SpatialEvaluationQueue.ClaimedItem claimed = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(31), Duration.ofSeconds(10), 10).getFirst();
+        assertThat(claimed.locationEventId()).isEqualTo(first);
+        queue.markProcessed(first, "worker-a", claimed.leaseToken(), arrivedAt.plusSeconds(32));
         assertThat(queue.claimReady("worker-a", arrivedAt.plusSeconds(33),
                 Duration.ofSeconds(10), 10))
                 .extracting(SpatialEvaluationQueue.ClaimedItem::locationEventId)
@@ -113,8 +113,8 @@ class SpatialEvaluationQueueIT {
 
         assertThat(queue.claimReady("worker-a", arrivedAt.plusSeconds(29),
                 Duration.ofSeconds(10), 10)).isEmpty();
-        assertThat(queue.claimReady("worker-a", arrivedAt.plusSeconds(30),
-                Duration.ofSeconds(10), 10)).hasSize(1);
+        SpatialEvaluationQueue.ClaimedItem expired = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(30), Duration.ofSeconds(10), 10).getFirst();
         assertThat(queue.claimReady("worker-b", arrivedAt.plusSeconds(39),
                 Duration.ofSeconds(10), 10)).isEmpty();
         assertThat(queue.claimReady("worker-b", arrivedAt.plusSeconds(41),
@@ -123,22 +123,43 @@ class SpatialEvaluationQueueIT {
                 .satisfies(item -> {
                     assertThat(item.locationEventId()).isEqualTo(eventId);
                     assertThat(item.attempts()).isEqualTo(2);
+                    assertThat(item.leaseToken()).isNotEqualTo(expired.leaseToken());
                 });
+    }
+
+    @Test
+    void 空闲刷新后的事件时间前沿应拒绝回退且旧租约令牌不能完成新租约() {
+        Instant arrivedAt = Instant.parse("2026-07-19T11:30:00Z");
+        UUID eventId = enqueue(35, "2026-07-19T11:30:00Z", arrivedAt);
+        SpatialEvaluationQueue.ClaimedItem expired = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(30), Duration.ofSeconds(10), 1).getFirst();
+        SpatialEvaluationQueue.ClaimedItem reclaimed = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(41), Duration.ofSeconds(10), 1).getFirst();
+
+        assertThatThrownBy(() -> queue.markProcessed(
+                eventId, "worker-a", expired.leaseToken(), arrivedAt.plusSeconds(42)))
+                .isInstanceOf(IllegalStateException.class);
+        queue.markProcessed(
+                eventId, "worker-a", reclaimed.leaseToken(), arrivedAt.plusSeconds(42));
+
+        UUID lateAfterFlush = enqueue(36, "2026-07-19T11:29:59Z", arrivedAt.plusSeconds(43));
+        assertThat(status(lateAfterFlush)).isEqualTo("SKIPPED:TOO_LATE");
     }
 
     @Test
     void 失败应使用有界指数退避并在达到上限后死信() {
         Instant arrivedAt = Instant.parse("2026-07-19T12:00:00Z");
         UUID eventId = enqueue(40, "2026-07-19T12:00:00Z", arrivedAt);
-        queue.claimReady("worker-a", arrivedAt.plusSeconds(30), Duration.ofSeconds(10), 1);
+        SpatialEvaluationQueue.ClaimedItem first = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(30), Duration.ofSeconds(10), 1).getFirst();
 
-        queue.markFailed(eventId, "worker-a", arrivedAt.plusSeconds(31),
+        queue.markFailed(eventId, "worker-a", first.leaseToken(), arrivedAt.plusSeconds(31),
                 Duration.ofSeconds(5), Duration.ofSeconds(20), 2, "EVALUATION_ERROR");
         assertThat(queue.claimReady("worker-a", arrivedAt.plusSeconds(35),
                 Duration.ofSeconds(10), 1)).isEmpty();
-        assertThat(queue.claimReady("worker-a", arrivedAt.plusSeconds(36),
-                Duration.ofSeconds(10), 1)).hasSize(1);
-        queue.markFailed(eventId, "worker-a", arrivedAt.plusSeconds(37),
+        SpatialEvaluationQueue.ClaimedItem second = queue.claimReady(
+                "worker-a", arrivedAt.plusSeconds(36), Duration.ofSeconds(10), 1).getFirst();
+        queue.markFailed(eventId, "worker-a", second.leaseToken(), arrivedAt.plusSeconds(37),
                 Duration.ofSeconds(5), Duration.ofSeconds(20), 2, "EVALUATION_ERROR");
 
         assertThat(status(eventId)).isEqualTo("DEAD:EVALUATION_ERROR");

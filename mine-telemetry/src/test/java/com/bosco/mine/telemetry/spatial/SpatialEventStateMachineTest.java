@@ -28,16 +28,18 @@ class SpatialEventStateMachineTest {
         SpatialEventStateMachine.ZoneState state = null;
 
         state = evaluate(zone, state, fact(1, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
-        state = evaluate(zone, state, fact(2, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
+        state = evaluate(zone, state, fact(2, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
+        assertThat(state.stableState()).isEqualTo(SpatialEventStateMachine.StableState.OUTSIDE);
+        state = evaluate(zone, state, fact(3, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
         SpatialEventStateMachine.TransitionResult boundary = evaluate(
-                zone, state, fact(3, 10, 0, SpatialEventStateMachine.LocationQuality.GOOD));
+                zone, state, fact(4, 10, 0, SpatialEventStateMachine.LocationQuality.GOOD));
         assertThat(boundary.skipReason()).isEqualTo(SpatialEventStateMachine.SkipReason.BOUNDARY);
         assertThat(boundary.state().candidateCount()).isZero();
 
         state = evaluate(zone, boundary.state(),
-                fact(4, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
+                fact(5, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
         SpatialEventStateMachine.TransitionResult entered = evaluate(
-                zone, state, fact(5, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD));
+                zone, state, fact(6, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD));
         assertThat(entered.events())
                 .singleElement()
                 .satisfies(event -> {
@@ -46,9 +48,9 @@ class SpatialEventStateMachineTest {
                 });
 
         state = evaluate(zone, entered.state(),
-                fact(6, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
+                fact(7, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
         SpatialEventStateMachine.TransitionResult exited = evaluate(
-                zone, state, fact(7, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD));
+                zone, state, fact(8, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD));
         assertThat(exited.events())
                 .singleElement()
                 .extracting(SpatialEventStateMachine.EmittedEvent::type)
@@ -80,34 +82,36 @@ class SpatialEventStateMachineTest {
     @Test
     void 每次进入只能发出一次停留且离开重入后可以再次发出() {
         SpatialEventStateMachine.ZoneConfiguration zone = zone(VERSION_A, 1, 1, 30, null, null);
+        SpatialEventStateMachine.ZoneState outside = evaluate(
+                zone, null, fact(1, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
         SpatialEventStateMachine.TransitionResult entered = evaluate(
-                zone, null, fact(1, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD));
+                zone, outside, fact(2, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD));
         Instant enteredAt = entered.state().enteredAt();
 
         SpatialEventStateMachine.TransitionResult beforeDwell = machine.evaluate(
-                zone, entered.state(), factAt(2, 0, 0, enteredAt.plusSeconds(29),
+                zone, entered.state(), factAt(3, 0, 0, enteredAt.plusSeconds(29),
                         SpatialEventStateMachine.LocationQuality.GOOD, VEHICLE_ID, null));
         assertThat(beforeDwell.events()).isEmpty();
         SpatialEventStateMachine.TransitionResult dwell = machine.evaluate(
-                zone, beforeDwell.state(), factAt(3, 0, 0, enteredAt.plusSeconds(30),
+                zone, beforeDwell.state(), factAt(4, 0, 0, enteredAt.plusSeconds(30),
                         SpatialEventStateMachine.LocationQuality.GOOD, VEHICLE_ID, null));
         assertThat(dwell.events())
                 .singleElement()
                 .extracting(SpatialEventStateMachine.EmittedEvent::type)
                 .isEqualTo(SpatialEventStateMachine.EventType.DWELL);
         assertThat(machine.evaluate(
-                zone, dwell.state(), factAt(4, 0, 0, enteredAt.plusSeconds(60),
+                zone, dwell.state(), factAt(5, 0, 0, enteredAt.plusSeconds(60),
                         SpatialEventStateMachine.LocationQuality.GOOD, VEHICLE_ID, null)).events())
                 .isEmpty();
 
         SpatialEventStateMachine.TransitionResult exited = machine.evaluate(
-                zone, dwell.state(), factAt(5, 20, 0, enteredAt.plusSeconds(61),
+                zone, dwell.state(), factAt(6, 20, 0, enteredAt.plusSeconds(61),
                         SpatialEventStateMachine.LocationQuality.GOOD, VEHICLE_ID, null));
         SpatialEventStateMachine.TransitionResult reentered = machine.evaluate(
-                zone, exited.state(), factAt(6, 0, 0, enteredAt.plusSeconds(62),
+                zone, exited.state(), factAt(7, 0, 0, enteredAt.plusSeconds(62),
                         SpatialEventStateMachine.LocationQuality.GOOD, VEHICLE_ID, null));
         assertThat(machine.evaluate(
-                zone, reentered.state(), factAt(7, 0, 0, enteredAt.plusSeconds(92),
+                zone, reentered.state(), factAt(8, 0, 0, enteredAt.plusSeconds(92),
                         SpatialEventStateMachine.LocationQuality.GOOD, VEHICLE_ID, null)).events())
                 .singleElement()
                 .extracting(SpatialEventStateMachine.EmittedEvent::type)
@@ -116,29 +120,44 @@ class SpatialEventStateMachineTest {
 
     @Test
     void 配置版本切换不得继承旧区域状态() {
+        SpatialEventStateMachine.ZoneConfiguration old = zone(
+                VERSION_A, 1, 1, 30, null, null);
+        SpatialEventStateMachine.ZoneState oldOutside = evaluate(
+                old, null, fact(1, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
         SpatialEventStateMachine.ZoneState oldInside = evaluate(
-                zone(VERSION_A, 1, 1, 30, null, null), null,
-                fact(1, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
+                old, oldOutside, fact(2, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
         SpatialEventStateMachine.ZoneConfiguration replacement = zone(
                 VERSION_B, 2, 2, 30, null, null);
 
         SpatialEventStateMachine.TransitionResult first = evaluate(
                 replacement, oldInside,
-                fact(2, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD));
+                fact(3, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD));
         assertThat(first.events()).isEmpty();
-        assertThat(first.state().stableState()).isEqualTo(SpatialEventStateMachine.StableState.OUTSIDE);
-        assertThat(evaluate(replacement, first.state(),
-                fact(3, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD)).events())
+        assertThat(first.state().stableState()).isEqualTo(SpatialEventStateMachine.StableState.UNKNOWN);
+        SpatialEventStateMachine.TransitionResult baseline = evaluate(
+                replacement, first.state(),
+                fact(4, 0, 0, SpatialEventStateMachine.LocationQuality.GOOD));
+        assertThat(baseline.events()).isEmpty();
+        assertThat(baseline.state().stableState())
+                .isEqualTo(SpatialEventStateMachine.StableState.INSIDE);
+        SpatialEventStateMachine.ZoneState exitCandidate = evaluate(
+                replacement, baseline.state(),
+                fact(5, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD)).state();
+        assertThat(evaluate(replacement, exitCandidate,
+                fact(6, 20, 0, SpatialEventStateMachine.LocationQuality.GOOD)).events())
                 .singleElement()
                 .extracting(SpatialEventStateMachine.EmittedEvent::type)
-                .isEqualTo(SpatialEventStateMachine.EventType.ENTER);
+                .isEqualTo(SpatialEventStateMachine.EventType.EXIT);
     }
 
     @Test
     void 未绑定标签仍应产生标签级事件且零秒停留表示关闭() {
         SpatialEventStateMachine.ZoneConfiguration zone = zone(VERSION_A, 1, 1, 0, null, null);
+        SpatialEventStateMachine.ZoneState outside = machine.evaluate(
+                zone, null, factAt(1, 20, 0, Instant.parse("2026-07-19T10:00:01Z"),
+                        SpatialEventStateMachine.LocationQuality.GOOD, null, null)).state();
         SpatialEventStateMachine.TransitionResult entered = machine.evaluate(
-                zone, null, factAt(1, 0, 0, Instant.parse("2026-07-19T10:00:01Z"),
+                zone, outside, factAt(2, 0, 0, Instant.parse("2026-07-19T10:00:02Z"),
                         SpatialEventStateMachine.LocationQuality.GOOD, null, null));
 
         assertThat(entered.events())
@@ -150,7 +169,7 @@ class SpatialEventStateMachineTest {
                     assertThat(event.personId()).isNull();
                 });
         assertThat(machine.evaluate(
-                zone, entered.state(), factAt(2, 0, 0, Instant.parse("2026-07-19T11:00:01Z"),
+                zone, entered.state(), factAt(3, 0, 0, Instant.parse("2026-07-19T11:00:01Z"),
                         SpatialEventStateMachine.LocationQuality.GOOD, null, null)).events())
                 .isEmpty();
     }

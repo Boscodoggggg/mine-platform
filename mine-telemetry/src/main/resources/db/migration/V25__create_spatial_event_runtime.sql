@@ -11,6 +11,7 @@ CREATE TABLE spatial_evaluation_queue (
     result_reason          VARCHAR(48),
     attempts               INTEGER      NOT NULL DEFAULT 0,
     next_attempt_at        TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    lease_token            UUID,
     locked_by              VARCHAR(128),
     locked_at              TIMESTAMPTZ,
     lease_expires_at       TIMESTAMPTZ,
@@ -18,6 +19,8 @@ CREATE TABLE spatial_evaluation_queue (
     processed_at           TIMESTAMPTZ,
     CONSTRAINT pk_spatial_evaluation_queue PRIMARY KEY (location_event_id),
     CONSTRAINT uk_spatial_evaluation_queue_ingest UNIQUE (ingest_sequence),
+    CONSTRAINT uk_spatial_evaluation_queue_scope_event
+        UNIQUE (organization_id, site_id, tag_id, location_event_id),
     CONSTRAINT fk_spatial_evaluation_queue_location_inbox
         FOREIGN KEY (location_event_id) REFERENCES location_inbox(event_id),
     CONSTRAINT ck_spatial_evaluation_queue_order
@@ -32,11 +35,12 @@ CREATE TABLE spatial_evaluation_queue (
             AND result_reason IS NOT NULL AND btrim(result_reason) <> '')
     ),
     CONSTRAINT ck_spatial_evaluation_queue_lease CHECK (
-        (status = 'PROCESSING' AND locked_by IS NOT NULL AND btrim(locked_by) <> ''
+        (status = 'PROCESSING' AND lease_token IS NOT NULL
+            AND locked_by IS NOT NULL AND btrim(locked_by) <> ''
             AND locked_at IS NOT NULL AND lease_expires_at IS NOT NULL
             AND lease_expires_at > locked_at)
-        OR (status <> 'PROCESSING' AND locked_by IS NULL AND locked_at IS NULL
-            AND lease_expires_at IS NULL)
+        OR (status <> 'PROCESSING' AND lease_token IS NULL
+            AND locked_by IS NULL AND locked_at IS NULL AND lease_expires_at IS NULL)
     ),
     CONSTRAINT ck_spatial_evaluation_queue_completed CHECK (
         (status IN ('PROCESSED', 'SKIPPED', 'DEAD') AND processed_at IS NOT NULL)
@@ -61,11 +65,19 @@ CREATE TABLE spatial_subject_watermark (
     max_ingest_sequence    BIGINT       NOT NULL,
     last_arrival_at        TIMESTAMPTZ  NOT NULL,
     last_flushed_at        TIMESTAMPTZ,
+    finalized_occurred_at  TIMESTAMPTZ,
+    finalized_ingest_sequence BIGINT,
     updated_at             TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_spatial_subject_watermark PRIMARY KEY (site_id, tag_id),
     CONSTRAINT ck_spatial_subject_watermark_sequence CHECK (max_ingest_sequence > 0),
     CONSTRAINT ck_spatial_subject_watermark_flush
-        CHECK (last_flushed_at IS NULL OR last_flushed_at <= updated_at)
+        CHECK (last_flushed_at IS NULL OR last_flushed_at <= updated_at),
+    CONSTRAINT ck_spatial_subject_watermark_finalized CHECK (
+        (finalized_occurred_at IS NULL AND finalized_ingest_sequence IS NULL)
+        OR (finalized_occurred_at IS NOT NULL AND finalized_ingest_sequence > 0
+            AND finalized_occurred_at <= max_occurred_at
+            AND finalized_ingest_sequence <= max_ingest_sequence)
+    )
 );
 
 CREATE INDEX idx_spatial_subject_watermark_idle
@@ -91,8 +103,11 @@ CREATE TABLE spatial_zone_state (
     updated_at             TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT pk_spatial_zone_state
         PRIMARY KEY (site_id, zone_type, zone_version_id, tag_id),
-    CONSTRAINT fk_spatial_zone_state_last_location FOREIGN KEY (last_location_event_id)
-        REFERENCES spatial_evaluation_queue(location_event_id),
+    CONSTRAINT fk_spatial_zone_state_last_location FOREIGN KEY (
+        organization_id, site_id, tag_id, last_location_event_id
+    ) REFERENCES spatial_evaluation_queue(
+        organization_id, site_id, tag_id, location_event_id
+    ),
     CONSTRAINT ck_spatial_zone_state_type
         CHECK (zone_type IN ('WAYPOINT', 'GEOFENCE')),
     CONSTRAINT ck_spatial_zone_state_stable
@@ -140,8 +155,11 @@ CREATE TABLE spatial_event (
     CONSTRAINT uq_spatial_event_business UNIQUE (
         zone_type, zone_version_id, tag_id, event_type, anchor_location_event_id
     ),
-    CONSTRAINT fk_spatial_event_anchor FOREIGN KEY (anchor_location_event_id)
-        REFERENCES spatial_evaluation_queue(location_event_id),
+    CONSTRAINT fk_spatial_event_anchor FOREIGN KEY (
+        organization_id, site_id, tag_id, anchor_location_event_id
+    ) REFERENCES spatial_evaluation_queue(
+        organization_id, site_id, tag_id, location_event_id
+    ),
     CONSTRAINT ck_spatial_event_zone_type
         CHECK (zone_type IN ('WAYPOINT', 'GEOFENCE')),
     CONSTRAINT ck_spatial_event_type
@@ -287,6 +305,7 @@ COMMENT ON COLUMN spatial_evaluation_queue.status IS '等待、处理中、成�
 COMMENT ON COLUMN spatial_evaluation_queue.result_reason IS '跳过或失败时的固定低基数原因编码';
 COMMENT ON COLUMN spatial_evaluation_queue.attempts IS '包含当前认领在内的处理尝试次数';
 COMMENT ON COLUMN spatial_evaluation_queue.next_attempt_at IS '失败后允许再次认领的时间';
+COMMENT ON COLUMN spatial_evaluation_queue.lease_token IS '每次领取随机生成且防止旧执行越权完成新租约的令牌';
 COMMENT ON COLUMN spatial_evaluation_queue.locked_by IS '当前持有处理租约的服务实例标识';
 COMMENT ON COLUMN spatial_evaluation_queue.locked_at IS '当前处理租约认领时间';
 COMMENT ON COLUMN spatial_evaluation_queue.lease_expires_at IS '当前处理租约到期时间';
@@ -301,6 +320,8 @@ COMMENT ON COLUMN spatial_subject_watermark.max_occurred_at IS '目前观察到�
 COMMENT ON COLUMN spatial_subject_watermark.max_ingest_sequence IS '目前观察到的最大位置事实摄入序号';
 COMMENT ON COLUMN spatial_subject_watermark.last_arrival_at IS '最近一条位置事实入队的可信平台时间';
 COMMENT ON COLUMN spatial_subject_watermark.last_flushed_at IS '最近一次空闲刷新剩余记录的时间';
+COMMENT ON COLUMN spatial_subject_watermark.finalized_occurred_at IS '已经确定不得回退的最近领取事实事件时间';
+COMMENT ON COLUMN spatial_subject_watermark.finalized_ingest_sequence IS '最终事件时间前沿对应的位置事实摄入序号';
 COMMENT ON COLUMN spatial_subject_watermark.updated_at IS '水位记录最后更新时间';
 
 COMMENT ON TABLE spatial_zone_state IS '区域版本与定位标签之间可恢复的空间事件状态机状态';

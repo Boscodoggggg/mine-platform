@@ -27,13 +27,27 @@ public final class SpatialWatermarkPolicy {
      * 判断新到达事实是否已经落在当前水位容忍窗之外。
      *
      * @param watermark 当前标签水位
-     * @param occurredAt 新事实发生时间
+     * @param occurredAt     新事实发生时间
+     * @param ingestSequence 新事实摄入序号
      * @return 严格早于水位边界时返回 {@code true}
      */
-    public boolean isTooLate(Watermark watermark, Instant occurredAt) {
+    public boolean isTooLate(
+            Watermark watermark,
+            Instant occurredAt,
+            long ingestSequence
+    ) {
         Objects.requireNonNull(watermark, "水位不能为空");
         Objects.requireNonNull(occurredAt, "发生时间不能为空");
-        return occurredAt.isBefore(watermark.maxOccurredAt().minus(allowedLateness));
+        if (ingestSequence <= 0) {
+            throw new IllegalArgumentException("摄入序号必须为正数");
+        }
+        boolean beforeLatenessBoundary = occurredAt.isBefore(
+                watermark.maxOccurredAt().minus(allowedLateness));
+        boolean beforeFinalizedFrontier = watermark.finalizedOccurredAt() != null
+                && (occurredAt.isBefore(watermark.finalizedOccurredAt())
+                || (occurredAt.equals(watermark.finalizedOccurredAt())
+                && ingestSequence < watermark.finalizedIngestSequence()));
+        return beforeLatenessBoundary || beforeFinalizedFrontier;
     }
 
     /**
@@ -78,7 +92,9 @@ public final class SpatialWatermarkPolicy {
                         ? occurredAt : current.maxOccurredAt(),
                 Math.max(current.maxIngestSequence(), ingestSequence),
                 arrivedAt.isAfter(current.lastArrivalAt())
-                        ? arrivedAt : current.lastArrivalAt()
+                        ? arrivedAt : current.lastArrivalAt(),
+                current.finalizedOccurredAt(),
+                current.finalizedIngestSequence()
         );
     }
 
@@ -105,12 +121,16 @@ public final class SpatialWatermarkPolicy {
      *
      * @param maxOccurredAt     已观察到的最大事件时间
      * @param maxIngestSequence 已观察到的最大摄入序号
-     * @param lastArrivalAt     最近平台到达时间
+     * @param lastArrivalAt              最近平台到达时间
+     * @param finalizedOccurredAt        可选最终处理事件时间前沿
+     * @param finalizedIngestSequence    可选最终处理摄入序号前沿
      */
     public record Watermark(
             Instant maxOccurredAt,
             long maxIngestSequence,
-            Instant lastArrivalAt
+            Instant lastArrivalAt,
+            Instant finalizedOccurredAt,
+            Long finalizedIngestSequence
     ) {
 
         /**
@@ -121,6 +141,12 @@ public final class SpatialWatermarkPolicy {
             Objects.requireNonNull(lastArrivalAt, "最近到达时间不能为空");
             if (maxIngestSequence <= 0) {
                 throw new IllegalArgumentException("最大摄入序号必须为正数");
+            }
+            if ((finalizedOccurredAt == null) != (finalizedIngestSequence == null)) {
+                throw new IllegalArgumentException("最终事件时间和摄入序号前沿必须同时存在");
+            }
+            if (finalizedIngestSequence != null && finalizedIngestSequence <= 0) {
+                throw new IllegalArgumentException("最终摄入序号前沿必须为正数");
             }
         }
     }

@@ -56,7 +56,8 @@ public final class SpatialEvaluationQueue {
             Optional<SpatialWatermarkPolicy.Watermark> previous = findWatermark(
                     command.siteId(), command.tagId());
             boolean tooLate = previous
-                    .map(watermark -> watermarkPolicy.isTooLate(watermark, command.occurredAt()))
+                    .map(watermark -> watermarkPolicy.isTooLate(
+                            watermark, command.occurredAt(), command.ingestSequence()))
                     .orElse(false);
             int changed = jdbc.update("""
                     INSERT INTO spatial_evaluation_queue (
@@ -78,7 +79,8 @@ public final class SpatialEvaluationQueue {
                     .map(current -> watermarkPolicy.observe(
                             current, command.occurredAt(), command.ingestSequence(), command.arrivedAt()))
                     .orElseGet(() -> new SpatialWatermarkPolicy.Watermark(
-                            command.occurredAt(), command.ingestSequence(), command.arrivedAt()));
+                            command.occurredAt(), command.ingestSequence(), command.arrivedAt(),
+                            null, null));
             upsertWatermark(command, observed);
             return true;
         });
@@ -135,7 +137,7 @@ public final class SpatialEvaluationQueue {
                                 < (q.occurred_at, q.ingest_sequence)
                       )
                     ORDER BY q.occurred_at, q.ingest_sequence
-                    FOR UPDATE OF q SKIP LOCKED
+                    FOR UPDATE OF q, watermark SKIP LOCKED
                     LIMIT ?
                     """, (rs, rowNum) -> mapClaimedItem(rs),
                     sqlTime(now), sqlTime(now), watermarkPolicy.idleFlushAfter().toMillis(),
@@ -143,16 +145,18 @@ public final class SpatialEvaluationQueue {
             Instant leaseExpiresAt = now.plus(safeLease);
             List<ClaimedItem> claimed = new ArrayList<>(candidates.size());
             for (ClaimedItem candidate : candidates) {
+                UUID leaseToken = UUID.randomUUID();
                 int changed = jdbc.update("""
                         UPDATE spatial_evaluation_queue
                         SET status = 'PROCESSING', result_reason = NULL, attempts = attempts + 1,
-                            locked_by = ?, locked_at = ?, lease_expires_at = ?
+                            lease_token = ?, locked_by = ?, locked_at = ?, lease_expires_at = ?
                         WHERE location_event_id = ?
                           AND status IN ('PENDING', 'FAILED')
-                        """, safeWorkerId, sqlTime(now), sqlTime(leaseExpiresAt),
+                        """, leaseToken, safeWorkerId, sqlTime(now), sqlTime(leaseExpiresAt),
                         candidate.locationEventId());
                 if (changed == 1) {
-                    claimed.add(candidate.withAttempts(candidate.attempts() + 1));
+                    finalizeWatermark(candidate, now);
+                    claimed.add(candidate.withLease(leaseToken, candidate.attempts() + 1));
                 }
             }
             return List.copyOf(claimed);
@@ -165,18 +169,28 @@ public final class SpatialEvaluationQueue {
      *
      * @param locationEventId 位置事实事件标识
      * @param workerId        当前实例标识
+     * @param leaseToken      本次领取返回的防旧执行令牌
      * @param processedAt     完成时间
      */
-    public void markProcessed(UUID locationEventId, String workerId, Instant processedAt) {
+    public void markProcessed(
+            UUID locationEventId,
+            String workerId,
+            UUID leaseToken,
+            Instant processedAt
+    ) {
         Objects.requireNonNull(locationEventId, "位置事实事件标识不能为空");
         String safeWorkerId = requireText(workerId, "处理实例标识", 128);
+        Objects.requireNonNull(leaseToken, "租约令牌不能为空");
         Objects.requireNonNull(processedAt, "完成时间不能为空");
         int changed = jdbc.update("""
                 UPDATE spatial_evaluation_queue
                 SET status = 'PROCESSED', result_reason = NULL, processed_at = ?,
-                    locked_by = NULL, locked_at = NULL, lease_expires_at = NULL
-                WHERE location_event_id = ? AND status = 'PROCESSING' AND locked_by = ?
-                """, sqlTime(processedAt), locationEventId, safeWorkerId);
+                    lease_token = NULL, locked_by = NULL, locked_at = NULL,
+                    lease_expires_at = NULL
+                WHERE location_event_id = ? AND status = 'PROCESSING'
+                  AND locked_by = ? AND lease_token = ? AND lease_expires_at > ?
+                """, sqlTime(processedAt), locationEventId, safeWorkerId,
+                leaseToken, sqlTime(processedAt));
         requireChanged(changed, "空间评估记录不属于当前实例或已离开处理中状态");
     }
 
@@ -185,6 +199,7 @@ public final class SpatialEvaluationQueue {
      *
      * @param locationEventId 位置事实事件标识
      * @param workerId        当前实例标识
+     * @param leaseToken      本次领取返回的防旧执行令牌
      * @param failedAt        失败时间
      * @param baseBackoff     首次失败退避时长
      * @param maxBackoff      最大退避时长
@@ -194,6 +209,7 @@ public final class SpatialEvaluationQueue {
     public void markFailed(
             UUID locationEventId,
             String workerId,
+            UUID leaseToken,
             Instant failedAt,
             Duration baseBackoff,
             Duration maxBackoff,
@@ -202,6 +218,7 @@ public final class SpatialEvaluationQueue {
     ) {
         Objects.requireNonNull(locationEventId, "位置事实事件标识不能为空");
         String safeWorkerId = requireText(workerId, "处理实例标识", 128);
+        Objects.requireNonNull(leaseToken, "租约令牌不能为空");
         Objects.requireNonNull(failedAt, "失败时间不能为空");
         Duration safeBase = requirePositive(baseBackoff, "基础退避时长");
         Duration safeMax = requirePositive(maxBackoff, "最大退避时长");
@@ -216,10 +233,11 @@ public final class SpatialEvaluationQueue {
             Integer attempts = jdbc.query("""
                     SELECT attempts
                     FROM spatial_evaluation_queue
-                    WHERE location_event_id = ? AND status = 'PROCESSING' AND locked_by = ?
+                    WHERE location_event_id = ? AND status = 'PROCESSING'
+                      AND locked_by = ? AND lease_token = ? AND lease_expires_at > ?
                     FOR UPDATE
                     """, rs -> rs.next() ? rs.getInt(1) : null,
-                    locationEventId, safeWorkerId);
+                    locationEventId, safeWorkerId, leaseToken, sqlTime(failedAt));
             if (attempts == null) {
                 throw new IllegalStateException("空间评估记录不属于当前实例或已离开处理中状态");
             }
@@ -228,11 +246,13 @@ public final class SpatialEvaluationQueue {
             int changed = jdbc.update("""
                     UPDATE spatial_evaluation_queue
                     SET status = ?, result_reason = ?, next_attempt_at = ?, processed_at = ?,
-                        locked_by = NULL, locked_at = NULL, lease_expires_at = NULL
-                    WHERE location_event_id = ? AND status = 'PROCESSING' AND locked_by = ?
+                        lease_token = NULL, locked_by = NULL, locked_at = NULL,
+                        lease_expires_at = NULL
+                    WHERE location_event_id = ? AND status = 'PROCESSING'
+                      AND locked_by = ? AND lease_token = ? AND lease_expires_at > ?
                     """, dead ? "DEAD" : "FAILED", safeReason,
                     sqlTime(failedAt.plus(backoff)), dead ? sqlTime(failedAt) : null,
-                    locationEventId, safeWorkerId);
+                    locationEventId, safeWorkerId, leaseToken, sqlTime(failedAt));
             requireChanged(changed, "空间评估失败状态更新发生并发冲突");
         });
     }
@@ -241,7 +261,8 @@ public final class SpatialEvaluationQueue {
         jdbc.update("""
                 UPDATE spatial_evaluation_queue
                 SET status = 'FAILED', result_reason = 'LEASE_EXPIRED', next_attempt_at = ?,
-                    locked_by = NULL, locked_at = NULL, lease_expires_at = NULL
+                    lease_token = NULL, locked_by = NULL, locked_at = NULL,
+                    lease_expires_at = NULL
                 WHERE status = 'PROCESSING' AND lease_expires_at <= ?
                 """, sqlTime(now), sqlTime(now));
     }
@@ -259,14 +280,18 @@ public final class SpatialEvaluationQueue {
 
     private Optional<SpatialWatermarkPolicy.Watermark> findWatermark(UUID siteId, UUID tagId) {
         return jdbc.query("""
-                SELECT max_occurred_at, max_ingest_sequence, last_arrival_at
+                SELECT max_occurred_at, max_ingest_sequence, last_arrival_at,
+                       finalized_occurred_at, finalized_ingest_sequence
                 FROM spatial_subject_watermark
                 WHERE site_id = ? AND tag_id = ?
+                FOR UPDATE
                 """, rs -> rs.next()
                 ? Optional.of(new SpatialWatermarkPolicy.Watermark(
                         rs.getObject("max_occurred_at", java.time.OffsetDateTime.class).toInstant(),
                         rs.getLong("max_ingest_sequence"),
-                        rs.getObject("last_arrival_at", java.time.OffsetDateTime.class).toInstant()))
+                        rs.getObject("last_arrival_at", java.time.OffsetDateTime.class).toInstant(),
+                        instantOrNull(rs, "finalized_occurred_at"),
+                        longOrNull(rs, "finalized_ingest_sequence")))
                 : Optional.empty(), siteId, tagId);
     }
 
@@ -290,6 +315,26 @@ public final class SpatialEvaluationQueue {
                 sqlTime(observed.lastArrivalAt()), sqlTime(command.arrivedAt()));
     }
 
+    private void finalizeWatermark(ClaimedItem item, Instant now) {
+        int changed = jdbc.update("""
+                UPDATE spatial_subject_watermark
+                SET finalized_occurred_at = ?, finalized_ingest_sequence = ?,
+                    last_flushed_at = CASE
+                        WHEN ? >= last_arrival_at + (? * INTERVAL '1 millisecond')
+                        THEN ? ELSE last_flushed_at
+                    END,
+                    updated_at = GREATEST(updated_at, ?)
+                WHERE site_id = ? AND tag_id = ?
+                  AND (
+                    finalized_occurred_at IS NULL
+                    OR (finalized_occurred_at, finalized_ingest_sequence) <= (?, ?)
+                  )
+                """, sqlTime(item.occurredAt()), item.ingestSequence(), sqlTime(now),
+                watermarkPolicy.idleFlushAfter().toMillis(), sqlTime(now), sqlTime(now),
+                item.siteId(), item.tagId(), sqlTime(item.occurredAt()), item.ingestSequence());
+        requireChanged(changed, "空间事件时间前沿未能随领取记录推进");
+    }
+
     private static ClaimedItem mapClaimedItem(ResultSet rs) throws SQLException {
         return new ClaimedItem(
                 rs.getObject("location_event_id", UUID.class),
@@ -299,8 +344,19 @@ public final class SpatialEvaluationQueue {
                 rs.getObject("occurred_at", java.time.OffsetDateTime.class).toInstant(),
                 rs.getLong("ingest_sequence"),
                 rs.getLong("runtime_revision"),
-                rs.getInt("attempts")
+                rs.getInt("attempts"),
+                null
         );
+    }
+
+    private static Instant instantOrNull(ResultSet rs, String column) throws SQLException {
+        java.time.OffsetDateTime value = rs.getObject(column, java.time.OffsetDateTime.class);
+        return value == null ? null : value.toInstant();
+    }
+
+    private static Long longOrNull(ResultSet rs, String column) throws SQLException {
+        long value = rs.getLong(column);
+        return rs.wasNull() ? null : value;
     }
 
     private static Duration boundedBackoff(Duration base, Duration maximum, int attempts) {
@@ -396,6 +452,7 @@ public final class SpatialEvaluationQueue {
      * @param ingestSequence  平台摄入序号
      * @param runtimeRevision 定位运行快照修订号
      * @param attempts        包含本次领取的尝试次数
+     * @param leaseToken      本次领取唯一且防止旧执行完成新租约的令牌
      */
     public record ClaimedItem(
             UUID locationEventId,
@@ -405,13 +462,15 @@ public final class SpatialEvaluationQueue {
             Instant occurredAt,
             long ingestSequence,
             long runtimeRevision,
-            int attempts
+            int attempts,
+            UUID leaseToken
     ) {
 
-        private ClaimedItem withAttempts(int updatedAttempts) {
+        private ClaimedItem withLease(UUID updatedLeaseToken, int updatedAttempts) {
             return new ClaimedItem(
                     locationEventId, organizationId, siteId, tagId,
-                    occurredAt, ingestSequence, runtimeRevision, updatedAttempts);
+                    occurredAt, ingestSequence, runtimeRevision,
+                    updatedAttempts, updatedLeaseToken);
         }
     }
 }

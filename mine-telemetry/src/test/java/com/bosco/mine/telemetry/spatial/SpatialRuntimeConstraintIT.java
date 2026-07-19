@@ -102,7 +102,7 @@ class SpatialRuntimeConstraintIT {
                 .anySatisfy(value -> assertThat(value).contains(
                         "PENDING", "PROCESSING", "PROCESSED", "SKIPPED", "FAILED", "DEAD"))
                 .anySatisfy(value -> assertThat(value).contains(
-                        "status", "locked_by", "locked_at", "lease_expires_at"))
+                        "status", "lease_token", "locked_by", "locked_at", "lease_expires_at"))
                 .anySatisfy(value -> assertThat(value).contains("FOREIGN KEY", "location_inbox"));
         assertThat(constraints("spatial_zone_state"))
                 .anySatisfy(value -> assertThat(value).contains("FOREIGN KEY", "spatial_evaluation_queue"))
