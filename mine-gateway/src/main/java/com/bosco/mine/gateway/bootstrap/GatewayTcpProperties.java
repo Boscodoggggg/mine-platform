@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
  * @param bindHost 绑定地址
  * @param port 监听端口，0 仅用于自动化随机端口
  * @param protocolKey 监听端口绑定的离线审核插件键
+ * @param mode 统一产品路由或兼容监听器模式
  * @param workerThreads Netty IO 工作线程数
  * @param businessThreads 协议解析和可靠发布线程数
  * @param backlog 内核接受队列上限
@@ -28,6 +29,7 @@ public record GatewayTcpProperties(
         String bindHost,
         Integer port,
         String protocolKey,
+        ListenerMode mode,
         Integer workerThreads,
         Integer businessThreads,
         Integer backlog,
@@ -58,9 +60,17 @@ public record GatewayTcpProperties(
                 || timeout.compareTo(Duration.ofMinutes(2)) > 0) {
             throw new IllegalArgumentException("TCP shutdown-timeout 必须在 1 秒到 2 分钟之间");
         }
-        if (resolvedEnabled()
+        if (resolvedEnabled() && resolvedMode() == ListenerMode.LEGACY
                 && (protocolKey == null || !PROTOCOL_KEY.matcher(protocolKey).matches())) {
-            throw new IllegalArgumentException("启用 TCP 时 protocol-key 必须使用受控格式显式配置");
+            throw new IllegalArgumentException("LEGACY TCP 必须使用受控格式显式配置 protocol-key");
+        }
+        if (resolvedEnabled() && resolvedMode() == ListenerMode.UNIFIED) {
+            if (protocolKey != null && !protocolKey.isBlank()) {
+                throw new IllegalArgumentException("UNIFIED TCP 不能静态配置 protocol-key");
+            }
+            if (!resolvedTls().resolvedEnabled()) {
+                throw new IllegalArgumentException("UNIFIED TCP 必须启用 TLS");
+            }
         }
         resolvedTls().validate();
     }
@@ -83,6 +93,11 @@ public record GatewayTcpProperties(
     /** @return 显式绑定的协议插件键 */
     public String resolvedProtocolKey() {
         return protocolKey;
+    }
+
+    /** @return 监听器模式，默认保留兼容监听器行为 */
+    public ListenerMode resolvedMode() {
+        return mode == null ? ListenerMode.LEGACY : mode;
     }
 
     /** @return Netty IO 工作线程数 */
@@ -123,6 +138,36 @@ public record GatewayTcpProperties(
     /** @return 非空 TLS 参数 */
     public Tls resolvedTls() {
         return tls == null ? new Tls(false, null, null) : tls;
+    }
+
+    /**
+     * 使用旧参数创建兼容监听器配置。
+     */
+    public GatewayTcpProperties(
+            Boolean enabled,
+            String bindHost,
+            Integer port,
+            String protocolKey,
+            Integer workerThreads,
+            Integer businessThreads,
+            Integer backlog,
+            Integer maxConnections,
+            Integer maxConnectionsPerIp,
+            Integer readIdleSeconds,
+            Duration shutdownTimeout,
+            Tls tls
+    ) {
+        this(enabled, bindHost, port, protocolKey, ListenerMode.LEGACY, workerThreads,
+                businessThreads, backlog, maxConnections, maxConnectionsPerIp,
+                readIdleSeconds, shutdownTimeout, tls);
+    }
+
+    /** TCP 监听器路由模式。 */
+    public enum ListenerMode {
+        /** TLS 登录后按产品快照选择插件。 */
+        UNIFIED,
+        /** 端口静态绑定单一插件，用于不可改造设备。 */
+        LEGACY
     }
 
     private void requireRange(int value, int minimum, int maximum, String field) {

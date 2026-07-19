@@ -2,10 +2,12 @@ package com.bosco.mine.gateway.bootstrap;
 
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.gateway.mqtt.ConfirmedTelemetryPublisher;
+import com.bosco.mine.gateway.configuration.ProtocolSnapshotRegistry;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.gateway.tcp.TcpGatewayServer;
 import com.bosco.mine.gateway.tcp.TcpGatewayHealthIndicator;
 import com.bosco.mine.gateway.tcp.TcpMessageNormalizer;
+import com.bosco.mine.gateway.tcp.login.TcpLoginAuthenticator;
 import com.bosco.mine.protocol.engine.tcp.TcpProtocolPluginRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -14,6 +16,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Clock;
 
@@ -47,6 +51,31 @@ public class GatewayTcpConfiguration {
     }
 
     /**
+     * 创建只用于统一 TCP 密钥散列校验的 BCrypt 编码器。
+     *
+     * @return BCrypt 密钥编码器
+     */
+    @Bean
+    public PasswordEncoder tcpLoginPasswordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    /**
+     * 创建统一 TCP 登录认证器。
+     *
+     * @param registry 可信设备身份快照
+     * @param tcpLoginPasswordEncoder BCrypt 密钥编码器
+     * @return TCP 登录认证器
+     */
+    @Bean
+    public TcpLoginAuthenticator tcpLoginAuthenticator(
+            DeviceSessionRegistry registry,
+            PasswordEncoder tcpLoginPasswordEncoder
+    ) {
+        return new TcpLoginAuthenticator(registry, tcpLoginPasswordEncoder);
+    }
+
+    /**
      * 创建由 Spring 生命周期管理的 TCP 监听器。
      *
      * @param properties TCP 参数
@@ -54,6 +83,8 @@ public class GatewayTcpConfiguration {
      * @param normalizer TCP 标准化器
      * @param publisher RabbitMQ publisher confirm 发布器
      * @param meterRegistryProvider 指标注册表提供器
+     * @param loginAuthenticator 统一 TCP 登录认证器
+     * @param protocolSnapshots 产品协议绑定快照
      * @return TCP 监听器
      */
     @Bean
@@ -62,11 +93,14 @@ public class GatewayTcpConfiguration {
             TcpProtocolPluginRegistry plugins,
             TcpMessageNormalizer normalizer,
             ConfirmedTelemetryPublisher publisher,
-            ObjectProvider<MeterRegistry> meterRegistryProvider
+            ObjectProvider<MeterRegistry> meterRegistryProvider,
+            TcpLoginAuthenticator loginAuthenticator,
+            ProtocolSnapshotRegistry protocolSnapshots
     ) {
         return new TcpGatewayServer(
                 properties, plugins, normalizer, publisher,
-                meterRegistryProvider.getIfAvailable(SimpleMeterRegistry::new));
+                meterRegistryProvider.getIfAvailable(SimpleMeterRegistry::new),
+                loginAuthenticator, protocolSnapshots);
     }
 
     /**

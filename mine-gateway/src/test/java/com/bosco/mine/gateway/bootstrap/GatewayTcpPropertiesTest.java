@@ -64,6 +64,23 @@ class GatewayTcpPropertiesTest {
                 .hasMessageContaining("TLS");
     }
 
+    @Test
+    void 统一入口必须启用TLS且不能静态绑定插件() {
+        assertThatThrownBy(() -> new GatewayTcpProperties(
+                true, "127.0.0.1", 9000, null, GatewayTcpProperties.ListenerMode.UNIFIED,
+                2, 4, 1024, 10000, 100, 120, Duration.ofSeconds(30),
+                new GatewayTcpProperties.Tls(false, null, null)).validate())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("TLS");
+
+        assertThatThrownBy(() -> new GatewayTcpProperties(
+                true, "127.0.0.1", 9000, "haul-truck-binary", GatewayTcpProperties.ListenerMode.UNIFIED,
+                2, 4, 1024, 10000, 100, 120, Duration.ofSeconds(30),
+                new GatewayTcpProperties.Tls(true, Path.of("/tmp/server.crt"), Path.of("/tmp/server.key"))).validate())
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("不能静态配置");
+    }
+
     private GatewayTcpProperties properties(
             Boolean enabled,
             String bindHost,

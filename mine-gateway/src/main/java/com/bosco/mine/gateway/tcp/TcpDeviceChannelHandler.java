@@ -63,6 +63,25 @@ public final class TcpDeviceChannelHandler extends SimpleChannelInboundHandler<B
             TelemetryPublisher publisher,
             TcpGatewayObserver observer
     ) {
+        this(plugin, normalizer, publisher, observer, null);
+    }
+
+    /**
+     * 为已经完成统一登录的连接创建绑定到指定设备的独立协议会话。
+     *
+     * @param plugin 产品绑定的离线审核插件
+     * @param normalizer TCP 消息标准化器
+     * @param publisher 可靠平台事件发布器
+     * @param observer 固定低基数运行事件观察器
+     * @param boundDeviceId 登录阶段确认的平台设备标识
+     */
+    public TcpDeviceChannelHandler(
+            TcpProtocolPlugin plugin,
+            TcpMessageNormalizer normalizer,
+            TelemetryPublisher publisher,
+            TcpGatewayObserver observer,
+            String boundDeviceId
+    ) {
         Objects.requireNonNull(plugin, "TCP 协议插件不能为空");
         this.protocolKey = plugin.protocolKey();
         this.protocolVersion = plugin.protocolVersion();
@@ -70,6 +89,7 @@ public final class TcpDeviceChannelHandler extends SimpleChannelInboundHandler<B
         this.normalizer = Objects.requireNonNull(normalizer, "TCP 消息标准化器不能为空");
         this.publisher = Objects.requireNonNull(publisher, "遥测发布器不能为空");
         this.observer = Objects.requireNonNull(observer, "TCP 运行观察器不能为空");
+        this.boundDeviceId = boundDeviceId;
     }
 
     @Override
