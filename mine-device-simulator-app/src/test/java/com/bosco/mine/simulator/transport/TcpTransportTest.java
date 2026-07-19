@@ -6,12 +6,16 @@ import com.bosco.mine.simulator.profile.TransportMode;
 import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -95,6 +99,40 @@ class TcpTransportTest {
                 assertThat(platform.getInputStream().read()).isEqualTo(0x01);
             }
         }
+    }
+
+    @Test
+    void 服务端监听端口短暂占用后应在有限时间内恢复() throws Exception {
+        ServerSocket occupied = new ServerSocket();
+        occupied.setReuseAddress(false);
+        occupied.bind(new InetSocketAddress("127.0.0.1", 0));
+        int port = occupied.getLocalPort();
+        CountDownLatch releaseStarted = new CountDownLatch(1);
+        AtomicReference<Throwable> releaseFailure = new AtomicReference<>();
+        Thread release = Thread.ofPlatform().name("tcp-test-port-release").start(() -> {
+            releaseStarted.countDown();
+            try {
+                Thread.sleep(300);
+                occupied.close();
+            } catch (Throwable throwable) {
+                if (throwable instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                releaseFailure.set(throwable);
+            }
+        });
+        assertThat(releaseStarted.await(1, TimeUnit.SECONDS)).isTrue();
+
+        try (TcpServerTransport transport = new TcpServerTransport(
+                profile(TransportMode.TCP_SERVER, port), ignored -> { })) {
+            transport.connect();
+            assertThat(transport.state()).isEqualTo(TransportState.WAITING);
+        } finally {
+            occupied.close();
+            release.join(2_000);
+        }
+        assertThat(release.isAlive()).isFalse();
+        assertThat(releaseFailure.get()).isNull();
     }
 
     private SimulatorProfile profile(TransportMode mode, int port) {
