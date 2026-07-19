@@ -24,6 +24,7 @@ import com.bosco.mine.gateway.normalize.DeviceMessageNormalizer;
 import com.bosco.mine.gateway.session.DeviceIdentitySnapshotLoader;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.topology.MineTopology;
+import com.bosco.mine.protocol.engine.mqtt.MqttBinaryProtocolPluginRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.springframework.amqp.core.AcknowledgeMode;
@@ -130,6 +131,17 @@ public class GatewayRabbitConfiguration {
     }
 
     /**
+     * 从当前不可变 classpath 加载全部离线审核的 MQTT 二进制插件。
+     *
+     * @return 完整校验后的插件注册表
+     */
+    @Bean
+    public MqttBinaryProtocolPluginRegistry mqttBinaryProtocolPluginRegistry() {
+        return MqttBinaryProtocolPluginRegistry.load(
+                GatewayRabbitConfiguration.class.getClassLoader());
+    }
+
+    /**
      * 创建身份快照加载器并在设备消费启动前完成首次加载。
      *
      * @param registry 运行时身份注册表
@@ -176,11 +188,13 @@ public class GatewayRabbitConfiguration {
     public DeviceMessageNormalizer deviceMessageNormalizer(
             DeviceSessionRegistry registry,
             ProtocolSnapshotRegistry protocolRegistry,
+            MqttBinaryProtocolPluginRegistry binaryPlugins,
             GatewayRabbitProperties properties
     ) {
         return new DeviceMessageNormalizer(
                 registry,
                 protocolRegistry,
+                binaryPlugins,
                 IdGenerator.timeOrdered(),
                 Clock.systemUTC(),
                 properties.resolvedMaxPayloadBytes()

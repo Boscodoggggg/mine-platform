@@ -5,10 +5,15 @@ import com.bosco.mine.gateway.configuration.ProtocolSnapshotRegistry;
 import com.bosco.mine.gateway.session.DeviceSessionRegistry;
 import com.bosco.mine.messaging.MessageEnvelope;
 import com.bosco.mine.model.message.UnifiedDeviceMessage;
+import com.bosco.mine.protocol.engine.binding.ProductProtocolBinding;
 import com.bosco.mine.protocol.engine.json.FieldTransform;
 import com.bosco.mine.protocol.engine.json.MqttJsonExecutionPlan;
 import com.bosco.mine.protocol.engine.json.MqttJsonProtocolCompiler;
 import com.bosco.mine.protocol.engine.json.MqttJsonProtocolDefinition;
+import com.bosco.mine.protocol.engine.mqtt.MqttBinaryProtocolPluginRegistry;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryDecodeContext;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryDecodedMessage;
+import com.bosco.mine.protocol.sdk.mqtt.MqttBinaryProtocolPlugin;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -177,6 +182,96 @@ class DeviceMessageNormalizerTest {
         assertThatThrownBy(() -> required.normalize(ROUTING_KEY, validPayload("simulator-001")))
                 .isInstanceOf(InvalidDeviceMessageException.class)
                 .hasMessageContaining("尚未加载");
+    }
+
+    @Test
+    void MQTT二进制产品应使用绑定插件且平台身份不能被覆盖() {
+        DeviceSessionRegistry identities = registry();
+        ProtocolSnapshotRegistry protocols = mock(ProtocolSnapshotRegistry.class);
+        ProductProtocolBinding binding = new ProductProtocolBinding(
+                ProductProtocolBinding.Transport.MQTT,
+                ProductProtocolBinding.PayloadFormat.BINARY,
+                ProductProtocolBinding.RoutingMode.TRUSTED_IDENTITY,
+                ProductProtocolBinding.ParserType.JAVA_PLUGIN,
+                "test-mqtt-binary",
+                "test-mqtt-binary:v1"
+        );
+        when(protocols.find("haul-truck")).thenReturn(Optional.of(
+                new ProtocolSnapshotRegistry.ActiveProtocol(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 9,
+                        "sha256:" + "b".repeat(64), "haul-truck", binding, null)
+        ));
+        MqttBinaryProtocolPlugin plugin = new MqttBinaryProtocolPlugin() {
+            @Override
+            public String protocolKey() {
+                return "test-mqtt-binary";
+            }
+
+            @Override
+            public String protocolVersion() {
+                return "test-mqtt-binary:v1";
+            }
+
+            @Override
+            public MqttBinaryDecodedMessage decode(
+                    MqttBinaryDecodeContext context,
+                    byte[] payload
+            ) {
+                assertThat(context.productKey()).isEqualTo("haul-truck");
+                assertThat(context.clientId()).isEqualTo("device-credential-001");
+                assertThat(context.deviceCode()).isEqualTo("simulator-001");
+                assertThat(payload).containsExactly(0x01, 0x02, 0x03);
+                return new MqttBinaryDecodedMessage(
+                        "binary-boot", 12L, Instant.parse("2026-07-15T01:59:57Z"),
+                        false, Map.of("engineRpm", 1660)
+                );
+            }
+        };
+        DeviceMessageNormalizer binary = new DeviceMessageNormalizer(
+                identities,
+                protocols,
+                new MqttBinaryProtocolPluginRegistry(List.of(plugin)),
+                IdGenerator.timeOrdered(),
+                CLOCK,
+                2048
+        );
+
+        MessageEnvelope<UnifiedDeviceMessage> envelope = binary.normalize(
+                ROUTING_KEY, new byte[]{0x01, 0x02, 0x03});
+
+        assertThat(envelope.payload().productKey()).isEqualTo("haul-truck");
+        assertThat(envelope.payload().deviceId()).isEqualTo(DEVICE_ID);
+        assertThat(envelope.payload().protocolVersion()).isEqualTo("test-mqtt-binary:v1");
+        assertThat(envelope.payload().properties().values()).containsEntry("engineRpm", 1660);
+    }
+
+    @Test
+    void MQTT二进制绑定版本与安装插件不一致时应拒绝() {
+        ProtocolSnapshotRegistry protocols = mock(ProtocolSnapshotRegistry.class);
+        ProductProtocolBinding binding = new ProductProtocolBinding(
+                ProductProtocolBinding.Transport.MQTT,
+                ProductProtocolBinding.PayloadFormat.BINARY,
+                ProductProtocolBinding.RoutingMode.TRUSTED_IDENTITY,
+                ProductProtocolBinding.ParserType.JAVA_PLUGIN,
+                "test-mqtt-binary",
+                "test-mqtt-binary:v2"
+        );
+        when(protocols.find("haul-truck")).thenReturn(Optional.of(
+                new ProtocolSnapshotRegistry.ActiveProtocol(
+                        UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 9,
+                        "sha256:" + "b".repeat(64), "haul-truck", binding, null)
+        ));
+        MqttBinaryProtocolPlugin plugin = mock(MqttBinaryProtocolPlugin.class);
+        when(plugin.protocolKey()).thenReturn("test-mqtt-binary");
+        when(plugin.protocolVersion()).thenReturn("test-mqtt-binary:v1");
+        when(plugin.apiMajorVersion()).thenReturn(MqttBinaryProtocolPlugin.API_MAJOR_VERSION);
+        DeviceMessageNormalizer binary = new DeviceMessageNormalizer(
+                registry(), protocols, new MqttBinaryProtocolPluginRegistry(List.of(plugin)),
+                IdGenerator.timeOrdered(), CLOCK, 2048);
+
+        assertThatThrownBy(() -> binary.normalize(ROUTING_KEY, new byte[]{0x01}))
+                .isInstanceOf(InvalidDeviceMessageException.class)
+                .hasMessageContaining("版本");
     }
 
     private byte[] validPayload(String deviceCode) {
