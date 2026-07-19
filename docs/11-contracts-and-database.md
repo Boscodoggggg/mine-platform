@@ -236,6 +236,18 @@ POST              /api/v1/mine/sites/{siteId}/bindings/switch
 GET               /api/v1/mine/sites/{siteId}/locations/current
 GET               /api/v1/mine/sites/{siteId}/locations/trajectory
 
+GET               /api/v1/mine/sites/{siteId}/spatial-regions/current
+GET/POST          /api/v1/mine/sites/{siteId}/waypoints|routes|geofences
+GET               /api/v1/mine/sites/{siteId}/{resource}/{id}
+POST              /api/v1/mine/sites/{siteId}/{resource}/{id}/archive
+GET/POST          /api/v1/mine/sites/{siteId}/{resource}/{id}/versions
+GET/PATCH         /api/v1/mine/sites/{siteId}/{resource}/{id}/versions/{versionId}
+POST              /api/v1/mine/sites/{siteId}/{resource}/{id}/versions/{versionId}/publish
+
+GET               /api/v1/mine/sites/{siteId}/spatial-events
+GET               /api/v1/mine/sites/{siteId}/spatial-events/{eventId}
+POST              /api/v1/mine/sites/{siteId}/spatial-events/replays
+
 GET               /api/v1/internal/location-snapshots/latest
 GET               /api/v1/internal/location-snapshots/{snapshotId}
 ~~~
@@ -246,7 +258,12 @@ GET               /api/v1/internal/location-snapshots/{snapshotId}
 
 当前位置最多返回 10,000 个标签，默认 5,000；轨迹窗口最长 24 小时、每页最多 5,000 点，使用固定摄入水位和
 不透明游标稳定分页。首次 WebSocket 定位订阅先读 REST 快照，增量类型固定为 `realtime.location.updated` v1。
-路线、围栏、作业单和运营记录仍属于后续 Phase 3 切片，不得把上述已实现接口解释为整个矿山业务阶段完成。
+
+空间资源 `{resource}` 只允许 `waypoints`、`routes`、`geofences`。稳定对象归档，草稿用乐观版本修改，发布版本及其路线引用/
+围栏顶点不可变；发布生成 `SPATIAL_CHANGE` 定位快照。空间事件查询需要 `mine:spatial:event:view`，默认过去 24 小时、
+最长 31 天、每页最多 200 条，使用固定事件序号水位和不透明游标。重放需要 `mine:spatial:replay`、稳定
+`Idempotency-Key`、原因和不超过 31 天的 `[from,to)` 窗口，只异步返回 HTTP 202；请求线程不得扫描历史。
+班次、作业单和运营记录仍属于后续 Phase 3 切片，不得把路线/围栏闭环解释为整个矿山业务阶段完成。
 
 ### 2.5 命令与告警
 
@@ -352,7 +369,10 @@ POST      /api/v1/alarms/{id}/close
 
 正常增量不查询业务表或时序表：`mine-telemetry` 提交遥测后发布 RabbitMQ 实时事件，每个 `mine-server` 实例通过自己的独占临时队列消费并只分发给本机订阅。只有首次订阅和明确的 `RESYNC` 才读取最新值快照。
 
-默认单连接限制为 64 个订阅、128 台设备、1024 个属性和 64 KiB 客户端文本帧。超限返回 `REALTIME-LIMIT-EXCEEDED`。后续 LOCATION、告警和命令状态主题新增时只能向前兼容扩展，不能改变 `DEVICE_LATEST` 语义。
+默认单连接限制为 64 个订阅、128 台设备、1024 个属性和 64 KiB 客户端文本帧。超限返回 `REALTIME-LIMIT-EXCEEDED`。
+矿区位置使用 `LOCATION`，空间事件使用 `MINE_SITE_SPATIAL_EVENT`；后者同时要求 `mine:spatial:event:view` 和目标矿区数据范围，
+事件序号缺口通过 REST 固定水位查询重同步，并与基础位置主题独立降级。后续告警和命令状态主题只能向前兼容扩展，不能改变
+`DEVICE_LATEST`、`LOCATION` 或空间事件语义。
 
 ## 5. 内部事件目录
 
@@ -360,6 +380,7 @@ POST      /api/v1/alarms/{id}/close
 |---|---|---|---|
 | telemetry.normalized | gateway | telemetry | 设备+boot+sequence+类型 |
 | location.normalized | gateway | telemetry | 标签+boot+sequence |
+| realtime.spatial.event.created | telemetry | server/web | 区域版本+标签+事件类型+锚点位置事实 |
 | device.online | gateway/telemetry | server | 设备+会话 |
 | device.offline | telemetry | server | 设备+离线周期 |
 | alarm.raised | telemetry | server | 规则+设备+活动周期 |
@@ -372,6 +393,11 @@ POST      /api/v1/alarms/{id}/close
 `config.release.created` 由配置发布事务写入 `sys_outbox_event`，事件只包含 releaseId、packageId、productId、releaseSequence 和 contentHash。Gateway 通过内部 HTTP 拉取完整快照并回报节点状态，完整快照和节点结果不经过 RabbitMQ 事件载荷。
 
 `alarm.raised` 与 `alarm.recovered` 的消息 `eventId` 在全部重试中保持不变，业务聚合键为 UUIDv7 `alarmOccurrenceId`。载荷完整携带设备/产品、稳定规则编码和名称快照、来源、等级、属性、策略运行修订/快照/哈希、业务时间和有界结构化证据。Server 使用 `sys_inbox_event` 与告警聚合同事务消费；恢复事件先到时可以独立创建周期，触发事件晚到时只补齐触发证据，任何身份、时间或证据冲突都拒绝而不是覆盖历史。
+
+`realtime.spatial.event.created` 固定 schema v1，`eventId` 为 UUIDv7。载荷包含组织/矿区、稳定区域及不可变发布版本、标签、
+发生时车辆或人员、`ENTER/EXIT/DWELL`、锚点位置事实、前后状态、连续确认点、摄入序号、运行修订、发生时间和有界证据。
+证据仅允许有限统一坐标、固定几何分类/质量状态、可选固定原因和 `sha256:` 区域摘要。Telemetry 在区域状态、事件和 Outbox
+同事务提交后，经 `realtime.spatial.*` 路由发布；Server 只向本机已授权矿区订阅分发。
 
 ## 6. 数据库实例
 
@@ -392,6 +418,7 @@ POST      /api/v1/alarms/{id}/close
 
 - 通用属性历史。
 - 高频 UWB 位置。
+- 空间评估队列、水位、区域状态、进入/离开/停留事件、可靠 Outbox 和历史重放事实。
 - 遥测事件和聚合。
 
 开发环境可以同实例不同 database/schema；生产为独立实例和资源配额。
@@ -536,27 +563,39 @@ Phase 2 已落地表及关键语义：
 
 ## 10. 矿山业务表
 
+已落地矿区管理表使用统一 `mine_` 前缀：
+
 ~~~text
-biz_vehicle
-biz_person
-biz_driver_profile
+mine_organization
+mine_site
+mine_user_scope_grant
 
-biz_vehicle_device_binding
-biz_vehicle_tag_binding
-biz_person_tag_binding
-biz_person_vehicle_binding
+mine_vehicle
+mine_location_tag
+mine_person
+mine_driver_qualification
+mine_person_site_assignment
 
-biz_route
-biz_route_version
-biz_waypoint
-biz_route_waypoint
-biz_geofence
+mine_vehicle_device_binding
+mine_location_tag_binding_claim
+mine_vehicle_tag_binding
+mine_person_tag_binding
+mine_person_vehicle_binding
+mine_binding_switch_operation
 
-biz_shift_definition
-biz_shift_instance
-biz_work_order
-biz_operation_record
-biz_operation_metric
+mine_coordinate_system
+mine_coordinate_transform_version
+mine_location_runtime_snapshot
+mine_location_runtime_snapshot_item
+
+mine_waypoint
+mine_waypoint_version
+mine_route
+mine_route_version
+mine_route_version_waypoint
+mine_geofence
+mine_geofence_version
+mine_geofence_vertex
 
 cmd_template
 cmd_instance
@@ -566,6 +605,10 @@ cmd_reply
 alarm_event
 alarm_acknowledgement
 ~~~
+
+班次、作业单、运营记录和运营指标仍是后续切片，其最终物理表名必须由迁移固化，不能把早期 `biz_*` 概念名当成已存在表。
+空间控制面八张表采用稳定对象与 `DRAFT/PUBLISHED` 版本，数据库约束和触发器保护矿区/统一坐标一致性、发布时间范围、
+路线引用顺序、多边形拓扑、摘要格式和发布后不可变。V39 创建表，V40 发布菜单权限，V41 扩展定位快照并保护被引用坐标系和版本。
 
 `alarm_event` 以告警周期为聚合根，保存设备与规则快照、策略运行证据，以及相互正交的触发、恢复、首次确认和关闭事实。推导状态包括 `ACTIVE_UNACKNOWLEDGED`、`ACTIVE_ACKNOWLEDGED`、`RECOVERED_UNACKNOWLEDGED`、`RECOVERED_ACKNOWLEDGED`、`CLOSED`；数据库约束保证关闭一定晚于恢复。`alarm_acknowledgement` 是每个周期唯一的首次确认事实，保存操作人、说明、幂等键和时间。V26 为两表及全部字段提供中文注释，`DatabaseMigrationIT` 校验完整性、索引、约束和菜单权限节点。
 
@@ -743,6 +786,20 @@ V21～V24 将早期 hypertable 原位升级为双坐标事实；为兼容无法�
 上述新增表和每个字段均通过 `COMMENT ON TABLE/COLUMN` 提供中文注释，PostgreSQL/TimescaleDB 集成测试校验注释、
 排斥约束、不可变快照、幂等、边界、发生时绑定、查询水位和有界恢复。模拟与运维边界见
 [矿区定位运行与模拟验收手册](runbooks/mine-location-runtime.md)。
+
+空间事件运行新增：
+
+- `spatial_evaluation_queue`、`spatial_subject_watermark`：持久入队、事件时间排序、允许迟到、空闲刷新、租约和固定跳过原因。
+- `spatial_zone_state`：区域版本与标签之间可恢复的在线状态机；边界保持、连续确认和停留单次发出。
+- `spatial_event`、`spatial_event_sequence_watermark`、`spatial_event_outbox`：固定提交序号、业务唯一事件和同事务可靠发布。
+- `spatial_runtime_snapshot`、`spatial_runtime_snapshot_item`：Telemetry 已激活且可恢复的精确空间运行内容与摘要。
+- `spatial_replay_request`、`spatial_replay_subject_state`：受控异步重放、冻结源水位/区域快照和独立状态。
+- `spatial_replay_active_zone_snapshot`：只向最小权限重放登记账号暴露当前活动途径点/围栏版本的安全视图。
+
+V25 建立基础运行表，V26 增加租约 fencing 与空间运行快照，V27 增加固定查询序号、重放隔离和最小权限视图，V28 增加
+空间事件 Outbox `DEAD` 状态部分索引。所有表和字段都有中文注释，TimescaleDB 集成测试校验升级、约束、不可变证据、旧租约拒绝、查询水位和
+重放幂等。运行、模拟、指标、告警与回退见
+[矿区路线、围栏与空间事件运行手册](runbooks/mine-spatial-event-runtime.md)。
 
 数据保留运行新增：
 
