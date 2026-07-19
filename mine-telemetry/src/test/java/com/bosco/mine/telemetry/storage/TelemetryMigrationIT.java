@@ -439,6 +439,25 @@ class TelemetryMigrationIT {
                         "telemetry_strategy_runtime_revision",
                         "telemetry_strategy_snapshot_stage"
                 );
+        assertThat(queryStrings("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name IN (
+                    'spatial_evaluation_queue', 'spatial_subject_watermark',
+                    'spatial_zone_state', 'spatial_event',
+                    'spatial_event_outbox', 'spatial_replay_request'
+                  )
+                ORDER BY table_name
+                """))
+                .containsExactly(
+                        "spatial_evaluation_queue",
+                        "spatial_event",
+                        "spatial_event_outbox",
+                        "spatial_replay_request",
+                        "spatial_subject_watermark",
+                        "spatial_zone_state"
+                );
     }
 
     private void insertLegacyTelemetry() throws Exception {
