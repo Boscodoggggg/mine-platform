@@ -50,6 +50,7 @@ export type SpatialObjectPage = components['schemas']['SpatialObjectPage'];
 export type SpatialObjectRequest = components['schemas']['SpatialObjectRequest'];
 export type SpatialVersionStatus = components['schemas']['SpatialVersionStatus'];
 export type SpatialDetectionPolicy = components['schemas']['SpatialDetectionPolicy'];
+export type CurrentSpatialRegions = components['schemas']['CurrentSpatialRegionResponse'];
 export type WaypointVersion = components['schemas']['WaypointVersionResponse'];
 export type WaypointVersionRequest = components['schemas']['WaypointVersionRequest'];
 export type WaypointVersionUpdateRequest = components['schemas']['WaypointVersionUpdateRequest'];
@@ -520,6 +521,11 @@ export function publishMineGeofenceVersion(
 /** 使用固定水位和游标查询空间事件。 */
 export function getMineSpatialEvents(siteId: string, query: SpatialEventQuery = {}) {
   return request<SpatialEventPage>(withQuery(sitePath(siteId, 'spatial-events'), query));
+}
+
+/** 一次查询当前生效的途径点和电子围栏区域。 */
+export function getMineCurrentSpatialRegions(siteId: string) {
+  return request<CurrentSpatialRegions>(sitePath(siteId, 'spatial-regions/current'));
 }
 
 /** 查询空间事件判定证据。 */

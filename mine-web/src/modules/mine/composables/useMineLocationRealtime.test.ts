@@ -100,6 +100,7 @@ describe('useMineLocationRealtime', () => {
     await state.selectSite('site-1');
 
     connectionListener('RECONNECTING');
+    expect(state.connectionState.value).toBe('RECONNECTING');
     expect(state.status.value).toBe('RECONNECTING');
     locationListener({
       siteId: 'site-1',

@@ -5,6 +5,7 @@ import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.mine.model.MineSite;
 import com.bosco.mine.server.modules.mine.service.MineScopeAuthorizer;
+import com.bosco.mine.server.modules.mine.spatial.dto.CurrentSpatialRegionResponse;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionResponse;
 import com.bosco.mine.server.modules.mine.spatial.dto.RouteVersionResponse;
 import com.bosco.mine.server.modules.mine.spatial.dto.SpatialDetectionPolicy;
@@ -22,6 +23,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -45,6 +47,8 @@ public class SpatialRouteQueryService {
     private static final ErrorCode VERSION_NOT_FOUND =
             new ErrorCode("MINE-SPATIAL-404-004", "空间对象版本不存在");
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() { };
+    private static final TypeReference<List<SpatialVertexResponse>> SPATIAL_VERTICES =
+            new TypeReference<>() { };
 
     private final SpatialRouteMapper mapper;
     private final MineScopeAuthorizer authorizer;
@@ -215,6 +219,25 @@ public class SpatialRouteQueryService {
         return toResponse(site, version);
     }
 
+    /** 查询当前生效区域，并返回前端安排自动刷新的最近有效期边界。 */
+    @Transactional(readOnly = true)
+    public CurrentSpatialRegionResponse findCurrentSpatialRegions(UUID siteId) {
+        MineSite site = authorizer.requireSite(siteId);
+        Instant evaluatedAt = Instant.now();
+        List<CurrentSpatialRegionResponse.Item> items = mapper.findCurrentSpatialRegions(
+                        site.organizationId(), site.id(), evaluatedAt)
+                .stream()
+                .map(item -> new CurrentSpatialRegionResponse.Item(
+                        item.zoneType(), item.zoneId(), item.zoneVersionId(),
+                        item.coordinateSystemId(), item.name(), item.contentHash(),
+                        item.validFrom(), item.validTo(), item.shape(), item.x(), item.y(),
+                        item.radiusMeters(), spatialVertices(item.verticesJson())))
+                .toList();
+        Instant nextChangeAt = mapper.findNextSpatialRegionChangeAt(
+                site.organizationId(), site.id(), evaluatedAt);
+        return new CurrentSpatialRegionResponse(site.id(), evaluatedAt, nextChangeAt, items);
+    }
+
     /** 将稳定对象持久化快照转换为响应。 */
     public static SpatialObjectResponse toResponse(SpatialObjectRecord item) {
         return new SpatialObjectResponse(
@@ -300,6 +323,15 @@ public class SpatialRouteQueryService {
             return objectMapper.readValue(json, STRING_LIST);
         } catch (JacksonException exception) {
             throw new IllegalStateException("路线适用车辆类型无法解析", exception);
+        }
+    }
+
+    /** 将数据库聚合的有序顶点转换为接口结构。 */
+    private List<SpatialVertexResponse> spatialVertices(String json) {
+        try {
+            return objectMapper.readValue(json, SPATIAL_VERTICES);
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("空间区域顶点无法解析", exception);
         }
     }
 

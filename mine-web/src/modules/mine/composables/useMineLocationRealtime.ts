@@ -128,6 +128,7 @@ export function useMineLocationRealtime(
     watermark,
     source,
     truncated,
+    connectionState,
     selectSite,
     stop
   };

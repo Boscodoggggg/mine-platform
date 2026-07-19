@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RealtimeHub, buildRealtimeUrl, type RealtimeSocket } from './RealtimeHub';
+import {
+  RealtimeHub,
+  buildRealtimeUrl,
+  type RealtimeHubOptions,
+  type RealtimeSocket
+} from './RealtimeHub';
 
 class FakeSocket implements RealtimeSocket {
   readyState: number = WebSocket.CONNECTING;
@@ -56,7 +61,7 @@ describe('RealtimeHub', () => {
     vi.useRealTimers();
   });
 
-  function createHub() {
+  function createHub(options: Partial<RealtimeHubOptions> = {}) {
     return new RealtimeHub({
       url: 'ws://mine.test/api/v1/realtime',
       token: () => 'token-value',
@@ -65,7 +70,8 @@ describe('RealtimeHub', () => {
         sockets.push(socket);
         return socket;
       },
-      random: () => 0
+      random: () => 0,
+      ...options
     });
   }
 
@@ -303,6 +309,184 @@ describe('RealtimeHub', () => {
     });
   });
 
+  it('空间事件应复用订阅且在服务端序号断档时通知页面重同步', () => {
+    const firstListener = vi.fn();
+    const secondListener = vi.fn();
+    const hub = createHub();
+    const releaseFirst = hub.subscribeMineSpatialEvent('site-a', firstListener);
+    const socket = sockets[0];
+    socket.open();
+    const auth = JSON.parse(socket.sent[0]);
+    socket.receive({ type: 'ACK', action: 'AUTH', requestId: auth.requestId, sequence: 1 });
+
+    expect(JSON.parse(socket.sent[1])).toMatchObject({
+      action: 'SUBSCRIBE',
+      topics: [{ type: 'MINE_SITE_SPATIAL_EVENT', ids: ['site-a'] }]
+    });
+    const subscription = JSON.parse(socket.sent[1]);
+    expect(firstListener).not.toHaveBeenCalled();
+    socket.receive({ type: 'ACK', action: 'SUBSCRIBE', requestId: subscription.requestId, sequence: 2 });
+    expect(firstListener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
+    firstListener.mockClear();
+    socket.sent.length = 0;
+    const releaseSecond = hub.subscribeMineSpatialEvent('site-a', secondListener);
+    expect(socket.sent).toHaveLength(0);
+    expect(secondListener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
+    secondListener.mockClear();
+
+    socket.receive({
+      type: 'DATA',
+      topic: 'MINE_SITE_SPATIAL_EVENT',
+      siteId: 'site-a',
+      item: spatialEvent({ occurredAt: undefined }),
+      sequence: 3
+    });
+    expect(firstListener).not.toHaveBeenCalled();
+    expect(secondListener).not.toHaveBeenCalled();
+
+    socket.receive({
+      type: 'DATA',
+      topic: 'MINE_SITE_SPATIAL_EVENT',
+      siteId: 'site-a',
+      item: spatialEvent({ ingestSequence: 11 }),
+      sequence: 4
+    });
+    expect(firstListener).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mode: 'UPDATE', siteId: 'site-a' })
+    );
+    expect(secondListener).toHaveBeenCalledOnce();
+
+    socket.receive({
+      type: 'DATA',
+      topic: 'MINE_SITE_SPATIAL_EVENT',
+      siteId: 'site-a',
+      item: spatialEvent({ eventId: 'event-2', ingestSequence: 12 }),
+      sequence: 6
+    });
+    expect(socket.sent.map(item => JSON.parse(item).action)).toEqual(['RESYNC']);
+    expect(firstListener).toHaveBeenCalledWith({ mode: 'RESYNC_REQUIRED', siteId: 'site-a' });
+
+    releaseFirst();
+    expect(socket.sent).toHaveLength(1);
+    releaseSecond();
+    expect(JSON.parse(socket.sent.at(-1)!)).toMatchObject({
+      action: 'UNSUBSCRIBE',
+      topics: [{ type: 'MINE_SITE_SPATIAL_EVENT', ids: ['site-a'] }]
+    });
+  });
+
+  it('空间事件连接重建后应主动通知页面补齐离线窗口', () => {
+    const listener = vi.fn();
+    const hub = createHub();
+    hub.subscribeMineSpatialEvent('site-a', listener);
+    sockets[0].open();
+    const firstAuth = JSON.parse(sockets[0].sent[0]);
+    sockets[0].receive({ type: 'ACK', action: 'AUTH', requestId: firstAuth.requestId, sequence: 1 });
+    const firstSubscription = JSON.parse(sockets[0].sent[1]);
+    sockets[0].receive({
+      type: 'ACK',
+      action: 'SUBSCRIBE',
+      requestId: firstSubscription.requestId,
+      sequence: 2
+    });
+    listener.mockClear();
+
+    sockets[0].remoteClose();
+    vi.advanceTimersByTime(1000);
+    sockets[1].open();
+    const secondAuth = JSON.parse(sockets[1].sent[0]);
+    sockets[1].receive({ type: 'ACK', action: 'AUTH', requestId: secondAuth.requestId, sequence: 1 });
+
+    expect(JSON.parse(sockets[1].sent[1])).toMatchObject({
+      action: 'SUBSCRIBE',
+      topics: [{ type: 'MINE_SITE_SPATIAL_EVENT', ids: ['site-a'] }]
+    });
+    expect(listener).not.toHaveBeenCalled();
+    const secondSubscription = JSON.parse(sockets[1].sent[1]);
+    sockets[1].receive({
+      type: 'ACK',
+      action: 'SUBSCRIBE',
+      requestId: secondSubscription.requestId,
+      sequence: 2
+    });
+    expect(listener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
+  });
+
+  it('空间订阅失败或超时应显式降级并按上限重试', () => {
+    const listener = vi.fn();
+    const hub = createHub({
+      spatialSubscriptionTimeoutMillis: 1000,
+      spatialSubscriptionRetryMillis: 500,
+      spatialSubscriptionMaxAttempts: 2
+    });
+    hub.subscribeMineSpatialEvent('site-a', listener);
+    const socket = sockets[0];
+    socket.open();
+    const auth = JSON.parse(socket.sent[0]);
+    socket.receive({ type: 'ACK', action: 'AUTH', requestId: auth.requestId, sequence: 1 });
+    const firstSubscription = JSON.parse(socket.sent[1]);
+
+    socket.receive({
+      type: 'ERROR',
+      requestId: firstSubscription.requestId,
+      code: 'REALTIME-LIMIT-EXCEEDED',
+      message: 'subscription limit exceeded',
+      sequence: 2
+    });
+    expect(listener).toHaveBeenLastCalledWith({
+      mode: 'SUBSCRIPTION_FAILED',
+      siteId: 'site-a',
+      code: 'REALTIME-LIMIT-EXCEEDED'
+    });
+
+    vi.advanceTimersByTime(500);
+    const secondSubscription = JSON.parse(socket.sent.at(-1)!);
+    expect(secondSubscription).toMatchObject({
+      action: 'SUBSCRIBE',
+      topics: [{ type: 'MINE_SITE_SPATIAL_EVENT', ids: ['site-a'] }]
+    });
+
+    vi.advanceTimersByTime(1000);
+    expect(listener).toHaveBeenLastCalledWith({
+      mode: 'SUBSCRIPTION_FAILED',
+      siteId: 'site-a',
+      code: 'REALTIME-SUBSCRIPTION-TIMEOUT'
+    });
+    vi.advanceTimersByTime(500);
+    expect(socket.sent.filter(item => JSON.parse(item).action === 'SUBSCRIBE')).toHaveLength(2);
+
+    const lateListener = vi.fn();
+    hub.subscribeMineSpatialEvent('site-a', lateListener);
+    expect(lateListener).toHaveBeenCalledWith({
+      mode: 'SUBSCRIPTION_FAILED',
+      siteId: 'site-a',
+      code: 'REALTIME-SUBSCRIPTION-TIMEOUT'
+    });
+  });
+
+  it('ACK 前的全局序号断档不得提前触发空间事件回查', () => {
+    const listener = vi.fn();
+    const hub = createHub();
+    hub.subscribeMineSpatialEvent('site-a', listener);
+    const socket = sockets[0];
+    socket.open();
+    const auth = JSON.parse(socket.sent[0]);
+    socket.receive({ type: 'ACK', action: 'AUTH', requestId: auth.requestId, sequence: 1 });
+    const subscription = JSON.parse(socket.sent[1]);
+
+    socket.receive({ type: 'DATA', deviceId: 'device-a', values: { speed: 1 }, sequence: 3 });
+    expect(listener).not.toHaveBeenCalledWith({ mode: 'RESYNC_REQUIRED', siteId: 'site-a' });
+
+    socket.receive({
+      type: 'ACK',
+      action: 'SUBSCRIBE',
+      requestId: subscription.requestId,
+      sequence: 4
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
+  });
+
   it('应向页面发布连接与弱网重连状态', () => {
     const states: string[] = [];
     const hub = createHub();
@@ -339,6 +523,38 @@ function locationItem(overrides: Record<string, unknown> = {}) {
     accuracyMeters: 0.5,
     qualityStatus: 'GOOD',
     qualityReason: null,
+    ...overrides
+  };
+}
+
+function spatialEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    eventId: 'event-1',
+    organizationId: 'organization-1',
+    siteId: 'site-a',
+    zoneType: 'GEOFENCE',
+    zoneId: 'zone-1',
+    zoneVersionId: 'zone-version-1',
+    tagId: 'tag-1',
+    vehicleId: 'vehicle-1',
+    personId: null,
+    eventType: 'ENTER',
+    anchorLocationEventId: 'location-event-1',
+    previousState: 'OUTSIDE',
+    currentState: 'INSIDE',
+    confirmationPoints: 3,
+    ingestSequence: 11,
+    runtimeRevision: 5,
+    occurredAt: '2026-07-18T00:00:00Z',
+    evidence: {
+      localX: 120,
+      localY: 88,
+      localZ: null,
+      classification: 'INSIDE',
+      qualityStatus: 'GOOD',
+      qualityReason: null,
+      zoneContentHash: `sha256:${'a'.repeat(64)}`
+    },
     ...overrides
   };
 }

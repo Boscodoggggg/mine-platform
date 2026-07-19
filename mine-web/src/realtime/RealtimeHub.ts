@@ -63,6 +63,45 @@ export interface RealtimeLocationBatch {
 
 export type RealtimeLocationListener = (batch: RealtimeLocationBatch) => void;
 
+export interface RealtimeSpatialEvidence {
+  localX: number;
+  localY: number;
+  localZ: number | null;
+  classification: 'INSIDE' | 'OUTSIDE' | 'BOUNDARY' | 'HEIGHT_UNKNOWN';
+  qualityStatus: 'GOOD' | 'DEGRADED';
+  qualityReason: string | null;
+  zoneContentHash: string;
+}
+
+export interface RealtimeSpatialEventItem {
+  eventId: string;
+  organizationId: string;
+  siteId: string;
+  zoneType: 'WAYPOINT' | 'GEOFENCE';
+  zoneId: string;
+  zoneVersionId: string;
+  tagId: string;
+  vehicleId: string | null;
+  personId: string | null;
+  eventType: 'ENTER' | 'EXIT' | 'DWELL';
+  anchorLocationEventId: string;
+  previousState: 'OUTSIDE' | 'INSIDE';
+  currentState: 'OUTSIDE' | 'INSIDE';
+  confirmationPoints: number;
+  ingestSequence: number;
+  runtimeRevision: number;
+  occurredAt: string;
+  evidence: RealtimeSpatialEvidence;
+}
+
+export type RealtimeSpatialNotification =
+  | { mode: 'UPDATE'; siteId: string; item: RealtimeSpatialEventItem }
+  | { mode: 'SUBSCRIBED'; siteId: string }
+  | { mode: 'SUBSCRIPTION_FAILED'; siteId: string; code: string }
+  | { mode: 'RESYNC_REQUIRED'; siteId: string };
+
+export type RealtimeSpatialListener = (notification: RealtimeSpatialNotification) => void;
+
 export interface RealtimeHubOptions {
   url: string;
   token: () => string;
@@ -72,6 +111,9 @@ export interface RealtimeHubOptions {
   reconnectMaxMillis?: number;
   heartbeatMillis?: number;
   heartbeatTimeoutMillis?: number;
+  spatialSubscriptionTimeoutMillis?: number;
+  spatialSubscriptionRetryMillis?: number;
+  spatialSubscriptionMaxAttempts?: number;
   onAuthenticationFailed?: (message: string) => void;
 }
 
@@ -94,6 +136,16 @@ interface Registration {
 interface LocationRegistration {
   siteId: string;
   listener: RealtimeLocationListener;
+}
+
+interface SpatialRegistration {
+  siteId: string;
+  listener: RealtimeSpatialListener;
+}
+
+interface PendingSpatialSubscription {
+  siteId: string;
+  timeoutTimer: ReturnType<typeof setTimeout>;
 }
 
 interface ServerFrame {
@@ -122,7 +174,7 @@ interface ServerFrame {
     quality?: string;
     eventId?: string;
   }>;
-  item?: RealtimeLocationItem;
+  item?: unknown;
 }
 
 /**
@@ -139,6 +191,9 @@ export class RealtimeHub {
       | 'reconnectMaxMillis'
       | 'heartbeatMillis'
       | 'heartbeatTimeoutMillis'
+      | 'spatialSubscriptionTimeoutMillis'
+      | 'spatialSubscriptionRetryMillis'
+      | 'spatialSubscriptionMaxAttempts'
       | 'onAuthenticationFailed'
     >
   > &
@@ -150,6 +205,9 @@ export class RealtimeHub {
       | 'reconnectMaxMillis'
       | 'heartbeatMillis'
       | 'heartbeatTimeoutMillis'
+      | 'spatialSubscriptionTimeoutMillis'
+      | 'spatialSubscriptionRetryMillis'
+      | 'spatialSubscriptionMaxAttempts'
       | 'onAuthenticationFailed'
     >;
 
@@ -160,6 +218,13 @@ export class RealtimeHub {
   private readonly locationRegistrations = new Set<LocationRegistration>();
   private readonly locationReferences = new Map<string, number>();
   private readonly latestLocations = new Map<string, Map<string, RealtimeLocationItem>>();
+  private readonly spatialRegistrations = new Set<SpatialRegistration>();
+  private readonly spatialReferences = new Map<string, number>();
+  private readonly pendingSpatialSubscriptions = new Map<string, PendingSpatialSubscription>();
+  private readonly activeSpatialSubscriptions = new Set<string>();
+  private readonly spatialSubscriptionAttempts = new Map<string, number>();
+  private readonly spatialSubscriptionFailures = new Map<string, string>();
+  private readonly spatialSubscriptionRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly pendingLocationBatches = new Map<
     string,
     {
@@ -194,6 +259,9 @@ export class RealtimeHub {
       reconnectMaxMillis: options.reconnectMaxMillis ?? 30_000,
       heartbeatMillis: options.heartbeatMillis ?? 25_000,
       heartbeatTimeoutMillis: options.heartbeatTimeoutMillis ?? 10_000,
+      spatialSubscriptionTimeoutMillis: options.spatialSubscriptionTimeoutMillis ?? 10_000,
+      spatialSubscriptionRetryMillis: options.spatialSubscriptionRetryMillis ?? 1000,
+      spatialSubscriptionMaxAttempts: options.spatialSubscriptionMaxAttempts ?? 3,
       onAuthenticationFailed: options.onAuthenticationFailed ?? (() => undefined)
     };
   }
@@ -215,6 +283,7 @@ export class RealtimeHub {
     this.authenticated = false;
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
+    this.resetSpatialSubscriptionState();
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'client disconnect');
@@ -291,6 +360,43 @@ export class RealtimeHub {
     };
   }
 
+  /** 订阅单个矿区的空间业务事件，多个页面共享同一服务端订阅。 */
+  subscribeMineSpatialEvent(siteId: string, listener: RealtimeSpatialListener): () => void {
+    const normalizedSiteId = siteId.trim();
+    if (!normalizedSiteId) throw new Error('矿区不能为空');
+    const registration: SpatialRegistration = { siteId: normalizedSiteId, listener };
+    this.spatialRegistrations.add(registration);
+    const referenceCount = this.spatialReferences.get(normalizedSiteId) ?? 0;
+    this.spatialReferences.set(normalizedSiteId, referenceCount + 1);
+    this.connect();
+    if (referenceCount === 0 && this.authenticated) {
+      this.sendSpatialTopic('SUBSCRIBE', normalizedSiteId);
+    }
+    if (this.activeSpatialSubscriptions.has(normalizedSiteId)) {
+      listener({ mode: 'SUBSCRIBED', siteId: normalizedSiteId });
+    } else {
+      const failureCode = this.spatialSubscriptionFailures.get(normalizedSiteId);
+      if (failureCode) {
+        listener({ mode: 'SUBSCRIPTION_FAILED', siteId: normalizedSiteId, code: failureCode });
+      }
+    }
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.spatialRegistrations.delete(registration);
+      const count = this.spatialReferences.get(normalizedSiteId) ?? 0;
+      if (count <= 1) {
+        this.spatialReferences.delete(normalizedSiteId);
+        this.clearSpatialSubscriptionState(normalizedSiteId);
+        if (this.authenticated) this.sendSpatialTopic('UNSUBSCRIBE', normalizedSiteId);
+      } else {
+        this.spatialReferences.set(normalizedSiteId, count - 1);
+      }
+    };
+  }
+
   /** 订阅连接状态；注册时立即返回当前状态。 */
   subscribeConnectionState(listener: (state: RealtimeConnectionState) => void): () => void {
     this.connectionListeners.add(listener);
@@ -317,6 +423,7 @@ export class RealtimeHub {
     this.clearHeartbeatTimer();
     this.lastServerSequence = 0;
     this.resyncPending = false;
+    this.resetSpatialSubscriptionState();
     socket.addEventListener('open', () => {
       if (this.socket !== socket) return;
       this.reconnectAttempt = 0;
@@ -330,6 +437,7 @@ export class RealtimeHub {
     socket.addEventListener('close', () => {
       if (this.socket === socket) this.socket = null;
       this.authenticated = false;
+      this.resetSpatialSubscriptionState();
       this.clearHeartbeatTimer();
       if (this.desired) {
         this.setConnectionState('RECONNECTING');
@@ -366,6 +474,24 @@ export class RealtimeHub {
       this.scheduleHeartbeat();
       return;
     }
+    if (frame.type === 'ERROR' && frame.requestId && this.pendingSpatialSubscriptions.has(frame.requestId)) {
+      this.failSpatialSubscription(frame.requestId, frame.code ?? 'REALTIME-SUBSCRIPTION-FAILED');
+      return;
+    }
+    if (frame.type === 'ACK' && frame.action === 'SUBSCRIBE' && frame.requestId) {
+      const pending = this.pendingSpatialSubscriptions.get(frame.requestId);
+      if (pending) {
+        this.completePendingSpatialSubscription(frame.requestId);
+        if (this.spatialReferences.has(pending.siteId)) {
+          this.spatialSubscriptionAttempts.delete(pending.siteId);
+          this.spatialSubscriptionFailures.delete(pending.siteId);
+          this.clearSpatialSubscriptionRetryTimer(pending.siteId);
+          this.activeSpatialSubscriptions.add(pending.siteId);
+          this.notifySpatialSubscribed(pending.siteId);
+        }
+      }
+      return;
+    }
     if (frame.type === 'PONG') {
       this.clearHeartbeatTimeoutTimer();
       this.scheduleHeartbeat();
@@ -377,6 +503,10 @@ export class RealtimeHub {
       if (frame.type === 'DATA') this.applyLocationData(frame);
       return;
     }
+    if (frame.topic === 'MINE_SITE_SPATIAL_EVENT') {
+      if (frame.type === 'DATA') this.applySpatialData(frame);
+      return;
+    }
     if (frame.type === 'SNAPSHOT') this.applySnapshot(frame);
     if (frame.type === 'DATA') this.applyData(frame);
   }
@@ -385,6 +515,7 @@ export class RealtimeHub {
     if (!sequence || sequence < 1) return;
     if (this.lastServerSequence > 0 && sequence !== this.lastServerSequence + 1 && !this.resyncPending) {
       this.resyncPending = true;
+      this.notifySpatialResync();
       this.sendAction('RESYNC');
     }
     this.lastServerSequence = sequence;
@@ -396,6 +527,42 @@ export class RealtimeHub {
     });
     this.locationReferences.forEach((_count, siteId) => {
       this.sendLocationTopic('SUBSCRIBE', siteId);
+    });
+    this.spatialReferences.forEach((_count, siteId) => {
+      this.sendSpatialTopic('SUBSCRIBE', siteId);
+    });
+  }
+
+  private applySpatialData(frame: ServerFrame) {
+    if (!frame.siteId || !this.isSpatialEventItem(frame.item) || frame.item.siteId !== frame.siteId) return;
+    this.spatialRegistrations.forEach(registration => {
+      if (registration.siteId === frame.siteId) {
+        registration.listener({ mode: 'UPDATE', siteId: frame.siteId!, item: frame.item as RealtimeSpatialEventItem });
+      }
+    });
+  }
+
+  private notifySpatialResync() {
+    this.activeSpatialSubscriptions.forEach(siteId => {
+      this.spatialRegistrations.forEach(registration => {
+        if (registration.siteId === siteId) {
+          registration.listener({ mode: 'RESYNC_REQUIRED', siteId });
+        }
+      });
+    });
+  }
+
+  private notifySpatialSubscribed(siteId: string) {
+    this.spatialRegistrations.forEach(registration => {
+      if (registration.siteId === siteId) registration.listener({ mode: 'SUBSCRIBED', siteId });
+    });
+  }
+
+  private notifySpatialSubscriptionFailed(siteId: string, code: string) {
+    this.spatialRegistrations.forEach(registration => {
+      if (registration.siteId === siteId) {
+        registration.listener({ mode: 'SUBSCRIPTION_FAILED', siteId, code });
+      }
     });
   }
 
@@ -490,6 +657,52 @@ export class RealtimeHub {
     return item.sourceSequence ?? item.ingestSequence ?? 0;
   }
 
+  private readonly isSpatialEventItem = (value: unknown): value is RealtimeSpatialEventItem => {
+    if (!value || typeof value !== 'object') return false;
+    const item = value as Partial<RealtimeSpatialEventItem>;
+    const evidence = item.evidence as Partial<RealtimeSpatialEvidence> | undefined;
+    return (
+      this.isNonBlankString(item.eventId) &&
+      this.isNonBlankString(item.organizationId) &&
+      this.isNonBlankString(item.siteId) &&
+      this.isNonBlankString(item.zoneId) &&
+      this.isNonBlankString(item.zoneVersionId) &&
+      this.isNonBlankString(item.tagId) &&
+      this.isNonBlankString(item.anchorLocationEventId) &&
+      this.isNullableString(item.vehicleId) &&
+      this.isNullableString(item.personId) &&
+      ['WAYPOINT', 'GEOFENCE'].includes(item.zoneType ?? '') &&
+      ['ENTER', 'EXIT', 'DWELL'].includes(item.eventType ?? '') &&
+      ['OUTSIDE', 'INSIDE'].includes(item.previousState ?? '') &&
+      ['OUTSIDE', 'INSIDE'].includes(item.currentState ?? '') &&
+      Number.isInteger(item.confirmationPoints) &&
+      (item.confirmationPoints ?? 0) > 0 &&
+      Number.isInteger(item.ingestSequence) &&
+      (item.ingestSequence ?? 0) > 0 &&
+      Number.isInteger(item.runtimeRevision) &&
+      (item.runtimeRevision ?? 0) > 0 &&
+      this.isNonBlankString(item.occurredAt) &&
+      Number.isFinite(Date.parse(item.occurredAt)) &&
+      Boolean(evidence) &&
+      Number.isFinite(evidence?.localX) &&
+      Number.isFinite(evidence?.localY) &&
+      (evidence?.localZ === null || Number.isFinite(evidence?.localZ)) &&
+      ['INSIDE', 'OUTSIDE', 'BOUNDARY', 'HEIGHT_UNKNOWN'].includes(evidence?.classification ?? '') &&
+      ['GOOD', 'DEGRADED'].includes(evidence?.qualityStatus ?? '') &&
+      this.isNullableString(evidence?.qualityReason) &&
+      typeof evidence?.zoneContentHash === 'string' &&
+      /^sha256:[0-9a-f]{64}$/.test(evidence.zoneContentHash)
+    );
+  };
+
+  private isNonBlankString(value: unknown): value is string {
+    return typeof value === 'string' && value.trim().length > 0;
+  }
+
+  private isNullableString(value: unknown): value is string | null {
+    return value === null || typeof value === 'string';
+  }
+
   private applySnapshot(frame: ServerFrame) {
     if (!frame.deviceId || !Array.isArray(frame.items)) return;
     frame.items.forEach(item => {
@@ -567,6 +780,84 @@ export class RealtimeHub {
       requestId: this.nextRequestId(),
       topics: [{ type: 'MINE_SITE_LOCATION', ids: [siteId] }]
     });
+  }
+
+  private sendSpatialTopic(action: 'SUBSCRIBE' | 'UNSUBSCRIBE', siteId: string) {
+    const requestId = this.nextRequestId();
+    if (action === 'SUBSCRIBE') {
+      this.activeSpatialSubscriptions.delete(siteId);
+      this.clearPendingSpatialSubscriptions(siteId);
+      this.clearSpatialSubscriptionRetryTimer(siteId);
+      this.spatialSubscriptionAttempts.set(siteId, (this.spatialSubscriptionAttempts.get(siteId) ?? 0) + 1);
+      const timeoutTimer = setTimeout(() => {
+        this.failSpatialSubscription(requestId, 'REALTIME-SUBSCRIPTION-TIMEOUT');
+      }, this.options.spatialSubscriptionTimeoutMillis);
+      this.pendingSpatialSubscriptions.set(requestId, { siteId, timeoutTimer });
+    } else {
+      this.clearSpatialSubscriptionState(siteId);
+    }
+    this.sendRaw({
+      action,
+      requestId,
+      topics: [{ type: 'MINE_SITE_SPATIAL_EVENT', ids: [siteId] }]
+    });
+  }
+
+  private clearSpatialSubscriptionState(siteId: string) {
+    this.activeSpatialSubscriptions.delete(siteId);
+    this.clearPendingSpatialSubscriptions(siteId);
+    this.clearSpatialSubscriptionRetryTimer(siteId);
+    this.spatialSubscriptionAttempts.delete(siteId);
+    this.spatialSubscriptionFailures.delete(siteId);
+  }
+
+  private resetSpatialSubscriptionState() {
+    this.activeSpatialSubscriptions.clear();
+    this.pendingSpatialSubscriptions.forEach(pending => clearTimeout(pending.timeoutTimer));
+    this.pendingSpatialSubscriptions.clear();
+    this.spatialSubscriptionRetryTimers.forEach(timer => clearTimeout(timer));
+    this.spatialSubscriptionRetryTimers.clear();
+    this.spatialSubscriptionAttempts.clear();
+    this.spatialSubscriptionFailures.clear();
+  }
+
+  private completePendingSpatialSubscription(requestId: string) {
+    const pending = this.pendingSpatialSubscriptions.get(requestId);
+    if (!pending) return null;
+    clearTimeout(pending.timeoutTimer);
+    this.pendingSpatialSubscriptions.delete(requestId);
+    return pending;
+  }
+
+  private failSpatialSubscription(requestId: string, code: string) {
+    const pending = this.completePendingSpatialSubscription(requestId);
+    if (!pending || !this.spatialReferences.has(pending.siteId)) return;
+    this.spatialSubscriptionFailures.set(pending.siteId, code);
+    this.notifySpatialSubscriptionFailed(pending.siteId, code);
+    const attempts = this.spatialSubscriptionAttempts.get(pending.siteId) ?? 0;
+    if (!this.authenticated || attempts >= this.options.spatialSubscriptionMaxAttempts) return;
+    const timer = setTimeout(() => {
+      this.spatialSubscriptionRetryTimers.delete(pending.siteId);
+      if (this.authenticated && this.spatialReferences.has(pending.siteId)) {
+        this.sendSpatialTopic('SUBSCRIBE', pending.siteId);
+      }
+    }, this.options.spatialSubscriptionRetryMillis);
+    this.spatialSubscriptionRetryTimers.set(pending.siteId, timer);
+  }
+
+  private clearPendingSpatialSubscriptions(siteId: string) {
+    this.pendingSpatialSubscriptions.forEach((pending, requestId) => {
+      if (pending.siteId !== siteId) return;
+      clearTimeout(pending.timeoutTimer);
+      this.pendingSpatialSubscriptions.delete(requestId);
+    });
+  }
+
+  private clearSpatialSubscriptionRetryTimer(siteId: string) {
+    const timer = this.spatialSubscriptionRetryTimers.get(siteId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.spatialSubscriptionRetryTimers.delete(siteId);
   }
 
   private sendAction(action: 'RESYNC' | 'PING') {

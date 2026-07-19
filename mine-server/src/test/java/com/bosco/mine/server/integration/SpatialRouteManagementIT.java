@@ -14,6 +14,7 @@ import com.bosco.mine.server.modules.mine.spatial.SpatialRouteQueryService;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionRequest;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionResponse;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionUpdateRequest;
+import com.bosco.mine.server.modules.mine.spatial.dto.CurrentSpatialRegionResponse;
 import com.bosco.mine.server.modules.mine.spatial.dto.RouteVersionRequest;
 import com.bosco.mine.server.modules.mine.spatial.dto.RouteVersionResponse;
 import com.bosco.mine.server.modules.mine.spatial.dto.SpatialDetectionPolicy;
@@ -284,6 +285,55 @@ class SpatialRouteManagementIT {
     }
 
     @Test
+    void 当前生效区域查询应聚合几何并返回最近有效期边界() {
+        WaypointVersionResponse waypoint = publishedWaypoint(
+                "runtime-point", "运行途径点", 120D, 80D);
+        SpatialObjectResponse geofence = commandService.createGeofence(
+                firstSiteId, "runtime-zone");
+        GeofenceVersionResponse geofenceDraft = commandService.createGeofenceVersion(
+                firstSiteId,
+                geofence.id(),
+                new GeofenceVersionRequest(
+                        unifiedCoordinate.id(), 1, "运行围栏", "RESTRICTED", null, null,
+                        DEFAULT_POLICY, VALID_FROM, null,
+                        List.of(
+                                new SpatialVertexRequest(1, 100D, 100D),
+                                new SpatialVertexRequest(2, 200D, 100D),
+                                new SpatialVertexRequest(3, 200D, 200D),
+                                new SpatialVertexRequest(4, 100D, 200D))));
+        GeofenceVersionResponse publishedGeofence = commandService.publishGeofenceVersion(
+                firstSiteId, geofence.id(), geofenceDraft.id(), geofenceDraft.version());
+        Instant futureFrom = Instant.now().plusSeconds(3_600L);
+        SpatialObjectResponse futureObject = commandService.createWaypoint(
+                firstSiteId, "future-runtime-point");
+        WaypointVersionResponse futureDraft = commandService.createWaypointVersion(
+                firstSiteId,
+                futureObject.id(),
+                waypointRequest(unifiedCoordinate.id(), 1, "未来途径点", 300D, 300D, futureFrom));
+        commandService.publishWaypointVersion(
+                firstSiteId, futureObject.id(), futureDraft.id(), futureDraft.version());
+
+        CurrentSpatialRegionResponse response = queryService.findCurrentSpatialRegions(firstSiteId);
+
+        assertThat(response.siteId()).isEqualTo(firstSiteId);
+        assertThat(response.nextChangeAt()).isEqualTo(futureFrom);
+        assertThat(response.items())
+                .extracting(CurrentSpatialRegionResponse.Item::zoneVersionId)
+                .containsExactlyInAnyOrder(waypoint.id(), publishedGeofence.id());
+        assertThat(response.items())
+                .filteredOn(item -> item.zoneType().equals("GEOFENCE"))
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.shape()).isEqualTo("POLYGON");
+                    assertThat(item.vertices()).hasSize(4);
+                });
+
+        identity.use(secondUserId);
+        assertThatThrownBy(() -> queryService.findCurrentSpatialRegions(firstSiteId))
+                .isInstanceOf(MineException.class);
+    }
+
+    @Test
     void 空间高度区间必须在统一坐标系高程边界内提前失败() {
         SpatialObjectResponse waypoint = commandService.createWaypoint(
                 firstSiteId, "height-bounds-point");
@@ -394,9 +444,20 @@ class SpatialRouteManagementIT {
     private WaypointVersionRequest waypointRequest(
             UUID coordinateSystemId, int versionNumber, String name, double x, double y
     ) {
+        return waypointRequest(coordinateSystemId, versionNumber, name, x, y, VALID_FROM);
+    }
+
+    private WaypointVersionRequest waypointRequest(
+            UUID coordinateSystemId,
+            int versionNumber,
+            String name,
+            double x,
+            double y,
+            Instant validFrom
+    ) {
         return new WaypointVersionRequest(
                 coordinateSystemId, versionNumber, name, "LOAD", x, y, 20D,
-                15D, 0D, 80D, DEFAULT_POLICY, VALID_FROM, null);
+                15D, 0D, 80D, DEFAULT_POLICY, validFrom, null);
     }
 
     private CoordinateSystemUpdateRequest coordinateUpdate(

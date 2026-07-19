@@ -552,7 +552,19 @@ const local: App.I18n.Schema = {
       table: { tagCode: "Tag code", subject: "Business subject", coordinate: "Unified coordinate", speed: "Speed", accuracy: "Accuracy", occurredAt: "Occurred at", quality: "Quality", freshness: "Freshness", details: "Details" },
       detail: { title: "Location details", basic: "Current state", trajectory: "Trajectory", subject: "Trajectory subject", range: "Time range", load: "Load trajectory", noTrajectory: "No trajectory in this range", sampled: "The server sampled {count} source points for display", eventId: "Event ID", deviceId: "Source device", coordinateSystemId: "Coordinate system", sequence: "Ingest sequence" },
       range: { hour: "Last hour", sixHours: "Last 6 hours", day: "Last 24 hours" },
-      canvas: { xAxis: "X / m", yAxis: "Y / m", current: "Current positions", trajectory: "Trajectory", empty: "No location data is available in this mine", ariaLabel: "2D mine location canvas" }
+      spatial: {
+        layerTitle: "Spatial runtime layers",
+        regions: "Published regions",
+        events: "Live events",
+        degradedTitle: "Spatial layer degraded",
+        degraded: "The spatial layer is unavailable. Current positions, trajectories, and asset functions are unaffected.",
+        noticeTitle: "Latest spatial event",
+        notice: "{subject} {type} {zone}",
+        recentEvents: "Recent spatial events",
+        loadingEvidence: "Loading persisted evaluation evidence",
+        status: { disabled: "No permission", idle: "Select a mine", loading: "Loading", ready: "Ready", live: "Live", resyncing: "Recovering events", degraded: "Unavailable" }
+      },
+      canvas: { xAxis: "X / m", yAxis: "Y / m", current: "Current positions", trajectory: "Trajectory", events: "Live spatial events", empty: "No location data is available in this mine", ariaLabel: "2D mine location canvas" }
     },
     common: {
       action: 'Actions',

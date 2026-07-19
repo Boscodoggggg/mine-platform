@@ -1572,6 +1572,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mine/sites/{siteId}/spatial-regions/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询当前生效空间区域聚合快照
+         * @description 一次返回当前矿区已发布、稳定对象活动、统一坐标系活动且处于有效期内的途径点和电子围栏。 nextChangeAt 用于客户端在下一次已知有效期边界自动刷新，避免对象级 N+1 查询。
+         */
+        get: operations["getMineCurrentSpatialRegions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mine/sites/{siteId}/waypoints": {
         parameters: {
             query?: never;
@@ -2800,6 +2820,39 @@ export interface components {
             updatedAt: string;
             /** Format: int64 */
             version: number;
+        };
+        CurrentSpatialRegionResponse: {
+            /** Format: uuid */
+            siteId: string;
+            /** Format: date-time */
+            evaluatedAt: string;
+            /** Format: date-time */
+            nextChangeAt: string | null;
+            items: components["schemas"]["CurrentSpatialRegionItem"][];
+        };
+        CurrentSpatialRegionItem: {
+            zoneType: components["schemas"]["SpatialZoneType"];
+            /** Format: uuid */
+            zoneId: string;
+            /** Format: uuid */
+            zoneVersionId: string;
+            /** Format: uuid */
+            coordinateSystemId: string;
+            name: string;
+            contentHash: string | null;
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: string | null;
+            /** @enum {string} */
+            shape: "CIRCLE" | "POLYGON";
+            /** Format: double */
+            x: number | null;
+            /** Format: double */
+            y: number | null;
+            /** Format: double */
+            radiusMeters: number | null;
+            vertices: components["schemas"]["SpatialVertexResponse"][];
         };
         /** @enum {string} */
         SpatialZoneType: "WAYPOINT" | "GEOFENCE";
@@ -7882,6 +7935,32 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["MineResourceNotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getMineCurrentSpatialRegions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前生效空间区域及下一次已知有效期边界。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentSpatialRegionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
         };
     };
     listMineWaypoints: {

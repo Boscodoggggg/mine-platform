@@ -21,6 +21,7 @@ describe('mine spatial api', () => {
     const updateMineGeofenceVersion = apiFunction('updateMineGeofenceVersion');
     const publishMineRouteVersion = apiFunction('publishMineRouteVersion');
     const getMineSpatialEvents = apiFunction('getMineSpatialEvents');
+    const getMineCurrentSpatialRegions = apiFunction('getMineCurrentSpatialRegions');
     const createMineSpatialReplay = apiFunction('createMineSpatialReplay');
     const functions = [
       apiFunction('getMineWaypoints'),
@@ -44,6 +45,7 @@ describe('mine spatial api', () => {
       apiFunction('createMineGeofenceVersion'),
       updateMineGeofenceVersion,
       apiFunction('publishMineGeofenceVersion'),
+      getMineCurrentSpatialRegions,
       getMineSpatialEvents,
       apiFunction('getMineSpatialEvent'),
       createMineSpatialReplay
@@ -79,6 +81,9 @@ describe('mine spatial api', () => {
     expect(client.request).toHaveBeenLastCalledWith(
       '/mine/sites/site%2F1/spatial-events?zoneType=GEOFENCE&eventType=ENTER&watermark=18&pageSize=50'
     );
+
+    await getMineCurrentSpatialRegions!('site/1');
+    expect(client.request).toHaveBeenLastCalledWith('/mine/sites/site%2F1/spatial-regions/current');
 
     await createMineSpatialReplay!(
       'site/1',

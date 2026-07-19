@@ -3,6 +3,7 @@ package com.bosco.mine.server.modules.mine.spatial;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.mine.dto.MineArchiveRequest;
+import com.bosco.mine.server.modules.mine.spatial.dto.CurrentSpatialRegionResponse;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionRequest;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionResponse;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionUpdateRequest;
@@ -58,6 +59,13 @@ public class SpatialRouteController {
     ) {
         this.commandService = commandService;
         this.queryService = queryService;
+    }
+
+    /** 查询当前生效的途径点和电子围栏聚合快照。 */
+    @GetMapping("/spatial-regions/current")
+    @SaCheckPermission("mine:spatial:view")
+    public CurrentSpatialRegionResponse findCurrentSpatialRegions(@PathVariable UUID siteId) {
+        return queryService.findCurrentSpatialRegions(siteId);
     }
 
     /** 分页查询途径点稳定对象。 */

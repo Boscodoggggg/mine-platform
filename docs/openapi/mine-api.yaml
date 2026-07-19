@@ -2391,6 +2391,22 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/MineResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/spatial-regions/current:
+    get:
+      tags: [MineSpatial]
+      operationId: getMineCurrentSpatialRegions
+      summary: 查询当前生效空间区域聚合快照
+      description: >-
+        一次返回当前矿区已发布、稳定对象活动、统一坐标系活动且处于有效期内的途径点和电子围栏。
+        nextChangeAt 用于客户端在下一次已知有效期边界自动刷新，避免对象级 N+1 查询。
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      responses:
+        '200':
+          description: 当前生效空间区域及下一次已知有效期边界。
+          content: { application/json: { schema: { $ref: '#/components/schemas/CurrentSpatialRegionResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
   /mine/sites/{siteId}/waypoints:
     get:
       tags: [MineSpatial]
@@ -4169,6 +4185,48 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         version: { type: integer, format: int64, minimum: 0 }
+    CurrentSpatialRegionResponse:
+      type: object
+      required: [siteId, evaluatedAt, nextChangeAt, items]
+      properties:
+        siteId: { type: string, format: uuid }
+        evaluatedAt: { type: string, format: date-time }
+        nextChangeAt: { type: [string, 'null'], format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/CurrentSpatialRegionItem' }
+    CurrentSpatialRegionItem:
+      type: object
+      required:
+        - zoneType
+        - zoneId
+        - zoneVersionId
+        - coordinateSystemId
+        - name
+        - contentHash
+        - validFrom
+        - validTo
+        - shape
+        - x
+        - y
+        - radiusMeters
+        - vertices
+      properties:
+        zoneType: { $ref: '#/components/schemas/SpatialZoneType' }
+        zoneId: { type: string, format: uuid }
+        zoneVersionId: { type: string, format: uuid }
+        coordinateSystemId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        contentHash: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: [string, 'null'], format: date-time }
+        shape: { type: string, enum: [CIRCLE, POLYGON] }
+        x: { type: [number, 'null'], format: double }
+        y: { type: [number, 'null'], format: double }
+        radiusMeters: { type: [number, 'null'], format: double }
+        vertices:
+          type: array
+          items: { $ref: '#/components/schemas/SpatialVertexResponse' }
     SpatialZoneType:
       type: string
       enum: [WAYPOINT, GEOFENCE]

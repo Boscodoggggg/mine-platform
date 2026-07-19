@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import {
   NAlert,
   NButton,
   NCard,
+  NCheckbox,
   NDataTable,
   NDescriptions,
   NDescriptionsItem,
@@ -22,15 +23,28 @@ import {
   NText
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
+import { hasPermission } from '@/app/permission/permission';
 import ListActionButton from '@/components/common/list-action-button.vue';
 import ListSearchPanel from '@/components/common/list-search-panel.vue';
 import MineCoordinateCanvas from '../../components/MineCoordinateCanvas.vue';
 import MineSiteSelector from '../../components/MineSiteSelector.vue';
-import { getMineLocationTrajectory, getMinePeople, getMineVehicles } from '../../api/mine-api';
-import type { LocationSubjectType, LocationTrajectory, Person, Vehicle } from '../../api/mine-api';
+import { getMineLocationTrajectory, getMinePeople, getMineSpatialEvent, getMineVehicles } from '../../api/mine-api';
+import type {
+  LocationSubjectType,
+  LocationTrajectory,
+  Person,
+  SpatialEventDetail,
+  Vehicle
+} from '../../api/mine-api';
 import { useMineLocationRealtime } from '../../composables/useMineLocationRealtime';
 import type { MineLocationItem, MineLocationRuntimeStatus } from '../../composables/useMineLocationRealtime';
+import { useMineSpatialEvents } from '../../composables/useMineSpatialEvents';
+import type {
+  MineSpatialEvent,
+  MineSpatialLayerStatus
+} from '../../composables/useMineSpatialEvents';
 import { useMineContextStore } from '../../stores/mine-context';
+import { useAuthStore } from '@/store/modules/auth';
 
 type SubjectFilter = 'ALL' | LocationSubjectType;
 type QualityFilter = 'ALL' | MineLocationItem['qualityStatus'];
@@ -39,7 +53,9 @@ type TrajectoryRange = '1h' | '6h' | '24h';
 
 const { t, locale } = useI18n();
 const mineContext = useMineContextStore();
+const authStore = useAuthStore();
 const realtime = useMineLocationRealtime();
+const spatial = useMineSpatialEvents();
 const loadingCatalogs = ref(false);
 const vehicles = ref<Vehicle[]>([]);
 const people = ref<Person[]>([]);
@@ -56,9 +72,15 @@ const trajectoryRange = ref<TrajectoryRange>('1h');
 const trajectorySubjectType = ref<LocationSubjectType>('TAG');
 const trajectorySubjectId = ref('');
 const trajectory = ref<LocationTrajectory | null>(null);
+const layers = reactive({ regions: true, events: true });
+const selectedSpatialEvent = ref<MineSpatialEvent | null>(null);
+const spatialEventDetail = ref<SpatialEventDetail | null>(null);
+const spatialEventDetailVisible = ref(false);
+const spatialEventDetailLoading = ref(false);
 const simulationMode = import.meta.env.VITE_LOCATION_SIMULATION === 'true';
 let clockTimer: ReturnType<typeof setInterval> | null = null;
 let trajectoryGeneration = 0;
+let spatialDetailGeneration = 0;
 let disposed = false;
 
 const subjectFilterOptions = computed<SelectOption[]>(() => [
@@ -125,6 +147,17 @@ const statusType = computed(() => {
   return 'info' as const;
 });
 const trajectoryPoints = computed(() => trajectory.value?.items ?? []);
+const canViewRegions = computed(() => hasPermission(authStore.userInfo.buttons, 'mine:spatial:view'));
+const canViewEvents = computed(() => hasPermission(authStore.userInfo.buttons, 'mine:spatial:event:view'));
+const spatialLayerDegraded = computed(
+  () =>
+    (canViewRegions.value && spatial.regionStatus.value === 'DEGRADED') ||
+    (canViewEvents.value && spatial.eventStatus.value === 'DEGRADED')
+);
+const recentSpatialEvents = computed(() => spatial.events.value.slice(0, 20));
+const selectedSpatialEvidence = computed(
+  () => spatialEventDetail.value?.evidence ?? selectedSpatialEvent.value?.evidence ?? null
+);
 const columns = computed<DataTableColumns<MineLocationItem>>(() => [
   { title: t('mine.location.table.tagCode'), key: 'tagCode', minWidth: 120 },
   { title: t('mine.location.table.subject'), key: 'subject', minWidth: 160, render: row => subjectLabel(row) },
@@ -136,13 +169,67 @@ const columns = computed<DataTableColumns<MineLocationItem>>(() => [
   { title: t('mine.location.table.freshness'), key: 'freshness', width: 100, render: row => freshnessTag(row) },
   { title: t('mine.common.action'), key: 'actions', width: 90, render: row => h(NButton, { text: true, type: 'primary', 'data-action': 'location-details', onClick: () => openDetails(row) }, () => t('mine.location.table.details')) }
 ]);
+const spatialColumns = computed<DataTableColumns<MineSpatialEvent>>(() => [
+  {
+    title: t('mine.spatial.event.type'),
+    key: 'eventType',
+    width: 100,
+    render: row => spatialEventTypeTag(row.eventType)
+  },
+  {
+    title: t('mine.spatial.event.subject'),
+    key: 'subject',
+    minWidth: 180,
+    render: row => spatialSubjectLabel(row)
+  },
+  {
+    title: t('mine.spatial.event.zone'),
+    key: 'zone',
+    minWidth: 160,
+    render: row => spatialZoneName(row)
+  },
+  {
+    title: t('mine.spatial.event.occurredAt'),
+    key: 'occurredAt',
+    minWidth: 180,
+    render: row => formatTime(row.occurredAt)
+  },
+  {
+    title: t('mine.spatial.event.quality'),
+    key: 'quality',
+    width: 100,
+    render: row => spatialQualityTag(row)
+  },
+  {
+    title: t('mine.common.action'),
+    key: 'actions',
+    width: 90,
+    render: row =>
+      h(
+        NButton,
+        {
+          text: true,
+          type: 'primary',
+          'data-action': 'spatial-event-details',
+          onClick: () => openSpatialEventDetails(row)
+        },
+        () => t('mine.spatial.event.details')
+      )
+  }
+]);
 
 onMounted(initialize);
+watch([canViewRegions, canViewEvents], ([regions, events], [previousRegions, previousEvents]) => {
+  if (regions === previousRegions && events === previousEvents) return;
+  void applySpatialCapabilities(regions, events);
+});
 onBeforeUnmount(() => {
   disposed = true;
   if (clockTimer) clearInterval(clockTimer);
   trajectoryGeneration += 1;
+  spatialDetailGeneration += 1;
   realtime.stop();
+  spatial.stop();
 });
 
 async function initialize() {
@@ -152,7 +239,7 @@ async function initialize() {
       mineContext.selectSite(mineContext.sites[0]!.id);
     }
     if (mineContext.selectedSiteId) {
-      await Promise.all([loadCatalogs(mineContext.selectedSiteId), realtime.selectSite(mineContext.selectedSiteId)]);
+      await loadSiteData(mineContext.selectedSiteId);
     }
   } catch (error) {
     showError(error);
@@ -167,16 +254,33 @@ async function initialize() {
 async function changeSite(siteId: string) {
   mineContext.selectSite(siteId);
   closeDetails();
+  closeSpatialEventDetails();
   filter.keyword = '';
-  await Promise.all([loadCatalogs(siteId), realtime.selectSite(siteId)]);
+  await loadSiteData(siteId);
 }
 
 async function refreshCurrentSite() {
   if (!mineContext.selectedSiteId) return;
+  await loadSiteData(mineContext.selectedSiteId);
+}
+
+async function loadSiteData(siteId: string) {
   await Promise.all([
-    loadCatalogs(mineContext.selectedSiteId),
-    realtime.selectSite(mineContext.selectedSiteId)
+    loadCatalogs(siteId),
+    realtime.selectSite(siteId),
+    spatial.selectSite(siteId, { regions: canViewRegions.value, events: canViewEvents.value })
   ]);
+}
+
+async function applySpatialCapabilities(regions: boolean, events: boolean) {
+  const siteId = mineContext.selectedSiteId;
+  if (disposed || !siteId) return;
+  closeSpatialEventDetails();
+  try {
+    await spatial.selectSite(siteId, { regions, events });
+  } catch (error) {
+    showError(error);
+  }
 }
 
 async function loadCatalogs(siteId: string) {
@@ -244,6 +348,34 @@ function closeDetails() {
   trajectory.value = null;
 }
 
+async function openSpatialEventDetails(event: MineSpatialEvent) {
+  const siteId = mineContext.selectedSiteId;
+  if (!siteId || event.siteId !== siteId || !canViewEvents.value) return;
+  const generation = ++spatialDetailGeneration;
+  selectedSpatialEvent.value = event;
+  spatialEventDetail.value = null;
+  spatialEventDetailVisible.value = true;
+  spatialEventDetailLoading.value = true;
+  try {
+    const detail = await getMineSpatialEvent(siteId, event.eventId);
+    if (generation === spatialDetailGeneration && mineContext.selectedSiteId === siteId) {
+      spatialEventDetail.value = detail;
+    }
+  } catch (error) {
+    if (generation === spatialDetailGeneration) showError(error);
+  } finally {
+    if (generation === spatialDetailGeneration) spatialEventDetailLoading.value = false;
+  }
+}
+
+function closeSpatialEventDetails() {
+  spatialDetailGeneration += 1;
+  spatialEventDetailVisible.value = false;
+  spatialEventDetailLoading.value = false;
+  selectedSpatialEvent.value = null;
+  spatialEventDetail.value = null;
+}
+
 function resetFilters() {
   Object.assign(filter, { keyword: '', subject: 'ALL', quality: 'ALL' });
 }
@@ -291,6 +423,54 @@ function freshnessTag(item: MineLocationItem) {
   return h(NTag, { size: 'small', bordered: false, type }, () => t(`mine.location.freshness.${value.toLowerCase()}`));
 }
 
+function spatialEventTypeLabel(value: MineSpatialEvent['eventType']) {
+  return t(`mine.spatial.enum.eventType.${value.toLowerCase()}`);
+}
+
+function spatialEventTypeTag(value: MineSpatialEvent['eventType']) {
+  const type = value === 'ENTER' ? 'success' : value === 'EXIT' ? 'info' : 'warning';
+  return h(NTag, { size: 'small', bordered: false, type }, () => spatialEventTypeLabel(value));
+}
+
+function spatialQualityTag(event: MineSpatialEvent) {
+  const quality = event.evidence?.qualityStatus;
+  if (!quality) return t('mine.common.empty');
+  return h(
+    NTag,
+    { size: 'small', bordered: false, type: quality === 'GOOD' ? 'success' : 'warning' },
+    () => t(`mine.spatial.enum.quality.${quality.toLowerCase()}`)
+  );
+}
+
+function spatialSubjectLabel(event: MineSpatialEvent) {
+  if (event.vehicleId) return `${t('mine.location.subject.vehicle')} · ${vehicleName(event.vehicleId)}`;
+  if (event.personId) return `${t('mine.location.subject.person')} · ${personName(event.personId)}`;
+  return `${t('mine.location.subject.tag')} · ${event.tagId}`;
+}
+
+function spatialZoneName(event: MineSpatialEvent) {
+  return spatial.regions.value.find(region => region.zoneId === event.zoneId)?.name ?? event.zoneId;
+}
+
+function spatialNotice(event: MineSpatialEvent) {
+  return t('mine.location.spatial.notice', {
+    subject: spatialSubjectLabel(event),
+    type: spatialEventTypeLabel(event.eventType),
+    zone: spatialZoneName(event)
+  });
+}
+
+function spatialLayerStatusLabel(status: MineSpatialLayerStatus) {
+  return t(`mine.location.spatial.status.${status.toLowerCase()}`);
+}
+
+function spatialLayerStatusType(status: MineSpatialLayerStatus) {
+  if (status === 'READY' || status === 'LIVE') return 'success' as const;
+  if (status === 'DEGRADED') return 'error' as const;
+  if (status === 'RESYNCING') return 'warning' as const;
+  return 'info' as const;
+}
+
 function statusLabel(status: MineLocationRuntimeStatus) {
   return t(`mine.location.status.${status.toLowerCase()}`);
 }
@@ -324,7 +504,15 @@ function showError(error: unknown) {
   window.$message?.error(t('mine.common.operationFailed'));
 }
 
-defineExpose({ trajectoryRange, openDetails, loadTrajectory, changeSite, filter });
+defineExpose({
+  trajectoryRange,
+  openDetails,
+  loadTrajectory,
+  changeSite,
+  filter,
+  layers,
+  openSpatialEventDetails
+});
 </script>
 
 <template>
@@ -351,6 +539,9 @@ defineExpose({ trajectoryRange, openDetails, loadTrajectory, changeSite, filter 
       {{ statusLabel(realtime.status.value) }}
     </NAlert>
     <NAlert v-if="realtime.truncated.value" type="warning">{{ t('mine.location.truncated') }}</NAlert>
+    <NAlert v-if="spatialLayerDegraded" type="warning" :title="t('mine.location.spatial.degradedTitle')">
+      {{ t('mine.location.spatial.degraded') }}
+    </NAlert>
 
     <NGrid responsive="screen" cols="2 s:4" :x-gap="12" :y-gap="12">
       <NGi><NCard size="small"><NStatistic :label="t('mine.location.currentCount')" :value="realtime.locations.value.length" /></NCard></NGi>
@@ -368,12 +559,61 @@ defineExpose({ trajectoryRange, openDetails, loadTrajectory, changeSite, filter 
       </NFlex>
     </ListSearchPanel>
 
+    <NCard :title="t('mine.location.spatial.layerTitle')" :bordered="false" size="small">
+      <NFlex data-responsive-stack class="flex-col md:flex-row" align="center" justify="space-between">
+        <NFlex align="center">
+          <NCheckbox v-model:checked="layers.regions" :disabled="!canViewRegions">
+            {{ t('mine.location.spatial.regions') }}
+          </NCheckbox>
+          <NTag size="small" :type="spatialLayerStatusType(spatial.regionStatus.value)">
+            {{ spatialLayerStatusLabel(spatial.regionStatus.value) }}
+          </NTag>
+        </NFlex>
+        <NFlex align="center">
+          <NCheckbox v-model:checked="layers.events" :disabled="!canViewEvents">
+            {{ t('mine.location.spatial.events') }}
+          </NCheckbox>
+          <NTag size="small" :type="spatialLayerStatusType(spatial.eventStatus.value)">
+            {{ spatialLayerStatusLabel(spatial.eventStatus.value) }}
+          </NTag>
+        </NFlex>
+      </NFlex>
+    </NCard>
+
     <NCard :bordered="false" size="small">
       <MineCoordinateCanvas
         :items="filteredLocations"
         :trajectory="trajectoryPoints"
+        :regions="spatial.regions.value"
+        :events="spatial.events.value"
+        :show-regions="layers.regions && canViewRegions"
+        :show-events="layers.events && canViewEvents"
         :selected-tag-id="selectedLocation?.tagId ?? null"
         :loading="realtime.status.value === 'LOADING' || trajectoryLoading"
+      />
+    </NCard>
+
+    <NAlert
+      v-if="canViewEvents && layers.events && spatial.lastEvent.value"
+      :type="spatial.lastEvent.value.eventType === 'ENTER' ? 'success' : spatial.lastEvent.value.eventType === 'EXIT' ? 'info' : 'warning'"
+      :title="t('mine.location.spatial.noticeTitle')"
+    >
+      <NFlex align="center" justify="space-between">
+        <NText>{{ spatialNotice(spatial.lastEvent.value) }}</NText>
+        <NButton text type="primary" @click="openSpatialEventDetails(spatial.lastEvent.value)">
+          {{ t('mine.spatial.event.details') }}
+        </NButton>
+      </NFlex>
+    </NAlert>
+
+    <NCard v-if="canViewEvents" :title="t('mine.location.spatial.recentEvents')" :bordered="false" size="small">
+      <NDataTable
+        :columns="spatialColumns"
+        :data="recentSpatialEvents"
+        :loading="spatial.eventStatus.value === 'LOADING' || spatial.eventStatus.value === 'RESYNCING'"
+        :row-key="row => row.eventId"
+        :scroll-x="830"
+        :pagination="false"
       />
     </NCard>
 
@@ -414,6 +654,59 @@ defineExpose({ trajectoryRange, openDetails, loadTrajectory, changeSite, filter 
               {{ t('mine.location.detail.noTrajectory') }}
             </NText>
           </NCard>
+        </NSpace>
+      </NDrawerContent>
+    </NDrawer>
+
+    <NDrawer
+      v-model:show="spatialEventDetailVisible"
+      width="min(640px, 92vw)"
+      placement="right"
+      @after-leave="closeSpatialEventDetails"
+    >
+      <NDrawerContent :title="t('mine.spatial.event.detailTitle')" closable>
+        <NSpace v-if="selectedSpatialEvent" vertical :size="16">
+          <NText v-if="spatialEventDetailLoading" depth="3">
+            {{ t('mine.location.spatial.loadingEvidence') }}
+          </NText>
+          <NDescriptions bordered :column="1">
+            <NDescriptionsItem :label="t('mine.spatial.event.type')">
+              {{ spatialEventTypeLabel(selectedSpatialEvent.eventType) }}
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="t('mine.spatial.event.subject')">
+              {{ spatialSubjectLabel(selectedSpatialEvent) }}
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="t('mine.spatial.event.zone')">
+              {{ spatialZoneName(selectedSpatialEvent) }}
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="t('mine.spatial.event.stateTransition')">
+              {{ t(`mine.spatial.enum.stableState.${selectedSpatialEvent.previousState.toLowerCase()}`) }}
+              →
+              {{ t(`mine.spatial.enum.stableState.${selectedSpatialEvent.currentState.toLowerCase()}`) }}
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="t('mine.spatial.event.confirmationPoints')">
+              {{ selectedSpatialEvent.confirmationPoints }}
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="t('mine.spatial.event.runtimeRevision')">
+              {{ selectedSpatialEvent.runtimeRevision }}
+            </NDescriptionsItem>
+            <NDescriptionsItem :label="t('mine.spatial.event.anchorLocationEventId')">
+              {{ spatialEventDetail?.anchorLocationEventId ?? selectedSpatialEvent.anchorLocationEventId ?? t('mine.common.empty') }}
+            </NDescriptionsItem>
+            <NDescriptionsItem v-if="selectedSpatialEvidence" :label="t('mine.spatial.event.coordinate')">
+              ({{ formatNumber(selectedSpatialEvidence.localX) }}, {{ formatNumber(selectedSpatialEvidence.localY) }})
+            </NDescriptionsItem>
+            <NDescriptionsItem v-if="selectedSpatialEvidence" :label="t('mine.spatial.event.classification')">
+              {{ t(`mine.spatial.enum.classification.${selectedSpatialEvidence.classification.toLowerCase()}`) }}
+            </NDescriptionsItem>
+            <NDescriptionsItem v-if="selectedSpatialEvidence" :label="t('mine.spatial.event.quality')">
+              {{ t(`mine.spatial.enum.quality.${selectedSpatialEvidence.qualityStatus.toLowerCase()}`) }} ·
+              {{ selectedSpatialEvidence.qualityReason ?? t('mine.common.empty') }}
+            </NDescriptionsItem>
+            <NDescriptionsItem v-if="selectedSpatialEvidence" :label="t('mine.spatial.event.contentHash')">
+              {{ selectedSpatialEvidence.zoneContentHash }}
+            </NDescriptionsItem>
+          </NDescriptions>
         </NSpace>
       </NDrawerContent>
     </NDrawer>

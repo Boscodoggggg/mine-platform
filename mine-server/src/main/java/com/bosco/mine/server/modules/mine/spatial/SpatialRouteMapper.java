@@ -737,6 +737,172 @@ public interface SpatialRouteMapper {
             @Param("parentId") UUID parentId,
             @Param("id") UUID id);
 
+    /** 一次性查询指定时刻处于有效期内的已发布途径点和电子围栏。 */
+    @Select("""
+            SELECT 'WAYPOINT' AS zoneType,
+                   waypoint.id AS zoneId,
+                   version.id AS zoneVersionId,
+                   version.coordinate_system_id AS coordinateSystemId,
+                   version.name,
+                   version.content_hash AS contentHash,
+                   version.valid_from AS validFrom,
+                   version.valid_to AS validTo,
+                   'CIRCLE' AS shape,
+                   version.x,
+                   version.y,
+                   version.radius_meters AS radiusMeters,
+                   '[]' AS verticesJson
+            FROM mine_waypoint_version version
+            JOIN mine_waypoint waypoint
+              ON waypoint.id = version.waypoint_id
+             AND waypoint.organization_id = version.organization_id
+             AND waypoint.site_id = version.site_id
+            JOIN mine_coordinate_system coordinate
+              ON coordinate.id = version.coordinate_system_id
+             AND coordinate.organization_id = version.organization_id
+             AND coordinate.site_id = version.site_id
+            WHERE version.organization_id = #{organizationId}
+              AND version.site_id = #{siteId}
+              AND version.status = 'PUBLISHED'
+              AND waypoint.status = 'ACTIVE'
+              AND coordinate.status = 'ACTIVE'
+              AND coordinate.unified = TRUE
+              AND version.valid_from <= #{evaluatedAt}
+              AND (version.valid_to IS NULL OR version.valid_to > #{evaluatedAt})
+            UNION ALL
+            SELECT 'GEOFENCE' AS zoneType,
+                   geofence.id AS zoneId,
+                   version.id AS zoneVersionId,
+                   version.coordinate_system_id AS coordinateSystemId,
+                   version.name,
+                   version.content_hash AS contentHash,
+                   version.valid_from AS validFrom,
+                   version.valid_to AS validTo,
+                   'POLYGON' AS shape,
+                   NULL::double precision AS x,
+                   NULL::double precision AS y,
+                   NULL::double precision AS radiusMeters,
+                   COALESCE(
+                       jsonb_agg(
+                           jsonb_build_object(
+                               'sequenceNumber', vertex.sequence_number,
+                               'x', vertex.x,
+                               'y', vertex.y
+                           ) ORDER BY vertex.sequence_number
+                       ) FILTER (WHERE vertex.sequence_number IS NOT NULL),
+                       '[]'::jsonb
+                   )::text AS verticesJson
+            FROM mine_geofence_version version
+            JOIN mine_geofence geofence
+              ON geofence.id = version.geofence_id
+             AND geofence.organization_id = version.organization_id
+             AND geofence.site_id = version.site_id
+            JOIN mine_coordinate_system coordinate
+              ON coordinate.id = version.coordinate_system_id
+             AND coordinate.organization_id = version.organization_id
+             AND coordinate.site_id = version.site_id
+            LEFT JOIN mine_geofence_vertex vertex
+              ON vertex.geofence_version_id = version.id
+             AND vertex.organization_id = version.organization_id
+             AND vertex.site_id = version.site_id
+            WHERE version.organization_id = #{organizationId}
+              AND version.site_id = #{siteId}
+              AND version.status = 'PUBLISHED'
+              AND geofence.status = 'ACTIVE'
+              AND coordinate.status = 'ACTIVE'
+              AND coordinate.unified = TRUE
+              AND version.valid_from <= #{evaluatedAt}
+              AND (version.valid_to IS NULL OR version.valid_to > #{evaluatedAt})
+            GROUP BY geofence.id, version.id
+            ORDER BY zoneType, name, zoneVersionId
+            """)
+    List<PublishedSpatialRegionRecord> findCurrentSpatialRegions(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("evaluatedAt") Instant evaluatedAt);
+
+    /** 查询已发布空间配置晚于评估时刻的最近有效期边界。 */
+    @Select("""
+            SELECT MIN(change_at)
+            FROM (
+                SELECT version.valid_from AS change_at
+                FROM mine_waypoint_version version
+                JOIN mine_waypoint waypoint
+                  ON waypoint.id = version.waypoint_id
+                 AND waypoint.organization_id = version.organization_id
+                 AND waypoint.site_id = version.site_id
+                JOIN mine_coordinate_system coordinate
+                  ON coordinate.id = version.coordinate_system_id
+                 AND coordinate.organization_id = version.organization_id
+                 AND coordinate.site_id = version.site_id
+                WHERE version.organization_id = #{organizationId}
+                  AND version.site_id = #{siteId}
+                  AND version.status = 'PUBLISHED'
+                  AND waypoint.status = 'ACTIVE'
+                  AND coordinate.status = 'ACTIVE'
+                  AND coordinate.unified = TRUE
+                  AND version.valid_from > #{evaluatedAt}
+                UNION ALL
+                SELECT version.valid_to
+                FROM mine_waypoint_version version
+                JOIN mine_waypoint waypoint
+                  ON waypoint.id = version.waypoint_id
+                 AND waypoint.organization_id = version.organization_id
+                 AND waypoint.site_id = version.site_id
+                JOIN mine_coordinate_system coordinate
+                  ON coordinate.id = version.coordinate_system_id
+                 AND coordinate.organization_id = version.organization_id
+                 AND coordinate.site_id = version.site_id
+                WHERE version.organization_id = #{organizationId}
+                  AND version.site_id = #{siteId}
+                  AND version.status = 'PUBLISHED'
+                  AND waypoint.status = 'ACTIVE'
+                  AND coordinate.status = 'ACTIVE'
+                  AND coordinate.unified = TRUE
+                  AND version.valid_to > #{evaluatedAt}
+                UNION ALL
+                SELECT version.valid_from
+                FROM mine_geofence_version version
+                JOIN mine_geofence geofence
+                  ON geofence.id = version.geofence_id
+                 AND geofence.organization_id = version.organization_id
+                 AND geofence.site_id = version.site_id
+                JOIN mine_coordinate_system coordinate
+                  ON coordinate.id = version.coordinate_system_id
+                 AND coordinate.organization_id = version.organization_id
+                 AND coordinate.site_id = version.site_id
+                WHERE version.organization_id = #{organizationId}
+                  AND version.site_id = #{siteId}
+                  AND version.status = 'PUBLISHED'
+                  AND geofence.status = 'ACTIVE'
+                  AND coordinate.status = 'ACTIVE'
+                  AND coordinate.unified = TRUE
+                  AND version.valid_from > #{evaluatedAt}
+                UNION ALL
+                SELECT version.valid_to
+                FROM mine_geofence_version version
+                JOIN mine_geofence geofence
+                  ON geofence.id = version.geofence_id
+                 AND geofence.organization_id = version.organization_id
+                 AND geofence.site_id = version.site_id
+                JOIN mine_coordinate_system coordinate
+                  ON coordinate.id = version.coordinate_system_id
+                 AND coordinate.organization_id = version.organization_id
+                 AND coordinate.site_id = version.site_id
+                WHERE version.organization_id = #{organizationId}
+                  AND version.site_id = #{siteId}
+                  AND version.status = 'PUBLISHED'
+                  AND geofence.status = 'ACTIVE'
+                  AND coordinate.status = 'ACTIVE'
+                  AND coordinate.unified = TRUE
+                  AND version.valid_to > #{evaluatedAt}
+            ) boundaries
+            """)
+    Instant findNextSpatialRegionChangeAt(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("evaluatedAt") Instant evaluatedAt);
+
     /** 运行空间配置所使用统一坐标系的平面和可选高程边界。 */
     record SpatialCoordinateBounds(
             UUID coordinateSystemId,
@@ -746,6 +912,24 @@ public interface SpatialRouteMapper {
             double maxY,
             Double minZ,
             Double maxZ
+    ) {
+    }
+
+    /** 当前生效空间区域聚合查询记录。 */
+    record PublishedSpatialRegionRecord(
+            String zoneType,
+            UUID zoneId,
+            UUID zoneVersionId,
+            UUID coordinateSystemId,
+            String name,
+            String contentHash,
+            Instant validFrom,
+            Instant validTo,
+            String shape,
+            Double x,
+            Double y,
+            Double radiusMeters,
+            String verticesJson
     ) {
     }
 

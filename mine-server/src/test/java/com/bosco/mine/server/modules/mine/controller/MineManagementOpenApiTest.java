@@ -57,6 +57,7 @@ class MineManagementOpenApiTest {
                 "/mine/sites/{siteId}/geofences/{geofenceId}/versions",
                 "/mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}",
                 "/mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}/publish",
+                "/mine/sites/{siteId}/spatial-regions/current",
                 "/mine/sites/{siteId}/spatial-events",
                 "/mine/sites/{siteId}/spatial-events/{eventId}",
                 "/mine/sites/{siteId}/spatial-events/replays",
@@ -95,7 +96,8 @@ class MineManagementOpenApiTest {
                 "WaypointVersionUpdateRequest", "WaypointVersionResponse",
                 "RouteVersionRequest", "RouteVersionUpdateRequest", "RouteVersionResponse",
                 "GeofenceVersionRequest", "GeofenceVersionUpdateRequest",
-                "GeofenceVersionResponse", "SpatialEventPageResponse",
+                "GeofenceVersionResponse", "CurrentSpatialRegionResponse",
+                "CurrentSpatialRegionItem", "SpatialEventPageResponse",
                 "SpatialEventDetailResponse", "SpatialEventEvidence",
                 "SpatialReplayRequest", "SpatialReplayResponse");
         assertThat(list(map(schemas.get("LocationSubjectType")).get("enum")))
@@ -130,6 +132,7 @@ class MineManagementOpenApiTest {
 
     @Test
     void 空间管理控制器必须使用精确权限和固定版本动作路径() {
+        assertPermission("findCurrentSpatialRegions", "mine:spatial:view");
         assertPermission("findWaypoints", "mine:spatial:view");
         assertPermission("findWaypoint", "mine:spatial:view");
         assertPermission("findWaypointVersions", "mine:spatial:view");
@@ -162,6 +165,8 @@ class MineManagementOpenApiTest {
 
         assertThat(method("findWaypoints").getAnnotation(GetMapping.class).value())
                 .containsExactly("/waypoints");
+        assertThat(method("findCurrentSpatialRegions").getAnnotation(GetMapping.class).value())
+                .containsExactly("/spatial-regions/current");
         assertThat(method("createWaypointVersion").getAnnotation(PostMapping.class).value())
                 .containsExactly("/waypoints/{waypointId}/versions");
         assertThat(method("publishWaypointVersion").getAnnotation(PostMapping.class).value())

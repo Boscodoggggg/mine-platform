@@ -642,7 +642,21 @@ declare namespace App {
           table: Record<"tagCode" | "subject" | "coordinate" | "speed" | "accuracy" | "occurredAt" | "quality" | "freshness" | "details", string>;
           detail: Record<"title" | "basic" | "trajectory" | "subject" | "range" | "load" | "noTrajectory" | "sampled" | "eventId" | "deviceId" | "coordinateSystemId" | "sequence", string>;
           range: Record<"hour" | "sixHours" | "day", string>;
-          canvas: Record<"xAxis" | "yAxis" | "current" | "trajectory" | "empty" | "ariaLabel", string>;
+          spatial: Record<
+            | "layerTitle"
+            | "regions"
+            | "events"
+            | "degradedTitle"
+            | "degraded"
+            | "noticeTitle"
+            | "notice"
+            | "recentEvents"
+            | "loadingEvidence",
+            string
+          > & {
+            status: Record<"disabled" | "idle" | "loading" | "ready" | "live" | "resyncing" | "degraded", string>;
+          };
+          canvas: Record<"xAxis" | "yAxis" | "current" | "trajectory" | "events" | "empty" | "ariaLabel", string>;
         };
         spatial: Record<'title' | 'description', string> & {
           tab: Record<'routes' | 'waypoints' | 'geofences' | 'events', string>;

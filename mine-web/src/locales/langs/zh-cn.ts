@@ -526,7 +526,19 @@ const local: App.I18n.Schema = {
       table: { tagCode: "标签编码", subject: "业务对象", coordinate: "统一坐标", speed: "速度", accuracy: "精度", occurredAt: "发生时间", quality: "质量", freshness: "新鲜度", details: "详情" },
       detail: { title: "位置详情", basic: "当前状态", trajectory: "历史轨迹", subject: "轨迹对象", range: "时间范围", load: "查询轨迹", noTrajectory: "当前范围暂无轨迹", sampled: "原始 {count} 个点已由服务端抽稀后展示", eventId: "事件标识", deviceId: "来源设备", coordinateSystemId: "坐标系", sequence: "摄取序号" },
       range: { hour: "最近 1 小时", sixHours: "最近 6 小时", day: "最近 24 小时" },
-      canvas: { xAxis: "X / 米", yAxis: "Y / 米", current: "当前位置", trajectory: "历史轨迹", empty: "当前矿区暂无可展示的位置数据", ariaLabel: "矿区二维定位画布" }
+      spatial: {
+        layerTitle: "空间运行图层",
+        regions: "已发布区域",
+        events: "实时事件",
+        degradedTitle: "空间图层已降级",
+        degraded: "空间图层暂不可用，当前位置、轨迹和资产功能不受影响",
+        noticeTitle: "最新空间事件",
+        notice: "{subject} {type} {zone}",
+        recentEvents: "最近空间事件",
+        loadingEvidence: "正在读取持久化判定证据",
+        status: { disabled: "无权限", idle: "等待矿区", loading: "加载中", ready: "已就绪", live: "实时订阅中", resyncing: "正在补齐事件", degraded: "暂不可用" }
+      },
+      canvas: { xAxis: "X / 米", yAxis: "Y / 米", current: "当前位置", trajectory: "历史轨迹", events: "实时空间事件", empty: "当前矿区暂无可展示的位置数据", ariaLabel: "矿区二维定位画布" }
     },
     common: {
       action: '操作',
