@@ -7,13 +7,18 @@ ENV_FILE="${ROOT_DIR}/deploy/env/standalone.env.example"
 
 rendered="$(mktemp)"
 rendered_tcp_disabled="$(mktemp)"
-trap 'rm -f "${rendered}" "${rendered_tcp_disabled}"' EXIT
+rendered_tcp_unified="$(mktemp)"
+trap 'rm -f "${rendered}" "${rendered_tcp_disabled}" "${rendered_tcp_unified}"' EXIT
 
 docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --format json \
   >"${rendered}"
 
 MINE_GATEWAY_TCP_ENABLED=false docker compose --profile observability --env-file "${ENV_FILE}" \
   -f "${COMPOSE_FILE}" config --format json >"${rendered_tcp_disabled}"
+
+MINE_GATEWAY_TCP_MODE=UNIFIED MINE_GATEWAY_TCP_PROTOCOL_KEY= MINE_GATEWAY_TCP_TLS_ENABLED=true \
+  docker compose --profile observability --env-file "${ENV_FILE}" \
+  -f "${COMPOSE_FILE}" config --format json >"${rendered_tcp_unified}"
 
 jq -e '.services["redis-exporter"]' "${rendered}" >/dev/null \
   || { echo "FAIL: observability profile 缺少 redis-exporter" >&2; exit 1; }
@@ -87,6 +92,7 @@ grep -Fq 'enabled: ${MINE_GATEWAY_TCP_ENABLED:false}' \
   || { echo "FAIL: TCP 二进制监听器必须保持应用默认关闭" >&2; exit 1; }
 
 jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_TCP_ENABLED == "true"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_MODE == "LEGACY"
   and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_BIND_HOST == "0.0.0.0"
   and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_PORT == "9000"
   and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_PROTOCOL_KEY == "haul-truck-binary"
@@ -100,6 +106,12 @@ jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_TCP_ENABLED == "true"
 jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_TCP_ENABLED == "false"' \
   "${rendered_tcp_disabled}" >/dev/null \
   || { echo "FAIL: standalone gateway 必须允许通过环境变量紧急停用 TCP 监听器" >&2; exit 1; }
+
+jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_TCP_MODE == "UNIFIED"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_PROTOCOL_KEY == ""
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_ENABLED == "true"' \
+  "${rendered_tcp_unified}" >/dev/null \
+  || { echo "FAIL: 统一 TCP 入口必须支持清空静态协议键并启用 TLS" >&2; exit 1; }
 
 jq -e '(.services["mine-gateway"].ports | any(.target == 9000 and .published == "9000" and .host_ip == "127.0.0.1"))
   and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_CERTIFICATE == "/run/secrets/tcp_tls_certificate"

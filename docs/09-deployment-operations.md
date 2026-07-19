@@ -107,7 +107,7 @@ Compose profiles：
 |---|---|---|---|
 | 443 | 办公/调度网 | VIP/Nginx | HTTPS/WSS |
 | 8883 | 设备网 | node-1/2 VIP → Nginx stream → RabbitMQ | MQTTS 透传；必要时启用 PROXY protocol 保留源地址 |
-| 9000（示例，可配置） | 指定设备网段 | gateway | 一个端口绑定一个离线审核协议；宿主默认仅发布到 127.0.0.1，设备网开放前必须启用 ACL/TLS |
+| 9000（示例，可配置） | 指定设备网段 | gateway | `UNIFIED` 时一个 TLS 端口按产品路由多个插件；`LEGACY` 时一个监听器绑定一个插件；宿主默认仅发布到 127.0.0.1 |
 | 5671 | 应用节点 | RabbitMQ | AMQPS |
 | 5432 | 应用/备份节点 | PostgreSQL/TimescaleDB | 数据库 TLS |
 | 6379 或 TLS 端口 | 应用节点 | Redis | ACL/TLS |
@@ -227,9 +227,10 @@ TCP 二进制监听器在应用默认配置中关闭，Standalone Compose 为可
 | 环境变量 | 应用/Standalone 默认值 | 安全边界与说明 |
 |---|---:|---|
 | `MINE_GATEWAY_TCP_ENABLED` | 应用 `false`；Standalone `true` | 是否创建监听器；未知插件、无可靠发布器或配置非法会阻止 Gateway 启动 |
+| `MINE_GATEWAY_TCP_MODE` | `LEGACY` | `UNIFIED` 使用固定登录帧按产品选插件并强制 TLS；`LEGACY` 用于不能改造的设备并要求静态协议键 |
 | `MINE_GATEWAY_TCP_BIND_HOST` | `0.0.0.0` | 容器内绑定地址；宿主暴露范围由 Compose published address 与防火墙共同控制 |
 | `MINE_GATEWAY_TCP_PORT` | `9000` | 0 仅供自动化随机端口；生产使用 1～65535 的固定受控端口 |
-| `MINE_GATEWAY_TCP_PROTOCOL_KEY` | `haul-truck-binary` | 一个监听器绑定一个已离线审核且唯一的 ServiceLoader 插件键 |
+| `MINE_GATEWAY_TCP_PROTOCOL_KEY` | `haul-truck-binary` | 仅 `LEGACY` 使用；监听器绑定一个已离线审核且唯一的 ServiceLoader 插件键，`UNIFIED` 必须留空 |
 | `MINE_GATEWAY_TCP_WORKER_THREADS` | `2` | Netty IO 线程 1～128，不执行同步 publisher confirm |
 | `MINE_GATEWAY_TCP_BUSINESS_THREADS` | `4` | 每连接保持有序的解析与可靠发布线程 1～256 |
 | `MINE_GATEWAY_TCP_BACKLOG` | `1024` | 内核接受队列 16～65535，不是可承诺并发量 |
@@ -241,7 +242,7 @@ TCP 二进制监听器在应用默认配置中关闭，Standalone Compose 为可
 | `MINE_GATEWAY_TCP_TLS_CERTIFICATE` | `/run/secrets/tcp_tls_certificate` | PEM 证书链绝对路径，通过只读 Compose/Kubernetes secret 挂载 |
 | `MINE_GATEWAY_TCP_TLS_PRIVATE_KEY` | `/run/secrets/tcp_tls_private_key` | PEM 私钥绝对路径，不进入镜像、环境变量、日志或离线示例 |
 
-证书和私钥只在监听器启动时加载，轮换必须走受控重启；当前没有原地热加载。插件安装、身份快照、模拟器、告警、
+证书和私钥只在监听器启动时加载，轮换必须走受控重启；当前没有原地热加载。`UNIFIED` 模式还要求完整产品协议快照和含 `tcpUsername`、`tcpSecretHash` 的设备身份快照；摘要使用 BCrypt，原始 secret 只在设备端保存。插件安装、身份快照、模拟器、告警、
 暂停、升级与回退步骤见 [TCP 二进制 Gateway 运行手册](runbooks/tcp-binary-gateway.md)。
 
 ## 8. 服务发现

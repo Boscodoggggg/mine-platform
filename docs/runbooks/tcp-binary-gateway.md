@@ -2,19 +2,18 @@
 
 ## 1. 适用范围与安全结论
 
-本手册适用于 `mine-gateway` 的单端口 TCP 二进制插件监听器和仓库示例 `haul-truck-binary`。监听器完成有界拆帧、
+本手册适用于 `mine-gateway` 的统一 TCP 二进制入口、遗留插件监听器和仓库示例 `haul-truck-binary`。监听器完成有界拆帧、
 每连接插件会话、可信身份快照反查、RabbitMQ publisher confirm 后 ACK、连接限流、读空闲、TLS、健康和低基数指标。
 
-仓库示例不是厂商协议，也不是公网设备认证方案。当前 TLS 是服务端 TLS，原生 mTLS、设备证书映射和应用层登录挑战尚未交付；
-因此生产设备必须位于受控设备网/专线/APN，并由防火墙、来源白名单或外部 mTLS 终止层补齐接入认证。未完成真实厂商报文、
+`UNIFIED` 模式通过固定登录帧、BCrypt 凭据摘要和产品快照完成应用层认证及插件选择，并强制服务端 TLS；它不是挑战应答协议，仍应部署在受控设备网/专线/APN，并由防火墙、来源白名单或外部 mTLS 终止层补齐纵深防御。`LEGACY` 模式用于无法发送统一登录帧的旧设备，必须单独评估其厂商认证能力。未完成真实厂商报文、
 证书、网络、容量、双节点和长稳门禁前，只能做非现场开发验收。
 
 ## 2. 不可破坏的运行不变量
 
-1. 应用默认 `MINE_GATEWAY_TCP_ENABLED=false`，启用必须显式指定一个离线审核的 `protocolKey`。
+1. 应用默认 `MINE_GATEWAY_TCP_ENABLED=false`；`UNIFIED` 必须启用 TLS 且不设置静态协议键，`LEGACY` 必须指定离线审核的 `protocolKey`。
 2. 插件 JAR 在构建时进入不可变镜像，运行容器不接受网页上传、目录扫描或任意脚本。
-3. 一个监听器只绑定一个插件；重复键、API 主版本不兼容或未知插件会阻止启动。
-4. 帧内 `productKey + deviceCode` 只是候选身份，平台 `deviceId` 和 `protocolVersion` 必须来自完整身份快照。
+3. `UNIFIED` 监听器按已认证产品动态选择插件；`LEGACY` 监听器只绑定一个插件。重复键、API 主版本不兼容或未知插件会阻止加载或启动。
+4. 统一登录帧或遗留业务帧中的 `productKey + deviceCode` 只是候选身份，平台 `deviceId` 和 `protocolVersion` 必须来自完整身份快照。
 5. 同一连接首个有效帧绑定设备，后续身份切换立即关闭。
 6. RabbitMQ publisher confirm 成功前绝不返回应用 ACK；失败时设备按原 `bootId + sequence` 重传。
 7. 任何 CRC、帧长、身份、连接或发布门禁都不能为了恢复流量临时放宽。
@@ -41,8 +40,17 @@ docker compose --profile observability \
 - 设备映射使用插件实际版本 `haul-truck-binary:v1`；
 - 宿主发布地址仍为 `127.0.0.1`，或已经完成设备网 ACL、路由和来源限制审批；
 - 生产将 `MINE_GATEWAY_TCP_TLS_ENABLED=true`，证书 SAN 匹配设备访问名称，私钥未进入镜像、环境变量或日志；
+- 选择 `UNIFIED` 时产品配置已绑定 TCP 插件和可信身份路由，身份快照只含 BCrypt `tcpSecretHash`，不含原始 secret；
 - 端口、全局连接、单来源连接、读空闲、线程和 backlog 来自容量评审，而非直接采用最大值；
 - Prometheus 已加载 `mine-gateway-tcp` 规则组，值班人知道五类告警的处置路径。
+
+插件上线必须遵循“同一不可变制品、两处安装、先验证后放量”：
+
+1. 将相同 `pluginKey + pluginVersion` 的审核 JAR 固化到 `mine-server` 和所有 `mine-gateway` 镜像，不接受前台上传 JAR。
+2. 先启动管理服务；在产品协议页选择传输方式、插件键、插件版本和路由模式，保存二进制黄金样本并发布。
+3. 管理服务未发现插件、版本不符或黄金样本执行失败时必须阻止发布。
+4. 再滚动 Gateway，确认配置节点状态为 `LOADED` 且实际哈希一致；Gateway 缺插件或版本不符时保持 last-known-good，不得接收该产品流量。
+5. 先放量测试设备，再逐批迁移。失败时回退上一镜像和配置包，不能只改数据库中的插件版本。
 
 ## 4. 身份快照
 
@@ -58,13 +66,15 @@ docker compose --profile observability \
       "deviceId": "019f63e2-071f-706a-bd12-4dad7150e75d",
       "deviceCode": "truck-001",
       "tenantScope": "mine-site-001",
-      "protocolVersion": "haul-truck-binary:v1"
+      "protocolVersion": "haul-truck-binary:v1",
+      "tcpUsername": "truck-001",
+      "tcpSecretHash": "$2a$10$replace-with-a-real-bcrypt-hash"
     }
   ]
 }
 ~~~
 
-更新必须提交整个快照并递增 `version`。加载器按固定周期重新读取、校验摘要并原子替换索引；解析失败、重复
+`tcpUsername` 和 `tcpSecretHash` 仅在 `UNIFIED` 模式必填；生产摘要必须通过受控凭据签发流程生成，禁止复制示例占位值。原始 secret 只交付设备，不进入数据库导出、快照、环境变量或日志。更新必须提交整个快照并递增 `version`。加载器按固定周期重新读取、校验摘要并原子替换索引；解析失败、重复
 `productKey + deviceCode`、低版本或同版本异内容都不得覆盖当前快照。不要在运行容器内手工改文件。
 
 ## 5. Standalone 启动与模拟器验证
@@ -76,6 +86,7 @@ docker compose --profile observability \
 ~~~text
 MINE_GATEWAY_TCP_PUBLISHED_ADDRESS=127.0.0.1
 MINE_GATEWAY_TCP_PORT=9000
+MINE_GATEWAY_TCP_MODE=LEGACY
 MINE_GATEWAY_TCP_PROTOCOL_KEY=haul-truck-binary
 MINE_GATEWAY_TCP_TLS_ENABLED=false
 ~~~
@@ -120,6 +131,18 @@ java -jar mine-device-simulator-app/target/mine-device-simulator-app-0.1.0-SNAPS
 把 PEM 证书和私钥放到现场 secret 目录的 `tls.crt`、`tls.key`，设置 `MINE_GATEWAY_TCP_TLS_ENABLED=true` 后重启 Gateway。
 模拟器 TCP Client 使用 JVM 默认信任库；自签名实验环境需把证书导入一个隔离信任库并通过 JVM 参数传入，不得修改操作系统或
 生产全局信任库。生产必须使用受控 CA、证书到期告警和轮换记录。
+
+### 5.4 统一入口验证
+
+可改造设备使用以下部署边界：
+
+~~~text
+MINE_GATEWAY_TCP_MODE=UNIFIED
+MINE_GATEWAY_TCP_PROTOCOL_KEY=
+MINE_GATEWAY_TCP_TLS_ENABLED=true
+~~~
+
+设备建立 TLS 后先发送最大 512 字节的固定登录帧：`MNTL` 魔数、版本 `1`、2 字节总长度，以及分别带 2 字节长度前缀的 `productKey`、`deviceCode`、`username`、`secret`。Gateway 使用身份快照认证，再从已发布产品快照读取 `pluginKey + pluginVersion`，动态安装该插件的业务帧解码器。认证成功收到固定 6 字节登录确认后才能发送厂商业务帧；失败时连接关闭且不得根据响应区分账号不存在、密码错误或产品未发布。
 
 ## 6. 日常观察
 
@@ -170,19 +193,17 @@ sum by (protocol) (increase(mine_gateway_tcp_acknowledgements[15m]))
 
 ### 8.3 不兼容升级
 
-`protocolVersion`、帧或 ACK 不兼容时，优先使用新协议键和独立 Gateway 端口/部署并行迁移设备；当前单监听器进程不能同时服务两个
-协议键。若只能原端口切换，必须申请维护窗口，同时停止旧实例，原子替换完整身份快照，再启动新镜像并验证。禁止在旧新实例共享
-一个单版本身份快照时强行滚动。
+`protocolVersion`、帧或 ACK 不兼容时，先安装新插件到管理服务和全部 Gateway，使用黄金样本发布新的产品协议版本，再确认节点配置状态为 `LOADED`。统一入口可以在同一端口按不同产品并行迁移；同一产品仍是单一兼容边界，结构不兼容的设备应拆分产品。不可改造设备使用新协议键和独立遗留监听器/部署并行迁移。若只能在原遗留端口切换，必须申请维护窗口，同时停止旧实例，原子替换完整身份快照，再启动新镜像并验证。
 
 ### 8.4 回退
 
-回退到上一不可变镜像和与其匹配的完整身份快照，恢复原端口和 TLS secret 引用。Gateway 关闭会断开会话；未获得 ACK 的设备应按
+回退到上一不可变镜像、产品配置包和与其匹配的完整身份快照，恢复原入口模式、端口和 TLS secret 引用。Gateway 关闭会断开会话；未获得 ACK 的设备应按
 原 `bootId + sequence` 重传。回退完成后验证 publisher confirm、ACK 和重复遥测幂等，不回滚数据库迁移、不删除遥测或审计证据。
 
 ## 9. 尚未完成的生产门禁
 
 - 真实厂商协议文档、脱敏正常/边界/异常报文和命令 ACK；
-- 原生 mTLS/设备证书身份或等价应用层认证；
+- 原生 mTLS/设备证书身份或统一登录凭据签发、轮换、吊销和防暴力破解验证；
 - 真实证书轮换、吊销、时钟偏差和密钥托管；
 - 设备网 ACL、四层代理源地址、NAT、弱网、断网补传和重连风暴；
 - 目标并发、报文频率、RabbitMQ confirm 延迟、CPU/内存/文件句柄和容量余量；

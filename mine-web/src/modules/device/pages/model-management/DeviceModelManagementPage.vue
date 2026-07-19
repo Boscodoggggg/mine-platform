@@ -506,10 +506,10 @@ function showError(error: unknown) {
                 currentProtocol.parserType === 'CONFIGURATION'
                   ? t('mine.models.binding.configuration')
                   : t('mine.models.binding.plugin', {
-                      plugin: currentProtocol.pluginKey,
-                      version: currentProtocol.pluginVersion,
-                      routing: t(`mine.models.routing.${currentProtocol.routingMode.toLowerCase()}`)
-                    })
+                    plugin: currentProtocol.pluginKey,
+                    version: currentProtocol.pluginVersion,
+                    routing: t(`mine.models.routing.${currentProtocol.routingMode.toLowerCase()}`)
+                  })
               }}
             </NAlert>
             <NDataTable :columns="protocolColumns" :data="protocolFields" :loading="loading" />
