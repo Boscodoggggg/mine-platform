@@ -2,6 +2,8 @@ package com.bosco.mine.server.modules.mine.operation.domain;
 
 import java.time.Instant;
 import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -92,6 +94,29 @@ public final class HaulCycleStateMachine {
             case UNLOADING -> new ExpectedSignal(
                     false, EventType.DWELL, EvidenceRole.UNLOAD_DWELL, CycleStatus.COMPLETED);
             case COMPLETED -> throw new IllegalStateException("已完成循环不能继续接受空间证据");
+        };
+    }
+
+    private static List<EvidenceRole> requiredEvidence(CycleStatus status) {
+        return switch (status) {
+            case WAITING_LOAD -> List.of();
+            case LOADING -> List.of(EvidenceRole.LOAD_ENTER);
+            case LOADED -> List.of(EvidenceRole.LOAD_ENTER, EvidenceRole.LOAD_DWELL);
+            case HAULING -> List.of(
+                    EvidenceRole.LOAD_ENTER,
+                    EvidenceRole.LOAD_DWELL,
+                    EvidenceRole.LOAD_EXIT);
+            case UNLOADING -> List.of(
+                    EvidenceRole.LOAD_ENTER,
+                    EvidenceRole.LOAD_DWELL,
+                    EvidenceRole.LOAD_EXIT,
+                    EvidenceRole.UNLOAD_ENTER);
+            case COMPLETED -> List.of(
+                    EvidenceRole.LOAD_ENTER,
+                    EvidenceRole.LOAD_DWELL,
+                    EvidenceRole.LOAD_EXIT,
+                    EvidenceRole.UNLOAD_ENTER,
+                    EvidenceRole.UNLOAD_DWELL);
         };
     }
 
@@ -210,6 +235,34 @@ public final class HaulCycleStateMachine {
                     throw new IllegalArgumentException("运输循环证据角色不一致");
                 }
             });
+            List<EvidenceRole> required = requiredEvidence(status);
+            if (evidence.size() != required.size()
+                    || !evidence.keySet().containsAll(required)) {
+                throw new IllegalArgumentException("运输循环阶段与证据前缀不一致");
+            }
+            Instant previousOccurredAt = null;
+            long previousSequence = 0L;
+            HashSet<UUID> eventIds = new HashSet<>();
+            for (EvidenceRole role : required) {
+                Evidence item = evidence.get(role);
+                if (!eventIds.add(item.eventId())) {
+                    throw new IllegalArgumentException("运输循环证据事件不能重复");
+                }
+                if (previousOccurredAt != null) {
+                    int timeOrder = item.occurredAt().compareTo(previousOccurredAt);
+                    if (timeOrder < 0
+                            || timeOrder == 0 && item.ingestSequence() <= previousSequence) {
+                        throw new IllegalArgumentException("运输循环证据顺序必须严格递增");
+                    }
+                }
+                previousOccurredAt = item.occurredAt();
+                previousSequence = item.ingestSequence();
+            }
+            if (!required.isEmpty()
+                    && (!previousOccurredAt.equals(lastOccurredAt)
+                    || previousSequence != lastIngestSequence)) {
+                throw new IllegalArgumentException("运输循环顺序前沿必须指向最后证据");
+            }
         }
 
         /**

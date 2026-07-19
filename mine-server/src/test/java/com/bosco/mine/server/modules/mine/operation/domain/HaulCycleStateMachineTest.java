@@ -3,6 +3,7 @@ package com.bosco.mine.server.modules.mine.operation.domain;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.bosco.mine.server.modules.mine.operation.domain.HaulCycleStateMachine.CandidateReason.OUT_OF_ORDER;
@@ -100,6 +101,39 @@ class HaulCycleStateMachineTest {
     }
 
     @Test
+    void 从持久层重建的循环状态必须具备当前阶段完整证据前缀() {
+        assertThatThrownBy(() -> new HaulCycleStateMachine.CycleState(
+                COMPLETED, 1, VEHICLE_ID, LOAD_ZONE_VERSION_ID,
+                UNLOAD_ZONE_VERSION_ID, null, 0, Map.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new HaulCycleStateMachine.CycleState(
+                LOADING, 1, VEHICLE_ID, LOAD_ZONE_VERSION_ID,
+                UNLOAD_ZONE_VERSION_ID, null, 0, Map.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 从持久层重建的证据必须按发生顺序排列且前沿指向最后证据() {
+        HaulCycleStateMachine.Evidence loadEnter = evidence(
+                LOAD_ENTER, 1, 20, 2);
+        HaulCycleStateMachine.Evidence loadDwell = evidence(
+                LOAD_DWELL, 2, 10, 1);
+
+        assertThatThrownBy(() -> new HaulCycleStateMachine.CycleState(
+                LOADED, 1, VEHICLE_ID, LOAD_ZONE_VERSION_ID,
+                UNLOAD_ZONE_VERSION_ID, loadDwell.occurredAt(),
+                loadDwell.ingestSequence(), Map.of(
+                        LOAD_ENTER, loadEnter,
+                        LOAD_DWELL, loadDwell)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new HaulCycleStateMachine.CycleState(
+                LOADING, 1, VEHICLE_ID, LOAD_ZONE_VERSION_ID,
+                UNLOAD_ZONE_VERSION_ID, START.plusSeconds(30), 3,
+                Map.of(LOAD_ENTER, loadEnter)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void 重复证据应幂等返回原状态() {
         HaulCycleStateMachine.SpatialSignal signal = signal(
                 1, VEHICLE_ID, LOAD_ZONE_VERSION_ID, ENTER, 1, 1);
@@ -189,6 +223,19 @@ class HaulCycleStateMachineTest {
         return new HaulCycleStateMachine.SpatialSignal(
                 UUID.fromString("019b0000-0000-7000-8000-%012d".formatted(eventSuffix)),
                 vehicleId, zoneVersionId, eventType, START.plusSeconds(seconds), ingestSequence);
+    }
+
+    private HaulCycleStateMachine.Evidence evidence(
+            HaulCycleStateMachine.EvidenceRole role,
+            int eventSuffix,
+            long seconds,
+            long ingestSequence
+    ) {
+        return new HaulCycleStateMachine.Evidence(
+                role,
+                UUID.fromString("019b0000-0000-7000-8000-%012d".formatted(eventSuffix)),
+                START.plusSeconds(seconds),
+                ingestSequence);
     }
 
     private void assertTransition(
