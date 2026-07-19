@@ -78,12 +78,186 @@ const local: App.I18n.Schema = {
       minePeople: '人员管理',
       mineLocationTags: '定位标签',
       mineBindings: '绑定管理',
-      mineLocation: '实时定位'
+      mineLocation: '实时定位',
+      mineSpatial: '路线与围栏'
     },
     context: {
       scopeRevoked: '当前矿区授权已变更，请重新选择矿区',
       invalidSelection: '无权访问该矿区，请重新选择',
       loadFailed: '矿区授权上下文加载失败'
+    },
+    spatial: {
+      title: '路线与电子围栏工作台',
+      description: '管理生产路线、途径点和电子围栏的不可变版本，并追溯运行态空间事件。',
+      tab: {
+        routes: '路线',
+        waypoints: '途径点',
+        geofences: '电子围栏',
+        events: '空间事件'
+      },
+      object: {
+        routes: { title: '路线对象' },
+        waypoints: { title: '途径点对象' },
+        geofences: { title: '电子围栏对象' },
+        create: '新建',
+        createTitle: '建立空间对象',
+        code: '对象编码',
+        empty: '当前矿区暂无对象',
+        search: '搜索对象编码',
+        loadFailed: '空间对象加载失败',
+        retry: '重试',
+        archive: '归档',
+        archiveTitle: '确认归档空间对象',
+        archiveImpact: '确认归档“{code}”？已发布版本和历史引用会永久保留，但该对象不能再创建草稿。',
+        archiveAria: '归档空间对象 {code}'
+      },
+      editor: {
+        title: '草稿与几何编辑',
+        selectObject: '请先从左侧选择一个对象',
+        noCoordinateTitle: '缺少统一坐标系',
+        noCoordinate: '当前矿区没有启用的统一坐标系，请先在“定位标签 / 坐标模型”中完成配置。',
+        archivedTitle: '对象已归档',
+        archivedNotice: '归档对象及其历史版本永久只读；如需继续生产配置，请建立新的稳定对象。',
+        historyTitle: '历史版本只读',
+        newDraftTitle: '新草稿',
+        newDraftNotice: '新版本保存后仍为草稿，发布前不会影响生产运行。'
+      },
+      field: {
+        name: '版本名称',
+        coordinateSystem: '矿区统一坐标系',
+        versionNumber: '业务版本号',
+        validFrom: '生效时间',
+        validTo: '失效时间',
+        isoTime: 'ISO 8601 时间，例如 2026-07-19T08:00:00Z',
+        optionalIsoTime: '可选，必须晚于生效时间',
+        waypointType: '途径点类型',
+        geofenceType: '围栏类型',
+        radiusMeters: '判定半径（米）',
+        z: 'Z 高程（可选）',
+        minZ: '最低高程（可选）',
+        maxZ: '最高高程（可选）',
+        direction: '路线方向',
+        vehicleTypes: '适用车辆类型'
+      },
+      version: {
+        title: '版本与审计',
+        newDraft: '新建草稿',
+        selectObject: '选择对象后查看版本',
+        empty: '暂无版本，可建立第一个草稿',
+        status: { draft: '草稿', published: '已发布' }
+      },
+      route: {
+        sequenceTitle: '已发布途径点序列',
+        addWaypoint: '添加途径点',
+        empty: '路线至少需要两个已发布途径点版本',
+        stopRequired: '必须停车',
+        dwellSeconds: '预计停留秒数'
+      },
+      policy: {
+        title: '空间判定策略',
+        boundaryTolerance: '边界容差（米）',
+        enterConfirm: '进入确认点数',
+        exitConfirm: '离开确认点数',
+        dwell: '停留阈值（秒）',
+        allowedLateness: '允许迟到（秒）',
+        idleFlush: '空闲结算（秒）'
+      },
+      publish: {
+        action: '发布版本',
+        title: '确认发布空间版本',
+        impact: '版本“{name}” v{version} 已完成拓扑检查，有效期 {validFrom} 至 {validTo}，包含 {references} 个空间引用。发布后该版本永久不可修改，并会刷新矿区运行时快照；正在跟踪的空间状态会按新运行版本继续判定。确认继续？',
+        confirm: '确认发布',
+        noExpiry: '长期有效',
+        saveBeforePublish: '当前表单包含未保存修改，请先保存草稿再发布'
+      },
+      validation: {
+        required: '请完整填写必填信息',
+        invalidDraft: '草稿字段或几何数据未通过校验',
+        invalidReplay: '请填写有效的空间版本、原因和不超过 31 天的历史时间窗'
+      },
+      message: {
+        objectCreated: '空间对象已建立，请继续配置首个草稿',
+        draftSaved: '草稿已保存',
+        published: '空间版本已发布，运行时快照将自动刷新',
+        optimisticConflict: '草稿已被其他用户修改，已刷新到最新版本',
+        archived: '空间对象已归档，历史版本和引用继续保留'
+      },
+      event: {
+        title: '空间事件流水',
+        filterTitle: '事件筛选',
+        noPermissionTitle: '缺少事件查看权限',
+        noPermission: '请联系管理员授予空间事件查看权限。',
+        zoneType: '空间对象类型',
+        zoneId: '空间对象标识',
+        subjectType: '业务对象类型',
+        subjectId: '业务对象标识',
+        sequence: '事件序号',
+        type: '事件类型',
+        zone: '空间对象',
+        subject: '业务对象',
+        occurredAt: '发生时间',
+        runtimeRevision: '运行版本',
+        details: '证据',
+        loadMore: '加载更多',
+        detailTitle: '空间事件判定证据',
+        classification: '点位判定',
+        coordinate: '判定坐标',
+        contentHash: '空间版本内容哈希',
+        loadFailed: '空间事件加载失败',
+        stateTransition: '状态转换',
+        confirmationPoints: '确认点数',
+        quality: '定位质量',
+        anchorLocationEventId: '锚点位置事件'
+      },
+      replay: {
+        action: '历史重放',
+        title: '登记空间事件历史重放',
+        notice: '历史重放异步执行且不会改写原始事件；相同参数会通过幂等键合并。单次时间窗不得超过 31 天。',
+        zoneVersionId: '空间版本标识',
+        reason: '重放原因',
+        submit: '登记重放',
+        created: '历史重放任务已登记'
+      },
+      enum: {
+        waypointType: { load: '装载点', unload: '卸载点', check: '检查点', wait: '等待点', entry: '入口', exit: '出口' },
+        geofenceType: { restricted: '禁入区', work: '作业区', load: '装载区', unload: '卸载区', wait: '等待区', safety: '安全区', other: '其他' },
+        direction: { forward: '正向', reverse: '反向', bidirectional: '双向' },
+        vehicleType: { haul_truck: '矿用自卸车', excavator: '挖掘机', loader: '装载机', drill: '钻机', dozer: '推土机', water_truck: '洒水车', light_vehicle: '轻型车', other: '其他' },
+        subjectType: { tag: '定位标签', vehicle: '车辆', person: '人员' },
+        classification: { inside: '区域内', outside: '区域外', boundary: '边界带', height_unknown: '高度未知' },
+        quality: { good: '正常', degraded: '降级' },
+        stableState: { outside: '区域外', inside: '区域内' },
+        zoneType: { waypoint: '途径点', geofence: '电子围栏' },
+        eventType: { enter: '进入', exit: '离开', dwell: '停留' }
+      },
+      geometry: {
+        aria: {
+          point: '途径点几何编辑画布',
+          polyline: '路线几何编辑画布',
+          polygon: '电子围栏几何编辑画布'
+        },
+        xAxis: '统一坐标 X（米）',
+        yAxis: '统一坐标 Y（米）',
+        x: 'X',
+        y: 'Y',
+        empty: '尚未添加坐标点',
+        invalidTitle: '几何数据尚未通过校验',
+        invalid: {
+          pointCount: '途径点必须且只能包含 1 个坐标点',
+          polylineCount: '路线至少需要 2 个坐标点',
+          polygonCount: '多边形至少需要 3 个顶点',
+          finite: '坐标必须是有效的有限数字',
+          duplicate: '不能包含重复坐标点',
+          selfIntersection: '多边形边界不能自相交',
+          area: '围栏面积必须大于 0.01 平方米'
+        },
+        historyReadonly: '已发布版本永久只读，可基于历史创建新草稿',
+        coordinateAria: '第 {sequence} 个点的 {axis} 坐标',
+        moveUp: '上移',
+        moveDown: '下移',
+        removePoint: '移除',
+        addPoint: '添加坐标点'
+      }
     },
     assets: {
       context: {

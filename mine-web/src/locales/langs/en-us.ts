@@ -78,12 +78,186 @@ const local: App.I18n.Schema = {
       minePeople: 'People',
       mineLocationTags: 'Location Tags',
       mineBindings: 'Bindings',
-      mineLocation: 'Live Location'
+      mineLocation: 'Live Location',
+      mineSpatial: 'Routes & Geofences'
     },
     context: {
       scopeRevoked: 'Your mine access changed. Select an authorized mine again.',
       invalidSelection: 'You are not authorized to access this mine. Select another mine.',
       loadFailed: 'Failed to load the authorized mine context.'
+    },
+    spatial: {
+      title: 'Routes & Geofences Workbench',
+      description: 'Manage immutable production routes, waypoints, and geofences, then trace runtime spatial events.',
+      tab: {
+        routes: 'Routes',
+        waypoints: 'Waypoints',
+        geofences: 'Geofences',
+        events: 'Spatial Events'
+      },
+      object: {
+        routes: { title: 'Route Objects' },
+        waypoints: { title: 'Waypoint Objects' },
+        geofences: { title: 'Geofence Objects' },
+        create: 'New',
+        createTitle: 'Create Spatial Object',
+        code: 'Object Code',
+        empty: 'No objects in this site',
+        search: 'Search object code',
+        loadFailed: 'Failed to load spatial objects',
+        retry: 'Retry',
+        archive: 'Archive',
+        archiveTitle: 'Confirm Spatial Object Archive',
+        archiveImpact: 'Archive “{code}”? Published versions and historical references remain permanently, but no new drafts can be created.',
+        archiveAria: 'Archive spatial object {code}'
+      },
+      editor: {
+        title: 'Draft & Geometry Editor',
+        selectObject: 'Select an object from the left',
+        noCoordinateTitle: 'Unified Coordinate System Required',
+        noCoordinate: 'This site has no active unified coordinate system. Configure one under Location Tags / Coordinate Model first.',
+        archivedTitle: 'Object Archived',
+        archivedNotice: 'Archived objects and all historical versions are permanently read-only. Create a new stable object for further production configuration.',
+        historyTitle: 'Historical Version Is Read-only',
+        newDraftTitle: 'New Draft',
+        newDraftNotice: 'A saved version remains a draft and does not affect production until published.'
+      },
+      field: {
+        name: 'Version Name',
+        coordinateSystem: 'Site Unified Coordinate System',
+        versionNumber: 'Business Version',
+        validFrom: 'Valid From',
+        validTo: 'Valid To',
+        isoTime: 'ISO 8601 time, e.g. 2026-07-19T08:00:00Z',
+        optionalIsoTime: 'Optional; must be later than valid from',
+        waypointType: 'Waypoint Type',
+        geofenceType: 'Geofence Type',
+        radiusMeters: 'Detection Radius (m)',
+        z: 'Z Elevation (optional)',
+        minZ: 'Minimum Elevation (optional)',
+        maxZ: 'Maximum Elevation (optional)',
+        direction: 'Route Direction',
+        vehicleTypes: 'Applicable Vehicle Types'
+      },
+      version: {
+        title: 'Versions & Audit',
+        newDraft: 'New Draft',
+        selectObject: 'Select an object to view versions',
+        empty: 'No versions; create the first draft',
+        status: { draft: 'Draft', published: 'Published' }
+      },
+      route: {
+        sequenceTitle: 'Published Waypoint Sequence',
+        addWaypoint: 'Add Waypoint',
+        empty: 'A route requires at least two published waypoint versions',
+        stopRequired: 'Stop Required',
+        dwellSeconds: 'Expected Dwell Seconds'
+      },
+      policy: {
+        title: 'Spatial Detection Policy',
+        boundaryTolerance: 'Boundary Tolerance (m)',
+        enterConfirm: 'Enter Confirmation Points',
+        exitConfirm: 'Exit Confirmation Points',
+        dwell: 'Dwell Threshold (s)',
+        allowedLateness: 'Allowed Lateness (s)',
+        idleFlush: 'Idle Flush (s)'
+      },
+      publish: {
+        action: 'Publish Version',
+        title: 'Confirm Spatial Version Publication',
+        impact: '“{name}” v{version} passed topology checks, is valid from {validFrom} to {validTo}, and contains {references} spatial references. After publishing, it cannot be modified and the site runtime snapshot will refresh. Active spatial tracking will continue with the new runtime version. Continue?',
+        confirm: 'Publish',
+        noExpiry: 'No expiry',
+        saveBeforePublish: 'The form contains unsaved changes. Save the draft before publishing.'
+      },
+      validation: {
+        required: 'Complete all required fields',
+        invalidDraft: 'Draft fields or geometry did not pass validation',
+        invalidReplay: 'Provide a valid spatial version, reason, and historical window of no more than 31 days'
+      },
+      message: {
+        objectCreated: 'Spatial object created; configure its first draft',
+        draftSaved: 'Draft saved',
+        published: 'Spatial version published; the runtime snapshot will refresh automatically',
+        optimisticConflict: 'Another user changed this draft; the latest version has been loaded',
+        archived: 'Spatial object archived; historical versions and references remain available'
+      },
+      event: {
+        title: 'Spatial Event Stream',
+        filterTitle: 'Event Filters',
+        noPermissionTitle: 'Event Permission Required',
+        noPermission: 'Ask an administrator to grant spatial event view permission.',
+        zoneType: 'Spatial Object Type',
+        zoneId: 'Spatial Object ID',
+        subjectType: 'Business Subject Type',
+        subjectId: 'Business Subject ID',
+        sequence: 'Event Sequence',
+        type: 'Event Type',
+        zone: 'Spatial Object',
+        subject: 'Business Subject',
+        occurredAt: 'Occurred At',
+        runtimeRevision: 'Runtime Revision',
+        details: 'Evidence',
+        loadMore: 'Load More',
+        detailTitle: 'Spatial Event Evidence',
+        classification: 'Point Classification',
+        coordinate: 'Evaluated Coordinate',
+        contentHash: 'Spatial Version Content Hash',
+        loadFailed: 'Failed to load spatial events',
+        stateTransition: 'State Transition',
+        confirmationPoints: 'Confirmation Points',
+        quality: 'Location Quality',
+        anchorLocationEventId: 'Anchor Location Event'
+      },
+      replay: {
+        action: 'Historical Replay',
+        title: 'Register Spatial Event Replay',
+        notice: 'Replays run asynchronously and never rewrite original events. Identical parameters are deduplicated with an idempotency key. A window cannot exceed 31 days.',
+        zoneVersionId: 'Spatial Version ID',
+        reason: 'Replay Reason',
+        submit: 'Register Replay',
+        created: 'Historical replay registered'
+      },
+      enum: {
+        waypointType: { load: 'Load', unload: 'Unload', check: 'Check', wait: 'Wait', entry: 'Entry', exit: 'Exit' },
+        geofenceType: { restricted: 'Restricted', work: 'Work', load: 'Load', unload: 'Unload', wait: 'Wait', safety: 'Safety', other: 'Other' },
+        direction: { forward: 'Forward', reverse: 'Reverse', bidirectional: 'Bidirectional' },
+        vehicleType: { haul_truck: 'Haul Truck', excavator: 'Excavator', loader: 'Loader', drill: 'Drill', dozer: 'Dozer', water_truck: 'Water Truck', light_vehicle: 'Light Vehicle', other: 'Other' },
+        subjectType: { tag: 'Location Tag', vehicle: 'Vehicle', person: 'Person' },
+        classification: { inside: 'Inside', outside: 'Outside', boundary: 'Boundary', height_unknown: 'Height Unknown' },
+        quality: { good: 'Good', degraded: 'Degraded' },
+        stableState: { outside: 'Outside', inside: 'Inside' },
+        zoneType: { waypoint: 'Waypoint', geofence: 'Geofence' },
+        eventType: { enter: 'Enter', exit: 'Exit', dwell: 'Dwell' }
+      },
+      geometry: {
+        aria: {
+          point: 'Waypoint geometry editor canvas',
+          polyline: 'Route geometry editor canvas',
+          polygon: 'Geofence geometry editor canvas'
+        },
+        xAxis: 'Unified X (m)',
+        yAxis: 'Unified Y (m)',
+        x: 'X',
+        y: 'Y',
+        empty: 'No coordinate points have been added',
+        invalidTitle: 'Geometry validation is incomplete',
+        invalid: {
+          pointCount: 'A waypoint must contain exactly one coordinate point',
+          polylineCount: 'A route requires at least two coordinate points',
+          polygonCount: 'A polygon requires at least three vertices',
+          finite: 'Coordinates must be valid finite numbers',
+          duplicate: 'Duplicate coordinate points are not allowed',
+          selfIntersection: 'Polygon edges must not intersect',
+          area: 'Geofence area must be greater than 0.01 square metres'
+        },
+        historyReadonly: 'Published versions are permanently read-only. Create a new draft from history to edit.',
+        coordinateAria: '{axis} coordinate for point {sequence}',
+        moveUp: 'Move up',
+        moveDown: 'Move down',
+        removePoint: 'Remove',
+        addPoint: 'Add coordinate point'
+      }
     },
     assets: {
       context: {

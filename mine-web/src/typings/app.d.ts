@@ -390,7 +390,8 @@ declare namespace App {
           | 'minePeople'
           | 'mineLocationTags'
           | 'mineBindings'
-          | 'mineLocation',
+          | 'mineLocation'
+          | 'mineSpatial',
           string
         >;
         context: Record<'scopeRevoked' | 'invalidSelection' | 'loadFailed', string>;
@@ -642,6 +643,109 @@ declare namespace App {
           detail: Record<"title" | "basic" | "trajectory" | "subject" | "range" | "load" | "noTrajectory" | "sampled" | "eventId" | "deviceId" | "coordinateSystemId" | "sequence", string>;
           range: Record<"hour" | "sixHours" | "day", string>;
           canvas: Record<"xAxis" | "yAxis" | "current" | "trajectory" | "empty" | "ariaLabel", string>;
+        };
+        spatial: Record<'title' | 'description', string> & {
+          tab: Record<'routes' | 'waypoints' | 'geofences' | 'events', string>;
+          object: Record<'create' | 'createTitle' | 'code' | 'empty' | 'search' | 'loadFailed' | 'retry' | 'archive' | 'archiveTitle' | 'archiveImpact' | 'archiveAria', string> & {
+            routes: Record<'title', string>;
+            waypoints: Record<'title', string>;
+            geofences: Record<'title', string>;
+          };
+          editor: Record<'title' | 'selectObject' | 'noCoordinateTitle' | 'noCoordinate' | 'archivedTitle' | 'archivedNotice' | 'historyTitle' | 'newDraftTitle' | 'newDraftNotice', string>;
+          field: Record<
+            | 'name'
+            | 'coordinateSystem'
+            | 'versionNumber'
+            | 'validFrom'
+            | 'validTo'
+            | 'isoTime'
+            | 'optionalIsoTime'
+            | 'waypointType'
+            | 'geofenceType'
+            | 'radiusMeters'
+            | 'z'
+            | 'minZ'
+            | 'maxZ'
+            | 'direction'
+            | 'vehicleTypes',
+            string
+          >;
+          version: Record<'title' | 'newDraft' | 'selectObject' | 'empty', string> & {
+            status: Record<'draft' | 'published', string>;
+          };
+          route: Record<'sequenceTitle' | 'addWaypoint' | 'empty' | 'stopRequired' | 'dwellSeconds', string>;
+          policy: Record<
+            | 'title'
+            | 'boundaryTolerance'
+            | 'enterConfirm'
+            | 'exitConfirm'
+            | 'dwell'
+            | 'allowedLateness'
+            | 'idleFlush',
+            string
+          >;
+          publish: Record<'action' | 'title' | 'impact' | 'confirm' | 'noExpiry' | 'saveBeforePublish', string>;
+          validation: Record<'required' | 'invalidDraft' | 'invalidReplay', string>;
+          message: Record<'objectCreated' | 'draftSaved' | 'published' | 'optimisticConflict' | 'archived', string>;
+          event: Record<
+            | 'title'
+            | 'filterTitle'
+            | 'noPermissionTitle'
+            | 'noPermission'
+            | 'zoneType'
+            | 'zoneId'
+            | 'subjectType'
+            | 'subjectId'
+            | 'sequence'
+            | 'type'
+            | 'zone'
+            | 'subject'
+            | 'occurredAt'
+            | 'runtimeRevision'
+            | 'details'
+            | 'loadMore'
+            | 'detailTitle'
+            | 'classification'
+            | 'coordinate'
+            | 'contentHash'
+            | 'loadFailed'
+            | 'stateTransition'
+            | 'confirmationPoints'
+            | 'quality'
+            | 'anchorLocationEventId',
+            string
+          >;
+          replay: Record<'action' | 'title' | 'notice' | 'zoneVersionId' | 'reason' | 'submit' | 'created', string>;
+          enum: {
+            waypointType: Record<'load' | 'unload' | 'check' | 'wait' | 'entry' | 'exit', string>;
+            geofenceType: Record<'restricted' | 'work' | 'load' | 'unload' | 'wait' | 'safety' | 'other', string>;
+            direction: Record<'forward' | 'reverse' | 'bidirectional', string>;
+            vehicleType: Record<'haul_truck' | 'excavator' | 'loader' | 'drill' | 'dozer' | 'water_truck' | 'light_vehicle' | 'other', string>;
+            subjectType: Record<'tag' | 'vehicle' | 'person', string>;
+            classification: Record<'inside' | 'outside' | 'boundary' | 'height_unknown', string>;
+            quality: Record<'good' | 'degraded', string>;
+            stableState: Record<'outside' | 'inside', string>;
+            zoneType: Record<'waypoint' | 'geofence', string>;
+            eventType: Record<'enter' | 'exit' | 'dwell', string>;
+          };
+          geometry: Record<
+            | 'xAxis'
+            | 'yAxis'
+            | 'x'
+            | 'y'
+            | 'empty'
+            | 'invalidTitle'
+            | 'historyReadonly'
+            | 'coordinateAria'
+            | 'moveUp'
+            | 'moveDown'
+            | 'removePoint'
+            | 'addPoint',
+            string
+          > & {
+            aria: Record<'point' | 'polyline' | 'polygon', string>;
+            invalid: Record<'pointCount' | 'polylineCount' | 'polygonCount' | 'finite' | 'duplicate' | 'selfIntersection' | 'area', string>;
+          };
         };
         common: {
           action: string;

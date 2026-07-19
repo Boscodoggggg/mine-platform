@@ -80,14 +80,15 @@ describe('buildDynamicNavigation', () => {
     expect(result.menus[0]?.children?.some(menu => menu.label === '查看详情')).toBe(false);
   });
 
-  it('矿区管理六个页面应命中组件白名单并提供国际化导航', () => {
+  it('矿区管理七个页面应命中组件白名单并提供国际化导航', () => {
     const componentKeys = [
       'mine-site-archive',
       'mine-vehicle-management',
       'mine-person-management',
       'mine-location-tag-management',
       'mine-binding-management',
-      'mine-location-monitor'
+      'mine-location-monitor',
+      'mine-spatial-management'
     ];
     const mineNodes: NavigationMenuNode[] = [
       {
@@ -100,9 +101,15 @@ describe('buildDynamicNavigation', () => {
           ...nodes[0].children[0],
           id: `mine-menu-${index}`,
           name: `矿区页面${index}`,
-          path: ['/mine/sites', '/mine/vehicles', '/mine/people', '/mine/location-tags', '/mine/bindings', '/mine/location'][
-            index
-          ],
+          path: [
+            '/mine/sites',
+            '/mine/vehicles',
+            '/mine/people',
+            '/mine/location-tags',
+            '/mine/bindings',
+            '/mine/location',
+            '/mine/spatial'
+          ][index],
           componentKey,
           sortOrder: index,
           children: []
@@ -114,7 +121,7 @@ describe('buildDynamicNavigation', () => {
     const result = buildDynamicNavigation(mineNodes);
     setLocale('zh-CN');
 
-    expect(result.routes).toHaveLength(6);
+    expect(result.routes).toHaveLength(7);
     expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
     expect(result.unknownComponentKeys).toEqual([]);
     expect(result.menus[0]?.label).toBe('Mine Management');
@@ -124,7 +131,8 @@ describe('buildDynamicNavigation', () => {
       'People',
       'Location Tags',
       'Bindings',
-      'Live Location'
+      'Live Location',
+      'Routes & Geofences'
     ]);
   });
 
