@@ -57,6 +57,25 @@ jq -e '.services["mine-server"].environment.MINE_ALARM_RABBIT_ENABLED == "true"
   and (.services.rabbitmq.secrets | any(.source == "rabbitmq_server_alarm_password"))' "${rendered}" >/dev/null \
   || { echo "FAIL: mine-server 必须使用独立 secret 启用告警消息消费" >&2; exit 1; }
 
+jq -e '.services["mine-server"].environment.MINE_SPATIAL_REPLAY_ENABLED == "true"
+  and .services["mine-server"].environment.MINE_SPATIAL_REPLAY_USERNAME == "mine_ts_replay"
+  and .services["mine-server"].environment.MINE_SPATIAL_REPLAY_PASSWORD_FILE == "/run/secrets/timescale_replay_password"
+  and (.services["mine-server"].secrets | any(.source == "timescale_replay_password"))
+  and .services["timescale-reader-bootstrap"].environment.TIMESCALE_REPLAY_USER == "mine_ts_replay"
+  and (.services["timescale-reader-bootstrap"].secrets | any(.source == "timescale_replay_password"))' "${rendered}" >/dev/null \
+  || { echo "FAIL: 空间重放登记必须使用独立 TimescaleDB 最小权限账号和 secret" >&2; exit 1; }
+
+replay_bootstrap="${ROOT_DIR}/deploy/scripts/timescale-reader-init.sh"
+grep -q "GRANT SELECT, INSERT ON TABLE spatial_replay_request" "${replay_bootstrap}" \
+  || { echo "FAIL: 空间重放账号未获得重放请求表的精确读写权限" >&2; exit 1; }
+grep -q "GRANT SELECT ON TABLE spatial_replay_active_zone_snapshot" \
+  "${replay_bootstrap}" \
+  || { echo "FAIL: 空间重放账号未获得激活区域快照的精确只读权限" >&2; exit 1; }
+if grep -q "GRANT .*ALL TABLES.*replay_user" "${replay_bootstrap}"; then
+  echo "FAIL: 空间重放账号不得获得全部时序表权限" >&2
+  exit 1
+fi
+
 jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_CONFIGURATION_CACHE_FILE == "/var/lib/mine/gateway/protocol-snapshots.json"
   and (.services["mine-gateway"].volumes | any(.source == "gateway_configuration_cache" and .target == "/var/lib/mine/gateway"))
   and .services["mine-gateway"].depends_on["mine-gateway-cache-init"].condition == "service_completed_successfully"

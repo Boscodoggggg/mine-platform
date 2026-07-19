@@ -2875,6 +2875,99 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/MineResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/spatial-events:
+    get:
+      tags: [MineSpatial]
+      operationId: listMineSpatialEvents
+      summary: 固定水位分页查询空间运行事件
+      description: |
+        需要 mine:spatial:event:view 权限。默认查询过去 24 小时，最大时间窗 31 天；
+        后续页必须原样携带首页返回的 watermark 和 nextCursor，迟到创建的事件不会污染当前分页快照。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: watermark
+          in: query
+          schema: { type: integer, format: int64, minimum: 0 }
+        - name: cursor
+          in: query
+          schema: { type: string, maxLength: 4096 }
+        - name: zoneType
+          in: query
+          schema: { $ref: '#/components/schemas/SpatialZoneType' }
+        - name: zoneId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: subjectType
+          in: query
+          schema: { $ref: '#/components/schemas/LocationSubjectType' }
+        - name: subjectId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: eventType
+          in: query
+          schema: { $ref: '#/components/schemas/SpatialEventType' }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        '200':
+          description: 空间事件固定水位分页。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialEventPageResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/SpatialRuntimeUnavailable' }
+  /mine/sites/{siteId}/spatial-events/{eventId}:
+    get:
+      tags: [MineSpatial]
+      operationId: getMineSpatialEvent
+      summary: 查询空间事件判定证据详情
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 包含触发位置事实和有界判定证据的空间事件。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialEventDetailResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '503': { $ref: '#/components/responses/SpatialRuntimeUnavailable' }
+  /mine/sites/{siteId}/spatial-events/replays:
+    post:
+      tags: [MineSpatial]
+      operationId: createMineSpatialReplay
+      summary: 幂等登记异步空间历史重放
+      description: |
+        需要 mine:spatial:replay 权限。HTTP 请求线程只登记 PENDING 任务，不扫描历史位置事实；
+        登记时必须能从 Telemetry 当前已激活快照冻结指定区域版本及摘要；
+        执行时最多预热窗口前 24 小时状态，避免短窗口请求无界扫描多年历史。
+        相同区域版本存在重叠的未完成任务时返回 409。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SpatialReplayRequest' } } }
+      responses:
+        '202':
+          description: 重放任务已登记，或返回相同幂等键此前登记的同一任务。
+          content: { application/json: { schema: { $ref: '#/components/schemas/SpatialReplayResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/SpatialRuntimeUnavailable' }
   /mine/sites/{siteId}/people:
     get:
       tags: [MinePeople]
@@ -4076,6 +4169,111 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         version: { type: integer, format: int64, minimum: 0 }
+    SpatialZoneType:
+      type: string
+      enum: [WAYPOINT, GEOFENCE]
+    SpatialEventType:
+      type: string
+      enum: [ENTER, EXIT, DWELL]
+    SpatialStableState:
+      type: string
+      enum: [OUTSIDE, INSIDE]
+    SpatialEventItem:
+      type: object
+      required:
+        - eventId
+        - eventSequence
+        - organizationId
+        - siteId
+        - zoneType
+        - zoneId
+        - zoneVersionId
+        - tagId
+        - vehicleId
+        - personId
+        - eventType
+        - previousState
+        - currentState
+        - confirmationPoints
+        - ingestSequence
+        - runtimeRevision
+        - occurredAt
+      properties:
+        eventId: { type: string, format: uuid }
+        eventSequence: { type: integer, format: int64, minimum: 1 }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        zoneType: { $ref: '#/components/schemas/SpatialZoneType' }
+        zoneId: { type: string, format: uuid }
+        zoneVersionId: { type: string, format: uuid }
+        tagId: { type: string, format: uuid }
+        vehicleId: { type: [string, 'null'], format: uuid }
+        personId: { type: [string, 'null'], format: uuid }
+        eventType: { $ref: '#/components/schemas/SpatialEventType' }
+        previousState: { $ref: '#/components/schemas/SpatialStableState' }
+        currentState: { $ref: '#/components/schemas/SpatialStableState' }
+        confirmationPoints: { type: integer, minimum: 1 }
+        ingestSequence: { type: integer, format: int64, minimum: 1 }
+        runtimeRevision: { type: integer, format: int64, minimum: 1 }
+        occurredAt: { type: string, format: date-time }
+    SpatialEventEvidence:
+      type: object
+      required: [localX, localY, localZ, classification, qualityStatus, qualityReason, zoneContentHash]
+      properties:
+        localX: { type: number, format: double }
+        localY: { type: number, format: double }
+        localZ: { type: [number, 'null'], format: double }
+        classification: { type: string, enum: [INSIDE, OUTSIDE, BOUNDARY, HEIGHT_UNKNOWN] }
+        qualityStatus: { type: string, enum: [GOOD, DEGRADED] }
+        qualityReason: { type: [string, 'null'], maxLength: 128 }
+        zoneContentHash: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+    SpatialEventDetailResponse:
+      allOf:
+        - { $ref: '#/components/schemas/SpatialEventItem' }
+        - type: object
+          required: [anchorLocationEventId, createdAt, evidence]
+          properties:
+            anchorLocationEventId: { type: string, format: uuid }
+            createdAt: { type: string, format: date-time }
+            evidence: { $ref: '#/components/schemas/SpatialEventEvidence' }
+    SpatialEventPageResponse:
+      type: object
+      required: [siteId, from, to, watermark, nextCursor, items]
+      properties:
+        siteId: { type: string, format: uuid }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        watermark: { type: integer, format: int64, minimum: 0 }
+        nextCursor: { type: [string, 'null'], maxLength: 4096 }
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/SpatialEventItem' } }
+    SpatialReplayRequest:
+      type: object
+      additionalProperties: false
+      required: [zoneType, zoneVersionId, from, to, reason]
+      properties:
+        zoneType: { $ref: '#/components/schemas/SpatialZoneType' }
+        zoneVersionId: { type: string, format: uuid }
+        from: { type: string, format: date-time }
+        to:
+          type: string
+          format: date-time
+          description: 必须晚于 from、不得晚于当前时间且时间窗不超过 31 天。
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    SpatialReplayStatus:
+      type: string
+      enum: [PENDING, PROCESSING, COMPLETED, FAILED, DEAD, CANCELLED]
+    SpatialReplayResponse:
+      type: object
+      required: [requestId, siteId, zoneType, zoneVersionId, from, to, status, createdAt]
+      properties:
+        requestId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        zoneType: { $ref: '#/components/schemas/SpatialZoneType' }
+        zoneVersionId: { type: string, format: uuid }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/SpatialReplayStatus' }
+        createdAt: { type: string, format: date-time }
     PersonType:
       type: string
       enum: [DRIVER, OPERATOR, SUPERVISOR, WORKER, VISITOR, OTHER]
@@ -6170,6 +6368,12 @@ components:
             $ref: '#/components/schemas/ApiError'
     LocationRuntimeUnavailable:
       description: 位置查询存储不可用，错误码 MINE-LOCATION-503-001。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    SpatialRuntimeUnavailable:
+      description: 空间事件只读查询或最小权限重放登记连接不可用，错误码前缀为 MINE-SPATIAL-*-503。
       content:
         application/json:
           schema:

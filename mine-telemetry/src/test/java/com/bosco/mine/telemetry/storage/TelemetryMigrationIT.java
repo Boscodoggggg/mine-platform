@@ -64,6 +64,8 @@ class TelemetryMigrationIT {
                 "SELECT 'location_point'::regclass::oid::TEXT").getFirst();
         MigrateResult preSpatialPipeline = preSpatialPipelineFlyway.migrate();
         insertLegacyPublishingSpatialOutbox();
+        execute("CREATE ROLE mine_ts_replay LOGIN");
+        execute("ALTER DATABASE mine_telemetry SET mine.spatial_replay_role = 'mine_ts_replay'");
         MigrateResult upgraded = flyway.migrate();
 
         assertThat(baseline.migrationsExecuted).isPositive();
@@ -81,6 +83,33 @@ class TelemetryMigrationIT {
                 .containsExactly("timescaledb");
         assertThat(queryStrings("SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'"))
                 .containsExactly("2.28.2");
+        assertThat(queryStrings("""
+                SELECT is_identity || ':' || COALESCE(col_description(
+                    'spatial_event'::regclass,
+                    (SELECT ordinal_position
+                     FROM information_schema.columns
+                     WHERE table_schema = 'public'
+                       AND table_name = 'spatial_event'
+                       AND column_name = 'event_sequence')), '')
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'spatial_event'
+                  AND column_name = 'event_sequence'
+                """))
+                .singleElement()
+                .satisfies(value -> assertThat(value)
+                        .startsWith("NO:")
+                        .containsPattern("[\\u4e00-\\u9fff]"));
+        assertThat(queryStrings("""
+                SELECT table_name || ':' || privilege_type
+                FROM information_schema.role_table_grants
+                WHERE grantee = 'mine_ts_replay'
+                ORDER BY table_name, privilege_type
+                """))
+                .containsExactly(
+                        "spatial_replay_active_zone_snapshot:SELECT",
+                        "spatial_replay_request:INSERT",
+                        "spatial_replay_request:SELECT");
         assertThat(queryStrings("SHOW timescaledb.license")).containsExactly("apache");
         assertThat(queryStrings("""
                 SELECT hypertable_name
@@ -463,7 +492,9 @@ class TelemetryMigrationIT {
                     'spatial_evaluation_queue', 'spatial_subject_watermark',
                     'spatial_runtime_snapshot', 'spatial_runtime_snapshot_item',
                     'spatial_zone_state', 'spatial_event',
-                    'spatial_event_outbox', 'spatial_replay_request'
+                    'spatial_event_outbox', 'spatial_replay_request',
+                    'spatial_event_sequence_watermark',
+                    'spatial_replay_subject_state'
                   )
                 ORDER BY table_name
                 """))
@@ -471,7 +502,9 @@ class TelemetryMigrationIT {
                         "spatial_evaluation_queue",
                         "spatial_event",
                         "spatial_event_outbox",
+                        "spatial_event_sequence_watermark",
                         "spatial_replay_request",
+                        "spatial_replay_subject_state",
                         "spatial_runtime_snapshot",
                         "spatial_runtime_snapshot_item",
                         "spatial_subject_watermark",

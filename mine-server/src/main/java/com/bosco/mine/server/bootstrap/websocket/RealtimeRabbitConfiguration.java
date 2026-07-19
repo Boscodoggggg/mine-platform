@@ -114,6 +114,23 @@ public class RealtimeRabbitConfiguration {
     }
 
     /**
+     * 将本实例队列绑定到全部矿区空间事件实时主题。
+     *
+     * @param realtimeQueue 本实例实时队列
+     * @param realtimeExchange 实时主题交换机
+     * @return 矿区空间事件实时绑定
+     */
+    @Bean
+    public Binding realtimeSpatialBinding(
+            Queue realtimeQueue,
+            TopicExchange realtimeExchange
+    ) {
+        return BindingBuilder.bind(realtimeQueue)
+                .to(realtimeExchange)
+                .with(MineTopology.REALTIME_SPATIAL_ROUTING_PATTERN);
+    }
+
+    /**
      * 创建实时拓扑声明器，连接恢复后自动重建本实例临时队列和绑定。
      *
      * @param realtimeConnectionFactory 实时事件连接工厂
@@ -157,11 +174,25 @@ public class RealtimeRabbitConfiguration {
     }
 
     /**
+     * 创建矿区空间事件实时消费者。
+     *
+     * @param registry 本实例会话注册表
+     * @return 空间事件实时消费者
+     */
+    @Bean
+    public RealtimeSpatialConsumer realtimeSpatialConsumer(
+            RealtimeSessionRegistry registry
+    ) {
+        return new RealtimeSpatialConsumer(registry);
+    }
+
+    /**
      * 创建事件驱动、手工确认的 RabbitMQ 监听容器，不启动任何数据库轮询任务。
      *
      * @param realtimeConnectionFactory 实时事件连接工厂
      * @param telemetryConsumer 实时遥测消费者
      * @param locationConsumer 位置实时消费者
+     * @param spatialConsumer 空间事件实时消费者
      * @param properties 实时通道配置
      * @param realtimeRabbitAdmin 实时拓扑声明器
      * @param realtimeQueue 本实例实时队列
@@ -172,6 +203,7 @@ public class RealtimeRabbitConfiguration {
             CachingConnectionFactory realtimeConnectionFactory,
             RealtimeTelemetryConsumer telemetryConsumer,
             RealtimeLocationConsumer locationConsumer,
+            RealtimeSpatialConsumer spatialConsumer,
             RealtimeProperties properties,
             RabbitAdmin realtimeRabbitAdmin,
             Queue realtimeQueue
@@ -187,7 +219,7 @@ public class RealtimeRabbitConfiguration {
         container.setMissingQueuesFatal(true);
         container.setAutoStartup(properties.resolvedRabbitAutoStartup());
         container.setMessageListener(new RealtimeEventConsumer(
-                telemetryConsumer, locationConsumer));
+                telemetryConsumer, locationConsumer, spatialConsumer));
         return container;
     }
 

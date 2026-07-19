@@ -91,6 +91,10 @@ services:
       MINE_TELEMETRY_QUERY_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
       MINE_TELEMETRY_QUERY_USERNAME: ${TIMESCALE_READER_USER:-mine_ts_reader}
       MINE_TELEMETRY_QUERY_PASSWORD_FILE: /run/secrets/timescale_reader_password
+      MINE_SPATIAL_REPLAY_ENABLED: "true"
+      MINE_SPATIAL_REPLAY_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
+      MINE_SPATIAL_REPLAY_USERNAME: ${TIMESCALE_REPLAY_USER:-mine_ts_replay}
+      MINE_SPATIAL_REPLAY_PASSWORD_FILE: /run/secrets/timescale_replay_password
       MINE_REALTIME_ENABLED: "true"
       MINE_REALTIME_INSTANCE_ID: standalone
       MINE_REALTIME_RABBIT_ENABLED: "true"
@@ -118,6 +122,7 @@ services:
       - rabbitmq_admin_username
       - rabbitmq_admin_password
       - timescale_reader_password
+      - timescale_replay_password
       - rabbitmq_server_realtime_password
       - rabbitmq_server_command_password
       - rabbitmq_server_alarm_password
@@ -404,6 +409,7 @@ services:
       POSTGRES_USER: ${TIMESCALE_USER:-mine_ts}
       POSTGRES_PASSWORD_FILE: /run/secrets/timescale_password
       TIMESCALE_READER_USER: ${TIMESCALE_READER_USER:-mine_ts_reader}
+      TIMESCALE_REPLAY_USER: ${TIMESCALE_REPLAY_USER:-mine_ts_replay}
     volumes:
       - timescale_data:/var/lib/postgresql
       - ../config/timescale/init.sql:/docker-entrypoint-initdb.d/010-timescale.sql:ro
@@ -411,6 +417,7 @@ services:
     secrets:
       - timescale_password
       - timescale_reader_password
+      - timescale_replay_password
     networks:
       - data
     healthcheck:
@@ -438,11 +445,13 @@ services:
       POSTGRES_DB: ${TIMESCALE_DB:-mine_telemetry}
       POSTGRES_USER: ${TIMESCALE_USER:-mine_ts}
       TIMESCALE_READER_USER: ${TIMESCALE_READER_USER:-mine_ts_reader}
+      TIMESCALE_REPLAY_USER: ${TIMESCALE_REPLAY_USER:-mine_ts_replay}
     volumes:
       - ../scripts/timescale-reader-init.sh:/opt/mine/timescale-reader-init.sh:ro
     secrets:
       - timescale_password
       - timescale_reader_password
+      - timescale_replay_password
     depends_on:
       timescale:
         condition: service_healthy
@@ -764,6 +773,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/timescale_password
   timescale_reader_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/timescale_reader_password
+  timescale_replay_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/timescale_replay_password
   redis_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/redis_password
   redis_exporter_passwords:

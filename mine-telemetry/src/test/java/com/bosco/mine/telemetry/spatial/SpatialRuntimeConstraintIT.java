@@ -56,7 +56,9 @@ class SpatialRuntimeConstraintIT {
                 "spatial_zone_state",
                 "spatial_event",
                 "spatial_event_outbox",
-                "spatial_replay_request");
+                "spatial_replay_request",
+                "spatial_replay_subject_state",
+                "spatial_event_sequence_watermark");
 
         assertThat(jdbc.queryForList("""
                 SELECT table_name
@@ -65,7 +67,9 @@ class SpatialRuntimeConstraintIT {
                     'spatial_evaluation_queue', 'spatial_subject_watermark',
                     'spatial_runtime_snapshot', 'spatial_runtime_snapshot_item',
                     'spatial_zone_state', 'spatial_event',
-                    'spatial_event_outbox', 'spatial_replay_request'
+                    'spatial_event_outbox', 'spatial_replay_request',
+                    'spatial_replay_subject_state',
+                    'spatial_event_sequence_watermark'
                 )
                 ORDER BY table_name
                 """, String.class))
@@ -76,7 +80,9 @@ class SpatialRuntimeConstraintIT {
                     'spatial_evaluation_queue', 'spatial_subject_watermark',
                     'spatial_runtime_snapshot', 'spatial_runtime_snapshot_item',
                     'spatial_zone_state', 'spatial_event',
-                    'spatial_event_outbox', 'spatial_replay_request'
+                    'spatial_event_outbox', 'spatial_replay_request',
+                    'spatial_replay_subject_state',
+                    'spatial_event_sequence_watermark'
                 ]) AS table_name
                 ORDER BY table_name
                 """, String.class))
@@ -92,7 +98,9 @@ class SpatialRuntimeConstraintIT {
                     'spatial_evaluation_queue', 'spatial_subject_watermark',
                     'spatial_runtime_snapshot', 'spatial_runtime_snapshot_item',
                     'spatial_zone_state', 'spatial_event',
-                    'spatial_event_outbox', 'spatial_replay_request'
+                    'spatial_event_outbox', 'spatial_replay_request',
+                    'spatial_replay_subject_state',
+                    'spatial_event_sequence_watermark'
                   )
                   AND attribute.attnum > 0
                   AND NOT attribute.attisdropped
@@ -125,6 +133,20 @@ class SpatialRuntimeConstraintIT {
                         "PENDING", "PUBLISHING", "PUBLISHED", "FAILED", "DEAD"))
                 .anySatisfy(value -> assertThat(value).contains(
                         "lease_token", "locked_by", "locked_at", "lease_expires_at"));
+        assertThat(constraints("spatial_replay_request"))
+                .anySatisfy(value -> assertThat(value).contains("DEAD"))
+                .anySatisfy(value -> assertThat(value).contains(
+                        "status", "lease_token", "locked_by", "locked_at", "lease_expires_at"))
+                .anySatisfy(value -> assertThat(value).contains(
+                        "source_watermark", "cursor_time", "cursor_ingest_sequence"))
+                .anySatisfy(value -> assertThat(value).contains(
+                        "zone_item_type", "zone_content", "zone_content_hash",
+                        "zone_runtime_revision"));
+        assertThat(constraints("spatial_replay_subject_state"))
+                .anySatisfy(value -> assertThat(value).contains(
+                        "FOREIGN KEY", "spatial_replay_request"))
+                .anySatisfy(value -> assertThat(value).contains(
+                        "FOREIGN KEY", "location_inbox"));
     }
 
     @Test
@@ -157,6 +179,37 @@ class SpatialRuntimeConstraintIT {
                 )
                 """))
                 .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void 应允许冻结与定位快照上限一致的大型区域JSON() {
+        int changed = jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end,
+                    zone_item_type, zone_content, zone_content_hash, zone_runtime_revision
+                ) VALUES (
+                    '019f7b51-9b63-70b8-b0e2-581e4f810301',
+                    '019f7b51-9b63-70b8-b0e2-581e4f810302',
+                    '019f7b51-9b63-70b8-b0e2-581e4f810303', 'GEOFENCE',
+                    '019f7b51-9b63-70b8-b0e2-581e4f810304',
+                    '019f7b51-9b63-70b8-b0e2-581e4f810305', 'replay-large-zone',
+                    '验证大型区域快照冻结',
+                    '2026-01-01T00:00:00Z', '2026-01-01T01:00:00Z',
+                    'GEOFENCE_VERSION', jsonb_build_object(
+                        'versionId', '019f7b51-9b63-70b8-b0e2-581e4f810304',
+                        'padding', repeat('x', 131072)),
+                    'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+                    1
+                )
+                """);
+
+        assertThat(changed).isOne();
+        assertThat(jdbc.queryForObject("""
+                SELECT length(zone_content ->> 'padding')
+                FROM spatial_replay_request
+                WHERE idempotency_key = 'replay-large-zone'
+                """, Integer.class)).isGreaterThan(65_536);
     }
 
     /**

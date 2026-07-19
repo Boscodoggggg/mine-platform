@@ -31,6 +31,7 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(RealtimeWebSocketHandler.class);
     private static final String TELEMETRY_PERMISSION = "device:telemetry:view";
     private static final String LOCATION_PERMISSION = "mine:location:view";
+    private static final String SPATIAL_EVENT_PERMISSION = "mine:spatial:event:view";
 
     private final RealtimeAuthenticator authenticator;
     private final RealtimeSnapshotProvider snapshots;
@@ -144,6 +145,7 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         String token = requiredText(root, "token");
         RealtimePrincipal principal = authenticator.authenticate(token);
         requireRealtimePermission(principal);
+        requireExistingAccess(sessionId, principal);
         registry.authenticate(sessionId, principal, token);
         send(sessionId, "ACK", requestId, Map.of("action", "AUTH"));
     }
@@ -153,11 +155,12 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         ParsedSubscriptions additions = parseSubscriptions(root, false);
         requireRequestedAccess(principal, additions);
         registry.subscribe(
-                sessionId, additions.deviceSubscriptions(), additions.siteIds(), limits);
+                sessionId, additions.deviceSubscriptions(), additions.locationSiteIds(),
+                additions.spatialSiteIds(), limits);
         send(sessionId, "ACK", requestId, Map.of("action", "SUBSCRIBE"));
         additions.deviceSubscriptions().forEach(
                 subscription -> sendSnapshot(sessionId, subscription));
-        additions.siteIds().forEach(
+        additions.locationSiteIds().forEach(
                 siteId -> sendLocationSnapshot(sessionId, principal.userId(), siteId));
     }
 
@@ -165,7 +168,8 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         refreshAuthentication(sessionId);
         ParsedSubscriptions removals = parseSubscriptions(root, true);
         registry.unsubscribe(
-                sessionId, removals.deviceSubscriptions(), removals.siteIds());
+                sessionId, removals.deviceSubscriptions(), removals.locationSiteIds(),
+                removals.spatialSiteIds());
         send(sessionId, "ACK", requestId, Map.of("action", "UNSUBSCRIBE"));
     }
 
@@ -214,7 +218,8 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
             throw new IllegalArgumentException("topics 必须是非空数组");
         }
         Map<UUID, LinkedHashSet<String>> devices = new LinkedHashMap<>();
-        LinkedHashSet<UUID> sites = new LinkedHashSet<>();
+        LinkedHashSet<UUID> locationSites = new LinkedHashSet<>();
+        LinkedHashSet<UUID> spatialSites = new LinkedHashSet<>();
         for (JsonNode topic : topics) {
             String type = requiredText(topic, "type");
             List<UUID> ids = uuidArray(topic, "ids", false);
@@ -224,7 +229,9 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
                         .computeIfAbsent(deviceId, ignored -> new LinkedHashSet<>())
                         .addAll(propertyIds));
             } else if ("MINE_SITE_LOCATION".equals(type)) {
-                sites.addAll(ids);
+                locationSites.addAll(ids);
+            } else if ("MINE_SITE_SPATIAL_EVENT".equals(type)) {
+                spatialSites.addAll(ids);
             } else {
                 throw new IllegalArgumentException("不支持的实时主题: " + type);
             }
@@ -233,7 +240,8 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
                 .map(entry -> new DeviceLatestSubscription(
                         entry.getKey(), List.copyOf(entry.getValue())))
                 .toList();
-        return new ParsedSubscriptions(deviceSubscriptions, List.copyOf(sites));
+        return new ParsedSubscriptions(
+                deviceSubscriptions, List.copyOf(locationSites), List.copyOf(spatialSites));
     }
 
     private List<UUID> uuidArray(JsonNode root, String field, boolean optional) {
@@ -281,6 +289,12 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         if (registry.principal(sessionId).isEmpty()) {
             throw new RealtimeAuthenticationRequiredException();
         }
+        requireExistingAccess(sessionId, principal);
+        registry.authenticate(sessionId, principal, token);
+        return principal;
+    }
+
+    private void requireExistingAccess(String sessionId, RealtimePrincipal principal) {
         if (!registry.subscriptions(sessionId).isEmpty()
                 && !principal.hasPermission(TELEMETRY_PERMISSION)) {
             throw new RealtimeAuthenticationException("设备遥测查看权限已撤销");
@@ -289,18 +303,25 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         if (!siteIds.isEmpty() && !principal.hasPermission(LOCATION_PERMISSION)) {
             throw new RealtimeAuthenticationException("矿区位置查看权限已撤销");
         }
+        List<UUID> spatialSiteIds = registry.spatialSiteSubscriptions(sessionId);
+        if (!spatialSiteIds.isEmpty()
+                && !principal.hasPermission(SPATIAL_EVENT_PERMISSION)) {
+            throw new RealtimeAuthenticationException("空间事件查看权限已撤销");
+        }
         try {
-            siteIds.forEach(siteId -> siteAuthorizer.requireAccess(principal.userId(), siteId));
+            LinkedHashSet<UUID> authorizedSites = new LinkedHashSet<>(siteIds);
+            authorizedSites.addAll(spatialSiteIds);
+            authorizedSites.forEach(
+                    siteId -> siteAuthorizer.requireAccess(principal.userId(), siteId));
         } catch (MineException exception) {
             throw new RealtimeAuthenticationException("矿区数据授权已撤销");
         }
-        registry.authenticate(sessionId, principal, token);
-        return principal;
     }
 
     private void requireRealtimePermission(RealtimePrincipal principal) {
         if (!principal.hasPermission(TELEMETRY_PERMISSION)
-                && !principal.hasPermission(LOCATION_PERMISSION)) {
+                && !principal.hasPermission(LOCATION_PERMISSION)
+                && !principal.hasPermission(SPATIAL_EVENT_PERMISSION)) {
             throw new RealtimeAuthenticationException("缺少实时数据查看权限");
         }
     }
@@ -313,12 +334,17 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
                 && !principal.hasPermission(TELEMETRY_PERMISSION)) {
             throw new RealtimeAuthenticationException("缺少设备遥测查看权限");
         }
-        if (!subscriptions.siteIds().isEmpty()
+        if (!subscriptions.locationSiteIds().isEmpty()
                 && !principal.hasPermission(LOCATION_PERMISSION)) {
             throw new RealtimeAuthenticationException("缺少矿区位置查看权限");
         }
-        subscriptions.siteIds().forEach(
-                siteId -> siteAuthorizer.requireAccess(principal.userId(), siteId));
+        if (!subscriptions.spatialSiteIds().isEmpty()
+                && !principal.hasPermission(SPATIAL_EVENT_PERMISSION)) {
+            throw new RealtimeAuthenticationException("缺少空间事件查看权限");
+        }
+        LinkedHashSet<UUID> siteIds = new LinkedHashSet<>(subscriptions.locationSiteIds());
+        siteIds.addAll(subscriptions.spatialSiteIds());
+        siteIds.forEach(siteId -> siteAuthorizer.requireAccess(principal.userId(), siteId));
     }
 
     private void error(String sessionId, String requestId, String code, String message) {
@@ -345,11 +371,13 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
 
     private record ParsedSubscriptions(
             List<DeviceLatestSubscription> deviceSubscriptions,
-            List<UUID> siteIds
+            List<UUID> locationSiteIds,
+            List<UUID> spatialSiteIds
     ) {
         private ParsedSubscriptions {
             deviceSubscriptions = List.copyOf(deviceSubscriptions);
-            siteIds = List.copyOf(siteIds);
+            locationSiteIds = List.copyOf(locationSiteIds);
+            spatialSiteIds = List.copyOf(spatialSiteIds);
         }
     }
 }

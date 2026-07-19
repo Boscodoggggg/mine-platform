@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * 校验空间评估与 Outbox 恢复在启动、周期和 RabbitMQ 重连时自动运行。
@@ -25,20 +26,24 @@ class SpatialEventRuntimeCoordinatorTest {
     @Test
     void 应在启动后执行并注册周期任务且重连触发Outbox恢复() {
         SpatialEvaluationWorker worker = mock(SpatialEvaluationWorker.class);
+        SpatialReplayExecutor replayExecutor = mock(SpatialReplayExecutor.class);
+        when(replayExecutor.processNext(any(Instant.class))).thenReturn(
+                new SpatialReplayExecutor.BatchResult(false, null, 0, 0, false, false));
         SpatialEventOutboxRelay relay = mock(SpatialEventOutboxRelay.class);
         CachingConnectionFactory connectionFactory = mock(CachingConnectionFactory.class);
         TaskScheduler scheduler = mock(TaskScheduler.class);
         Executor directExecutor = Runnable::run;
         SpatialEventRuntimeCoordinator coordinator = new SpatialEventRuntimeCoordinator(
-                worker, relay, connectionFactory, directExecutor, scheduler,
+                worker, replayExecutor, relay, connectionFactory, directExecutor, scheduler,
                 Duration.ofMillis(250), 25, Duration.ofSeconds(10));
 
         coordinator.afterSingletonsInstantiated();
         coordinator.run(null);
 
         verify(worker).processReady(any(Instant.class), eq(25));
+        verify(replayExecutor).processNext(any(Instant.class));
         verify(relay).recoverBounded();
-        verify(scheduler).scheduleWithFixedDelay(
+        verify(scheduler, times(2)).scheduleWithFixedDelay(
                 any(Runnable.class), eq(Duration.ofMillis(250)));
         verify(scheduler).scheduleWithFixedDelay(
                 any(Runnable.class), eq(Duration.ofSeconds(10)));

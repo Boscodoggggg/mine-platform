@@ -20,6 +20,7 @@ import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -28,9 +29,12 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Connection;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -95,6 +99,7 @@ class SpatialEventPipelineIT {
     private SpatialEvaluationQueue queue;
     private LocationFactWriter writer;
     private SpatialEvaluationWorker worker;
+    private SpatialReplayExecutor replayExecutor;
     private Binding spatialBinding;
 
     @BeforeAll
@@ -137,6 +142,9 @@ class SpatialEventPipelineIT {
                 dataSource, runtimeCatalog, queue, "spatial-pipeline-it",
                 Duration.ofSeconds(30), 3,
                 Duration.ofMillis(10), Duration.ofSeconds(1));
+        replayExecutor = new SpatialReplayExecutor(
+                dataSource, "spatial-replay-it", Duration.ofSeconds(30), 3, 2,
+                Duration.ofMillis(10), Duration.ofSeconds(1), Clock.systemUTC());
 
         rabbitAdmin.deleteQueue(TEST_QUEUE);
         TopicExchange exchange = new TopicExchange(REALTIME_EXCHANGE, true, false);
@@ -385,6 +393,430 @@ class SpatialEventPipelineIT {
                 WHERE location_event_id = ?
                 """, firstNewVersionFact.observationId()))
                 .containsExactly("300000:301000");
+    }
+
+    @Test
+    void 历史重放应固定源水位分批执行并原子产生事件与Outbox() throws Exception {
+        UUID requestId = uuid(900);
+        writer.write(observation(901, 1, "2026-07-19T01:00:00Z", 0D, 0D));
+        writer.write(observation(902, 2, "2026-07-19T01:00:01Z", 0D, 0D));
+        writer.write(observation(903, 3, "2026-07-19T01:00:02Z", 200_000D, 200_000D));
+        writer.write(observation(904, 4, "2026-07-19T01:00:03Z", 200_000D, 200_000D));
+        writer.write(observation(905, 5, "2026-07-19T01:00:34Z", 200_000D, 200_000D));
+        writer.write(observation(906, 6, "2026-07-19T01:00:35Z", 0D, 0D));
+        writer.write(observation(907, 7, "2026-07-19T01:00:36Z", 0D, 0D));
+        Connection delayed = dataSource.getConnection();
+        delayed.setAutoCommit(false);
+        insertDelayedLocation(delayed, 908, "2026-07-19T01:00:10Z");
+        writer.write(observation(909, 9, "2026-07-19T01:00:11Z", 0D, 0D));
+        jdbc.update("DELETE FROM spatial_evaluation_queue");
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-watermark-it',
+                          '验证固定源水位和分批执行',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z')
+                """, requestId, ORGANIZATION_ID, SITE_ID, GEOFENCE_VERSION_ID, uuid(999));
+
+        SpatialReplayExecutor.BatchResult first = replayExecutor.processNext(Instant.now());
+
+        assertThat(first.processed()).isTrue();
+        assertThat(first.completed()).isFalse();
+        assertThat(first.scannedPoints()).isEqualTo(2);
+        assertThat(jdbc.queryForObject("""
+                SELECT source_watermark FROM spatial_replay_request WHERE request_id = ?
+                """, Long.class, requestId)).isEqualTo(9L);
+
+        delayed.commit();
+        delayed.close();
+        writer.write(observation(910, 10, "2026-07-19T01:00:12Z", 0D, 0D));
+        SpatialReplayExecutor.BatchResult result;
+        do {
+            result = replayExecutor.processNext(Instant.now());
+        } while (result.processed() && !result.completed());
+
+        assertThat(result.completed()).isTrue();
+        assertThat(queryText("""
+                SELECT status || ':' || scanned_points || ':' || emitted_events
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly("COMPLETED:8:3");
+        assertThat(queryText("""
+                SELECT event_type FROM spatial_event ORDER BY occurred_at
+                """)).containsExactly("ENTER", "DWELL", "EXIT");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM spatial_event_outbox", Long.class)).isEqualTo(3L);
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM spatial_event WHERE anchor_location_event_id = ?
+                """, Long.class, uuid(908))).isZero();
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM spatial_event WHERE anchor_location_event_id = ?
+                """, Long.class, uuid(910))).isZero();
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM spatial_replay_subject_state WHERE request_id = ?
+                """, Long.class, requestId)).isZero();
+    }
+
+    @Test
+    void 历史重放应从原始位置事实预热窗口前状态且只落窗口内事件() {
+        UUID requestId = uuid(911);
+        writer.write(observation(912, 1, "2026-07-19T01:00:00Z", 0D, 0D));
+        writer.write(observation(913, 2, "2026-07-19T01:00:01Z", 0D, 0D));
+        writer.write(observation(914, 3, "2026-07-19T01:00:02Z", 200_000D, 200_000D));
+        writer.write(observation(915, 4, "2026-07-19T01:00:03Z", 200_000D, 200_000D));
+        jdbc.update("DELETE FROM spatial_evaluation_queue");
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-warmup-it',
+                          '验证原始事实与窗口前状态预热',
+                          TIMESTAMPTZ '2026-07-19 01:00:02Z',
+                          TIMESTAMPTZ '2026-07-19 01:00:10Z')
+                """, requestId, ORGANIZATION_ID, SITE_ID, GEOFENCE_VERSION_ID, uuid(999));
+
+        SpatialReplayExecutor.BatchResult result;
+        do {
+            result = replayExecutor.processNext(Instant.now());
+        } while (result.processed() && !result.completed());
+
+        assertThat(result.completed()).isTrue();
+        assertThat(queryText("""
+                SELECT status || ':' || scanned_points || ':' || emitted_events
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly("COMPLETED:4:1");
+        assertThat(queryText("""
+                SELECT event_type || ':' || anchor_location_event_id
+                FROM spatial_event ORDER BY occurred_at
+                """)).containsExactly("ENTER:" + uuid(915));
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM spatial_evaluation_queue", Long.class)).isZero();
+    }
+
+    @Test
+    void 历史重放预热最多扫描窗口前二十四小时() {
+        UUID requestId = uuid(916);
+        writer.write(observation(917, 1, "2026-07-17T01:00:00Z", 0D, 0D));
+        writer.write(observation(918, 2, "2026-07-19T00:59:58Z", 0D, 0D));
+        writer.write(observation(919, 3, "2026-07-19T00:59:59Z", 0D, 0D));
+        writer.write(observation(920, 4, "2026-07-19T01:00:00Z", 200_000D, 200_000D));
+        writer.write(observation(921, 5, "2026-07-19T01:00:01Z", 200_000D, 200_000D));
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-bounded-warmup-it',
+                          '验证有界状态预热',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z')
+                """, requestId, ORGANIZATION_ID, SITE_ID, GEOFENCE_VERSION_ID, uuid(999));
+
+        SpatialReplayExecutor.BatchResult result;
+        do {
+            result = replayExecutor.processNext(Instant.now());
+        } while (result.processed() && !result.completed());
+
+        assertThat(result.completed()).isTrue();
+        assertThat(queryText("""
+                SELECT status || ':' || scanned_points || ':' || emitted_events
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly("COMPLETED:4:1");
+        assertThat(queryText("""
+                SELECT event_type || ':' || anchor_location_event_id
+                FROM spatial_event ORDER BY occurred_at
+                """)).containsExactly("ENTER:" + uuid(921));
+    }
+
+    @Test
+    void 历史重放长批次应从提交前时刻续租() {
+        UUID requestId = uuid(939);
+        writer.write(observation(940, 1, "2026-07-19T01:00:00Z", 0D, 0D));
+        writer.write(observation(941, 2, "2026-07-19T01:00:01Z", 0D, 0D));
+        jdbc.update("DELETE FROM spatial_evaluation_queue");
+        jdbc.execute("""
+                CREATE FUNCTION delay_replay_state_insert() RETURNS trigger
+                LANGUAGE plpgsql AS $$
+                BEGIN
+                    PERFORM pg_sleep(0.15);
+                    RETURN NEW;
+                END;
+                $$
+                """);
+        jdbc.execute("""
+                CREATE TRIGGER delay_replay_state_insert_trigger
+                BEFORE INSERT ON spatial_replay_subject_state
+                FOR EACH ROW EXECUTE FUNCTION delay_replay_state_insert()
+                """);
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-long-batch-it',
+                          '验证长批次从提交前时刻续租',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z')
+                """, requestId, ORGANIZATION_ID, SITE_ID, GEOFENCE_VERSION_ID, uuid(999));
+        SpatialReplayExecutor shortLeaseExecutor = new SpatialReplayExecutor(
+                dataSource, "spatial-replay-short-lease-it", Duration.ofMillis(50), 3, 1,
+                Duration.ofMillis(10), Duration.ofSeconds(1), Clock.systemUTC());
+
+        SpatialReplayExecutor.BatchResult result =
+                shortLeaseExecutor.processNext(Instant.now());
+
+        assertThat(result.completed()).isFalse();
+        assertThat(result.scannedPoints()).isOne();
+        assertThat(jdbc.queryForObject("""
+                SELECT lease_expires_at > clock_timestamp()
+                FROM spatial_replay_request WHERE request_id = ?
+                """, Boolean.class, requestId)).isTrue();
+    }
+
+    private void insertDelayedLocation(
+            Connection connection,
+            int id,
+            String occurredAt
+    ) {
+        JdbcTemplate delayed = new JdbcTemplate(
+                new SingleConnectionDataSource(connection, true));
+        long ingestSequence = delayed.queryForObject(
+                "SELECT nextval('location_ingest_sequence_seq')", Long.class);
+        assertThat(ingestSequence).isEqualTo(8L);
+        UUID eventId = uuid(id);
+        Instant occurred = Instant.parse(occurredAt);
+        delayed.update("""
+                INSERT INTO location_inbox (
+                    event_id, source_device_id, boot_id, source_sequence,
+                    payload_hash, occurred_at, received_at, result, ingest_sequence
+                ) VALUES (?, ?, 'boot-spatial', 8,
+                          'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+                          ?, ?, 'STORED', ?)
+                """, eventId, SOURCE_DEVICE_ID, java.sql.Timestamp.from(occurred),
+                java.sql.Timestamp.from(occurred.plusSeconds(1)), ingestSequence);
+        delayed.update("""
+                INSERT INTO location_point (
+                    time, organization_id, site_id, source_device_id, tag_id,
+                    source_coordinate_system_id, source_x, source_y, source_z,
+                    target_coordinate_system_id, local_x, local_y, local_z,
+                    transform_version_id, binding_type, binding_id, vehicle_id, person_id,
+                    speed_meters_per_second, heading_degrees, accuracy_meters,
+                    quality_status, quality_reason, boot_id, sequence, event_id,
+                    ingest_sequence, received_at
+                )
+                SELECT ?, organization_id, site_id, source_device_id, tag_id,
+                       source_coordinate_system_id, source_x, source_y, source_z,
+                       target_coordinate_system_id, local_x, local_y, local_z,
+                       transform_version_id, binding_type, binding_id, vehicle_id, person_id,
+                       speed_meters_per_second, heading_degrees, accuracy_meters,
+                       quality_status, quality_reason, boot_id, 8, ?, ?, ?
+                FROM location_point WHERE event_id = ?
+                """, java.sql.Timestamp.from(occurred), eventId, ingestSequence,
+                java.sql.Timestamp.from(occurred.plusSeconds(1)), uuid(907));
+    }
+
+    @Test
+    void 历史重放失败应释放租约并按退避等待下一次认领() {
+        UUID requestId = uuid(920);
+        Instant before = Instant.now();
+        writer.write(observation(918, 1, "2026-07-19T01:00:00Z", 0D, 0D));
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-failure-it',
+                          '验证重放失败退避',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z')
+                """, requestId, ORGANIZATION_ID, SITE_ID, uuid(921), uuid(999));
+
+        SpatialReplayExecutor.BatchResult result = replayExecutor.processNext(before);
+
+        assertThat(result.failed()).isTrue();
+        assertThat(queryText("""
+                SELECT status || ':' || attempts || ':' || (lease_token IS NULL)
+                    || ':' || (locked_by IS NULL) || ':' || last_error
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly(
+                "FAILED:1:true:true:REPLAY_BATCH_FAILED:IllegalStateException");
+        assertThat(queryInstant("""
+                SELECT next_attempt_at FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).isAfterOrEqualTo(before.plusMillis(10));
+    }
+
+    @Test
+    void 历史重放达到最大尝试次数后应进入DEAD终态() {
+        UUID requestId = uuid(925);
+        writer.write(observation(926, 1, "2026-07-19T01:00:00Z", 0D, 0D));
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-dead-it',
+                          '验证重放死信终态',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z')
+                """, requestId, ORGANIZATION_ID, SITE_ID, uuid(927), uuid(999));
+        SpatialReplayExecutor oneAttemptExecutor = new SpatialReplayExecutor(
+                dataSource, "spatial-replay-dead-it", Duration.ofSeconds(30), 1, 2,
+                Duration.ofMillis(10), Duration.ofSeconds(1), Clock.systemUTC());
+
+        SpatialReplayExecutor.BatchResult result = oneAttemptExecutor.processNext(Instant.now());
+
+        assertThat(result.failed()).isTrue();
+        assertThat(queryText("""
+                SELECT status || ':' || attempts || ':' || (completed_at IS NOT NULL)
+                    || ':' || (lease_token IS NULL) || ':' || last_error
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly(
+                "DEAD:1:true:true:REPLAY_DEAD:IllegalStateException");
+        assertThat(oneAttemptExecutor.processNext(Instant.now()).processed()).isFalse();
+    }
+
+    @Test
+    void 历史重放应拒绝摘要不匹配的当前区域快照() {
+        UUID requestId = uuid(928);
+        writer.write(observation(929, 1, "2026-07-19T01:00:00Z", 0D, 0D));
+        jdbc.update("""
+                UPDATE location_snapshot_stage
+                SET content_json = jsonb_set(content_json, '{vertices,0,x}', '999'::JSONB)
+                WHERE site_id = ? AND item_key = ?
+                """, SITE_ID, "GEOFENCE_VERSION:" + GEOFENCE_VERSION_ID);
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-tamper-it',
+                          '验证区域快照摘要复核',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z')
+                """, requestId, ORGANIZATION_ID, SITE_ID, GEOFENCE_VERSION_ID, uuid(999));
+
+        SpatialReplayExecutor.BatchResult result = replayExecutor.processNext(Instant.now());
+
+        assertThat(result.failed()).isTrue();
+        assertThat(queryText("""
+                SELECT status || ':' || last_error
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly(
+                "FAILED:REPLAY_BATCH_FAILED:IllegalStateException");
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM spatial_event", Long.class)).isZero();
+    }
+
+    @Test
+    void 历史重放过期租约应由新令牌接管并完成() {
+        UUID requestId = uuid(930);
+        UUID expiredToken = uuid(931);
+        writer.write(observation(932, 1, "2026-07-19T01:00:00Z", 0D, 0D));
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end,
+                    status, attempts, lease_token, locked_by, locked_at,
+                    lease_expires_at, source_watermark, source_snapshot, started_at
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-expired-lease-it',
+                          '验证过期租约接管',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z',
+                          'PROCESSING', 1, ?, 'expired-instance',
+                          CURRENT_TIMESTAMP - INTERVAL '2 minutes',
+                          CURRENT_TIMESTAMP - INTERVAL '1 minute', 1,
+                          pg_current_snapshot(),
+                          CURRENT_TIMESTAMP - INTERVAL '2 minutes')
+                """, requestId, ORGANIZATION_ID, SITE_ID, GEOFENCE_VERSION_ID,
+                uuid(999), expiredToken);
+
+        SpatialReplayExecutor.BatchResult result = replayExecutor.processNext(Instant.now());
+
+        assertThat(result.completed()).isTrue();
+        assertThat(queryText("""
+                SELECT status || ':' || attempts || ':' || (lease_token IS NULL)
+                    || ':' || scanned_points
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly("COMPLETED:2:true:1");
+    }
+
+    @Test
+    void 历史重放过期租约已耗尽尝试时应直接进入DEAD() {
+        UUID requestId = uuid(933);
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end,
+                    status, attempts, lease_token, locked_by, locked_at,
+                    lease_expires_at, source_watermark, source_snapshot, started_at
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-exhausted-lease-it',
+                          '验证过期租约尝试上限',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z',
+                          'PROCESSING', 3, ?, 'expired-instance',
+                          CURRENT_TIMESTAMP - INTERVAL '2 minutes',
+                          CURRENT_TIMESTAMP - INTERVAL '1 minute', 0,
+                          pg_current_snapshot(),
+                          CURRENT_TIMESTAMP - INTERVAL '2 minutes')
+                """, requestId, ORGANIZATION_ID, SITE_ID, GEOFENCE_VERSION_ID,
+                uuid(999), uuid(934));
+
+        SpatialReplayExecutor.BatchResult result = replayExecutor.processNext(Instant.now());
+
+        assertThat(result.processed()).isFalse();
+        assertThat(queryText("""
+                SELECT status || ':' || attempts || ':' || (completed_at IS NOT NULL)
+                    || ':' || last_error
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly(
+                "DEAD:3:true:REPLAY_DEAD:LEASE_EXPIRED");
+    }
+
+    @Test
+    void 旧租约失败回调不得删除新执行器已提交状态() throws Exception {
+        UUID requestId = uuid(935);
+        UUID currentToken = uuid(936);
+        UUID staleToken = uuid(937);
+        writer.write(observation(938, 1, "2026-07-19T01:00:00Z", 0D, 0D));
+        jdbc.update("""
+                INSERT INTO spatial_replay_request (
+                    request_id, organization_id, site_id, zone_type, zone_version_id,
+                    requested_by, idempotency_key, reason, window_start, window_end,
+                    status, attempts, lease_token, locked_by, locked_at,
+                    lease_expires_at, source_watermark, source_snapshot, started_at
+                ) VALUES (?, ?, ?, 'GEOFENCE', ?, ?, 'replay-stale-failure-it',
+                          '验证旧租约失败回调隔离',
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z',
+                          TIMESTAMPTZ '2026-07-19 01:01:00Z',
+                          'PROCESSING', 3, ?, 'new-owner', CURRENT_TIMESTAMP,
+                          CURRENT_TIMESTAMP + INTERVAL '1 minute', 1,
+                          pg_current_snapshot(), CURRENT_TIMESTAMP)
+                """, requestId, ORGANIZATION_ID, SITE_ID, GEOFENCE_VERSION_ID,
+                uuid(999), currentToken);
+        jdbc.update("""
+                INSERT INTO spatial_replay_subject_state (
+                    request_id, organization_id, site_id, tag_id, stable_state,
+                    candidate_count, last_location_event_id, last_occurred_at,
+                    last_ingest_sequence
+                ) VALUES (?, ?, ?, ?, 'OUTSIDE', 0, ?,
+                          TIMESTAMPTZ '2026-07-19 01:00:00Z', 1)
+                """, requestId, ORGANIZATION_ID, SITE_ID, TAG_ID, uuid(938));
+        Class<?> leaseType = Class.forName(
+                "com.bosco.mine.telemetry.spatial.SpatialReplayExecutor$ReplayLease");
+        Constructor<?> constructor = leaseType.getDeclaredConstructor(
+                UUID.class, UUID.class, int.class);
+        constructor.setAccessible(true);
+        Object staleLease = constructor.newInstance(requestId, staleToken, 3);
+        Method markFailed = SpatialReplayExecutor.class.getDeclaredMethod(
+                "markFailed", leaseType, Instant.class, RuntimeException.class);
+        markFailed.setAccessible(true);
+
+        markFailed.invoke(replayExecutor, staleLease, Instant.now(),
+                new IllegalStateException("旧执行器失败"));
+
+        assertThat(queryText("""
+                SELECT status || ':' || locked_by || ':' || lease_token
+                FROM spatial_replay_request WHERE request_id = ?
+                """, requestId)).containsExactly("PROCESSING:new-owner:" + currentToken);
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM spatial_replay_subject_state WHERE request_id = ?
+                """, Long.class, requestId)).isOne();
     }
 
     @Test

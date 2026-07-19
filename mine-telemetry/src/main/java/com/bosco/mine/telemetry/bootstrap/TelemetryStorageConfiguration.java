@@ -35,6 +35,7 @@ import com.bosco.mine.telemetry.spatial.SpatialEvaluationQueue;
 import com.bosco.mine.telemetry.spatial.SpatialEvaluationWorker;
 import com.bosco.mine.telemetry.spatial.SpatialEventOutboxRelay;
 import com.bosco.mine.telemetry.spatial.SpatialEventRuntimeCoordinator;
+import com.bosco.mine.telemetry.spatial.SpatialReplayExecutor;
 import com.bosco.mine.telemetry.spatial.SpatialRuntimeCatalog;
 import com.bosco.mine.telemetry.storage.TelemetryBatchWriter;
 import com.bosco.mine.telemetry.strategy.HttpStrategySnapshotSource;
@@ -628,6 +629,27 @@ public class TelemetryStorageConfiguration {
                 runtime.resolvedRetryBaseDelay(), runtime.resolvedRetryMaxDelay());
     }
 
+    /** 创建固定源水位、持久游标和防旧租约的空间历史重放执行器。 */
+    @Bean
+    @ConditionalOnExpression(
+            "${mine.telemetry.location-distribution.enabled:false}"
+                    + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
+    public SpatialReplayExecutor spatialReplayExecutor(
+            DataSource dataSource,
+            TelemetryRabbitProperties properties
+    ) {
+        TelemetryRabbitProperties.Spatial spatial = properties.resolvedLocation()
+                .resolvedSpatial();
+        TelemetryRabbitProperties.Outbox runtime = spatial.resolvedOutbox();
+        return new SpatialReplayExecutor(
+                dataSource, runtime.resolvedInstanceId() + "-replay",
+                runtime.resolvedLeaseDuration(), runtime.resolvedMaxAttempts(),
+                positive(spatial.resolvedEvaluationBatchSize(),
+                        "location.spatial.evaluationBatchSize"),
+                runtime.resolvedRetryBaseDelay(), runtime.resolvedRetryMaxDelay(),
+                Clock.systemUTC());
+    }
+
     /** 创建只向实时交换机发布矿区空间白名单事件的确认发布器。 */
     @Bean
     @ConditionalOnExpression(
@@ -727,6 +749,7 @@ public class TelemetryStorageConfiguration {
                     + " and ${mine.telemetry.rabbit.location.spatial.enabled:true}")
     public SpatialEventRuntimeCoordinator spatialEventRuntimeCoordinator(
             SpatialEvaluationWorker worker,
+            SpatialReplayExecutor replayExecutor,
             SpatialEventOutboxRelay relay,
             CachingConnectionFactory telemetryConnectionFactory,
             @Qualifier("spatialEventExecutor") ExecutorService executor,
@@ -736,7 +759,7 @@ public class TelemetryStorageConfiguration {
         TelemetryRabbitProperties.Spatial spatial = properties.resolvedLocation()
                 .resolvedSpatial();
         return new SpatialEventRuntimeCoordinator(
-                worker, relay, telemetryConnectionFactory, executor, scheduler,
+                worker, replayExecutor, relay, telemetryConnectionFactory, executor, scheduler,
                 spatial.resolvedEvaluationInterval(),
                 positive(spatial.resolvedEvaluationBatchSize(),
                         "location.spatial.evaluationBatchSize"),

@@ -3,6 +3,7 @@ package com.bosco.mine.server.bootstrap.websocket;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
+import com.bosco.mine.messaging.realtime.RealtimeSpatialEvent;
 import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
 import com.bosco.mine.messaging.realtime.RealtimeLocationEvent;
 import com.bosco.mine.server.modules.device.dto.DeviceLatestResponse;
@@ -53,7 +54,7 @@ class RealtimeWebSocketHandlerTest {
     private final AtomicBoolean siteAuthorized = new AtomicBoolean(true);
     private final AtomicInteger locationSnapshotCalls = new AtomicInteger();
     private final AtomicReference<Set<String>> permissions = new AtomicReference<>(Set.of(
-            "device:telemetry:view", "mine:location:view"));
+            "device:telemetry:view", "mine:location:view", "mine:spatial:event:view"));
     private RecordingWebSocketSession session;
     private RealtimeSessionRegistry registry;
     private RealtimeWebSocketHandler handler;
@@ -339,6 +340,73 @@ class RealtimeWebSocketHandlerTest {
         assertThat(locationSnapshotCalls).hasValue(2);
     }
 
+    @Test
+    void 空间事件订阅应使用独立权限和白名单主题() throws Exception {
+        permissions.set(Set.of("mine:spatial:event:view"));
+        authenticate();
+        session.clearMessages();
+
+        send(spatialSubscription("spatial-sub-1", SITE_ID));
+
+        assertThat(session.messages()).singleElement()
+                .satisfies(message -> {
+                    try {
+                        assertThat(jsonMapper.readTree(message.getPayload())
+                                .get("type").asString()).isEqualTo("ACK");
+                    } catch (Exception exception) {
+                        throw new AssertionError(exception);
+                    }
+                });
+        session.clearMessages();
+
+        registry.publishSpatial(spatialEvent(OTHER_SITE_ID, 81L));
+        assertThat(session.messages()).isEmpty();
+        registry.publishSpatial(spatialEvent(SITE_ID, 82L));
+
+        JsonNode data = lastMessage();
+        assertThat(data.get("type").asString()).isEqualTo("DATA");
+        assertThat(data.get("topic").asString()).isEqualTo("MINE_SITE_SPATIAL_EVENT");
+        assertThat(data.get("siteId").asString()).isEqualTo(SITE_ID.toString());
+        assertThat(data.get("item").get("ingestSequence").asLong()).isEqualTo(82L);
+    }
+
+    @Test
+    void 空间事件权限撤销后下一次动作应停止推送() throws Exception {
+        permissions.set(Set.of("mine:spatial:event:view"));
+        authenticate();
+        send(spatialSubscription("spatial-sub-1", SITE_ID));
+        session.clearMessages();
+        permissions.set(Set.of());
+
+        send("{\"action\":\"PING\",\"requestId\":\"spatial-revoked\"}");
+
+        assertThat(lastMessage().get("code").asString()).isEqualTo("REALTIME-AUTH-FAILED");
+        session.clearMessages();
+        registry.publishSpatial(spatialEvent(SITE_ID, 83L));
+        assertThat(session.messages()).isEmpty();
+    }
+
+    @Test
+    void 矿区授权撤销后重新鉴权不得恢复已有空间订阅推送() throws Exception {
+        permissions.set(Set.of("mine:spatial:event:view"));
+        authenticate();
+        send(spatialSubscription("spatial-sub-1", SITE_ID));
+        session.clearMessages();
+        siteAuthorized.set(false);
+
+        send("{\"action\":\"PING\",\"requestId\":\"scope-revoked\"}");
+        assertThat(lastMessage().get("code").asString()).isEqualTo("REALTIME-AUTH-FAILED");
+        session.clearMessages();
+
+        send("{\"action\":\"AUTH\",\"requestId\":\"reauth-revoked\","
+                + "\"token\":\"valid-token\"}");
+
+        assertThat(lastMessage().get("code").asString()).isEqualTo("REALTIME-AUTH-FAILED");
+        session.clearMessages();
+        registry.publishSpatial(spatialEvent(SITE_ID, 84L));
+        assertThat(session.messages()).isEmpty();
+    }
+
     private void authenticate() throws Exception {
         send("{\"action\":\"AUTH\",\"requestId\":\"auth-1\",\"token\":\"valid-token\"}");
         assertThat(lastMessage().get("type").asString()).isEqualTo("ACK");
@@ -362,6 +430,17 @@ class RealtimeWebSocketHandlerTest {
                 "requestId", requestId,
                 "topics", List.of(Map.of(
                         "type", "MINE_SITE_LOCATION",
+                        "ids", List.of(siteId.toString(), siteId.toString())
+                ))
+        ));
+    }
+
+    private String spatialSubscription(String requestId, UUID siteId) throws Exception {
+        return jsonMapper.writeValueAsString(Map.of(
+                "action", "SUBSCRIBE",
+                "requestId", requestId,
+                "topics", List.of(Map.of(
+                        "type", "MINE_SITE_SPATIAL_EVENT",
                         "ids", List.of(siteId.toString(), siteId.toString())
                 ))
         ));
@@ -391,6 +470,27 @@ class RealtimeWebSocketHandlerTest {
                 RealtimeLocationEvent.QualityStatus.GOOD,
                 null
         );
+    }
+
+    private RealtimeSpatialEvent spatialEvent(UUID siteId, long sequence) {
+        String suffix = String.format("%012d", sequence);
+        return new RealtimeSpatialEvent(
+                UUID.fromString("0198aef6-2e80-7000-8000-" + suffix),
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000501"),
+                siteId, RealtimeSpatialEvent.ZoneType.GEOFENCE,
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000701"),
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000702"),
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000503"),
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000703"), null,
+                RealtimeSpatialEvent.EventType.ENTER,
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000704"),
+                RealtimeSpatialEvent.StableState.OUTSIDE,
+                RealtimeSpatialEvent.StableState.INSIDE,
+                2, sequence, 7,
+                Instant.parse("2026-07-15T02:00:00Z").plusSeconds(sequence),
+                new RealtimeSpatialEvent.Evidence(
+                        120.5D, 88.25D, null, "INSIDE", "GOOD", null,
+                        "sha256:" + "a".repeat(64)));
     }
 
     private void send(String payload) throws Exception {

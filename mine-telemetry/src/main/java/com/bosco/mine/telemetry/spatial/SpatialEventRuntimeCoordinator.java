@@ -16,7 +16,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 在应用启动、固定周期和 RabbitMQ 重连时驱动空间评估与空间 Outbox 恢复。
+ * 在应用启动、固定周期和 RabbitMQ 重连时驱动空间评估、历史重放与 Outbox 恢复。
  */
 public final class SpatialEventRuntimeCoordinator
         implements ApplicationRunner, SmartInitializingSingleton {
@@ -25,6 +25,7 @@ public final class SpatialEventRuntimeCoordinator
             SpatialEventRuntimeCoordinator.class);
 
     private final SpatialEvaluationWorker worker;
+    private final SpatialReplayExecutor replayExecutor;
     private final SpatialEventOutboxRelay relay;
     private final CachingConnectionFactory connectionFactory;
     private final Executor executor;
@@ -34,12 +35,14 @@ public final class SpatialEventRuntimeCoordinator
     private final Duration outboxRecoveryInterval;
     private final AtomicBoolean connectionSeen = new AtomicBoolean();
     private final AtomicBoolean evaluationQueued = new AtomicBoolean();
+    private final AtomicBoolean replayQueued = new AtomicBoolean();
     private final AtomicBoolean outboxQueued = new AtomicBoolean();
 
     /**
      * 创建避免同类任务并发重入的空间运行协调器。
      *
      * @param worker 空间事件时间评估器
+     * @param replayExecutor 空间历史重放执行器
      * @param relay 空间事件 Outbox 中继器
      * @param connectionFactory RabbitMQ 连接工厂
      * @param executor 空间运行有界执行器
@@ -50,6 +53,7 @@ public final class SpatialEventRuntimeCoordinator
      */
     public SpatialEventRuntimeCoordinator(
             SpatialEvaluationWorker worker,
+            SpatialReplayExecutor replayExecutor,
             SpatialEventOutboxRelay relay,
             CachingConnectionFactory connectionFactory,
             Executor executor,
@@ -59,6 +63,8 @@ public final class SpatialEventRuntimeCoordinator
             Duration outboxRecoveryInterval
     ) {
         this.worker = Objects.requireNonNull(worker, "空间评估器不能为空");
+        this.replayExecutor = Objects.requireNonNull(
+                replayExecutor, "空间历史重放执行器不能为空");
         this.relay = Objects.requireNonNull(relay, "空间 Outbox 中继器不能为空");
         this.connectionFactory = Objects.requireNonNull(
                 connectionFactory, "空间 RabbitMQ 连接工厂不能为空");
@@ -84,12 +90,14 @@ public final class SpatialEventRuntimeCoordinator
         });
     }
 
-    /** 应用就绪时立即运行一次，并注册两个固定间隔的可靠任务。 */
+    /** 应用就绪时立即运行一次，并注册三个固定间隔的可靠任务。 */
     @Override
     public void run(ApplicationArguments args) {
         submitEvaluation();
+        submitReplay();
         submitOutboxRecovery();
         scheduler.scheduleWithFixedDelay(this::submitEvaluation, evaluationInterval);
+        scheduler.scheduleWithFixedDelay(this::submitReplay, evaluationInterval);
         scheduler.scheduleWithFixedDelay(this::submitOutboxRecovery, outboxRecoveryInterval);
     }
 
@@ -103,6 +111,15 @@ public final class SpatialEventRuntimeCoordinator
 
     private void submitOutboxRecovery() {
         submit(outboxQueued, relay::recoverBounded, "空间 Outbox");
+    }
+
+    private void submitReplay() {
+        submit(replayQueued, () -> {
+            SpatialReplayExecutor.BatchResult result = replayExecutor.processNext(Instant.now());
+            if (result.emittedEvents() > 0) {
+                submitOutboxRecovery();
+            }
+        }, "空间历史重放");
     }
 
     private void submit(AtomicBoolean queued, Runnable work, String label) {

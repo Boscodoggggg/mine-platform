@@ -1,6 +1,7 @@
 package com.bosco.mine.server.bootstrap.websocket;
 
 import com.bosco.mine.messaging.realtime.RealtimeLocationEvent;
+import com.bosco.mine.messaging.realtime.RealtimeSpatialEvent;
 import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import org.slf4j.Logger;
@@ -127,12 +128,14 @@ public final class RealtimeSessionRegistry {
      * @param sessionId 会话标识
      * @param deviceAdditions 新设备订阅
      * @param siteAdditions 新矿区位置订阅
+     * @param spatialSiteAdditions 新矿区空间事件订阅
      * @param limits 连接限额
      */
     public void subscribe(
             String sessionId,
             Collection<DeviceLatestSubscription> deviceAdditions,
             Collection<UUID> siteAdditions,
+            Collection<UUID> spatialSiteAdditions,
             RealtimeLimits limits
     ) {
         SessionState state = state(sessionId);
@@ -144,8 +147,12 @@ public final class RealtimeSessionRegistry {
             }
             LinkedHashSet<UUID> mergedSites = new LinkedHashSet<>(state.siteSubscriptions);
             mergedSites.addAll(siteAdditions);
+            LinkedHashSet<UUID> mergedSpatialSites =
+                    new LinkedHashSet<>(state.spatialSiteSubscriptions);
+            mergedSpatialSites.addAll(spatialSiteAdditions);
             int propertyCount = merged.values().stream().mapToInt(Set::size).sum();
-            if (merged.size() + mergedSites.size() > limits.maxSubscriptions()
+            if (merged.size() + mergedSites.size() + mergedSpatialSites.size()
+                    > limits.maxSubscriptions()
                     || merged.size() > limits.maxDevices()
                     || propertyCount > limits.maxProperties()) {
                 throw new RealtimeLimitExceededException("实时订阅数量超过连接上限");
@@ -154,6 +161,8 @@ public final class RealtimeSessionRegistry {
             state.subscriptions.putAll(merged);
             state.siteSubscriptions.clear();
             state.siteSubscriptions.addAll(mergedSites);
+            state.spatialSiteSubscriptions.clear();
+            state.spatialSiteSubscriptions.addAll(mergedSpatialSites);
         }
     }
 
@@ -163,11 +172,13 @@ public final class RealtimeSessionRegistry {
      * @param sessionId 会话标识
      * @param deviceRemovals 待删除设备订阅
      * @param siteRemovals 待删除矿区位置订阅
+     * @param spatialSiteRemovals 待删除矿区空间事件订阅
      */
     public void unsubscribe(
             String sessionId,
             Collection<DeviceLatestSubscription> deviceRemovals,
-            Collection<UUID> siteRemovals
+            Collection<UUID> siteRemovals,
+            Collection<UUID> spatialSiteRemovals
     ) {
         SessionState state = state(sessionId);
         synchronized (state) {
@@ -186,6 +197,7 @@ public final class RealtimeSessionRegistry {
                 }
             }
             state.siteSubscriptions.removeAll(siteRemovals);
+            state.spatialSiteSubscriptions.removeAll(spatialSiteRemovals);
         }
     }
 
@@ -216,6 +228,19 @@ public final class RealtimeSessionRegistry {
         SessionState state = state(sessionId);
         synchronized (state) {
             return List.copyOf(state.siteSubscriptions);
+        }
+    }
+
+    /**
+     * 获取当前会话的矿区空间事件订阅快照。
+     *
+     * @param sessionId 会话标识
+     * @return 矿区标识集合
+     */
+    public List<UUID> spatialSiteSubscriptions(String sessionId) {
+        SessionState state = state(sessionId);
+        synchronized (state) {
+            return List.copyOf(state.spatialSiteSubscriptions);
         }
     }
 
@@ -293,6 +318,36 @@ public final class RealtimeSessionRegistry {
                     ));
                 } catch (RealtimeTransportException exception) {
                     LOGGER.warn("位置实时连接发送失败并移除会话，sessionId={}",
+                            state.session.getId());
+                    remove(state.session.getId());
+                }
+            }
+        }
+    }
+
+    /**
+     * 将已持久化的空间事件推送给订阅了对应矿区且仍保有事件权限的连接。
+     *
+     * @param event 空间业务事件
+     */
+    public void publishSpatial(RealtimeSpatialEvent event) {
+        Objects.requireNonNull(event, "空间实时事件不能为空");
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                if (!state.spatialSiteSubscriptions.contains(event.siteId())
+                        || state.principal == null
+                        || !state.principal.hasPermission("mine:spatial:event:view")) {
+                    continue;
+                }
+                try {
+                    send(state.session.getId(), Map.of(
+                            "type", "DATA",
+                            "topic", "MINE_SITE_SPATIAL_EVENT",
+                            "siteId", event.siteId(),
+                            "item", event
+                    ));
+                } catch (RealtimeTransportException exception) {
+                    LOGGER.warn("空间事件实时连接发送失败并移除会话，sessionId={}",
                             state.session.getId());
                     remove(state.session.getId());
                 }
@@ -385,6 +440,7 @@ public final class RealtimeSessionRegistry {
         private final AtomicLong sequence = new AtomicLong();
         private final Map<UUID, LinkedHashSet<String>> subscriptions = new LinkedHashMap<>();
         private final LinkedHashSet<UUID> siteSubscriptions = new LinkedHashSet<>();
+        private final LinkedHashSet<UUID> spatialSiteSubscriptions = new LinkedHashSet<>();
         private volatile RealtimePrincipal principal;
         private volatile String token;
 

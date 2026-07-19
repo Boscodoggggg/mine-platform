@@ -71,6 +71,7 @@ class RealtimeRabbitConfigurationTest {
                         factory,
                         new RealtimeTelemetryConsumer(registry),
                         new RealtimeLocationConsumer(registry),
+                        new RealtimeSpatialConsumer(registry),
                         properties,
                         admin,
                         queue
@@ -84,7 +85,7 @@ class RealtimeRabbitConfigurationTest {
     }
 
     @Test
-    void 临时队列应同时绑定遥测和矿区位置实时主题() {
+    void 临时队列应同时绑定遥测矿区位置和空间事件实时主题() {
         RealtimeRabbitConfiguration configuration = new RealtimeRabbitConfiguration();
         RealtimeProperties properties = properties(tempDir.resolve("password"));
         Queue queue = configuration.realtimeQueue(properties);
@@ -94,6 +95,8 @@ class RealtimeRabbitConfigurationTest {
                 .isEqualTo(MineTopology.REALTIME_TELEMETRY_ROUTING_PATTERN);
         assertThat(configuration.realtimeLocationBinding(queue, exchange).getRoutingKey())
                 .isEqualTo(MineTopology.REALTIME_LOCATION_ROUTING_PATTERN);
+        assertThat(configuration.realtimeSpatialBinding(queue, exchange).getRoutingKey())
+                .isEqualTo(MineTopology.REALTIME_SPATIAL_ROUTING_PATTERN);
     }
 
     private RealtimeProperties properties(Path passwordFile) {

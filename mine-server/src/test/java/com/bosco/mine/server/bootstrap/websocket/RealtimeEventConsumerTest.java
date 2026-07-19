@@ -14,34 +14,40 @@ import static org.mockito.Mockito.verify;
 class RealtimeEventConsumerTest {
 
     @Test
-    void 应将遥测和位置事件交给各自消费者() {
+    void 应将遥测位置和空间事件交给各自消费者() {
         RealtimeTelemetryConsumer telemetry = mock(RealtimeTelemetryConsumer.class);
         RealtimeLocationConsumer location = mock(RealtimeLocationConsumer.class);
+        RealtimeSpatialConsumer spatial = mock(RealtimeSpatialConsumer.class);
         Channel channel = mock(Channel.class);
-        RealtimeEventConsumer consumer = new RealtimeEventConsumer(telemetry, location);
+        RealtimeEventConsumer consumer = new RealtimeEventConsumer(telemetry, location, spatial);
         Message telemetryMessage = message("realtime.telemetry.device-a", 91L);
         Message locationMessage = message("realtime.location.site-a", 92L);
+        Message spatialMessage = message("realtime.spatial.site-a", 93L);
 
         consumer.onMessage(telemetryMessage, channel);
         consumer.onMessage(locationMessage, channel);
+        consumer.onMessage(spatialMessage, channel);
 
         verify(telemetry).onMessage(telemetryMessage, channel);
         verify(location).onMessage(locationMessage, channel);
+        verify(spatial).onMessage(spatialMessage, channel);
     }
 
     @Test
     void 未知路由应拒绝且不得猜测消息类型() throws Exception {
         RealtimeTelemetryConsumer telemetry = mock(RealtimeTelemetryConsumer.class);
         RealtimeLocationConsumer location = mock(RealtimeLocationConsumer.class);
+        RealtimeSpatialConsumer spatial = mock(RealtimeSpatialConsumer.class);
         Channel channel = mock(Channel.class);
-        RealtimeEventConsumer consumer = new RealtimeEventConsumer(telemetry, location);
-        Message message = message("realtime.unknown.value", 93L);
+        RealtimeEventConsumer consumer = new RealtimeEventConsumer(telemetry, location, spatial);
+        Message message = message("realtime.unknown.value", 94L);
 
         consumer.onMessage(message, channel);
 
-        verify(channel).basicReject(93L, false);
+        verify(channel).basicReject(94L, false);
         verify(telemetry, never()).onMessage(message, channel);
         verify(location, never()).onMessage(message, channel);
+        verify(spatial, never()).onMessage(message, channel);
     }
 
     private Message message(String routingKey, long deliveryTag) {

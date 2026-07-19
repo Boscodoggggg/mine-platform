@@ -15,21 +15,26 @@ public final class RealtimeEventConsumer implements ChannelAwareMessageListener 
 
     private final RealtimeTelemetryConsumer telemetryConsumer;
     private final RealtimeLocationConsumer locationConsumer;
+    private final RealtimeSpatialConsumer spatialConsumer;
 
     /**
      * 创建统一实时事件分派器。
      *
      * @param telemetryConsumer 遥测实时消费者
      * @param locationConsumer 位置实时消费者
+     * @param spatialConsumer 空间事件实时消费者
      */
     public RealtimeEventConsumer(
             RealtimeTelemetryConsumer telemetryConsumer,
-            RealtimeLocationConsumer locationConsumer
+            RealtimeLocationConsumer locationConsumer,
+            RealtimeSpatialConsumer spatialConsumer
     ) {
         this.telemetryConsumer = Objects.requireNonNull(
                 telemetryConsumer, "遥测实时消费者不能为空");
         this.locationConsumer = Objects.requireNonNull(
                 locationConsumer, "位置实时消费者不能为空");
+        this.spatialConsumer = Objects.requireNonNull(
+                spatialConsumer, "空间实时消费者不能为空");
     }
 
     /**
@@ -47,6 +52,10 @@ public final class RealtimeEventConsumer implements ChannelAwareMessageListener 
         }
         if (routingKey != null && routingKey.startsWith("realtime.location.")) {
             locationConsumer.onMessage(message, channel);
+            return;
+        }
+        if (routingKey != null && routingKey.startsWith("realtime.spatial.")) {
+            spatialConsumer.onMessage(message, channel);
             return;
         }
         try {

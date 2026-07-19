@@ -1572,6 +1572,385 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mine/sites/{siteId}/waypoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询矿区途径点 */
+        get: operations["listMineWaypoints"];
+        put?: never;
+        /** 创建途径点稳定对象 */
+        post: operations["createMineWaypoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/waypoints/{waypointId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询途径点稳定对象 */
+        get: operations["getMineWaypoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/waypoints/{waypointId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档途径点稳定对象 */
+        post: operations["archiveMineWaypoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/waypoints/{waypointId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询途径点全部版本 */
+        get: operations["listMineWaypointVersions"];
+        put?: never;
+        /** 创建途径点草稿版本 */
+        post: operations["createMineWaypointVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/waypoints/{waypointId}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询指定途径点版本 */
+        get: operations["getMineWaypointVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 修改途径点草稿版本
+         * @description 已发布版本永久不可修改。
+         */
+        patch: operations["updateMineWaypointVersion"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/waypoints/{waypointId}/versions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发布并永久锁定途径点版本 */
+        post: operations["publishMineWaypointVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询矿区路线 */
+        get: operations["listMineRoutes"];
+        put?: never;
+        /** 创建路线稳定对象 */
+        post: operations["createMineRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/routes/{routeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询路线稳定对象 */
+        get: operations["getMineRoute"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/routes/{routeId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档路线稳定对象 */
+        post: operations["archiveMineRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/routes/{routeId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询路线全部版本 */
+        get: operations["listMineRouteVersions"];
+        put?: never;
+        /** 创建路线草稿版本 */
+        post: operations["createMineRouteVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/routes/{routeId}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询指定路线版本 */
+        get: operations["getMineRouteVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改路线草稿版本 */
+        patch: operations["updateMineRouteVersion"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/routes/{routeId}/versions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发布并永久锁定路线版本 */
+        post: operations["publishMineRouteVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/geofences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询矿区电子围栏 */
+        get: operations["listMineGeofences"];
+        put?: never;
+        /** 创建电子围栏稳定对象 */
+        post: operations["createMineGeofence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/geofences/{geofenceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询电子围栏稳定对象 */
+        get: operations["getMineGeofence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/geofences/{geofenceId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档电子围栏稳定对象 */
+        post: operations["archiveMineGeofence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/geofences/{geofenceId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询电子围栏全部版本 */
+        get: operations["listMineGeofenceVersions"];
+        put?: never;
+        /** 创建电子围栏草稿版本 */
+        post: operations["createMineGeofenceVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询指定电子围栏版本 */
+        get: operations["getMineGeofenceVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 修改电子围栏草稿版本 */
+        patch: operations["updateMineGeofenceVersion"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发布并永久锁定电子围栏版本 */
+        post: operations["publishMineGeofenceVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/spatial-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 固定水位分页查询空间运行事件
+         * @description 需要 mine:spatial:event:view 权限。默认查询过去 24 小时，最大时间窗 31 天；
+         *     后续页必须原样携带首页返回的 watermark 和 nextCursor，迟到创建的事件不会污染当前分页快照。
+         */
+        get: operations["listMineSpatialEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/spatial-events/{eventId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询空间事件判定证据详情 */
+        get: operations["getMineSpatialEvent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/spatial-events/replays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等登记异步空间历史重放
+         * @description 需要 mine:spatial:replay 权限。HTTP 请求线程只登记 PENDING 任务，不扫描历史位置事实；
+         *     登记时必须能从 Telemetry 当前已激活快照冻结指定区域版本及摘要；
+         *     执行时最多预热窗口前 24 小时状态，避免短窗口请求无界扫描多年历史。
+         *     相同区域版本存在重叠的未完成任务时返回 409。
+         */
+        post: operations["createMineSpatialReplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mine/sites/{siteId}/people": {
         parameters: {
             query?: never;
@@ -2128,6 +2507,400 @@ export interface components {
             size: number;
             /** Format: int64 */
             total: number;
+        };
+        SpatialObjectRequest: {
+            code: string;
+        };
+        SpatialObjectResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            code: string;
+            status: components["schemas"]["MineArchiveStatus"];
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        SpatialObjectPage: {
+            items: components["schemas"]["SpatialObjectResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        /** @enum {string} */
+        SpatialVersionStatus: "DRAFT" | "PUBLISHED";
+        SpatialDetectionPolicy: {
+            /** Format: double */
+            boundaryToleranceMeters: number;
+            enterConfirmPoints: number;
+            exitConfirmPoints: number;
+            dwellSeconds: number;
+            allowedLatenessSeconds: number;
+            /** @description 必须大于 allowedLatenessSeconds。 */
+            idleFlushSeconds: number;
+        };
+        /** @enum {string} */
+        WaypointType: "LOAD" | "UNLOAD" | "CHECK" | "WAIT" | "ENTRY" | "EXIT";
+        WaypointVersionRequest: {
+            /** Format: uuid */
+            coordinateSystemId: string;
+            versionNumber: number;
+            name: string;
+            waypointType: components["schemas"]["WaypointType"];
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+            /** Format: double */
+            z?: number | null;
+            /** Format: double */
+            radiusMeters: number;
+            /** Format: double */
+            minZ?: number | null;
+            /** Format: double */
+            maxZ?: number | null;
+            detectionPolicy: components["schemas"]["SpatialDetectionPolicy"];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo?: string | null;
+        };
+        WaypointVersionUpdateRequest: {
+            /** Format: uuid */
+            coordinateSystemId: string;
+            name: string;
+            waypointType: components["schemas"]["WaypointType"];
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+            /** Format: double */
+            z?: number | null;
+            /** Format: double */
+            radiusMeters: number;
+            /** Format: double */
+            minZ?: number | null;
+            /** Format: double */
+            maxZ?: number | null;
+            detectionPolicy: components["schemas"]["SpatialDetectionPolicy"];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        WaypointVersionResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            waypointId: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            coordinateSystemId: string;
+            versionNumber: number;
+            name: string;
+            waypointType: components["schemas"]["WaypointType"];
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+            /** Format: double */
+            z: number | null;
+            /** Format: double */
+            radiusMeters: number;
+            /** Format: double */
+            minZ: number | null;
+            /** Format: double */
+            maxZ: number | null;
+            detectionPolicy: components["schemas"]["SpatialDetectionPolicy"];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: string | null;
+            status: components["schemas"]["SpatialVersionStatus"];
+            contentHash: string | null;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @enum {string} */
+        RouteDirection: "FORWARD" | "REVERSE" | "BIDIRECTIONAL";
+        SpatialRouteWaypointRequest: {
+            sequenceNumber: number;
+            /** Format: uuid */
+            waypointVersionId: string;
+            stopRequired: boolean;
+            expectedDwellSeconds?: number | null;
+        };
+        SpatialRouteWaypointResponse: {
+            sequenceNumber: number;
+            /** Format: uuid */
+            waypointVersionId: string;
+            stopRequired: boolean;
+            expectedDwellSeconds: number | null;
+        };
+        RouteVersionRequest: {
+            /** Format: uuid */
+            coordinateSystemId: string;
+            versionNumber: number;
+            name: string;
+            direction: components["schemas"]["RouteDirection"];
+            applicableVehicleTypes: components["schemas"]["VehicleType"][];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo?: string | null;
+            waypoints: components["schemas"]["SpatialRouteWaypointRequest"][];
+        };
+        RouteVersionUpdateRequest: {
+            /** Format: uuid */
+            coordinateSystemId: string;
+            name: string;
+            direction: components["schemas"]["RouteDirection"];
+            applicableVehicleTypes: components["schemas"]["VehicleType"][];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo?: string | null;
+            waypoints: components["schemas"]["SpatialRouteWaypointRequest"][];
+            /** Format: int64 */
+            version: number;
+        };
+        RouteVersionResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            routeId: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            coordinateSystemId: string;
+            versionNumber: number;
+            name: string;
+            direction: components["schemas"]["RouteDirection"];
+            applicableVehicleTypes: components["schemas"]["VehicleType"][];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: string | null;
+            status: components["schemas"]["SpatialVersionStatus"];
+            contentHash: string | null;
+            /** Format: date-time */
+            publishedAt: string | null;
+            waypoints: components["schemas"]["SpatialRouteWaypointResponse"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @enum {string} */
+        GeofenceType: "RESTRICTED" | "WORK" | "LOAD" | "UNLOAD" | "WAIT" | "SAFETY" | "OTHER";
+        SpatialVertexRequest: {
+            sequenceNumber: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+        };
+        SpatialVertexResponse: {
+            sequenceNumber: number;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+        };
+        GeofenceVersionRequest: {
+            /** Format: uuid */
+            coordinateSystemId: string;
+            versionNumber: number;
+            name: string;
+            geofenceType: components["schemas"]["GeofenceType"];
+            /** Format: double */
+            minZ?: number | null;
+            /** Format: double */
+            maxZ?: number | null;
+            detectionPolicy: components["schemas"]["SpatialDetectionPolicy"];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo?: string | null;
+            vertices: components["schemas"]["SpatialVertexRequest"][];
+        };
+        GeofenceVersionUpdateRequest: {
+            /** Format: uuid */
+            coordinateSystemId: string;
+            name: string;
+            geofenceType: components["schemas"]["GeofenceType"];
+            /** Format: double */
+            minZ?: number | null;
+            /** Format: double */
+            maxZ?: number | null;
+            detectionPolicy: components["schemas"]["SpatialDetectionPolicy"];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo?: string | null;
+            vertices: components["schemas"]["SpatialVertexRequest"][];
+            /** Format: int64 */
+            version: number;
+        };
+        GeofenceVersionResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            geofenceId: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            coordinateSystemId: string;
+            versionNumber: number;
+            name: string;
+            geofenceType: components["schemas"]["GeofenceType"];
+            /** Format: double */
+            minZ: number | null;
+            /** Format: double */
+            maxZ: number | null;
+            detectionPolicy: components["schemas"]["SpatialDetectionPolicy"];
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: string | null;
+            status: components["schemas"]["SpatialVersionStatus"];
+            contentHash: string | null;
+            /** Format: date-time */
+            publishedAt: string | null;
+            vertices: components["schemas"]["SpatialVertexResponse"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @enum {string} */
+        SpatialZoneType: "WAYPOINT" | "GEOFENCE";
+        /** @enum {string} */
+        SpatialEventType: "ENTER" | "EXIT" | "DWELL";
+        /** @enum {string} */
+        SpatialStableState: "OUTSIDE" | "INSIDE";
+        SpatialEventItem: {
+            /** Format: uuid */
+            eventId: string;
+            /** Format: int64 */
+            eventSequence: number;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            zoneType: components["schemas"]["SpatialZoneType"];
+            /** Format: uuid */
+            zoneId: string;
+            /** Format: uuid */
+            zoneVersionId: string;
+            /** Format: uuid */
+            tagId: string;
+            /** Format: uuid */
+            vehicleId: string | null;
+            /** Format: uuid */
+            personId: string | null;
+            eventType: components["schemas"]["SpatialEventType"];
+            previousState: components["schemas"]["SpatialStableState"];
+            currentState: components["schemas"]["SpatialStableState"];
+            confirmationPoints: number;
+            /** Format: int64 */
+            ingestSequence: number;
+            /** Format: int64 */
+            runtimeRevision: number;
+            /** Format: date-time */
+            occurredAt: string;
+        };
+        SpatialEventEvidence: {
+            /** Format: double */
+            localX: number;
+            /** Format: double */
+            localY: number;
+            /** Format: double */
+            localZ: number | null;
+            /** @enum {string} */
+            classification: "INSIDE" | "OUTSIDE" | "BOUNDARY" | "HEIGHT_UNKNOWN";
+            /** @enum {string} */
+            qualityStatus: "GOOD" | "DEGRADED";
+            qualityReason: string | null;
+            zoneContentHash: string;
+        };
+        SpatialEventDetailResponse: components["schemas"]["SpatialEventItem"] & {
+            /** Format: uuid */
+            anchorLocationEventId: string;
+            /** Format: date-time */
+            createdAt: string;
+            evidence: components["schemas"]["SpatialEventEvidence"];
+        };
+        SpatialEventPageResponse: {
+            /** Format: uuid */
+            siteId: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** Format: int64 */
+            watermark: number;
+            nextCursor: string | null;
+            items: components["schemas"]["SpatialEventItem"][];
+        };
+        SpatialReplayRequest: {
+            zoneType: components["schemas"]["SpatialZoneType"];
+            /** Format: uuid */
+            zoneVersionId: string;
+            /** Format: date-time */
+            from: string;
+            /**
+             * Format: date-time
+             * @description 必须晚于 from、不得晚于当前时间且时间窗不超过 31 天。
+             */
+            to: string;
+            reason: string;
+        };
+        /** @enum {string} */
+        SpatialReplayStatus: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "DEAD" | "CANCELLED";
+        SpatialReplayResponse: {
+            /** Format: uuid */
+            requestId: string;
+            /** Format: uuid */
+            siteId: string;
+            zoneType: components["schemas"]["SpatialZoneType"];
+            /** Format: uuid */
+            zoneVersionId: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            status: components["schemas"]["SpatialReplayStatus"];
+            /** Format: date-time */
+            createdAt: string;
         };
         /** @enum {string} */
         PersonType: "DRIVER" | "OPERATOR" | "SUPERVISOR" | "WORKER" | "VISITOR" | "OTHER";
@@ -3858,6 +4631,15 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
+        /** @description 空间事件只读查询或最小权限重放登记连接不可用，错误码前缀为 MINE-SPATIAL-*-503。 */
+        SpatialRuntimeUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
     };
     parameters: {
         ProductId: string;
@@ -3889,6 +4671,14 @@ export interface components {
         CoordinateSystemId: string;
         /** @description 坐标转换版本 UUID。 */
         CoordinateTransformId: string;
+        /** @description 途径点稳定对象 UUID。 */
+        WaypointId: string;
+        /** @description 路线稳定对象 UUID。 */
+        RouteId: string;
+        /** @description 电子围栏稳定对象 UUID。 */
+        GeofenceId: string;
+        /** @description 空间对象版本 UUID。 */
+        SpatialVersionId: string;
         /** @description 人员 UUID。 */
         PersonId: string;
         /** @description 司机资质 UUID。 */
@@ -7092,6 +7882,963 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["MineResourceNotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listMineWaypoints: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["MineArchiveStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 途径点稳定对象分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineWaypoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpatialObjectRequest"];
+            };
+        };
+        responses: {
+            /** @description 途径点稳定对象已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMineWaypoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 途径点稳定对象 UUID。 */
+                waypointId: components["parameters"]["WaypointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 途径点稳定对象。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    archiveMineWaypoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 途径点稳定对象 UUID。 */
+                waypointId: components["parameters"]["WaypointId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 途径点已归档，版本历史继续保留。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineWaypointVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 途径点稳定对象 UUID。 */
+                waypointId: components["parameters"]["WaypointId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按业务版本号升序排列的草稿和发布历史。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaypointVersionResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    createMineWaypointVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 途径点稳定对象 UUID。 */
+                waypointId: components["parameters"]["WaypointId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaypointVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 途径点草稿版本已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaypointVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMineWaypointVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 途径点稳定对象 UUID。 */
+                waypointId: components["parameters"]["WaypointId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 途径点版本详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaypointVersionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    updateMineWaypointVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 途径点稳定对象 UUID。 */
+                waypointId: components["parameters"]["WaypointId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WaypointVersionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的途径点草稿。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaypointVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishMineWaypointVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 途径点稳定对象 UUID。 */
+                waypointId: components["parameters"]["WaypointId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 已发布途径点版本及其内容摘要。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WaypointVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineRoutes: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["MineArchiveStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 路线稳定对象分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpatialObjectRequest"];
+            };
+        };
+        responses: {
+            /** @description 路线稳定对象已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMineRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 路线稳定对象 UUID。 */
+                routeId: components["parameters"]["RouteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 路线稳定对象。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    archiveMineRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 路线稳定对象 UUID。 */
+                routeId: components["parameters"]["RouteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 路线已归档，版本历史继续保留。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineRouteVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 路线稳定对象 UUID。 */
+                routeId: components["parameters"]["RouteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按业务版本号升序排列的路线版本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteVersionResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    createMineRouteVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 路线稳定对象 UUID。 */
+                routeId: components["parameters"]["RouteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 路线草稿版本已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMineRouteVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 路线稳定对象 UUID。 */
+                routeId: components["parameters"]["RouteId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 路线版本和有序途径点。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteVersionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    updateMineRouteVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 路线稳定对象 UUID。 */
+                routeId: components["parameters"]["RouteId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RouteVersionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的路线草稿和有序途径点。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishMineRouteVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 路线稳定对象 UUID。 */
+                routeId: components["parameters"]["RouteId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 已发布路线版本及其内容摘要。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RouteVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineGeofences: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: components["schemas"]["MineArchiveStatus"];
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 电子围栏稳定对象分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineGeofence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpatialObjectRequest"];
+            };
+        };
+        responses: {
+            /** @description 电子围栏稳定对象已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMineGeofence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 电子围栏稳定对象 UUID。 */
+                geofenceId: components["parameters"]["GeofenceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 电子围栏稳定对象。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialObjectResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    archiveMineGeofence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 电子围栏稳定对象 UUID。 */
+                geofenceId: components["parameters"]["GeofenceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 电子围栏已归档，版本历史继续保留。 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineGeofenceVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 电子围栏稳定对象 UUID。 */
+                geofenceId: components["parameters"]["GeofenceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按业务版本号升序排列的电子围栏版本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeofenceVersionResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    createMineGeofenceVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 电子围栏稳定对象 UUID。 */
+                geofenceId: components["parameters"]["GeofenceId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeofenceVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 电子围栏草稿版本已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeofenceVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getMineGeofenceVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 电子围栏稳定对象 UUID。 */
+                geofenceId: components["parameters"]["GeofenceId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 电子围栏版本和有序顶点。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeofenceVersionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    updateMineGeofenceVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 电子围栏稳定对象 UUID。 */
+                geofenceId: components["parameters"]["GeofenceId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeofenceVersionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的电子围栏草稿和有序顶点。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeofenceVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishMineGeofenceVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 电子围栏稳定对象 UUID。 */
+                geofenceId: components["parameters"]["GeofenceId"];
+                /** @description 空间对象版本 UUID。 */
+                versionId: components["parameters"]["SpatialVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 已发布电子围栏版本及其内容摘要。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeofenceVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineSpatialEvents: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+                watermark?: number;
+                cursor?: string;
+                zoneType?: components["schemas"]["SpatialZoneType"];
+                zoneId?: string;
+                subjectType?: components["schemas"]["LocationSubjectType"];
+                subjectId?: string;
+                eventType?: components["schemas"]["SpatialEventType"];
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 空间事件固定水位分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialEventPageResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["SpatialRuntimeUnavailable"];
+        };
+    };
+    getMineSpatialEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 包含触发位置事实和有界判定证据的空间事件。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialEventDetailResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            503: components["responses"]["SpatialRuntimeUnavailable"];
+        };
+    };
+    createMineSpatialReplay: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpatialReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description 重放任务已登记，或返回相同幂等键此前登记的同一任务。 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpatialReplayResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["SpatialRuntimeUnavailable"];
         };
     };
     listMinePeople: {

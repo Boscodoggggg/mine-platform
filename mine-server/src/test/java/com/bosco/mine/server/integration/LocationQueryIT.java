@@ -100,7 +100,7 @@ class LocationQueryIT {
         redisConnectionFactory.getConnection().serverCommands().flushDb();
         jdbcTemplate.update("""
                 TRUNCATE TABLE location_quarantine, location_realtime_outbox,
-                               location_point, location_inbox
+                               location_point, location_inbox CASCADE
                 """);
         authorizer = mock(MineScopeAuthorizer.class);
         service = new LocationQueryService(

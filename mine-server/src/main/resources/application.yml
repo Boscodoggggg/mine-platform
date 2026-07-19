@@ -99,6 +99,14 @@ mine:
     maximum-pool-size: ${MINE_TELEMETRY_QUERY_MAXIMUM_POOL_SIZE:5}
     connection-timeout: ${MINE_TELEMETRY_QUERY_CONNECTION_TIMEOUT:PT2S}
     query-timeout: ${MINE_TELEMETRY_QUERY_QUERY_TIMEOUT:PT2S}
+  spatial-replay:
+    enabled: ${MINE_SPATIAL_REPLAY_ENABLED:false}
+    url: ${MINE_SPATIAL_REPLAY_URL:jdbc:postgresql://timescale:5432/mine_telemetry}
+    username: ${MINE_SPATIAL_REPLAY_USERNAME:mine_ts_replay}
+    password-file: ${MINE_SPATIAL_REPLAY_PASSWORD_FILE:/run/secrets/timescale_replay_password}
+    maximum-pool-size: ${MINE_SPATIAL_REPLAY_MAXIMUM_POOL_SIZE:2}
+    connection-timeout: ${MINE_SPATIAL_REPLAY_CONNECTION_TIMEOUT:PT2S}
+    statement-timeout: ${MINE_SPATIAL_REPLAY_STATEMENT_TIMEOUT:PT3S}
   alarm:
     rabbit:
       enabled: ${MINE_ALARM_RABBIT_ENABLED:false}

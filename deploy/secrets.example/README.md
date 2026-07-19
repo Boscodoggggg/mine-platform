@@ -5,6 +5,7 @@
 - `postgres_password`：业务 PostgreSQL 密码。
 - `timescale_password`：TimescaleDB 密码。
 - `timescale_reader_password`：mine-server 查询 TimescaleDB 的独立只读账号密码。
+- `timescale_replay_password`：mine-server 仅登记空间重放请求的独立最小权限账号密码。
 - `redis_password`：Redis 密码，建议至少 32 个随机字符。
 - `redis_exporter_passwords.json`：Redis Exporter 使用的 JSON 密码映射，`redis://redis:6379` 的值必须与 `redis_password` 一致。
 - `rabbitmq_admin_username`：RabbitMQ 运维账号，仅使用字母、数字、点、下划线和连字符。

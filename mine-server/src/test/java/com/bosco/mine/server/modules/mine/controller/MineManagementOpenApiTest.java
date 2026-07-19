@@ -1,6 +1,8 @@
 package com.bosco.mine.server.modules.mine.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.bosco.mine.server.modules.mine.spatial.SpatialEventController;
+import com.bosco.mine.server.modules.mine.spatial.SpatialReplayController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialRouteController;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -55,6 +57,9 @@ class MineManagementOpenApiTest {
                 "/mine/sites/{siteId}/geofences/{geofenceId}/versions",
                 "/mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}",
                 "/mine/sites/{siteId}/geofences/{geofenceId}/versions/{versionId}/publish",
+                "/mine/sites/{siteId}/spatial-events",
+                "/mine/sites/{siteId}/spatial-events/{eventId}",
+                "/mine/sites/{siteId}/spatial-events/replays",
                 "/mine/sites/{siteId}/people",
                 "/mine/sites/{siteId}/people/{personId}/sensitive",
                 "/mine/sites/{siteId}/bindings/preview",
@@ -90,7 +95,9 @@ class MineManagementOpenApiTest {
                 "WaypointVersionUpdateRequest", "WaypointVersionResponse",
                 "RouteVersionRequest", "RouteVersionUpdateRequest", "RouteVersionResponse",
                 "GeofenceVersionRequest", "GeofenceVersionUpdateRequest",
-                "GeofenceVersionResponse");
+                "GeofenceVersionResponse", "SpatialEventPageResponse",
+                "SpatialEventDetailResponse", "SpatialEventEvidence",
+                "SpatialReplayRequest", "SpatialReplayResponse");
         assertThat(list(map(schemas.get("LocationSubjectType")).get("enum")))
                 .containsExactly("TAG", "VEHICLE", "PERSON");
         assertThat(map(map(schemas.get("LocationTrajectoryResponse")).get("properties")))
@@ -106,6 +113,19 @@ class MineManagementOpenApiTest {
         assertThat(vertices).containsEntry("minItems", 3).containsEntry("maxItems", 10000);
         assertThat(list(map(schemas.get("SpatialVersionStatus")).get("enum")))
                 .containsExactly("DRAFT", "PUBLISHED");
+
+        Map<String, Object> eventQuery = map(map(
+                paths.get("/mine/sites/{siteId}/spatial-events")).get("get"));
+        assertThat(map(namedParameter(eventQuery, "pageSize").get("schema")))
+                .containsEntry("minimum", 1)
+                .containsEntry("maximum", 200)
+                .containsEntry("default", 100);
+        assertThat(eventQuery.get("description").toString()).contains("31 天", "watermark");
+        Map<String, Object> replay = map(map(
+                paths.get("/mine/sites/{siteId}/spatial-events/replays")).get("post"));
+        assertThat(list(replay.get("parameters")))
+                .anySatisfy(parameter -> assertThat(map(parameter).get("$ref"))
+                        .isEqualTo("#/components/parameters/IdempotencyKey"));
     }
 
     @Test
@@ -152,13 +172,30 @@ class MineManagementOpenApiTest {
                 .containsExactly("/geofences/{geofenceId}/versions/{versionId}/publish");
     }
 
+    @Test
+    void 空间事件与重放控制器必须使用独立最小权限() {
+        assertThat(method(SpatialEventController.class, "findEvents")
+                .getAnnotation(SaCheckPermission.class).value())
+                .containsExactly("mine:spatial:event:view");
+        assertThat(method(SpatialEventController.class, "findEvent")
+                .getAnnotation(SaCheckPermission.class).value())
+                .containsExactly("mine:spatial:event:view");
+        assertThat(method(SpatialReplayController.class, "create")
+                .getAnnotation(SaCheckPermission.class).value())
+                .containsExactly("mine:spatial:replay");
+    }
+
     private void assertPermission(String methodName, String permission) {
         assertThat(method(methodName).getAnnotation(SaCheckPermission.class).value())
                 .containsExactly(permission);
     }
 
     private java.lang.reflect.Method method(String name) {
-        return java.util.Arrays.stream(SpatialRouteController.class.getDeclaredMethods())
+        return method(SpatialRouteController.class, name);
+    }
+
+    private java.lang.reflect.Method method(Class<?> controller, String name) {
+        return java.util.Arrays.stream(controller.getDeclaredMethods())
                 .filter(candidate -> candidate.getName().equals(name))
                 .findFirst()
                 .orElseThrow();
