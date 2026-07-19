@@ -1,5 +1,6 @@
 package com.bosco.mine.gateway.configuration;
 
+import com.bosco.mine.protocol.engine.binding.ProductProtocolBinding;
 import com.bosco.mine.protocol.engine.json.MqttJsonExecutionPlan;
 import com.bosco.mine.protocol.engine.json.MqttJsonProtocolCompiler;
 import com.bosco.mine.protocol.engine.json.MqttJsonProtocolDefinition;
@@ -127,7 +128,7 @@ public final class ProtocolSnapshotRegistry {
         try {
             SnapshotDocument document = jsonMapper.readValue(
                     candidate.snapshotJson(), SnapshotDocument.class);
-            if (document.schemaVersion() != 1
+            if (document.schemaVersion() != 1 && document.schemaVersion() != 2
                     || !candidate.productId().equals(document.productId())
                     || document.modelVersionId() == null
                     || document.protocolMappingVersionId() == null
@@ -135,11 +136,22 @@ public final class ProtocolSnapshotRegistry {
                     || document.productKey().isBlank()) {
                 throw invalid("配置快照结构或产品标识不一致");
             }
-            MqttJsonExecutionPlan plan = compiler.compile(document.definition());
+            ProductProtocolBinding binding = document.schemaVersion() == 1
+                    ? legacyMqttJsonBinding()
+                    : document.binding();
+            if (binding == null) throw invalid("产品协议绑定不能为空");
+            if (binding.usesConfiguration() && document.definition() == null) {
+                throw invalid("配置化协议定义不能为空");
+            }
+            MqttJsonExecutionPlan plan = binding.usesConfiguration()
+                    ? compiler.compile(document.definition()) : null;
+            if (binding.usesJavaPlugin() && document.definition() != null) {
+                throw invalid("Java 插件绑定不能携带配置化协议定义");
+            }
             return new ActiveProtocol(
                     candidate.releaseId(), candidate.productId(), candidate.packageId(),
                     candidate.releaseSequence(), candidate.contentHash(),
-                    document.productKey(), plan
+                    document.productKey(), binding, plan
             );
         } catch (InvalidConfigurationSnapshotException exception) {
             throw exception;
@@ -158,8 +170,20 @@ public final class ProtocolSnapshotRegistry {
             String productKey,
             UUID modelVersionId,
             UUID protocolMappingVersionId,
+            ProductProtocolBinding binding,
             MqttJsonProtocolDefinition definition
     ) {
+    }
+
+    private ProductProtocolBinding legacyMqttJsonBinding() {
+        return new ProductProtocolBinding(
+                ProductProtocolBinding.Transport.MQTT,
+                ProductProtocolBinding.PayloadFormat.JSON,
+                ProductProtocolBinding.RoutingMode.TRUSTED_IDENTITY,
+                ProductProtocolBinding.ParserType.CONFIGURATION,
+                null,
+                null
+        );
     }
 
     /** 候选快照激活结果。 */
@@ -179,7 +203,8 @@ public final class ProtocolSnapshotRegistry {
      * @param releaseSequence 发布序号
      * @param contentHash 快照哈希
      * @param productKey 产品编码
-     * @param plan 已编译执行计划
+     * @param binding 产品协议路由和解析器绑定
+     * @param plan 可选的已编译配置执行计划
      */
     public record ActiveProtocol(
             UUID releaseId,
@@ -188,11 +213,45 @@ public final class ProtocolSnapshotRegistry {
             long releaseSequence,
             String contentHash,
             String productKey,
+            ProductProtocolBinding binding,
             MqttJsonExecutionPlan plan
     ) {
+        /**
+         * 使用旧 MQTT JSON 执行计划创建兼容的产品协议状态。
+         *
+         * @param releaseId 配置发布标识
+         * @param productId 产品标识
+         * @param packageId 配置包标识
+         * @param releaseSequence 发布序号
+         * @param contentHash 内容哈希
+         * @param productKey 产品编码
+         * @param plan MQTT JSON 执行计划
+         */
+        public ActiveProtocol(
+                UUID releaseId,
+                UUID productId,
+                UUID packageId,
+                long releaseSequence,
+                String contentHash,
+                String productKey,
+                MqttJsonExecutionPlan plan
+        ) {
+            this(releaseId, productId, packageId, releaseSequence, contentHash, productKey,
+                    new ProductProtocolBinding(
+                            ProductProtocolBinding.Transport.MQTT,
+                            ProductProtocolBinding.PayloadFormat.JSON,
+                            ProductProtocolBinding.RoutingMode.TRUSTED_IDENTITY,
+                            ProductProtocolBinding.ParserType.CONFIGURATION,
+                            null,
+                            null
+                    ), plan);
+        }
+
         /** @return 对外审计使用的稳定协议版本文本 */
         public String protocolVersion() {
-            return plan.protocolKey() + ":v" + plan.version();
+            return binding.usesJavaPlugin()
+                    ? binding.pluginVersion()
+                    : plan.protocolKey() + ":v" + plan.version();
         }
     }
 

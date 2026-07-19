@@ -1,5 +1,6 @@
 package com.bosco.mine.gateway.configuration;
 
+import com.bosco.mine.protocol.engine.binding.ProductProtocolBinding;
 import com.bosco.mine.protocol.engine.snapshot.ProtocolSnapshotHasher;
 import org.junit.jupiter.api.Test;
 import tools.jackson.core.JacksonException;
@@ -76,6 +77,34 @@ class ProtocolSnapshotRegistryTest {
                 .hasMessageContaining("尚未加载");
     }
 
+    @Test
+    void 应激活schema2的MQTT二进制产品绑定() {
+        ProtocolSnapshotRegistry registry = new ProtocolSnapshotRegistry(true);
+
+        registry.activate(snapshot(6, binarySnapshot()));
+
+        ProtocolSnapshotRegistry.ActiveProtocol active = registry.require("haul-truck");
+        assertThat(active.binding().transport())
+                .isEqualTo(ProductProtocolBinding.Transport.MQTT);
+        assertThat(active.binding().payloadFormat())
+                .isEqualTo(ProductProtocolBinding.PayloadFormat.BINARY);
+        assertThat(active.binding().pluginKey()).isEqualTo("haul-truck-mqtt-binary");
+        assertThat(active.plan()).isNull();
+        assertThat(active.protocolVersion()).isEqualTo("haul-truck-mqtt-binary:v1");
+    }
+
+    @Test
+    void schema2配置解析必须携带定义且失败不能覆盖旧配置() {
+        ProtocolSnapshotRegistry registry = new ProtocolSnapshotRegistry(true);
+        ConfigurationSnapshot stable = snapshot(2, binarySnapshot());
+        registry.activate(stable);
+
+        assertThatThrownBy(() -> registry.activate(snapshot(3, invalidConfigurationSnapshot())))
+                .isInstanceOf(InvalidConfigurationSnapshotException.class)
+                .hasMessageContaining("定义");
+        assertThat(registry.require("haul-truck").releaseId()).isEqualTo(stable.releaseId());
+    }
+
     private ConfigurationSnapshot snapshot(long sequence, String snapshotJson) {
         return new ConfigurationSnapshot(
                 UUID.randomUUID(), PRODUCT_ID, UUID.randomUUID(), sequence,
@@ -118,6 +147,54 @@ class ProtocolSnapshotRegistryTest {
                     }
                     """.formatted(
                     PRODUCT_ID, UUID.randomUUID(), UUID.randomUUID(), sourcePath, targetIdentifier)));
+        } catch (JacksonException exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private String binarySnapshot() {
+        return normalized("""
+                {
+                  "schemaVersion":2,
+                  "productId":"%s",
+                  "productKey":"haul-truck",
+                  "modelVersionId":"%s",
+                  "protocolMappingVersionId":"%s",
+                  "binding":{
+                    "transport":"MQTT",
+                    "payloadFormat":"BINARY",
+                    "routingMode":"TRUSTED_IDENTITY",
+                    "parserType":"JAVA_PLUGIN",
+                    "pluginKey":"haul-truck-mqtt-binary",
+                    "pluginVersion":"haul-truck-mqtt-binary:v1"
+                  }
+                }
+                """.formatted(PRODUCT_ID, UUID.randomUUID(), UUID.randomUUID()));
+    }
+
+    private String invalidConfigurationSnapshot() {
+        return normalized("""
+                {
+                  "schemaVersion":2,
+                  "productId":"%s",
+                  "productKey":"haul-truck",
+                  "modelVersionId":"%s",
+                  "protocolMappingVersionId":"%s",
+                  "binding":{
+                    "transport":"MQTT",
+                    "payloadFormat":"JSON",
+                    "routingMode":"TRUSTED_IDENTITY",
+                    "parserType":"CONFIGURATION",
+                    "pluginKey":null,
+                    "pluginVersion":null
+                  }
+                }
+                """.formatted(PRODUCT_ID, UUID.randomUUID(), UUID.randomUUID()));
+    }
+
+    private String normalized(String json) {
+        try {
+            return jsonMapper.writeValueAsString(jsonMapper.readTree(json));
         } catch (JacksonException exception) {
             throw new IllegalStateException(exception);
         }
