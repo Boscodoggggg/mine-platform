@@ -52,6 +52,8 @@ public final class SceneAssetPackageValidator {
     private static final Set<String> ALLOWED_TILE_EXTENSIONS = Set.of(
             "json", "gltf", "glb", "bin", "b3dm", "i3dm", "pnts", "cmpt",
             "subtree", "png", "jpg", "jpeg", "webp", "ktx2");
+    private static final Set<String> RESOURCE_REFERENCE_FIELDS = Set.of(
+            "uri", "url", "schemaUri");
     private static final Map<String, String> CONTENT_TYPES = Map.ofEntries(
             Map.entry("json", "application/json"),
             Map.entry("gltf", "model/gltf+json"),
@@ -281,7 +283,7 @@ public final class SceneAssetPackageValidator {
     ) throws ValidationException {
         if (node.isObject()) {
             for (Map.Entry<String, JsonNode> property : node.properties()) {
-                if ("uri".equals(property.getKey())) {
+                if (RESOURCE_REFERENCE_FIELDS.contains(property.getKey())) {
                     JsonNode value = property.getValue();
                     if (!value.isString() || value.asString().isBlank()) {
                         throw new ValidationException("三维资源 URI 必须为非空字符串");

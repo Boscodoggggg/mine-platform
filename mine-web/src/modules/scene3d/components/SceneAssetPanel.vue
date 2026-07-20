@@ -156,7 +156,7 @@ function assetStatusType(status: SceneAsset['status']) {
         type="line"
         :percentage="uploadProgress ?? 0"
         :processing="uploadProgress === null"
-        :indicator-placement="'inside'"
+        indicator-placement="inside"
       />
       <NDataTable
         v-if="filteredAssets.length"

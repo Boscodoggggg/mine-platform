@@ -1,3 +1,29 @@
+<script lang="ts">
+const TRANSFORM_FIELDS = [
+  'originX',
+  'originY',
+  'originZ',
+  'headingDegrees',
+  'pitchDegrees',
+  'rollDegrees',
+  'scale'
+] as const;
+
+const LAYER_NUMBER_FIELDS = [
+  'opacity',
+  'minimumDistance',
+  'maximumDistance',
+  'offsetX',
+  'offsetY',
+  'offsetZ',
+  'headingDegrees',
+  'pitchDegrees',
+  'rollDegrees',
+  'scale',
+  'maxItems'
+] as const;
+</script>
+
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -55,7 +81,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: [body: SceneVersionRequest, layers: SceneLayerRequest[]];
   publish: [];
-  'dirty-change': [dirty: boolean];
+  dirtyChange: [dirty: boolean];
 }>();
 
 const { t } = useI18n();
@@ -261,7 +287,7 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
 function setDirty(value = true) {
   if (dirty.value === value) return;
   dirty.value = value;
-  emit('dirty-change', value);
+  emit('dirtyChange', value);
 }
 
 function normalizeOrder() {
@@ -377,7 +403,7 @@ const LAYER_TYPES: readonly SceneLayerRequest['layerType'][] = [
         <NButton data-testid="add-scene-layer" @click="addLayer()">{{ t('mine.sceneWorkbench.addLayer') }}</NButton>
       </NFlex>
       <NEmpty v-if="layers.length === 0" :description="t('mine.sceneWorkbench.noLayers')" />
-      <NCard v-for="(layer, index) in layers" v-else :key="layer.clientKey" size="small" data-testid="scene-layer-row">
+      <NCard v-for="(layer, index) in layers" :key="layer.clientKey" size="small" data-testid="scene-layer-row">
         <NFlex vertical>
           <NFlex justify="space-between" align="center">
             <NFlex align="center">
@@ -470,29 +496,3 @@ const LAYER_TYPES: readonly SceneLayerRequest['layerType'][] = [
     </NFlex>
   </NCard>
 </template>
-
-<script lang="ts">
-const TRANSFORM_FIELDS = [
-  'originX',
-  'originY',
-  'originZ',
-  'headingDegrees',
-  'pitchDegrees',
-  'rollDegrees',
-  'scale'
-] as const;
-
-const LAYER_NUMBER_FIELDS = [
-  'opacity',
-  'minimumDistance',
-  'maximumDistance',
-  'offsetX',
-  'offsetY',
-  'offsetZ',
-  'headingDegrees',
-  'pitchDegrees',
-  'rollDegrees',
-  'scale',
-  'maxItems'
-] as const;
-</script>

@@ -61,6 +61,9 @@ describe('Cesium bundle boundary', () => {
       .join('\n');
 
     expect(globalStyles).not.toContain('cesium/Build/Cesium/Widgets/widgets.css');
+    expect(readFileSync(resolve(projectRoot, loaderPath), 'utf8')).toContain(
+      "import('cesium/Build/Cesium/Widgets/widgets.css')"
+    );
   });
 
   it('离线资源根从 Vite 部署基路径派生', () => {

@@ -22,7 +22,7 @@ describe('SceneVersionEditor', () => {
     const availableAssets = editor.availableAssets(1);
     expect(availableAssets.map(item => item.originalFilename)).toEqual(['haul-truck.glb']);
     editor.selectLayerAsset(1, availableAssets[0]!.id);
-    expect(wrapper.emitted('dirty-change')?.at(-1)).toEqual([true]);
+    expect(wrapper.emitted('dirtyChange')?.at(-1)).toEqual([true]);
 
     await wrapper.get('[data-testid="move-layer-up-1"]').trigger('click');
     await wrapper.get('[data-testid="save-scene-draft"]').trigger('click');

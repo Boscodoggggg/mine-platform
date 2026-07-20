@@ -18,7 +18,8 @@ export interface SceneViewportAdapter {
 
 export type SceneViewportAdapterFactory = (
   runtime: CesiumModule,
-  snapshot: SceneRuntimeSnapshot
+  snapshot: SceneRuntimeSnapshot,
+  onRuntimeFailure: (error: unknown) => void
 ) => SceneViewportAdapter | Promise<SceneViewportAdapter>;
 
 export type WebGlCapabilityProbe = () => boolean;

@@ -6,6 +6,7 @@ import type { SelectOption } from 'naive-ui';
 import {
   NAlert,
   NButton,
+  NButtonGroup,
   NCard,
   NEmpty,
   NFlex,
@@ -51,9 +52,10 @@ import type {
   SceneVersion,
   SceneVersionRequest
 } from '../api/scene';
+import type { SceneViewportMode } from '../runtime/types';
 import SceneAssetPanel from '../components/SceneAssetPanel.vue';
 import SceneVersionEditor from '../components/SceneVersionEditor.vue';
-import SceneViewport from '../components/SceneViewport.vue';
+import CesiumSceneViewport from '../components/CesiumSceneViewport.vue';
 
 const { t } = useI18n();
 const authStore = useAuthStore();
@@ -65,6 +67,7 @@ const publishing = ref(false);
 const uploading = ref(false);
 const uploadProgress = ref<number | null>(null);
 const runtime = ref<SceneRuntime | null>(null);
+const viewportMode = ref<SceneViewportMode>('AUTO');
 const scenes = ref<Scene[]>([]);
 const assets = ref<SceneAsset[]>([]);
 const versions = ref<SceneVersion[]>([]);
@@ -513,6 +516,35 @@ function versionStatusType(status: SceneVersion['status']) {
       <NTabs v-model:value="activeTab" type="line" animated>
         <NTabPane name="RUNTIME" :tab="t('mine.sceneWorkbench.runtimeTab')">
           <NSpin :show="loading">
+            <NFlex justify="space-between" align="center" class="mb-4">
+              <NText depth="3">{{ t('mine.sceneWorkbench.viewMode') }}</NText>
+              <NButtonGroup role="group" :aria-label="t('mine.sceneWorkbench.viewMode')">
+                <NButton
+                  data-testid="scene-mode-auto"
+                  :type="viewportMode === 'AUTO' ? 'primary' : 'default'"
+                  :aria-pressed="viewportMode === 'AUTO'"
+                  @click="viewportMode = 'AUTO'"
+                >
+                  {{ t('mine.sceneWorkbench.viewModeAuto') }}
+                </NButton>
+                <NButton
+                  data-testid="scene-mode-3d"
+                  :type="viewportMode === '3D' ? 'primary' : 'default'"
+                  :aria-pressed="viewportMode === '3D'"
+                  @click="viewportMode = '3D'"
+                >
+                  {{ t('mine.sceneWorkbench.viewMode3d') }}
+                </NButton>
+                <NButton
+                  data-testid="scene-mode-2d"
+                  :type="viewportMode === '2D' ? 'primary' : 'default'"
+                  :aria-pressed="viewportMode === '2D'"
+                  @click="viewportMode = '2D'"
+                >
+                  {{ t('mine.sceneWorkbench.viewMode2d') }}
+                </NButton>
+              </NButtonGroup>
+            </NFlex>
             <NAlert
               v-if="runtime?.status === 'DEGRADED'"
               type="warning"
@@ -522,7 +554,11 @@ function versionStatusType(status: SceneVersion['status']) {
             >
               {{ t('mine.sceneWorkbench.runtimeEmpty') }}
             </NAlert>
-            <SceneViewport :snapshot="runtime?.snapshot ?? null" :degradation-reason="runtimeReason" mode="AUTO" />
+            <CesiumSceneViewport
+              :snapshot="runtime?.snapshot ?? null"
+              :degradation-reason="runtimeReason"
+              :mode="viewportMode"
+            />
           </NSpin>
         </NTabPane>
 

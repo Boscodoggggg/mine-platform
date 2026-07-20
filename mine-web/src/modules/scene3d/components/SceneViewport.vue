@@ -114,7 +114,11 @@ async function activate() {
     const runtime = await loadCesium();
     if (currentGeneration !== generation) return;
     stage = 'RUNTIME';
-    candidate = await props.createAdapter(runtime, snapshot);
+    candidate = await props.createAdapter(runtime, snapshot, () => {
+      if (currentGeneration !== generation) return;
+      releaseCandidate();
+      useCanvas('THREE_D_RUNTIME_FAILED');
+    });
     if (currentGeneration !== generation) {
       releaseCandidate();
       return;

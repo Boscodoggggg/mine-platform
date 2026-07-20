@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { localStg } from '@/utils/storage';
-import { ApiError, request, upload } from './client';
+import { ApiError, getApiAuthHeaders, request, upload } from './client';
 
 describe('平台 API 客户端', () => {
   beforeEach(() => {
@@ -24,6 +24,15 @@ describe('平台 API 客户端', () => {
 
     const [, init] = vi.mocked(fetch).mock.calls[0];
     expect(new Headers(init?.headers).get('X-Mine-Token')).toBe('token-value');
+  });
+
+  it('应向同源流式资源提供与 REST 一致的受控认证请求头', () => {
+    localStg.set('tokenName', 'X-Mine-Token');
+    localStg.set('token', 'scene-token');
+    expect(getApiAuthHeaders()).toEqual({ 'X-Mine-Token': 'scene-token' });
+
+    localStg.set('tokenName', 'Invalid Header');
+    expect(getApiAuthHeaders()).toEqual({});
   });
 
   it('应把二零四响应解析为无返回值', async () => {

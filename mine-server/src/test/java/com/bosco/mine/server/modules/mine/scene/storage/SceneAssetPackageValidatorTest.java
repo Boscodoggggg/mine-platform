@@ -156,6 +156,18 @@ class SceneAssetPackageValidatorTest {
     }
 
     @Test
+    void 应拒绝旧版Url和元数据SchemaUri引用外部资源() throws Exception {
+        assertInvalidZip("legacy-external-url.zip", entries(
+                "tileset.json", tilesetWithExternalReference(
+                        "\"content\":{\"url\":\"https://attacker.example/tile.glb\"}")),
+                properties());
+        assertInvalidZip("external-schema-uri.zip", entries(
+                "tileset.json", tilesetWithSchemaUri(
+                        "https://attacker.example/schema.json")),
+                properties());
+    }
+
+    @Test
     void 非法存储边界配置必须立即失败() {
         assertThatThrownBy(() -> properties(0, 100, 100, 1, 10, 100))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -253,6 +265,24 @@ class SceneAssetPackageValidatorTest {
                   "geometricError":0,"content":{"uri":"%s"}
                 }}
                 """.formatted(uri)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private byte[] tilesetWithExternalReference(String rootProperty) {
+        return ("""
+                {"asset":{"version":"1.1"},"root":{
+                  "boundingVolume":{"box":[0,0,0,1,0,0,0,1,0,0,0,1]},
+                  "geometricError":0,%s
+                }}
+                """.formatted(rootProperty)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private byte[] tilesetWithSchemaUri(String schemaUri) {
+        return ("""
+                {"asset":{"version":"1.1"},
+                 "schemaUri":"%s",
+                 "root":{"boundingVolume":{"box":[0,0,0,1,0,0,0,1,0,0,0,1]},
+                         "geometricError":0}}
+                """.formatted(schemaUri)).getBytes(java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private Map<String, byte[]> entries(Object... values) {

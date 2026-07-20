@@ -43,10 +43,10 @@ vi.mock('vue-router', () => ({
     routeGuard.callback = callback;
   }
 }));
-vi.mock('../components/SceneViewport.vue', () => ({
+vi.mock('../components/CesiumSceneViewport.vue', () => ({
   default: {
-    props: ['snapshot', 'degradationReason'],
-    template: '<div data-testid="scene-runtime" :data-ready="Boolean(snapshot)" :data-reason="degradationReason"></div>'
+    props: ['snapshot', 'degradationReason', 'mode'],
+    template: '<div data-testid="scene-runtime" :data-ready="Boolean(snapshot)" :data-reason="degradationReason" :data-mode="mode"></div>'
   }
 }));
 vi.mock('../components/SceneAssetPanel.vue', () => ({
@@ -106,6 +106,21 @@ describe('SceneWorkbenchPage', () => {
     expect(wrapper.find('[data-testid="scene-runtime"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="scene-governance"]').exists()).toBe(false);
     expect(api.listSceneAssets).not.toHaveBeenCalled();
+  });
+
+  it('运行场景允许用户显式切换二维、三维和自动模式', async () => {
+    authState.userInfo.buttons = ['mine:scene:view'];
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="scene-runtime"]').attributes('data-mode')).toBe('AUTO');
+    expect(wrapper.get('[data-testid="scene-mode-auto"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('[data-testid="scene-mode-2d"]').trigger('click');
+    expect(wrapper.get('[data-testid="scene-runtime"]').attributes('data-mode')).toBe('2D');
+    expect(wrapper.get('[data-testid="scene-mode-2d"]').attributes('aria-pressed')).toBe('true');
+    await wrapper.get('[data-testid="scene-mode-3d"]').trigger('click');
+    expect(wrapper.get('[data-testid="scene-runtime"]').attributes('data-mode')).toBe('3D');
+    expect(wrapper.get('[data-testid="scene-mode-3d"]').attributes('aria-pressed')).toBe('true');
   });
 
   it('切换矿区会主动取消旧作用域请求并只接受新矿区结果', async () => {

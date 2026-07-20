@@ -13,6 +13,14 @@ trap 'rm -f "${rendered}" "${rendered_tcp_disabled}" "${rendered_tcp_unified}"' 
 docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --format json \
   >"${rendered}"
 
+nginx_config="${ROOT_DIR}/deploy/config/nginx/nginx.conf"
+grep -Fq "connect-src 'self' wss://\$host" "${nginx_config}" \
+  || { echo "FAIL: Web 和三维资源连接必须限制为同源 HTTPS/WSS" >&2; exit 1; }
+grep -Fq "worker-src 'self' blob:" "${nginx_config}" \
+  || { echo "FAIL: Cesium Worker 只能从同源静态资源或受控 blob 启动" >&2; exit 1; }
+grep -Fq "object-src 'none'" "${nginx_config}" \
+  || { echo "FAIL: Web 安全策略必须禁止插件对象执行" >&2; exit 1; }
+
 MINE_GATEWAY_TCP_ENABLED=false docker compose --profile observability --env-file "${ENV_FILE}" \
   -f "${COMPOSE_FILE}" config --format json >"${rendered_tcp_disabled}"
 

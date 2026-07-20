@@ -754,6 +754,8 @@ const local: App.I18n.Schema = {
     scene3d: {
       ariaLabel: "矿区三维场景视口",
       loading: "正在加载本地三维场景",
+      layerDegradedTitle: "部分三维图层已降级",
+      layerDegraded: "图层 {layers} 暂不可用，其他场景图层和二维运行事实不受影响",
       fallbackTitle: "二维运行视图",
       retry: "重试三维视图",
       reason: {
@@ -773,6 +775,10 @@ const local: App.I18n.Schema = {
       title: '矿区三维场景',
       description: '统一治理离线三维资源、场景草稿和不可变发布版本；三维故障不影响二维运行事实。',
       runtimeTab: '运行场景',
+      viewMode: '视图模式',
+      viewModeAuto: '自动',
+      viewMode3d: '三维',
+      viewMode2d: '二维',
       governanceTab: '场景治理',
       loadFailed: '三维场景工作台加载失败',
       versionsLoadFailed: '场景版本加载失败',

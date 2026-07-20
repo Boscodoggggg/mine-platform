@@ -6,10 +6,12 @@ let loadingTask: Promise<CesiumModule> | undefined;
 
 export function loadCesium(): Promise<CesiumModule> {
   globalThis.CESIUM_BASE_URL = CESIUM_OFFLINE_BASE_URL;
-  loadingTask ??= import('cesium').catch(error => {
-    loadingTask = undefined;
-    throw error;
-  });
+  loadingTask ??= Promise.all([import('cesium/Build/Cesium/Widgets/widgets.css'), import('cesium')])
+    .then(([, runtime]) => runtime)
+    .catch(error => {
+      loadingTask = undefined;
+      throw error;
+    });
   return loadingTask;
 }
 

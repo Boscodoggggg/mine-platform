@@ -155,6 +155,28 @@ describe('SceneViewport', () => {
 
     expect(wrapper.get('[data-testid="canvas-viewport"]').attributes('data-reason')).toBe('THREE_D_RUNTIME_FAILED');
   });
+
+  it('挂载成功后的运行故障会释放适配器并自动切换二维', async () => {
+    const adapter = mockAdapter();
+    let failRuntime!: (error: unknown) => void;
+    const wrapper = mountViewport({
+      mode: '3D',
+      supportsWebGl: () => true,
+      createAdapter: (_runtime: unknown, _snapshot: unknown, onRuntimeFailure: (error: unknown) => void) => {
+        failRuntime = onRuntimeFailure;
+        return adapter;
+      }
+    });
+    await flushPromises();
+
+    failRuntime(new Error('render worker failed'));
+    await flushPromises();
+
+    expect(adapter.destroy).toHaveBeenCalledOnce();
+    expect(wrapper.get('[data-testid="canvas-viewport"]').attributes('data-reason')).toBe(
+      'THREE_D_RUNTIME_FAILED'
+    );
+  });
 });
 
 describe('CanvasSceneViewport', () => {

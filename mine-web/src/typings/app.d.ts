@@ -684,7 +684,10 @@ declare namespace App {
           };
           canvas: Record<"xAxis" | "yAxis" | "current" | "trajectory" | "events" | "empty" | "ariaLabel", string>;
         };
-        scene3d: Record<"ariaLabel" | "loading" | "fallbackTitle" | "retry", string> & {
+        scene3d: Record<
+          "ariaLabel" | "loading" | "layerDegradedTitle" | "layerDegraded" | "fallbackTitle" | "retry",
+          string
+        > & {
           reason: Record<
             | "noDefaultScene"
             | "defaultSceneUnpublished"
@@ -703,6 +706,10 @@ declare namespace App {
           | 'title'
           | 'description'
           | 'runtimeTab'
+          | 'viewMode'
+          | 'viewModeAuto'
+          | 'viewMode3d'
+          | 'viewMode2d'
           | 'governanceTab'
           | 'loadFailed'
           | 'versionsLoadFailed'

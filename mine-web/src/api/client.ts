@@ -133,6 +133,13 @@ export function upload<T>(path: string, body: FormData, options: UploadOptions =
   });
 }
 
+/** 为同源流式资源读取提供与 REST 请求一致的受控认证请求头。 */
+export function getApiAuthHeaders(): Record<string, string> {
+  const headers = new Headers();
+  appendToken(headers);
+  return Object.fromEntries(headers.entries());
+}
+
 function appendToken(headers: Headers) {
   const token = localStg.get('token');
   const tokenName = localStg.get('tokenName');

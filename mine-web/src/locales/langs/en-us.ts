@@ -780,6 +780,8 @@ const local: App.I18n.Schema = {
     scene3d: {
       ariaLabel: "3D mine scene viewport",
       loading: "Loading the local 3D mine scene",
+      layerDegradedTitle: "Some 3D layers are degraded",
+      layerDegraded: "Layers {layers} are unavailable. Other scene layers and 2D operational facts are unaffected.",
       fallbackTitle: "2D operations view",
       retry: "Retry 3D view",
       reason: {
@@ -799,6 +801,10 @@ const local: App.I18n.Schema = {
       title: '3D Mine Scene',
       description: 'Govern offline 3D assets, scene drafts, and immutable releases while keeping 2D operational facts independent.',
       runtimeTab: 'Runtime Scene',
+      viewMode: 'View mode',
+      viewModeAuto: 'Auto',
+      viewMode3d: '3D',
+      viewMode2d: '2D',
       governanceTab: 'Scene Governance',
       loadFailed: 'Failed to load the 3D scene workbench',
       versionsLoadFailed: 'Failed to load scene versions',
