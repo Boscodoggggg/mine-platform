@@ -32,6 +32,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -405,6 +406,15 @@ class PermissionIntegrationIT {
                 .andExpect(jsonPath("$.code").value("AUTH-403-001"));
 
         grantPermission(userId, "mine:shift:edit");
+        for (String body : List.of("{}", "{\"version\":null}")) {
+            mockMvc.perform(post("/api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/open",
+                            siteId, shiftId)
+                            .header(session.tokenName(), session.tokenValue())
+                            .header("Idempotency-Key", "missing-version-open-" + body.length())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
         mockMvc.perform(post("/api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/open",
                         siteId, shiftId)
                         .header(session.tokenName(), session.tokenValue())
@@ -460,6 +470,21 @@ class PermissionIntegrationIT {
                         .content("""
                                 {
                                   "shiftInstanceId":"%s",
+                                  "orderNumber":"PERMISSION-002",
+                                  "title":"缺失版本作业单",
+                                  "workType":"HAULAGE",
+                                  "plannedStartAt":"2026-07-20T00:00:00Z",
+                                  "plannedEndAt":"2026-07-20T01:00:00Z",
+                                  "priority":50
+                                }
+                                """.formatted(shiftId)))
+                .andExpect(status().isBadRequest());
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders", siteId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "shiftInstanceId":"%s",
                                   "orderNumber":"PERMISSION-001",
                                   "title":"权限测试作业单",
                                   "workType":"HAULAGE",
@@ -484,6 +509,15 @@ class PermissionIntegrationIT {
                 .andExpect(jsonPath("$.code").value("AUTH-403-001"));
 
         grantPermission(userId, "mine:work-order:dispatch");
+        for (String body : List.of("{}", "{\"version\":null}")) {
+            mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders/{workOrderId}/start",
+                            siteId, workOrderId)
+                            .header(session.tokenName(), session.tokenValue())
+                            .header("Idempotency-Key", "missing-version-start-" + body.length())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isBadRequest());
+        }
         mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders/{workOrderId}/start",
                         siteId, workOrderId)
                         .header(session.tokenName(), session.tokenValue())

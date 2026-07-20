@@ -1459,6 +1459,19 @@ class DatabaseMigrationIT {
     }
 
     @Test
+    void 从四十四版升级时必须拒绝三类非法运营存量() throws Exception {
+        assertV45UpgradeRejected(
+                "invalid_supervisor", OperationUpgradeViolation.INVALID_SUPERVISOR,
+                "V45 升级失败：存在不满足完整矿区任职的班次负责人");
+        assertV45UpgradeRejected(
+                "terminal_shift_work", OperationUpgradeViolation.TERMINAL_SHIFT_WORK,
+                "V45 升级失败：终态班次存在未终结作业单");
+        assertV45UpgradeRejected(
+                "terminal_work_runtime", OperationUpgradeViolation.TERMINAL_WORK_RUNTIME,
+                "V45 升级失败：终态作业单遗留运输循环运行态");
+    }
+
+    @Test
     void 从三十六版升级时必须保留人员并回填矿区任职() throws Exception {
         String schema = "person_upgrade_" + UUID.randomUUID().toString().replace("-", "");
         UUID organizationId = UUID.randomUUID();
@@ -1713,6 +1726,196 @@ class DatabaseMigrationIT {
                   AND table_constraints.constraint_name = ?
                 ORDER BY key_column_usage.ordinal_position
                 """, String.class, constraintName);
+    }
+
+    private void assertV45UpgradeRejected(
+            String suffix, OperationUpgradeViolation violation, String expectedMessage
+    ) throws Exception {
+        String schema = "op45_" + suffix + "_"
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        UUID organizationId = UUID.randomUUID();
+        UUID siteId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID definitionId = UUID.randomUUID();
+        UUID shiftId = UUID.randomUUID();
+        UUID workOrderId = UUID.randomUUID();
+        String codeSuffix = suffix.replace('_', '-');
+        try {
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .target("44")
+                    .load()
+                    .migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                statement.execute("""
+                        INSERT INTO sys_user (id, username, password_hash, display_name)
+                        VALUES ('%s', 'operation-upgrade-%s', 'bcrypt:test', '运营升级用户')
+                        """.formatted(userId, codeSuffix));
+                statement.execute("""
+                        INSERT INTO mine_organization (id, organization_code, name)
+                        VALUES ('%s', 'operation-upgrade-%s', '运营升级组织')
+                        """.formatted(organizationId, codeSuffix));
+                statement.execute("""
+                        INSERT INTO mine_site (id, organization_id, site_code, name, timezone)
+                        VALUES ('%s', '%s', 'operation-site-%s', '运营升级矿区', 'Asia/Shanghai')
+                        """.formatted(siteId, organizationId, codeSuffix));
+                statement.execute("""
+                        INSERT INTO mine_shift_definition (
+                            id, organization_id, site_id, definition_code, name,
+                            start_local, end_local, valid_from
+                        ) VALUES (
+                            '%s', '%s', '%s', 'shift-%s', '运营升级班次',
+                            TIME '00:00:00', TIME '12:00:00', DATE '2026-01-01'
+                        )
+                        """.formatted(definitionId, organizationId, siteId, codeSuffix));
+                seedOperationUpgradeViolation(
+                        statement, violation, organizationId, siteId, userId,
+                        definitionId, shiftId, workOrderId);
+            }
+
+            assertThatThrownBy(() -> Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate())
+                    .hasStackTraceContaining(expectedMessage);
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        }
+    }
+
+    private void seedOperationUpgradeViolation(
+            Statement statement,
+            OperationUpgradeViolation violation,
+            UUID organizationId,
+            UUID siteId,
+            UUID userId,
+            UUID definitionId,
+            UUID shiftId,
+            UUID workOrderId
+    ) throws Exception {
+        UUID supervisorId = UUID.randomUUID();
+        if (violation == OperationUpgradeViolation.INVALID_SUPERVISOR) {
+            statement.execute("""
+                    INSERT INTO mine_person (
+                        id, organization_id, person_code, name, person_type,
+                        phone_ciphertext, phone_masked,
+                        certificate_ciphertext, certificate_masked
+                    ) VALUES (
+                        '%s', '%s', 'upgrade-supervisor', '非法负责人', 'SUPERVISOR',
+                        'v2:phone:cipher', '138****0000',
+                        'v2:certificate:cipher', '证件****0000'
+                    )
+                    """.formatted(supervisorId, organizationId));
+            statement.execute(shiftInsertSql(
+                    "PLANNED", supervisorId, shiftId, organizationId,
+                    siteId, definitionId, userId));
+            return;
+        }
+        String shiftStatus = violation == OperationUpgradeViolation.TERMINAL_SHIFT_WORK
+                ? "CLOSED" : "PLANNED";
+        statement.execute(shiftInsertSql(
+                shiftStatus, null, shiftId, organizationId,
+                siteId, definitionId, userId));
+        String workStatus = violation == OperationUpgradeViolation.TERMINAL_WORK_RUNTIME
+                ? "CANCELLED" : "DRAFT";
+        statement.execute("""
+                INSERT INTO mine_work_order (
+                    id, organization_id, site_id, shift_instance_id,
+                    order_number, title, work_type,
+                    planned_start_at, planned_end_at, status,
+                    cancelled_at, cancelled_by, terminal_reason
+                ) VALUES (
+                    '%s', '%s', '%s', '%s', 'upgrade-order-%s', '升级作业单', 'HAULAGE',
+                    TIMESTAMPTZ '2026-07-20 00:00:00Z',
+                    TIMESTAMPTZ '2026-07-20 12:00:00Z', '%s',
+                    %s, %s, %s
+                )
+                """.formatted(
+                workOrderId, organizationId, siteId, shiftId, shortUuid(workOrderId), workStatus,
+                "CANCELLED".equals(workStatus) ? "CURRENT_TIMESTAMP" : "NULL",
+                "CANCELLED".equals(workStatus) ? "'" + userId + "'" : "NULL",
+                "CANCELLED".equals(workStatus) ? "'升级前取消'" : "NULL"));
+        if (violation != OperationUpgradeViolation.TERMINAL_WORK_RUNTIME) {
+            return;
+        }
+        UUID vehicleId = UUID.randomUUID();
+        UUID assignmentId = UUID.randomUUID();
+        statement.execute("""
+                INSERT INTO mine_vehicle (
+                    id, organization_id, site_id, vehicle_code, name, vehicle_type
+                ) VALUES ('%s', '%s', '%s', 'upgrade-truck', '升级矿卡', 'HAUL_TRUCK')
+                """.formatted(vehicleId, organizationId, siteId));
+        statement.execute("""
+                INSERT INTO mine_work_order_assignment (
+                    id, organization_id, site_id, work_order_id, vehicle_id,
+                    valid_from, valid_to, assignment_reason
+                ) VALUES (
+                    '%s', '%s', '%s', '%s', '%s',
+                    TIMESTAMPTZ '2026-07-20 00:00:00Z',
+                    TIMESTAMPTZ '2026-07-20 12:00:00Z', '升级前分配'
+                )
+                """.formatted(assignmentId, organizationId, siteId, workOrderId, vehicleId));
+        statement.execute("""
+                INSERT INTO mine_operation_runtime_state (
+                    id, organization_id, site_id, work_order_id, assignment_id
+                ) VALUES (gen_random_uuid(), '%s', '%s', '%s', '%s')
+                """.formatted(organizationId, siteId, workOrderId, assignmentId));
+    }
+
+    private String shiftInsertSql(
+            String status,
+            UUID supervisorId,
+            UUID shiftId,
+            UUID organizationId,
+            UUID siteId,
+            UUID definitionId,
+            UUID userId
+    ) {
+        boolean closed = "CLOSED".equals(status);
+        return """
+                INSERT INTO mine_shift_instance (
+                    id, organization_id, site_id, shift_definition_id,
+                    business_date, planned_start_at, planned_end_at,
+                    actual_start_at, actual_end_at, supervisor_person_id,
+                    definition_snapshot, status,
+                    opened_at, opened_by, closed_at, closed_by,
+                    created_by, updated_by
+                ) VALUES (
+                    '%s', '%s', '%s', '%s', DATE '2026-07-20',
+                    TIMESTAMPTZ '2026-07-20 00:00:00Z',
+                    TIMESTAMPTZ '2026-07-20 12:00:00Z',
+                    %s, %s, %s, '{}'::JSONB, '%s', %s, %s, %s, %s, '%s', '%s'
+                )
+                """.formatted(
+                shiftId, organizationId, siteId, definitionId,
+                closed ? "CURRENT_TIMESTAMP" : "NULL",
+                closed ? "CURRENT_TIMESTAMP" : "NULL",
+                supervisorId == null ? "NULL" : "'" + supervisorId + "'",
+                status,
+                closed ? "CURRENT_TIMESTAMP" : "NULL",
+                closed ? "'" + userId + "'" : "NULL",
+                closed ? "CURRENT_TIMESTAMP" : "NULL",
+                closed ? "'" + userId + "'" : "NULL",
+                userId, userId);
+    }
+
+    private String shortUuid(UUID value) {
+        return value.toString().substring(0, 8);
+    }
+
+    private enum OperationUpgradeViolation {
+        INVALID_SUPERVISOR,
+        TERMINAL_SHIFT_WORK,
+        TERMINAL_WORK_RUNTIME
     }
 
     private RetentionPreviewEvidenceMapper.PreviewEvidence groupChangeEvidence(

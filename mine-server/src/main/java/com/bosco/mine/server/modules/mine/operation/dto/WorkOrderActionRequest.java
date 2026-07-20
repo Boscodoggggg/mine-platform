@@ -1,5 +1,6 @@
 package com.bosco.mine.server.modules.mine.operation.dto;
 
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
@@ -15,7 +16,7 @@ import java.util.UUID;
  * @param reason 取消或异常终止原因
  */
 public record WorkOrderActionRequest(
-        @PositiveOrZero long version,
+        @NotNull @PositiveOrZero Long version,
         UUID routeVersionId,
         UUID loadGeofenceVersionId,
         UUID unloadGeofenceVersionId,

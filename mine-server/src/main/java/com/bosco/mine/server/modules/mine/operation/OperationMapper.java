@@ -1,5 +1,6 @@
 package com.bosco.mine.server.modules.mine.operation;
 
+import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -179,6 +180,30 @@ public interface OperationMapper {
             @Param("definitionSnapshotJson") String definitionSnapshotJson,
             @Param("operatorId") UUID operatorId);
 
+    /** 校验班次负责人在完整班次期间于当前矿区在职。 */
+    @Select("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM mine_person person
+                JOIN mine_person_site_assignment site_assignment
+                  ON site_assignment.person_id = person.id
+                 AND site_assignment.organization_id = person.organization_id
+                 AND site_assignment.site_id = #{siteId}
+                 AND site_assignment.valid_period @>
+                     tstzrange(#{plannedStartAt}, #{plannedEndAt}, '[)')
+                WHERE person.id = #{personId}
+                  AND person.organization_id = #{organizationId}
+                  AND person.status = 'ACTIVE'
+                  AND person.person_type = 'SUPERVISOR'
+            )
+            """)
+    boolean isShiftSupervisorEligible(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("personId") UUID personId,
+            @Param("plannedStartAt") Instant plannedStartAt,
+            @Param("plannedEndAt") Instant plannedEndAt);
+
     /** 按矿区作用域查询班次实例。 */
     @Select("""
             SELECT id, organization_id AS organizationId, site_id AS siteId,
@@ -324,26 +349,37 @@ public interface OperationMapper {
             @Param("reason") String reason,
             @Param("operatorId") UUID operatorId);
 
-    /** 统计阻止班次关账的运行作业和循环状态。 */
+    /** 按稳定顺序锁定阻止班次进入终态的未终结作业。 */
     @Select("""
-            SELECT
-                (SELECT COUNT(*) FROM mine_work_order work_order
-                 WHERE work_order.shift_instance_id = #{shiftId}
-                   AND work_order.organization_id = #{organizationId}
-                   AND work_order.site_id = #{siteId}
-                   AND work_order.status IN ('RUNNING', 'PAUSED'))
-                +
-                (SELECT COUNT(*)
-                 FROM mine_operation_runtime_state runtime_state
-                 JOIN mine_work_order work_order
-                   ON work_order.id = runtime_state.work_order_id
-                  AND work_order.organization_id = runtime_state.organization_id
-                  AND work_order.site_id = runtime_state.site_id
-                 WHERE work_order.shift_instance_id = #{shiftId}
-                   AND runtime_state.organization_id = #{organizationId}
-                   AND runtime_state.site_id = #{siteId})
+            SELECT id
+            FROM mine_work_order
+            WHERE shift_instance_id = #{shiftId}
+              AND organization_id = #{organizationId}
+              AND site_id = #{siteId}
+              AND status NOT IN ('COMPLETED', 'CANCELLED', 'ABORTED')
+            ORDER BY id
+            FOR UPDATE
             """)
-    long countShiftCloseBlockers(
+    List<UUID> lockShiftBlockingWorkOrders(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("shiftId") UUID shiftId);
+
+    /** 按稳定顺序锁定班次中的全部运输循环运行态。 */
+    @Select("""
+            SELECT runtime_state.id
+            FROM mine_operation_runtime_state runtime_state
+            JOIN mine_work_order work_order
+              ON work_order.id = runtime_state.work_order_id
+             AND work_order.organization_id = runtime_state.organization_id
+             AND work_order.site_id = runtime_state.site_id
+            WHERE work_order.shift_instance_id = #{shiftId}
+              AND runtime_state.organization_id = #{organizationId}
+              AND runtime_state.site_id = #{siteId}
+            ORDER BY runtime_state.id
+            FOR UPDATE OF runtime_state
+            """)
+    List<UUID> lockShiftRuntimeStates(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
             @Param("shiftId") UUID shiftId);
@@ -595,6 +631,162 @@ public interface OperationMapper {
             @Param("validFrom") Instant validFrom,
             @Param("validTo") Instant validTo,
             @Param("assignmentReason") String assignmentReason,
+            @Param("operatorId") UUID operatorId);
+
+    /** 追加调度分配时使用作业单聚合乐观版本建立新水位。 */
+    @Update("""
+            UPDATE mine_work_order
+               SET updated_at = CURRENT_TIMESTAMP, updated_by = #{operatorId},
+                   version = version + 1
+             WHERE id = #{id}
+               AND organization_id = #{organizationId}
+               AND site_id = #{siteId}
+               AND status IN ('DRAFT', 'RELEASED', 'RUNNING', 'PAUSED')
+               AND version = #{version}
+            """)
+    int touchWorkOrderForAssignment(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("id") UUID id,
+            @Param("version") long version,
+            @Param("operatorId") UUID operatorId);
+
+    /** 锁定作业单全部运输循环运行态和发生时分配上下文。 */
+    @Select("""
+            SELECT runtime_state.id,
+                   runtime_state.assignment_id AS assignmentId,
+                   runtime_state.cycle_number AS cycleNumber,
+                   runtime_state.cycle_status AS cycleStatus,
+                   runtime_state.last_spatial_event_id AS lastSpatialEventId,
+                   runtime_state.last_occurred_at AS lastOccurredAt,
+                   runtime_state.last_ingest_sequence AS lastIngestSequence,
+                   runtime_state.evidence_snapshot::TEXT AS evidenceSnapshotJson,
+                   runtime_state.started_at AS startedAt,
+                   assignment.vehicle_id AS vehicleId,
+                   assignment.driver_person_id AS driverPersonId
+            FROM mine_operation_runtime_state runtime_state
+            JOIN mine_work_order_assignment assignment
+              ON assignment.id = runtime_state.assignment_id
+             AND assignment.work_order_id = runtime_state.work_order_id
+             AND assignment.organization_id = runtime_state.organization_id
+             AND assignment.site_id = runtime_state.site_id
+            WHERE runtime_state.organization_id = #{organizationId}
+              AND runtime_state.site_id = #{siteId}
+              AND runtime_state.work_order_id = #{workOrderId}
+            ORDER BY runtime_state.id
+            FOR UPDATE OF runtime_state
+            """)
+    List<OperationRuntimeStateRow> lockWorkOrderRuntimeStates(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("workOrderId") UUID workOrderId);
+
+    /** 删除终态作业单已回到循环边界的可变运行态。 */
+    @Delete("""
+            DELETE FROM mine_operation_runtime_state
+            WHERE organization_id = #{organizationId}
+              AND site_id = #{siteId}
+              AND work_order_id = #{workOrderId}
+              AND cycle_status = 'WAITING_LOAD'
+            """)
+    int deleteIdleWorkOrderRuntimeStates(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("workOrderId") UUID workOrderId);
+
+    /** 删除异常终止作业单已经固化为执行事实的全部运行态。 */
+    @Delete("""
+            DELETE FROM mine_operation_runtime_state
+            WHERE organization_id = #{organizationId}
+              AND site_id = #{siteId}
+              AND work_order_id = #{workOrderId}
+            """)
+    int deleteWorkOrderRuntimeStates(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("workOrderId") UUID workOrderId);
+
+    /** 追加人工异常终止的运输循环执行事实。 */
+    @Insert("""
+            INSERT INTO mine_operation_record (
+                id, organization_id, site_id, shift_instance_id,
+                work_order_id, assignment_id, cycle_number,
+                work_type, record_status, vehicle_id, driver_person_id,
+                route_version_id, load_geofence_version_id,
+                unload_geofence_version_id, started_at, completed_at,
+                frozen_snapshot, record_source, created_by
+            ) VALUES (
+                #{id}, #{organizationId}, #{siteId}, #{shiftInstanceId},
+                #{workOrderId}, #{assignmentId}, #{cycleNumber},
+                'HAULAGE', 'ABORTED', #{vehicleId}, #{driverPersonId},
+                #{routeVersionId}, #{loadGeofenceVersionId},
+                #{unloadGeofenceVersionId}, #{startedAt}, #{completedAt},
+                CAST(#{frozenSnapshotJson} AS JSONB), 'MANUAL', #{operatorId}
+            )
+            """)
+    int insertAbortedOperationRecord(
+            @Param("id") UUID id,
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("shiftInstanceId") UUID shiftInstanceId,
+            @Param("workOrderId") UUID workOrderId,
+            @Param("assignmentId") UUID assignmentId,
+            @Param("cycleNumber") long cycleNumber,
+            @Param("vehicleId") UUID vehicleId,
+            @Param("driverPersonId") UUID driverPersonId,
+            @Param("routeVersionId") UUID routeVersionId,
+            @Param("loadGeofenceVersionId") UUID loadGeofenceVersionId,
+            @Param("unloadGeofenceVersionId") UUID unloadGeofenceVersionId,
+            @Param("startedAt") Instant startedAt,
+            @Param("completedAt") Instant completedAt,
+            @Param("frozenSnapshotJson") String frozenSnapshotJson,
+            @Param("operatorId") UUID operatorId);
+
+    /** 建立异常终止执行事实的当前有效投影。 */
+    @Insert("""
+            INSERT INTO mine_operation_effective_record (
+                operation_record_id, organization_id, site_id,
+                shift_instance_id, work_order_id, assignment_id,
+                cycle_number, work_type, record_status, effective,
+                vehicle_id, driver_person_id, started_at, completed_at
+            ) VALUES (
+                #{recordId}, #{organizationId}, #{siteId},
+                #{shiftInstanceId}, #{workOrderId}, #{assignmentId},
+                #{cycleNumber}, 'HAULAGE', 'ABORTED', TRUE,
+                #{vehicleId}, #{driverPersonId}, #{startedAt}, #{completedAt}
+            )
+            """)
+    int insertAbortedOperationEffectiveRecord(
+            @Param("recordId") UUID recordId,
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("shiftInstanceId") UUID shiftInstanceId,
+            @Param("workOrderId") UUID workOrderId,
+            @Param("assignmentId") UUID assignmentId,
+            @Param("cycleNumber") long cycleNumber,
+            @Param("vehicleId") UUID vehicleId,
+            @Param("driverPersonId") UUID driverPersonId,
+            @Param("startedAt") Instant startedAt,
+            @Param("completedAt") Instant completedAt);
+
+    /** 为人工异常终止执行事实追加原因和运行态证据。 */
+    @Insert("""
+            INSERT INTO mine_operation_evidence (
+                id, organization_id, site_id, operation_record_id,
+                evidence_role, occurred_at, evidence_payload, created_by
+            ) VALUES (
+                #{id}, #{organizationId}, #{siteId}, #{recordId},
+                'MANUAL_SUPPORT', #{occurredAt},
+                CAST(#{evidencePayloadJson} AS JSONB), #{operatorId}
+            )
+            """)
+    int insertAbortedOperationEvidence(
+            @Param("id") UUID id,
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("recordId") UUID recordId,
+            @Param("occurredAt") Instant occurredAt,
+            @Param("evidencePayloadJson") String evidencePayloadJson,
             @Param("operatorId") UUID operatorId);
 
     /** 查询发布快照使用的活动已发布路线版本。 */
@@ -961,6 +1153,22 @@ public interface OperationMapper {
             Instant createdAt,
             Instant updatedAt,
             long version
+    ) {
+    }
+
+    /** 作业单运输循环运行态及发生时调度上下文锁定投影。 */
+    record OperationRuntimeStateRow(
+            UUID id,
+            UUID assignmentId,
+            long cycleNumber,
+            String cycleStatus,
+            UUID lastSpatialEventId,
+            Instant lastOccurredAt,
+            long lastIngestSequence,
+            String evidenceSnapshotJson,
+            Instant startedAt,
+            UUID vehicleId,
+            UUID driverPersonId
     ) {
     }
 }

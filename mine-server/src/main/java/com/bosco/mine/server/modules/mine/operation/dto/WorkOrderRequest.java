@@ -38,6 +38,6 @@ public record WorkOrderRequest(
         @Positive @Max(1_000_000) Integer plannedCycles,
         @DecimalMin(value = "0", inclusive = false) BigDecimal plannedTons,
         @Min(1) @Max(100) int priority,
-        @PositiveOrZero long version
+        @NotNull @PositiveOrZero Long version
 ) {
 }

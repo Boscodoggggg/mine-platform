@@ -80,7 +80,9 @@ class ShiftManagementIT {
 
     private UUID firstUserId;
     private UUID secondUserId;
+    private UUID firstOrganizationId;
     private UUID firstSiteId;
+    private UUID firstSiblingSiteId;
     private UUID secondSiteId;
 
     @BeforeEach
@@ -101,8 +103,12 @@ class ShiftManagementIT {
         identity.use(firstUserId);
         MineOrganizationResponse firstOrganization = scopeCommandService.createOrganization(
                 "shift-north", "班次北方集团");
+        firstOrganizationId = firstOrganization.id();
         firstSiteId = scopeCommandService.createSite(
                 firstOrganization.id(), "shift-north-pit", "班次北矿",
+                "Asia/Shanghai", null).id();
+        firstSiblingSiteId = scopeCommandService.createSite(
+                firstOrganization.id(), "shift-north-sibling-pit", "班次北矿二区",
                 "Asia/Shanghai", null).id();
 
         identity.use(secondUserId);
@@ -153,6 +159,29 @@ class ShiftManagementIT {
                         new ShiftInstanceRequest(
                                 definition.id(), LocalDate.parse("2026-08-01"), null)),
                 "MINE-SHIFT-422-002");
+    }
+
+    @Test
+    void 班次负责人必须是全班次在当前矿区任职的在职主管() {
+        ShiftDefinitionResponse definition = commandService.createDefinition(
+                firstSiteId,
+                definition("supervisor-shift", "主管班次", "08:00", "16:00", false,
+                        "2026-01-01", null, 0));
+        UUID crossSiteSupervisor = insertSupervisor(firstSiblingSiteId, "cross-site-supervisor");
+
+        assertCode(() -> commandService.createInstance(
+                        firstSiteId,
+                        new ShiftInstanceRequest(
+                                definition.id(), LocalDate.parse("2026-07-20"),
+                                crossSiteSupervisor)),
+                "MINE-SHIFT-422-003");
+
+        UUID localSupervisor = insertSupervisor(firstSiteId, "local-supervisor");
+        ShiftInstanceResponse created = commandService.createInstance(
+                firstSiteId,
+                new ShiftInstanceRequest(
+                        definition.id(), LocalDate.parse("2026-07-20"), localSupervisor));
+        assertThat(created.supervisorPersonId()).isEqualTo(localSupervisor);
     }
 
     @Test
@@ -304,10 +333,10 @@ class ShiftManagementIT {
     }
 
     @Test
-    void 关闭班次必须拒绝遗留运输循环运行状态() {
+    void 关闭班次必须拒绝未终结运输作业() {
         ShiftInstanceResponse opened = commandService.openInstance(
                 firstSiteId, createDayInstance("runtime-shift", "2026-07-22").id());
-        insertRuntimeState(opened);
+        insertUnfinishedWorkOrder(opened);
 
         assertCode(() -> commandService.closeInstance(firstSiteId, opened.id()),
                 "MINE-SHIFT-409-003");
@@ -366,17 +395,9 @@ class ShiftManagementIT {
                         definition.id(), LocalDate.parse(businessDate), null));
     }
 
-    private void insertRuntimeState(ShiftInstanceResponse shift) {
-        UUID vehicleId = UUID.randomUUID();
+    private void insertUnfinishedWorkOrder(ShiftInstanceResponse shift) {
         UUID orderId = UUID.randomUUID();
-        UUID assignmentId = UUID.randomUUID();
         UUID organizationId = shift.organizationId();
-        jdbcTemplate.update("""
-                INSERT INTO mine_vehicle (
-                    id, organization_id, site_id, vehicle_code, name, vehicle_type
-                ) VALUES (?, ?, ?, ?, '运行态矿卡', 'HAUL_TRUCK')
-                """, vehicleId, organizationId, firstSiteId,
-                "runtime-" + vehicleId.toString().substring(0, 8));
         jdbcTemplate.update("""
                 INSERT INTO mine_work_order (
                     id, organization_id, site_id, shift_instance_id,
@@ -386,19 +407,6 @@ class ShiftManagementIT {
                 """, orderId, organizationId, firstSiteId, shift.id(),
                 "runtime-" + orderId.toString().substring(0, 8),
                 Timestamp.from(shift.plannedStartAt()), Timestamp.from(shift.plannedEndAt()));
-        jdbcTemplate.update("""
-                INSERT INTO mine_work_order_assignment (
-                    id, organization_id, site_id, work_order_id, vehicle_id,
-                    valid_from, valid_to
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, assignmentId, organizationId, firstSiteId, orderId, vehicleId,
-                Timestamp.from(shift.plannedStartAt()), Timestamp.from(shift.plannedEndAt()));
-        jdbcTemplate.update("""
-                INSERT INTO mine_operation_runtime_state (
-                    id, organization_id, site_id, work_order_id, assignment_id,
-                    cycle_status
-                ) VALUES (?, ?, ?, ?, ?, 'LOADING')
-                """, UUID.randomUUID(), organizationId, firstSiteId, orderId, assignmentId);
     }
 
     private ShiftDefinitionRequest definition(
@@ -414,6 +422,28 @@ class ShiftManagementIT {
         return new ShiftDefinitionRequest(
                 code, name, LocalTime.parse(start), LocalTime.parse(end), crossesMidnight,
                 LocalDate.parse(validFrom), validTo == null ? null : LocalDate.parse(validTo), version);
+    }
+
+    private UUID insertSupervisor(UUID siteId, String code) {
+        UUID personId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO mine_person (
+                    id, organization_id, person_code, name, person_type,
+                    phone_ciphertext, phone_masked,
+                    certificate_ciphertext, certificate_masked
+                ) VALUES (?, ?, ?, '班次测试主管', 'SUPERVISOR',
+                          'v2:phone:cipher', '138****0000',
+                          'v2:certificate:cipher', '证件****0000')
+                """, personId, firstOrganizationId, code);
+        jdbcTemplate.update("""
+                INSERT INTO mine_person_site_assignment (
+                    id, organization_id, site_id, person_id,
+                    valid_from, valid_to, reason
+                ) VALUES (?, ?, ?, ?,
+                          TIMESTAMPTZ '2026-01-01 00:00:00+00',
+                          TIMESTAMPTZ '2027-01-01 00:00:00+00', '班次负责人任职')
+                """, UUID.randomUUID(), firstOrganizationId, siteId, personId);
+        return personId;
     }
 
     private void assertCode(Runnable action, String expectedCode) {

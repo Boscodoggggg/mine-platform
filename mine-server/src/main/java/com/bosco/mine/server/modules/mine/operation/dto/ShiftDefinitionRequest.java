@@ -29,6 +29,6 @@ public record ShiftDefinitionRequest(
         boolean crossesMidnight,
         @NotNull LocalDate validFrom,
         LocalDate validTo,
-        @PositiveOrZero long version
+        @NotNull @PositiveOrZero Long version
 ) {
 }

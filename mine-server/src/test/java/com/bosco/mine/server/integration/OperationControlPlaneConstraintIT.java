@@ -299,6 +299,27 @@ class OperationControlPlaneConstraintIT {
                     started_by = ?
                 WHERE id = ?
                 """, userId, orderId));
+        jdbcTemplate.update("""
+                UPDATE mine_shift_instance
+                SET status = 'OPEN', actual_start_at = CURRENT_TIMESTAMP,
+                    opened_at = CURRENT_TIMESTAMP, opened_by = ?,
+                    updated_at = CURRENT_TIMESTAMP, updated_by = ?, version = version + 1
+                WHERE id = ?
+                """, userId, userId, shiftId);
+        jdbcTemplate.update("""
+                UPDATE mine_work_order
+                SET status = 'RUNNING', started_at = CURRENT_TIMESTAMP,
+                    started_by = ?, updated_at = CURRENT_TIMESTAMP,
+                    updated_by = ?, version = version + 1
+                WHERE id = ?
+                """, userId, userId, orderId);
+        assertRejected(() -> jdbcTemplate.update("""
+                UPDATE mine_shift_instance
+                SET status = 'CLOSED', actual_end_at = CURRENT_TIMESTAMP,
+                    closed_at = CURRENT_TIMESTAMP, closed_by = ?,
+                    updated_at = CURRENT_TIMESTAMP, updated_by = ?, version = version + 1
+                WHERE id = ?
+                """, userId, userId, shiftId));
 
         UUID driverId = insertDriver(start, end);
         UUID firstVehicleId = insertVehicle("driver-truck-a");
@@ -324,6 +345,9 @@ class OperationControlPlaneConstraintIT {
                 UPDATE mine_shift_instance SET business_date = DATE '2026-07-22'
                 WHERE id = ?
                 """, terminalShiftId));
+        assertRejected(() -> insertWorkOrder(
+                UUID.randomUUID(), terminalShiftId, "cancelled-shift-order",
+                start.plusSeconds(86400), end.plusSeconds(86400)));
     }
 
     @Test
@@ -409,12 +433,12 @@ class OperationControlPlaneConstraintIT {
                 ) VALUES (?, ?, ?, ?, ?)
                 """, UUID.randomUUID(), organizationId, siteId,
                 secondOrderId, assignmentId));
-        jdbcTemplate.update("""
+        assertRejected(() -> jdbcTemplate.update("""
                 INSERT INTO mine_operation_runtime_state (
                     id, organization_id, site_id, work_order_id, assignment_id
                 ) VALUES (?, ?, ?, ?, ?)
                 """, UUID.randomUUID(), organizationId, siteId,
-                firstOrderId, assignmentId);
+                firstOrderId, assignmentId));
 
         UUID queueId = UUID.randomUUID();
         UUID eventId = UUID.randomUUID();

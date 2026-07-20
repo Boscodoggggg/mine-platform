@@ -3443,6 +3443,7 @@ paths:
       tags: [MineOperation]
       operationId: closeMineShiftInstance
       summary: 使用高风险权限幂等关闭班次
+      description: 存在未终结作业单或循环运行态时返回 MINE-SHIFT-409-003。
       parameters:
         - { $ref: '#/components/parameters/SiteId' }
         - { name: shiftId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3468,7 +3469,7 @@ paths:
         - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftActionRequest' } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftCancellationRequest' } } }
       responses:
         '200': { description: 首次取消结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/ShiftInstanceResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -3476,6 +3477,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/MineResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /mine/sites/{siteId}/work-orders:
     get:
       tags: [MineOperation]
@@ -3602,6 +3604,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/MineResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /mine/sites/{siteId}/work-orders/{workOrderId}/pause:
     post:
       tags: [MineOperation]
@@ -3641,6 +3644,7 @@ paths:
       tags: [MineOperation]
       operationId: completeMineWorkOrder
       summary: 幂等完成运行或暂停作业单
+      description: 运输循环未回到 WAITING_LOAD 空闲边界时返回 MINE-WORK-409-005。
       parameters:
         - { $ref: '#/components/parameters/SiteId' }
         - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -3662,7 +3666,7 @@ paths:
         - { $ref: '#/components/parameters/SiteId' }
         - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: '#/components/parameters/IdempotencyKey' }
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderTerminalActionRequest' } } } }
       responses:
         '200': { description: 首次取消结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -3670,16 +3674,18 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/MineResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /mine/sites/{siteId}/work-orders/{workOrderId}/abort:
     post:
       tags: [MineOperation]
       operationId: abortMineWorkOrder
       summary: 幂等异常终止运行或暂停作业单
+      description: 尚未完成的运输循环会在同一事务中固化为 ABORTED 执行事实并清理运行态。
       parameters:
         - { $ref: '#/components/parameters/SiteId' }
         - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
         - { $ref: '#/components/parameters/IdempotencyKey' }
-      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderTerminalActionRequest' } } } }
       responses:
         '200': { description: 首次异常终止结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -3687,6 +3693,7 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/MineResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
 
 components:
   securitySchemes:
@@ -6798,6 +6805,13 @@ components:
       properties:
         version: { type: integer, format: int64, minimum: 0 }
         reason: { type: [string, 'null'], maxLength: 500 }
+    ShiftCancellationRequest:
+      type: object
+      additionalProperties: false
+      required: [version, reason]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
     ShiftInstanceResponse:
       type: object
       required: [id, organizationId, siteId, shiftDefinitionId, businessDate, plannedStartAt, plannedEndAt, actualStartAt, actualEndAt, supervisorPersonId, definitionSnapshot, status, openedAt, closedAt, cancelledAt, cancellationReason, createdAt, updatedAt, version]
@@ -6839,13 +6853,14 @@ components:
     WorkOrderAssignmentRequest:
       type: object
       additionalProperties: false
-      required: [vehicleId, validFrom, validTo, assignmentReason]
+      required: [vehicleId, validFrom, validTo, assignmentReason, version]
       properties:
         vehicleId: { type: string, format: uuid }
         driverPersonId: { type: [string, 'null'], format: uuid }
         validFrom: { type: string, format: date-time }
         validTo: { type: string, format: date-time }
         assignmentReason: { type: string, minLength: 1, maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
     WorkOrderActionRequest:
       type: object
       additionalProperties: false
@@ -6856,6 +6871,13 @@ components:
         loadGeofenceVersionId: { type: [string, 'null'], format: uuid }
         unloadGeofenceVersionId: { type: [string, 'null'], format: uuid }
         reason: { type: [string, 'null'], maxLength: 500 }
+    WorkOrderTerminalActionRequest:
+      type: object
+      additionalProperties: false
+      required: [version, reason]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
     WorkOrderAssignmentResponse:
       type: object
       required: [id, vehicleId, vehicleCode, vehicleName, vehicleType, driverPersonId, driverName, validFrom, validTo, status, assignmentReason, createdAt, version]
@@ -6869,7 +6891,7 @@ components:
         driverName: { type: [string, 'null'] }
         validFrom: { type: string, format: date-time }
         validTo: { type: string, format: date-time }
-        status: { type: string, enum: [ACTIVE, CANCELLED] }
+        status: { type: string, enum: [ACTIVE, COMPLETED, CANCELLED] }
         assignmentReason: { type: string }
         createdAt: { type: string, format: date-time }
         version: { type: integer, format: int64, minimum: 0 }

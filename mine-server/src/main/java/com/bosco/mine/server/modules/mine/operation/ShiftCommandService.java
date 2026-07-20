@@ -44,13 +44,15 @@ public class ShiftCommandService {
     private static final ErrorCode INSTANCE_CONFLICT =
             new ErrorCode("MINE-SHIFT-409-002", "同一模板和营业日期的班次实例已存在");
     private static final ErrorCode CLOSE_BLOCKED =
-            new ErrorCode("MINE-SHIFT-409-003", "班次仍有运行作业或运输循环，不能关账");
+            new ErrorCode("MINE-SHIFT-409-003", "班次仍有未终结运输作业或循环运行态");
     private static final ErrorCode LIFECYCLE_CONFLICT =
             new ErrorCode("MINE-SHIFT-409-004", "当前班次状态不允许执行该动作");
     private static final ErrorCode INVALID =
             new ErrorCode("MINE-SHIFT-422-001", "班次模板、时间或动作参数不合法");
     private static final ErrorCode DEFINITION_INACTIVE =
             new ErrorCode("MINE-SHIFT-422-002", "班次模板未启用或营业日期超出有效期");
+    private static final ErrorCode SUPERVISOR_INVALID =
+            new ErrorCode("MINE-SHIFT-422-003", "班次负责人必须在完整班次期间于当前矿区在职");
 
     private final OperationMapper mapper;
     private final ShiftQueryService queryService;
@@ -211,6 +213,13 @@ public class ShiftCommandService {
         if (duration.isNegative() || duration.isZero() || duration.compareTo(Duration.ofHours(24)) > 0) {
             throw invalid();
         }
+        if (request.supervisorPersonId() != null
+                && !mapper.isShiftSupervisorEligible(
+                site.organizationId(), site.id(), request.supervisorPersonId(),
+                plannedStartAt, plannedEndAt)) {
+            throw new MineException(SUPERVISOR_INVALID, Map.of(
+                    "supervisorPersonId", request.supervisorPersonId()));
+        }
         UUID shiftId = idGenerator.next();
         UUID operatorId = authorizer.currentUserId();
         Map<String, Object> snapshot = definitionSnapshot(
@@ -318,7 +327,11 @@ public class ShiftCommandService {
             return queryService.toResponse(before);
         }
         requireTransition(before.status(), ShiftLifecycle.Action.CLOSE);
-        if (mapper.countShiftCloseBlockers(site.organizationId(), site.id(), shiftId) > 0) {
+        boolean hasUnfinishedWork = !mapper.lockShiftBlockingWorkOrders(
+                site.organizationId(), site.id(), shiftId).isEmpty();
+        boolean hasRuntimeState = !mapper.lockShiftRuntimeStates(
+                site.organizationId(), site.id(), shiftId).isEmpty();
+        if (hasUnfinishedWork || hasRuntimeState) {
             throw new MineException(CLOSE_BLOCKED, Map.of("shiftId", shiftId));
         }
         Instant actionAt = Instant.now();
@@ -376,6 +389,10 @@ public class ShiftCommandService {
             throw lifecycleConflict(shiftId);
         }
         requireTransition(before.status(), ShiftLifecycle.Action.CANCEL);
+        if (!mapper.lockShiftBlockingWorkOrders(
+                site.organizationId(), site.id(), shiftId).isEmpty()) {
+            throw new MineException(CLOSE_BLOCKED, Map.of("shiftId", shiftId));
+        }
         Instant actionAt = Instant.now();
         if (mapper.cancelShiftInstance(
                 site.organizationId(), site.id(), shiftId, before.version(), actionAt,
@@ -428,7 +445,7 @@ public class ShiftCommandService {
 
     private ShiftDefinitionRequest normalize(ShiftDefinitionRequest request) {
         if (request == null || request.startLocal() == null || request.endLocal() == null
-                || request.validFrom() == null) {
+                || request.validFrom() == null || request.version() == null) {
             throw invalid();
         }
         String code = required(request.definitionCode(), 64).toLowerCase(Locale.ROOT);

@@ -30,7 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -63,6 +62,8 @@ public class WorkOrderCommandService {
             new ErrorCode("MINE-WORK-422-004", "司机在完整分配时段内缺少矿区任职或车型资质");
     private static final ErrorCode ASSIGNMENT_REQUIRED =
             new ErrorCode("MINE-WORK-422-005", "发布运输作业单前至少需要一条活动车辆分配");
+    private static final ErrorCode RUNTIME_INCOMPLETE =
+            new ErrorCode("MINE-WORK-409-005", "作业单仍有未完成运输循环，不能进入终态");
 
     private final OperationMapper mapper;
     private final WorkOrderQueryService queryService;
@@ -105,7 +106,7 @@ public class WorkOrderCommandService {
     public WorkOrderResponse createWorkOrder(UUID siteId, WorkOrderRequest request) {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderRequest normalized = normalize(request);
-        requirePlanningShift(site, normalized.shiftInstanceId(), normalized);
+        requirePlanningShift(site, normalized.shiftInstanceId(), normalized, true);
         UUID workOrderId = idGenerator.next();
         try {
             mapper.insertWorkOrder(
@@ -140,11 +141,11 @@ public class WorkOrderCommandService {
     ) {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderRequest normalized = normalize(request);
-        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, false);
+        requirePlanningShift(site, normalized.shiftInstanceId(), normalized, true);
+        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, true);
         if (!"DRAFT".equals(before.status())) {
             throw versionConflict(workOrderId);
         }
-        requirePlanningShift(site, normalized.shiftInstanceId(), normalized);
         try {
             if (mapper.updateWorkOrder(
                     workOrderId, site.organizationId(), site.id(),
@@ -179,11 +180,16 @@ public class WorkOrderCommandService {
             UUID siteId, UUID workOrderId, WorkOrderAssignmentRequest request
     ) {
         MineSite site = authorizer.requireSite(siteId);
-        OperationMapper.WorkOrderRow order = requireWorkOrder(site, workOrderId, true);
+        LockedWorkOrder locked = lockWorkOrderWithShift(site, workOrderId);
+        OperationMapper.WorkOrderRow order = locked.order();
+        requireShiftStatus(locked.shift(), workOrderId, "ASSIGN", "PLANNED", "OPEN");
         if (!List.of("DRAFT", "RELEASED", "RUNNING", "PAUSED").contains(order.status())) {
             throw lifecycleConflict(workOrderId, "ASSIGN");
         }
         WorkOrderAssignmentRequest normalized = normalize(request, order);
+        if (normalized.version() != order.version()) {
+            throw versionConflict(workOrderId);
+        }
         OperationMapper.DispatchVehicleRow vehicle = mapper.lockDispatchVehicle(
                         site.organizationId(), site.id(), normalized.vehicleId())
                 .filter(item -> "ACTIVE".equals(item.status()))
@@ -209,6 +215,11 @@ public class WorkOrderCommandService {
         }
         UUID assignmentId = idGenerator.next();
         try {
+            if (mapper.touchWorkOrderForAssignment(
+                    site.organizationId(), site.id(), workOrderId, order.version(),
+                    authorizer.currentUserId()) == 0) {
+                throw versionConflict(workOrderId);
+            }
             mapper.insertWorkOrderAssignment(
                     assignmentId, site.organizationId(), site.id(), workOrderId,
                     normalized.vehicleId(), normalized.driverPersonId(), normalized.validFrom(),
@@ -238,18 +249,10 @@ public class WorkOrderCommandService {
     ) {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderActionRequest requiredRequest = requireAction(request);
-        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, true);
-        if ("RELEASED".equals(before.status())) {
-            if (Objects.equals(before.routeVersionId(), requiredRequest.routeVersionId())
-                    && Objects.equals(
-                    before.loadGeofenceVersionId(), requiredRequest.loadGeofenceVersionId())
-                    && Objects.equals(
-                    before.unloadGeofenceVersionId(), requiredRequest.unloadGeofenceVersionId())) {
-                return queryService.toResponse(site, before);
-            }
-            throw lifecycleConflict(workOrderId, "RELEASE");
-        }
+        LockedWorkOrder locked = lockWorkOrderWithShift(site, workOrderId);
+        OperationMapper.WorkOrderRow before = locked.order();
         requireActionVersion(before, requiredRequest);
+        requireShiftStatus(locked.shift(), workOrderId, "RELEASE", "PLANNED", "OPEN");
         requireTransition(before, WorkOrderLifecycle.Action.RELEASE);
         if (requiredRequest.routeVersionId() == null
                 || requiredRequest.loadGeofenceVersionId() == null
@@ -298,82 +301,75 @@ public class WorkOrderCommandService {
         return released;
     }
 
-    /** 启动已发布作业单；同一已完成动作可安全重放。 */
+    /** 启动已发布作业单，重放由持久幂等账本返回首次结果。 */
     @Transactional
     public WorkOrderResponse startWorkOrder(
             UUID siteId, UUID workOrderId, WorkOrderActionRequest request
     ) {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderActionRequest action = requireAction(request);
-        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, true);
-        if ("RUNNING".equals(before.status()) && before.pausedAt() == null) {
-            return queryService.toResponse(site, before);
-        }
+        LockedWorkOrder locked = lockWorkOrderWithShift(site, workOrderId);
+        OperationMapper.WorkOrderRow before = locked.order();
         requireActionVersion(before, action);
         requireTransition(before, WorkOrderLifecycle.Action.START);
-        OperationMapper.ShiftInstanceRow shift = mapper.findShiftInstance(
-                        site.organizationId(), site.id(), before.shiftInstanceId())
-                .orElseThrow(() -> lifecycleConflict(workOrderId, "START"));
-        if (!"OPEN".equals(shift.status())) {
-            throw lifecycleConflict(workOrderId, "START");
-        }
+        requireShiftStatus(locked.shift(), workOrderId, "START", "OPEN");
         return applySimpleAction(site, before, "START_WORK_ORDER", "mine:work-order:dispatch",
                 (time, userId) -> mapper.startWorkOrder(
                         site.organizationId(), site.id(), workOrderId,
                         before.version(), time, userId));
     }
 
-    /** 暂停运行作业单；同一已完成动作可安全重放。 */
+    /** 暂停运行作业单，重放由持久幂等账本返回首次结果。 */
     @Transactional
     public WorkOrderResponse pauseWorkOrder(
             UUID siteId, UUID workOrderId, WorkOrderActionRequest request
     ) {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderActionRequest action = requireAction(request);
-        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, true);
-        if ("PAUSED".equals(before.status())) {
-            return queryService.toResponse(site, before);
-        }
+        LockedWorkOrder locked = lockWorkOrderWithShift(site, workOrderId);
+        OperationMapper.WorkOrderRow before = locked.order();
         requireActionVersion(before, action);
         requireTransition(before, WorkOrderLifecycle.Action.PAUSE);
+        requireShiftStatus(locked.shift(), workOrderId, "PAUSE", "OPEN");
         return applySimpleAction(site, before, "PAUSE_WORK_ORDER", "mine:work-order:dispatch",
                 (time, userId) -> mapper.pauseWorkOrder(
                         site.organizationId(), site.id(), workOrderId,
                         before.version(), time, userId));
     }
 
-    /** 恢复暂停作业单；同一已完成动作可安全重放。 */
+    /** 恢复暂停作业单，重放由持久幂等账本返回首次结果。 */
     @Transactional
     public WorkOrderResponse resumeWorkOrder(
             UUID siteId, UUID workOrderId, WorkOrderActionRequest request
     ) {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderActionRequest action = requireAction(request);
-        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, true);
-        if ("RUNNING".equals(before.status()) && before.pausedAt() != null) {
-            return queryService.toResponse(site, before);
-        }
+        LockedWorkOrder locked = lockWorkOrderWithShift(site, workOrderId);
+        OperationMapper.WorkOrderRow before = locked.order();
         requireActionVersion(before, action);
         requireTransition(before, WorkOrderLifecycle.Action.RESUME);
+        requireShiftStatus(locked.shift(), workOrderId, "RESUME", "OPEN");
         return applySimpleAction(site, before, "RESUME_WORK_ORDER", "mine:work-order:dispatch",
                 (time, userId) -> mapper.resumeWorkOrder(
                         site.organizationId(), site.id(), workOrderId,
                         before.version(), time, userId));
     }
 
-    /** 完成运行或暂停作业单；同一已完成动作可安全重放。 */
+    /** 完成运行或暂停作业单，并要求运输循环已回到空闲边界。 */
     @Transactional
     public WorkOrderResponse completeWorkOrder(
             UUID siteId, UUID workOrderId, WorkOrderActionRequest request
     ) {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderActionRequest action = requireAction(request);
-        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, true);
-        if ("COMPLETED".equals(before.status())) {
-            return queryService.toResponse(site, before);
-        }
+        LockedWorkOrder locked = lockWorkOrderWithShift(site, workOrderId);
+        OperationMapper.WorkOrderRow before = locked.order();
         requireActionVersion(before, action);
         requireTransition(before, WorkOrderLifecycle.Action.COMPLETE);
+        requireShiftStatus(locked.shift(), workOrderId, "COMPLETE", "OPEN");
+        requireIdleRuntimeStates(site, before);
+        mapper.deleteIdleWorkOrderRuntimeStates(
+                site.organizationId(), site.id(), before.id());
         return applySimpleAction(site, before, "COMPLETE_WORK_ORDER", "mine:work-order:dispatch",
                 (time, userId) -> mapper.completeWorkOrder(
                         site.organizationId(), site.id(), workOrderId,
@@ -388,15 +384,12 @@ public class WorkOrderCommandService {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderActionRequest action = requireAction(request);
         String reason = required(action.reason(), 500);
-        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, true);
-        if ("CANCELLED".equals(before.status())) {
-            if (reason.equals(before.terminalReason())) {
-                return queryService.toResponse(site, before);
-            }
-            throw lifecycleConflict(workOrderId, "CANCEL");
-        }
+        OperationMapper.WorkOrderRow before = lockWorkOrderWithShift(site, workOrderId).order();
         requireActionVersion(before, action);
         requireTransition(before, WorkOrderLifecycle.Action.CANCEL);
+        requireIdleRuntimeStates(site, before);
+        mapper.deleteIdleWorkOrderRuntimeStates(
+                site.organizationId(), site.id(), before.id());
         return applySimpleAction(site, before, "CANCEL_WORK_ORDER", "mine:work-order:dispatch",
                 (time, userId) -> mapper.cancelWorkOrder(
                         site.organizationId(), site.id(), workOrderId,
@@ -411,19 +404,31 @@ public class WorkOrderCommandService {
         MineSite site = authorizer.requireSite(siteId);
         WorkOrderActionRequest action = requireAction(request);
         String reason = required(action.reason(), 500);
-        OperationMapper.WorkOrderRow before = requireWorkOrder(site, workOrderId, true);
-        if ("ABORTED".equals(before.status())) {
-            if (reason.equals(before.terminalReason())) {
-                return queryService.toResponse(site, before);
-            }
-            throw lifecycleConflict(workOrderId, "ABORT");
-        }
+        LockedWorkOrder locked = lockWorkOrderWithShift(site, workOrderId);
+        OperationMapper.WorkOrderRow before = locked.order();
         requireActionVersion(before, action);
         requireTransition(before, WorkOrderLifecycle.Action.ABORT);
-        return applySimpleAction(site, before, "ABORT_WORK_ORDER", "mine:work-order:dispatch",
-                (time, userId) -> mapper.abortWorkOrder(
-                        site.organizationId(), site.id(), workOrderId,
-                        before.version(), time, reason, userId));
+        requireShiftStatus(locked.shift(), workOrderId, "ABORT", "OPEN");
+        List<OperationMapper.OperationRuntimeStateRow> runtimeStates =
+                mapper.lockWorkOrderRuntimeStates(
+                        site.organizationId(), site.id(), before.id());
+        Instant actionAt = Instant.now();
+        UUID operatorId = authorizer.currentUserId();
+        runtimeStates.stream()
+                .filter(state -> !"WAITING_LOAD".equals(state.cycleStatus()))
+                .forEach(state -> persistAbortedRuntime(
+                        site, before, state, actionAt, reason, operatorId));
+        mapper.deleteWorkOrderRuntimeStates(
+                site.organizationId(), site.id(), before.id());
+        if (mapper.abortWorkOrder(
+                site.organizationId(), site.id(), workOrderId,
+                before.version(), actionAt, reason, operatorId) == 0) {
+            throw lifecycleConflict(before.id(), "ABORT_WORK_ORDER");
+        }
+        WorkOrderResponse aborted = queryService.findWorkOrder(site.id(), before.id());
+        audit("ABORT_WORK_ORDER", "mine:work-order:dispatch", before.id(),
+                summary(queryService.toResponse(site, before)), summary(aborted));
+        return aborted;
     }
 
     private WorkOrderResponse applySimpleAction(
@@ -445,6 +450,7 @@ public class WorkOrderCommandService {
     private WorkOrderRequest normalize(WorkOrderRequest request) {
         if (request == null || request.shiftInstanceId() == null
                 || request.plannedStartAt() == null || request.plannedEndAt() == null
+                || request.version() == null
                 || !request.plannedEndAt().isAfter(request.plannedStartAt())) {
             throw invalid();
         }
@@ -470,6 +476,7 @@ public class WorkOrderCommandService {
     ) {
         if (request == null || request.vehicleId() == null
                 || request.validFrom() == null || request.validTo() == null
+                || request.version() == null
                 || !request.validTo().isAfter(request.validFrom())
                 || request.validFrom().isBefore(order.plannedStartAt())
                 || request.validTo().isAfter(order.plannedEndAt())) {
@@ -477,20 +484,22 @@ public class WorkOrderCommandService {
         }
         return new WorkOrderAssignmentRequest(
                 request.vehicleId(), request.driverPersonId(), request.validFrom(), request.validTo(),
-                required(request.assignmentReason(), 500));
+                required(request.assignmentReason(), 500), request.version());
     }
 
-    private void requirePlanningShift(
-            MineSite site, UUID shiftInstanceId, WorkOrderRequest request
+    private OperationMapper.ShiftInstanceRow requirePlanningShift(
+            MineSite site, UUID shiftInstanceId, WorkOrderRequest request, boolean lock
     ) {
-        OperationMapper.ShiftInstanceRow shift = mapper.findShiftInstance(
-                        site.organizationId(), site.id(), shiftInstanceId)
+        OperationMapper.ShiftInstanceRow shift = (lock
+                ? mapper.lockShiftInstance(site.organizationId(), site.id(), shiftInstanceId)
+                : mapper.findShiftInstance(site.organizationId(), site.id(), shiftInstanceId))
                 .orElseThrow(this::invalid);
         if (!List.of("PLANNED", "OPEN").contains(shift.status())
                 || request.plannedStartAt().isBefore(shift.plannedStartAt())
                 || request.plannedEndAt().isAfter(shift.plannedEndAt())) {
             throw invalid();
         }
+        return shift;
     }
 
     private OperationMapper.SpatialReleaseRow requireSpatial(
@@ -562,11 +571,23 @@ public class WorkOrderCommandService {
                 item.put("driverName", assignment.driverName());
                 item.put("driverPersonId", assignment.driverPersonId().toString());
             }
-            assignmentSnapshots.add(Map.copyOf(item));
+            assignmentSnapshots.add(item);
         }
         snapshot.put("assignments", List.copyOf(assignmentSnapshots));
-        snapshot.put("contentHash", sha256(toJson(snapshot)));
+        snapshot.put("contentHash", sha256(canonicalJson(snapshot)));
         return Map.copyOf(snapshot);
+    }
+
+    private LockedWorkOrder lockWorkOrderWithShift(MineSite site, UUID workOrderId) {
+        OperationMapper.WorkOrderRow observed = requireWorkOrder(site, workOrderId, false);
+        OperationMapper.ShiftInstanceRow shift = mapper.lockShiftInstance(
+                        site.organizationId(), site.id(), observed.shiftInstanceId())
+                .orElseThrow(() -> lifecycleConflict(workOrderId, "LOCK_SHIFT"));
+        OperationMapper.WorkOrderRow locked = requireWorkOrder(site, workOrderId, true);
+        if (!observed.shiftInstanceId().equals(locked.shiftInstanceId())) {
+            throw versionConflict(workOrderId);
+        }
+        return new LockedWorkOrder(shift, locked);
     }
 
     private OperationMapper.WorkOrderRow requireWorkOrder(
@@ -580,7 +601,7 @@ public class WorkOrderCommandService {
     }
 
     private WorkOrderActionRequest requireAction(WorkOrderActionRequest request) {
-        if (request == null) {
+        if (request == null || request.version() == null) {
             throw invalid();
         }
         return request;
@@ -605,12 +626,106 @@ public class WorkOrderCommandService {
         }
     }
 
+    private void requireShiftStatus(
+            OperationMapper.ShiftInstanceRow shift,
+            UUID workOrderId,
+            String action,
+            String... allowedStatuses
+    ) {
+        if (!List.of(allowedStatuses).contains(shift.status())) {
+            throw lifecycleConflict(workOrderId, action);
+        }
+    }
+
+    private void requireIdleRuntimeStates(
+            MineSite site, OperationMapper.WorkOrderRow order
+    ) {
+        List<OperationMapper.OperationRuntimeStateRow> states =
+                mapper.lockWorkOrderRuntimeStates(
+                        site.organizationId(), site.id(), order.id());
+        if (states.stream().anyMatch(state -> !"WAITING_LOAD".equals(state.cycleStatus()))) {
+            throw new MineException(RUNTIME_INCOMPLETE, Map.of("workOrderId", order.id()));
+        }
+    }
+
+    /** 将异常中止时尚未完成的运输循环固化为不可变执行事实。 */
+    private void persistAbortedRuntime(
+            MineSite site,
+            OperationMapper.WorkOrderRow order,
+            OperationMapper.OperationRuntimeStateRow runtime,
+            Instant actionAt,
+            String reason,
+            UUID operatorId
+    ) {
+        Instant observedStart = runtime.startedAt() == null
+                ? runtime.lastOccurredAt() : runtime.startedAt();
+        Instant startedAt = observedStart == null || observedStart.isAfter(actionAt)
+                ? actionAt : observedStart;
+        Map<String, Object> snapshot = new TreeMap<>();
+        snapshot.put("abortReason", reason);
+        snapshot.put("assignmentId", runtime.assignmentId().toString());
+        snapshot.put("cycleNumber", runtime.cycleNumber());
+        snapshot.put("cycleStatus", runtime.cycleStatus());
+        snapshot.put("runtimeStateId", runtime.id().toString());
+        snapshot.put("runtimeEvidence", jsonValue(runtime.evidenceSnapshotJson()));
+        if (runtime.lastSpatialEventId() != null) {
+            snapshot.put("lastSpatialEventId", runtime.lastSpatialEventId().toString());
+            snapshot.put("lastOccurredAt", runtime.lastOccurredAt().toString());
+            snapshot.put("lastIngestSequence", runtime.lastIngestSequence());
+        }
+        String snapshotJson = canonicalJson(snapshot);
+        UUID recordId = idGenerator.next();
+        mapper.insertAbortedOperationRecord(
+                recordId, site.organizationId(), site.id(), order.shiftInstanceId(),
+                order.id(), runtime.assignmentId(), runtime.cycleNumber(),
+                runtime.vehicleId(), runtime.driverPersonId(), order.routeVersionId(),
+                order.loadGeofenceVersionId(), order.unloadGeofenceVersionId(),
+                startedAt, actionAt, snapshotJson, operatorId);
+        mapper.insertAbortedOperationEffectiveRecord(
+                recordId, site.organizationId(), site.id(), order.shiftInstanceId(),
+                order.id(), runtime.assignmentId(), runtime.cycleNumber(),
+                runtime.vehicleId(), runtime.driverPersonId(), startedAt, actionAt);
+        mapper.insertAbortedOperationEvidence(
+                idGenerator.next(), site.organizationId(), site.id(), recordId,
+                actionAt, snapshotJson, operatorId);
+    }
+
     private String toJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
         } catch (JacksonException exception) {
             throw new IllegalStateException("作业单冻结快照序列化失败", exception);
         }
+    }
+
+    private String canonicalJson(Object value) {
+        try {
+            Object generic = objectMapper.readValue(
+                    objectMapper.writeValueAsString(value), Object.class);
+            return objectMapper.writeValueAsString(sortJson(generic));
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("作业单冻结快照规范化失败", exception);
+        }
+    }
+
+    private Object jsonValue(String value) {
+        try {
+            return objectMapper.readValue(value, Object.class);
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("运输循环证据快照解析失败", exception);
+        }
+    }
+
+    private Object sortJson(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> sorted = new TreeMap<>();
+            map.forEach((key, item) -> sorted.put(String.valueOf(key), sortJson(item)));
+            return sorted;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(this::sortJson).toList();
+        }
+        return value;
     }
 
     private String sha256(String value) {
@@ -683,6 +798,13 @@ public class WorkOrderCommandService {
         MineException invalid = invalid();
         invalid.addSuppressed(exception);
         return invalid;
+    }
+
+    /** 已按班次、作业单顺序锁定的跨聚合上下文。 */
+    private record LockedWorkOrder(
+            OperationMapper.ShiftInstanceRow shift,
+            OperationMapper.WorkOrderRow order
+    ) {
     }
 
     /** 执行一条带动作时刻和操作人的状态更新。 */

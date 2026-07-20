@@ -24,8 +24,11 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -36,6 +39,11 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -79,6 +87,9 @@ class WorkOrderManagementIT {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     private UUID firstUserId;
     private UUID secondUserId;
@@ -165,21 +176,31 @@ class WorkOrderManagementIT {
 
         WorkOrderResponse withFirst = commandService.assignWorkOrder(
                 firstSiteId, firstOrder.id(),
-                assignment(firstVehicle, firstDriver, SHIFT_START, SHIFT_END));
+                assignment(firstVehicle, firstDriver, SHIFT_START, SHIFT_END,
+                        firstOrder.version()));
         WorkOrderResponse withSecond = commandService.assignWorkOrder(
                 firstSiteId, firstOrder.id(),
-                assignment(secondVehicle, secondDriver, SHIFT_START, SHIFT_END));
+                assignment(secondVehicle, secondDriver, SHIFT_START, SHIFT_END,
+                        withFirst.version()));
 
         assertThat(withFirst.assignments()).hasSize(1);
         assertThat(withSecond.assignments()).hasSize(2);
         assertCode(() -> commandService.assignWorkOrder(
                         firstSiteId, secondOrder.id(),
-                        assignment(firstVehicle, null, SHIFT_START.plusSeconds(60), SHIFT_END)),
+                        assignment(firstVehicle, null, SHIFT_START.plusSeconds(60), SHIFT_END,
+                                secondOrder.version())),
                 "MINE-WORK-409-003");
         assertCode(() -> commandService.assignWorkOrder(
                         firstSiteId, secondOrder.id(),
-                        assignment(thirdVehicle, firstDriver, SHIFT_START, SHIFT_END)),
+                        assignment(thirdVehicle, firstDriver, SHIFT_START, SHIFT_END,
+                                secondOrder.version())),
                 "MINE-WORK-409-003");
+        assertCode(() -> commandService.assignWorkOrder(
+                        firstSiteId, firstOrder.id(),
+                        assignment(thirdVehicle, null, SHIFT_START, SHIFT_END,
+                                firstOrder.version())),
+                "MINE-WORK-409-002");
+        assertThat(withSecond.version()).isEqualTo(firstOrder.version() + 2);
     }
 
     @Test
@@ -199,15 +220,17 @@ class WorkOrderManagementIT {
 
         assertCode(() -> commandService.assignWorkOrder(
                         firstSiteId, order.id(),
-                        assignment(excavator, null, SHIFT_START, SHIFT_END)),
+                        assignment(excavator, null, SHIFT_START, SHIFT_END, order.version())),
                 "MINE-WORK-422-003");
         assertCode(() -> commandService.assignWorkOrder(
                         firstSiteId, order.id(),
-                        assignment(haulTruck, unqualifiedDriver, SHIFT_START, SHIFT_END)),
+                        assignment(haulTruck, unqualifiedDriver, SHIFT_START, SHIFT_END,
+                                order.version())),
                 "MINE-WORK-422-004");
         assertCode(() -> commandService.assignWorkOrder(
                         firstSiteId, order.id(),
-                        assignment(haulTruck, expiredAssignmentDriver, SHIFT_START, SHIFT_END)),
+                        assignment(haulTruck, expiredAssignmentDriver, SHIFT_START, SHIFT_END,
+                                order.version())),
                 "MINE-WORK-422-004");
     }
 
@@ -218,18 +241,19 @@ class WorkOrderManagementIT {
                 firstSiteId, request(shift, "REL-001", "发布运输", "HAULAGE", 0));
         UUID vehicle = insertVehicle(firstOrganizationId, firstSiteId, "release-truck", "HAUL_TRUCK");
         UUID driver = insertQualifiedDriver("release-driver", SHIFT_START, SHIFT_END, true);
-        commandService.assignWorkOrder(
-                firstSiteId, order.id(), assignment(vehicle, driver, SHIFT_START, SHIFT_END));
+        WorkOrderResponse assigned = commandService.assignWorkOrder(
+                firstSiteId, order.id(),
+                assignment(vehicle, driver, SHIFT_START, SHIFT_END, order.version()));
         SpatialVersions versions = insertPublishedSpatialVersions(
                 firstOrganizationId, firstSiteId, "release");
 
         WorkOrderResponse released = commandService.releaseWorkOrder(
-                firstSiteId, order.id(), action(order.version(), versions, null));
-        WorkOrderResponse replayed = commandService.releaseWorkOrder(
-                firstSiteId, order.id(), action(order.version(), versions, null));
+                firstSiteId, order.id(), action(assigned.version(), versions, null));
 
         assertThat(released.status()).isEqualTo("RELEASED");
-        assertThat(replayed).isEqualTo(released);
+        assertCode(() -> commandService.releaseWorkOrder(
+                        firstSiteId, order.id(), action(assigned.version(), versions, null)),
+                "MINE-WORK-409-002");
         assertThat(released.releaseSnapshot())
                 .containsEntry("routeName", "主运输路线-release")
                 .containsEntry("loadZoneName", "装载区-release")
@@ -261,15 +285,16 @@ class WorkOrderManagementIT {
                         firstSiteId, order.id(), action(order.version(), firstVersions, null)),
                 "MINE-WORK-422-005");
         UUID vehicle = insertVehicle(firstOrganizationId, firstSiteId, "invalid-release-truck", "HAUL_TRUCK");
-        commandService.assignWorkOrder(
-                firstSiteId, order.id(), assignment(vehicle, null, SHIFT_START, SHIFT_END));
+        WorkOrderResponse assigned = commandService.assignWorkOrder(
+                firstSiteId, order.id(),
+                assignment(vehicle, null, SHIFT_START, SHIFT_END, order.version()));
         assertCode(() -> commandService.releaseWorkOrder(
-                        firstSiteId, order.id(), action(order.version(), otherVersions, null)),
+                        firstSiteId, order.id(), action(assigned.version(), otherVersions, null)),
                 "MINE-WORK-422-002");
     }
 
     @Test
-    void 发布启动暂停恢复完成必须遵循状态机并支持动作重放() {
+    void 发布启动暂停恢复完成必须遵循状态机并拒绝新键旧版本() {
         ShiftInstanceResponse shift = createShift("lifecycle-order-shift", "2026-07-20");
         WorkOrderResponse order = releasableOrder(shift, "LIFE-001", "life");
         WorkOrderResponse released = release(order, "life");
@@ -277,20 +302,24 @@ class WorkOrderManagementIT {
 
         WorkOrderResponse running = commandService.startWorkOrder(
                 firstSiteId, order.id(), action(released.version(), null, null));
-        assertThat(commandService.startWorkOrder(
-                firstSiteId, order.id(), action(released.version(), null, null))).isEqualTo(running);
+        assertCode(() -> commandService.startWorkOrder(
+                        firstSiteId, order.id(), action(released.version(), null, null)),
+                "MINE-WORK-409-002");
         WorkOrderResponse paused = commandService.pauseWorkOrder(
                 firstSiteId, order.id(), action(running.version(), null, null));
-        assertThat(commandService.pauseWorkOrder(
-                firstSiteId, order.id(), action(running.version(), null, null))).isEqualTo(paused);
+        assertCode(() -> commandService.pauseWorkOrder(
+                        firstSiteId, order.id(), action(running.version(), null, null)),
+                "MINE-WORK-409-002");
         WorkOrderResponse resumed = commandService.resumeWorkOrder(
                 firstSiteId, order.id(), action(paused.version(), null, null));
-        assertThat(commandService.resumeWorkOrder(
-                firstSiteId, order.id(), action(paused.version(), null, null))).isEqualTo(resumed);
+        assertCode(() -> commandService.resumeWorkOrder(
+                        firstSiteId, order.id(), action(paused.version(), null, null)),
+                "MINE-WORK-409-002");
         WorkOrderResponse completed = commandService.completeWorkOrder(
                 firstSiteId, order.id(), action(resumed.version(), null, null));
-        assertThat(commandService.completeWorkOrder(
-                firstSiteId, order.id(), action(resumed.version(), null, null))).isEqualTo(completed);
+        assertCode(() -> commandService.completeWorkOrder(
+                        firstSiteId, order.id(), action(resumed.version(), null, null)),
+                "MINE-WORK-409-002");
 
         assertThat(completed.status()).isEqualTo("COMPLETED");
         assertCode(() -> commandService.pauseWorkOrder(
@@ -312,9 +341,9 @@ class WorkOrderManagementIT {
                 firstSiteId, request(shift, "CANCEL-001", "取消运输", "HAULAGE", 0));
         WorkOrderResponse cancelled = commandService.cancelWorkOrder(
                 firstSiteId, draft.id(), action(draft.version(), null, "计划取消"));
-        assertThat(commandService.cancelWorkOrder(
-                firstSiteId, draft.id(), action(draft.version(), null, "计划取消")))
-                .isEqualTo(cancelled);
+        assertCode(() -> commandService.cancelWorkOrder(
+                        firstSiteId, draft.id(), action(draft.version(), null, "计划取消")),
+                "MINE-WORK-409-002");
         assertThat(cancelled.terminalReason()).isEqualTo("计划取消");
 
         WorkOrderResponse runningOrder = releasableOrder(shift, "ABORT-001", "abort");
@@ -324,13 +353,285 @@ class WorkOrderManagementIT {
                 firstSiteId, runningOrder.id(), action(released.version(), null, null));
         WorkOrderResponse aborted = commandService.abortWorkOrder(
                 firstSiteId, running.id(), action(running.version(), null, "道路中断"));
-        assertThat(commandService.abortWorkOrder(
-                firstSiteId, running.id(), action(running.version(), null, "道路中断")))
-                .isEqualTo(aborted);
+        assertCode(() -> commandService.abortWorkOrder(
+                        firstSiteId, running.id(), action(running.version(), null, "道路中断")),
+                "MINE-WORK-409-002");
         assertThat(aborted.status()).isEqualTo("ABORTED");
         assertCode(() -> commandService.completeWorkOrder(
                         firstSiteId, running.id(), action(aborted.version(), null, null)),
                 "MINE-WORK-409-004");
+    }
+
+    @Test
+    void 班次取消后必须拒绝发布已建立的作业单草稿() {
+        ShiftInstanceResponse shift = createShift("cancelled-release-shift", "2026-07-20");
+        WorkOrderResponse order = releasableOrder(shift, "CANCELLED-REL-001", "cancelled-release");
+        SpatialVersions versions = insertPublishedSpatialVersions(
+                firstOrganizationId, firstSiteId, "cancelled-release");
+
+        assertCode(() -> shiftCommandService.cancelInstance(
+                        firstSiteId, shift.id(), "班次计划取消"),
+                "MINE-SHIFT-409-003");
+        WorkOrderResponse cancelled = commandService.cancelWorkOrder(
+                firstSiteId, order.id(), action(order.version(), null, "随班次取消"));
+        shiftCommandService.cancelInstance(firstSiteId, shift.id(), "班次计划取消");
+
+        assertCode(() -> commandService.releaseWorkOrder(
+                        firstSiteId, order.id(), action(cancelled.version(), versions, null)),
+                "MINE-WORK-409-004");
+        assertThat(queryService.findWorkOrder(firstSiteId, order.id()).status())
+                .isEqualTo("CANCELLED");
+    }
+
+    @Test
+    void 班次关闭与作业启动并发时只能成功一个() throws Exception {
+        ShiftInstanceResponse shift = createShift("close-start-race-shift", "2026-07-20");
+        WorkOrderResponse order = releasableOrder(shift, "RACE-001", "close-start-race");
+        WorkOrderResponse released = release(order, "close-start-race");
+        ShiftInstanceResponse opened = shiftCommandService.openInstance(firstSiteId, shift.id());
+        CountDownLatch shiftLocked = new CountDownLatch(1);
+
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var startFuture = executor.submit(() -> {
+                assertThat(shiftLocked.await(5, TimeUnit.SECONDS)).isTrue();
+                return commandService.startWorkOrder(
+                        firstSiteId, order.id(), action(released.version(), null, null));
+            });
+            assertThatThrownBy(() ->
+                    new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                        jdbcTemplate.queryForObject("""
+                                SELECT id FROM mine_shift_instance
+                                WHERE id = ? FOR UPDATE
+                                """, UUID.class, shift.id());
+                        shiftLocked.countDown();
+                        try {
+                            Thread.sleep(500);
+                        } catch (InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new AssertionError(exception);
+                        }
+                        jdbcTemplate.update("""
+                                UPDATE mine_shift_instance
+                                SET status = 'CLOSED', actual_end_at = CURRENT_TIMESTAMP,
+                                    closed_at = CURRENT_TIMESTAMP, closed_by = ?,
+                                    updated_at = CURRENT_TIMESTAMP, updated_by = ?,
+                                    version = version + 1
+                                WHERE id = ? AND status = 'OPEN' AND version = ?
+                                """, firstUserId, firstUserId, shift.id(), opened.version());
+                    })).isInstanceOf(DataIntegrityViolationException.class);
+
+            assertThat(startFuture.get(5, TimeUnit.SECONDS).status()).isEqualTo("RUNNING");
+        }
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM mine_shift_instance WHERE id = ?",
+                String.class, shift.id())).isEqualTo("OPEN");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM mine_work_order WHERE id = ?",
+                String.class, order.id())).isEqualTo("RUNNING");
+    }
+
+    @Test
+    void 作业终态必须拒绝未完成循环并清理空闲运行态() {
+        ShiftInstanceResponse shift = createShift("runtime-terminal-shift", "2026-07-20");
+        SpatialVersions versions = insertPublishedSpatialVersions(
+                firstOrganizationId, firstSiteId, "runtime-terminal");
+        WorkOrderResponse partialOrder = releasableOrder(
+                shift, "RUNTIME-PARTIAL", "runtime-partial");
+        WorkOrderResponse partialReleased = commandService.releaseWorkOrder(
+                firstSiteId, partialOrder.id(), action(partialOrder.version(), versions, null));
+        shiftCommandService.openInstance(firstSiteId, shift.id());
+        WorkOrderResponse partialRunning = commandService.startWorkOrder(
+                firstSiteId, partialOrder.id(), action(partialReleased.version(), null, null));
+        insertRuntimeState(partialRunning, "LOADING");
+
+        assertCode(() -> commandService.completeWorkOrder(
+                        firstSiteId, partialOrder.id(),
+                        action(partialRunning.version(), null, null)),
+                "MINE-WORK-409-005");
+        WorkOrderResponse aborted = commandService.abortWorkOrder(
+                firstSiteId, partialOrder.id(),
+                action(partialRunning.version(), null, "装载设备故障"));
+
+        assertThat(aborted.status()).isEqualTo("ABORTED");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM mine_operation_runtime_state
+                WHERE work_order_id = ?
+                """, Long.class, partialOrder.id())).isZero();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM mine_operation_record
+                WHERE work_order_id = ?
+                  AND record_status = 'ABORTED'
+                  AND record_source = 'MANUAL'
+                  AND frozen_snapshot ->> 'abortReason' = '装载设备故障'
+                """, Long.class, partialOrder.id())).isOne();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM mine_operation_effective_record effective_record
+                JOIN mine_operation_record record
+                  ON record.id = effective_record.operation_record_id
+                WHERE record.work_order_id = ?
+                  AND effective_record.record_status = 'ABORTED'
+                  AND effective_record.effective
+                """, Long.class, partialOrder.id())).isOne();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM mine_operation_evidence evidence
+                JOIN mine_operation_record record
+                  ON record.id = evidence.operation_record_id
+                WHERE record.work_order_id = ?
+                  AND evidence.evidence_role = 'MANUAL_SUPPORT'
+                """, Long.class, partialOrder.id())).isOne();
+
+        WorkOrderResponse idleOrder = releasableOrder(
+                shift, "RUNTIME-IDLE", "runtime-idle");
+        WorkOrderResponse idleReleased = commandService.releaseWorkOrder(
+                firstSiteId, idleOrder.id(), action(idleOrder.version(), versions, null));
+        WorkOrderResponse idleRunning = commandService.startWorkOrder(
+                firstSiteId, idleOrder.id(), action(idleReleased.version(), null, null));
+        insertRuntimeState(idleRunning, "WAITING_LOAD");
+        WorkOrderResponse completed = commandService.completeWorkOrder(
+                firstSiteId, idleOrder.id(), action(idleRunning.version(), null, null));
+
+        assertThat(completed.status()).isEqualTo("COMPLETED");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM mine_operation_runtime_state
+                WHERE work_order_id = ?
+                """, Long.class, idleOrder.id())).isZero();
+    }
+
+    @Test
+    void 新增运行态必须与作业异常终止共享父级互斥锁() throws Exception {
+        ShiftInstanceResponse shift = createShift("runtime-insert-race-shift", "2026-07-20");
+        WorkOrderResponse order = releasableOrder(
+                shift, "RUNTIME-INSERT-RACE", "runtime-insert-race");
+        WorkOrderResponse released = release(order, "runtime-insert-race");
+        shiftCommandService.openInstance(firstSiteId, shift.id());
+        WorkOrderResponse running = commandService.startWorkOrder(
+                firstSiteId, order.id(), action(released.version(), null, null));
+        CountDownLatch terminalParentsLocked = new CountDownLatch(1);
+        CompletableFuture<Integer> insertBackendPid = new CompletableFuture<>();
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var terminalFuture = executor.submit(() ->
+                    new TransactionTemplate(transactionManager).execute(status -> {
+                        jdbcTemplate.queryForObject("""
+                                SELECT id FROM mine_shift_instance
+                                WHERE id = ? FOR UPDATE
+                                """, UUID.class, shift.id());
+                        jdbcTemplate.queryForObject("""
+                                SELECT id FROM mine_work_order
+                                WHERE id = ? FOR UPDATE
+                                """, UUID.class, order.id());
+                        terminalParentsLocked.countDown();
+                        try {
+                            awaitBackendBlocked(insertBackendPid.get(5, TimeUnit.SECONDS));
+                        } catch (Exception exception) {
+                            if (exception instanceof InterruptedException) {
+                                Thread.currentThread().interrupt();
+                            }
+                            throw new AssertionError(exception);
+                        } catch (AssertionError error) {
+                            throw error;
+                        }
+                        return commandService.abortWorkOrder(
+                                firstSiteId, order.id(),
+                                action(running.version(), null, "并发终止"));
+                    }));
+            var insertFuture = executor.submit(() -> {
+                assertThat(terminalParentsLocked.await(5, TimeUnit.SECONDS)).isTrue();
+                return new TransactionTemplate(transactionManager).execute(status -> {
+                    insertBackendPid.complete(jdbcTemplate.queryForObject(
+                            "SELECT pg_backend_pid()", Integer.class));
+                    return insertRuntimeState(running, "WAITING_LOAD");
+                });
+            });
+
+            assertThat(terminalFuture.get(5, TimeUnit.SECONDS).status()).isEqualTo("ABORTED");
+            assertThatThrownBy(() -> insertFuture.get(5, TimeUnit.SECONDS))
+                    .isInstanceOfSatisfying(ExecutionException.class, exception ->
+                            assertThat(exception.getCause())
+                                    .isInstanceOf(DataIntegrityViolationException.class));
+        }
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM mine_operation_runtime_state
+                WHERE work_order_id = ?
+                """, Long.class, order.id())).isZero();
+    }
+
+    @Test
+    void 关账必须锁定全部运行态并拒绝并发推进空闲循环() throws Exception {
+        ShiftInstanceResponse shift = createShift("runtime-close-race-shift", "2026-07-20");
+        WorkOrderResponse order = releasableOrder(
+                shift, "RUNTIME-CLOSE-RACE", "runtime-close-race");
+        WorkOrderResponse released = release(order, "runtime-close-race");
+        shiftCommandService.openInstance(firstSiteId, shift.id());
+        WorkOrderResponse running = commandService.startWorkOrder(
+                firstSiteId, order.id(), action(released.version(), null, null));
+        UUID runtimeId = insertRuntimeState(running, "WAITING_LOAD");
+        jdbcTemplate.execute("""
+                ALTER TABLE mine_work_order
+                DISABLE TRIGGER trg_mine_work_order_validate_window
+                """);
+        try {
+            jdbcTemplate.update("""
+                    UPDATE mine_work_order
+                    SET status = 'COMPLETED', completed_at = CURRENT_TIMESTAMP,
+                        completed_by = ?, updated_at = CURRENT_TIMESTAMP,
+                        updated_by = ?, version = version + 1
+                    WHERE id = ?
+                    """, firstUserId, firstUserId, order.id());
+        } finally {
+            jdbcTemplate.execute("""
+                    ALTER TABLE mine_work_order
+                    ENABLE TRIGGER trg_mine_work_order_validate_window
+                    """);
+        }
+        CountDownLatch runtimeLocked = new CountDownLatch(1);
+        CountDownLatch allowRuntimeUpdate = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var runtimeFuture = executor.submit(() ->
+                    new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+                        jdbcTemplate.queryForObject("""
+                                SELECT id FROM mine_operation_runtime_state
+                                WHERE id = ? FOR UPDATE
+                                """, UUID.class, runtimeId);
+                        runtimeLocked.countDown();
+                        try {
+                            assertThat(allowRuntimeUpdate.await(5, TimeUnit.SECONDS)).isTrue();
+                        } catch (InterruptedException exception) {
+                            Thread.currentThread().interrupt();
+                            throw new AssertionError(exception);
+                        }
+                        jdbcTemplate.update("""
+                                UPDATE mine_operation_runtime_state
+                                SET cycle_status = 'LOADING', started_at = CURRENT_TIMESTAMP,
+                                    updated_at = CURRENT_TIMESTAMP, version = version + 1
+                                WHERE id = ?
+                                """, runtimeId);
+                    }));
+            assertThat(runtimeLocked.await(5, TimeUnit.SECONDS)).isTrue();
+            var closeFuture = executor.submit(() ->
+                    shiftCommandService.closeInstance(firstSiteId, shift.id()));
+            Thread.sleep(500);
+            allowRuntimeUpdate.countDown();
+            assertThatThrownBy(() -> runtimeFuture.get(5, TimeUnit.SECONDS))
+                    .isInstanceOfSatisfying(ExecutionException.class, exception ->
+                            assertThat(exception.getCause())
+                                    .isInstanceOf(DataIntegrityViolationException.class));
+            assertThatThrownBy(() -> closeFuture.get(5, TimeUnit.SECONDS))
+                    .isInstanceOfSatisfying(ExecutionException.class, exception ->
+                            assertThat(exception.getCause())
+                                    .isInstanceOfSatisfying(MineException.class, cause ->
+                                            assertThat(cause.errorCode().code())
+                                                    .isEqualTo("MINE-SHIFT-409-003")));
+        }
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT status FROM mine_shift_instance WHERE id = ?",
+                String.class, shift.id())).isEqualTo("OPEN");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT cycle_status FROM mine_operation_runtime_state WHERE id = ?",
+                String.class, runtimeId)).isEqualTo("WAITING_LOAD");
     }
 
     @Test
@@ -357,9 +658,9 @@ class WorkOrderManagementIT {
                 firstSiteId, request(shift, orderNumber, orderNumber, "HAULAGE", 0));
         UUID vehicle = insertVehicle(
                 firstOrganizationId, firstSiteId, "truck-" + suffix, "HAUL_TRUCK");
-        commandService.assignWorkOrder(
-                firstSiteId, order.id(), assignment(vehicle, null, SHIFT_START, SHIFT_END));
-        return order;
+        return commandService.assignWorkOrder(
+                firstSiteId, order.id(),
+                assignment(vehicle, null, SHIFT_START, SHIFT_END, order.version()));
     }
 
     private WorkOrderResponse release(WorkOrderResponse order, String suffix) {
@@ -374,7 +675,7 @@ class WorkOrderManagementIT {
                 firstSiteId,
                 new ShiftDefinitionRequest(
                         code, code, LocalTime.of(0, 0), LocalTime.of(12, 0), false,
-                        LocalDate.parse("2026-01-01"), null, 0));
+                        LocalDate.parse("2026-01-01"), null, 0L));
         return shiftCommandService.createInstance(
                 firstSiteId,
                 new ShiftInstanceRequest(
@@ -395,10 +696,40 @@ class WorkOrderManagementIT {
     }
 
     private WorkOrderAssignmentRequest assignment(
-            UUID vehicleId, UUID driverId, Instant validFrom, Instant validTo
+            UUID vehicleId, UUID driverId, Instant validFrom, Instant validTo, long version
     ) {
         return new WorkOrderAssignmentRequest(
-                vehicleId, driverId, validFrom, validTo, "INITIAL_DISPATCH");
+                vehicleId, driverId, validFrom, validTo, "INITIAL_DISPATCH", version);
+    }
+
+    private UUID insertRuntimeState(WorkOrderResponse order, String cycleStatus) {
+        UUID runtimeId = UUID.randomUUID();
+        UUID assignmentId = order.assignments().getFirst().id();
+        jdbcTemplate.update("""
+                INSERT INTO mine_operation_runtime_state (
+                    id, organization_id, site_id, work_order_id, assignment_id,
+                    cycle_status, evidence_snapshot, started_at
+                ) VALUES (?, ?, ?, ?, ?, ?, jsonb_build_object('cycleStatus', ?),
+                          CASE WHEN ? = 'WAITING_LOAD' THEN NULL::TIMESTAMPTZ
+                               ELSE CAST(? AS TIMESTAMPTZ) END)
+                """, runtimeId, order.organizationId(), order.siteId(), order.id(),
+                assignmentId, cycleStatus, cycleStatus, cycleStatus,
+                Timestamp.from(SHIFT_START.plusSeconds(3600)));
+        return runtimeId;
+    }
+
+    private void awaitBackendBlocked(int backendPid) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            Boolean blocked = jdbcTemplate.queryForObject("""
+                    SELECT cardinality(pg_blocking_pids(?)) > 0
+                    """, Boolean.class, backendPid);
+            if (Boolean.TRUE.equals(blocked)) {
+                return;
+            }
+            Thread.sleep(25);
+        }
+        throw new AssertionError("运行态新增事务未等待父级互斥锁");
     }
 
     private WorkOrderActionRequest action(

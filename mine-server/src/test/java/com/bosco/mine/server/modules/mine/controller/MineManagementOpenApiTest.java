@@ -3,9 +3,15 @@ package com.bosco.mine.server.modules.mine.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.server.modules.mine.operation.ShiftController;
 import com.bosco.mine.server.modules.mine.operation.WorkOrderController;
+import com.bosco.mine.server.modules.mine.operation.dto.ShiftActionRequest;
+import com.bosco.mine.server.modules.mine.operation.dto.ShiftDefinitionRequest;
+import com.bosco.mine.server.modules.mine.operation.dto.WorkOrderActionRequest;
+import com.bosco.mine.server.modules.mine.operation.dto.WorkOrderAssignmentRequest;
+import com.bosco.mine.server.modules.mine.operation.dto.WorkOrderRequest;
 import com.bosco.mine.server.modules.mine.spatial.SpatialEventController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialReplayController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialRouteController;
+import jakarta.validation.constraints.NotNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -123,8 +129,10 @@ class MineManagementOpenApiTest {
                 "SpatialReplayRequest", "SpatialReplayResponse",
                 "ShiftDefinitionRequest", "ShiftDefinitionResponse",
                 "ShiftInstanceRequest", "ShiftInstanceResponse", "ShiftActionRequest",
+                "ShiftCancellationRequest",
                 "WorkOrderRequest", "WorkOrderAssignmentRequest",
-                "WorkOrderActionRequest", "WorkOrderResponse");
+                "WorkOrderActionRequest", "WorkOrderTerminalActionRequest",
+                "WorkOrderResponse");
         assertThat(list(map(schemas.get("LocationSubjectType")).get("enum")))
                 .containsExactly("TAG", "VEHICLE", "PERSON");
         assertThat(map(map(schemas.get("LocationTrajectoryResponse")).get("properties")))
@@ -162,6 +170,12 @@ class MineManagementOpenApiTest {
                 .containsEntry("default", 20);
         assertThat(list(map(namedParameter(shifts, "status").get("schema")).get("enum")))
                 .containsExactly("PLANNED", "OPEN", "CLOSED", "CANCELLED");
+        Map<String, Object> archiveDefinition = map(map(paths.get(
+                "/mine/sites/{siteId}/shift-definitions/{definitionId}/archive")).get("post"));
+        assertThat(map(map(map(map(archiveDefinition.get("requestBody"))
+                .get("content")).get("application/json")).get("schema")).get("$ref"))
+                .isEqualTo("#/components/schemas/ShiftActionRequest");
+        assertThat(map(archiveDefinition.get("responses"))).doesNotContainKey("422");
 
         Map<String, Object> workOrders = map(map(
                 paths.get("/mine/sites/{siteId}/work-orders")).get("get"));
@@ -194,11 +208,21 @@ class MineManagementOpenApiTest {
                 .contains("version");
         assertThat(list(map(schemas.get("WorkOrderActionRequest")).get("required")))
                 .contains("version");
+        assertThat(list(map(schemas.get("WorkOrderAssignmentRequest")).get("required")))
+                .contains("version");
+        assertThat(list(map(schemas.get("ShiftCancellationRequest")).get("required")))
+                .contains("version", "reason");
+        assertThat(list(map(schemas.get("WorkOrderTerminalActionRequest")).get("required")))
+                .contains("version", "reason");
+        assertThat(list(map(map(map(schemas.get("WorkOrderAssignmentResponse"))
+                .get("properties")).get("status")).get("enum")))
+                .containsExactly("ACTIVE", "COMPLETED", "CANCELLED");
         assertThat(map(schemas.get("WorkOrderRequest")).get("properties").toString())
                 .doesNotContain("status");
         assertThat(root.toString()).contains(
-                "MINE-SHIFT-409-004", "MINE-WORK-409-004", "MINE-OPERATION-409-001",
-                "MINE-SCOPE-404-002");
+                "MINE-SHIFT-409-003", "MINE-SHIFT-409-004",
+                "MINE-WORK-409-004", "MINE-WORK-409-005",
+                "MINE-OPERATION-409-001", "MINE-SCOPE-404-002");
     }
 
     @Test
@@ -263,6 +287,12 @@ class MineManagementOpenApiTest {
 
     @Test
     void 生产运营控制器必须使用精确权限动作路径和乐观版本() {
+        assertRequiredVersion(ShiftDefinitionRequest.class);
+        assertRequiredVersion(ShiftActionRequest.class);
+        assertRequiredVersion(WorkOrderRequest.class);
+        assertRequiredVersion(WorkOrderAssignmentRequest.class);
+        assertRequiredVersion(WorkOrderActionRequest.class);
+
         assertPermission(ShiftController.class, "findDefinitions", "mine:operation:view");
         assertPermission(ShiftController.class, "findDefinition", "mine:operation:view");
         assertPermission(ShiftController.class, "findInstances", "mine:operation:view");
@@ -314,6 +344,16 @@ class MineManagementOpenApiTest {
     ) {
         assertThat(method(controller, methodName).getAnnotation(SaCheckPermission.class).value())
                 .containsExactly(permission);
+    }
+
+    private void assertRequiredVersion(Class<?> requestType) {
+        try {
+            var accessor = requestType.getDeclaredMethod("version");
+            assertThat(accessor.getReturnType()).isEqualTo(Long.class);
+            assertThat(accessor.getAnnotation(NotNull.class)).isNotNull();
+        } catch (NoSuchMethodException exception) {
+            throw new AssertionError(requestType.getSimpleName() + " 缺少 version 字段", exception);
+        }
     }
 
     private java.lang.reflect.Method method(String name) {
