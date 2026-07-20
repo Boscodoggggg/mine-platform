@@ -95,6 +95,7 @@ class RabbitTopologyIT {
                         MineTopology.TELEMETRY_EXCHANGE,
                         MineTopology.COMMAND_EXCHANGE,
                         MineTopology.CONFIG_EXCHANGE,
+                        MineTopology.REALTIME_EXCHANGE,
                         MineTopology.LOCATION_CONFIG_EXCHANGE,
                         MineTopology.BUSINESS_EXCHANGE,
                         MineTopology.DEAD_LETTER_EXCHANGE
@@ -114,6 +115,7 @@ class RabbitTopologyIT {
                         MineTopology.CONFIG_QUEUE,
                         MineTopology.TELEMETRY_LOCATION_CONFIG_QUEUE,
                         MineTopology.SERVER_ALARM_EVENT_QUEUE,
+                        MineTopology.SERVER_OPERATION_SPATIAL_QUEUE,
                         MineTopology.DEAD_LETTER_QUEUE
                 );
         assertThat(lineStartingWith(queues, MineTopology.TELEMETRY_QUEUE))
@@ -135,6 +137,12 @@ class RabbitTopologyIT {
                         "{\"x-dead-letter-exchange\",\"mine.dlx\"}"
                 );
         assertThat(lineStartingWith(queues, MineTopology.SERVER_ALARM_EVENT_QUEUE))
+                .contains(
+                        "\ttrue\t",
+                        "{\"x-queue-type\",\"quorum\"}",
+                        "{\"x-dead-letter-exchange\",\"mine.dlx\"}"
+                );
+        assertThat(lineStartingWith(queues, MineTopology.SERVER_OPERATION_SPATIAL_QUEUE))
                 .contains(
                         "\ttrue\t",
                         "{\"x-queue-type\",\"quorum\"}",
@@ -175,7 +183,10 @@ class RabbitTopologyIT {
                                 + MineTopology.LOCATION_RUNTIME_ROUTING_PATTERN,
                         MineTopology.BUSINESS_EXCHANGE + "\t"
                                 + MineTopology.SERVER_ALARM_EVENT_QUEUE + "\t"
-                                + MineTopology.ALARM_EVENT_ROUTING_PATTERN
+                                + MineTopology.ALARM_EVENT_ROUTING_PATTERN,
+                        MineTopology.REALTIME_EXCHANGE + "\t"
+                                + MineTopology.SERVER_OPERATION_SPATIAL_QUEUE + "\t"
+                                + MineTopology.REALTIME_SPATIAL_ROUTING_PATTERN
                 );
 
         String deviceQueues = rabbitmqctl(

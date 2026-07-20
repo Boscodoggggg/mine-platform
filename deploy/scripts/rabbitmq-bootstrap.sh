@@ -69,12 +69,14 @@ telemetry_password="$(cat /run/secrets/rabbitmq_telemetry_password)"
 server_realtime_password="$(cat /run/secrets/rabbitmq_server_realtime_password)"
 server_command_password="$(cat /run/secrets/rabbitmq_server_command_password)"
 server_alarm_password="$(cat /run/secrets/rabbitmq_server_alarm_password)"
+server_operation_password="$(cat /run/secrets/rabbitmq_server_operation_password)"
 upsert_user "mine-gateway-device" "${gateway_device_password}"
 upsert_user "mine-gateway-platform" "${gateway_platform_password}"
 upsert_user "mine-telemetry" "${telemetry_password}"
 upsert_user "mine-server-realtime" "${server_realtime_password}"
 upsert_user "mine-server-command" "${server_command_password}"
 upsert_user "mine-server-alarm" "${server_alarm_password}"
+upsert_user "mine-server-operation" "${server_operation_password}"
 rabbitmqctl -q set_permissions -p /mine-device "mine-gateway-device" \
   '^$' '^amq\.topic$' \
   '^(mine\.gateway\.uplink\.q|mine\.gateway\.location-uplink\.q|mine\.gateway\.command-ack\.q)$'
@@ -92,7 +94,9 @@ rabbitmqctl -q set_permissions -p /mine-platform "mine-server-command" \
   '^mine\.server\.command-status\.q$'
 rabbitmqctl -q set_permissions -p /mine-platform "mine-server-alarm" \
   '^$' '^$' '^mine\.server\.alarm-event\.q$'
-unset legacy_command_messages gateway_device_password gateway_platform_password telemetry_password server_realtime_password server_command_password server_alarm_password
+rabbitmqctl -q set_permissions -p /mine-platform "mine-server-operation" \
+  '^$' '^$' '^mine\.server\.operation-spatial\.q$'
+unset legacy_command_messages gateway_device_password gateway_platform_password telemetry_password server_realtime_password server_command_password server_alarm_password server_operation_password
 touch /tmp/mine-rabbitmq-bootstrap-complete
 
 wait "${broker_pid}"

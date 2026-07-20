@@ -94,6 +94,10 @@ public final class MineTopology {
     /** 管理服务告警事实消费队列。 */
     public static final String SERVER_ALARM_EVENT_QUEUE = "mine.server.alarm-event.q";
 
+    /** 管理服务生产运营空间事实持久消费队列。 */
+    public static final String SERVER_OPERATION_SPATIAL_QUEUE =
+            "mine.server.operation-spatial.q";
+
     /** 人工处置和重放使用的死信队列。 */
     public static final String DEAD_LETTER_QUEUE = "mine.dead-letter.q";
 

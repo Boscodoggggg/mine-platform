@@ -107,6 +107,10 @@ services:
       MINE_ALARM_RABBIT_ENABLED: "true"
       MINE_ALARM_RABBIT_HOST: rabbitmq
       MINE_ALARM_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_alarm_password
+      MINE_OPERATION_RUNTIME_RABBIT_ENABLED: "true"
+      MINE_OPERATION_RUNTIME_HOST: rabbitmq
+      MINE_OPERATION_RUNTIME_ACCOUNT_USERNAME: mine-server-operation
+      MINE_OPERATION_RUNTIME_ACCOUNT_PASSWORD_FILE: /run/secrets/rabbitmq_server_operation_password
       MINE_CONFIGURATION_DISTRIBUTION_ENABLED: "true"
       MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
       MINE_OPERATIONS_PROMETHEUS_ENABLED: "true"
@@ -126,6 +130,7 @@ services:
       - rabbitmq_server_realtime_password
       - rabbitmq_server_command_password
       - rabbitmq_server_alarm_password
+      - rabbitmq_server_operation_password
       - mine_configuration_distribution_token
     depends_on:
       postgres:
@@ -348,6 +353,7 @@ services:
       - rabbitmq_server_realtime_password
       - rabbitmq_server_command_password
       - rabbitmq_server_alarm_password
+      - rabbitmq_server_operation_password
       - source: tls_certificate
         target: tls_certificate
       - source: tls_private_key
@@ -796,6 +802,8 @@ secrets:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_command_password
   rabbitmq_server_alarm_password:
     file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_alarm_password
+  rabbitmq_server_operation_password:
+    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_operation_password
   mine_configuration_distribution_token:
     file: ${MINE_SECRETS_DIR:-../secrets}/mine_configuration_distribution_token
   mine_super_admin_password:

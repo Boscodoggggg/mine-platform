@@ -62,6 +62,13 @@ jq -e '.services["mine-server"].environment.MINE_ALARM_RABBIT_ENABLED == "true"
   and (.services.rabbitmq.secrets | any(.source == "rabbitmq_server_alarm_password"))' "${rendered}" >/dev/null \
   || { echo "FAIL: mine-server 必须使用独立 secret 启用告警消息消费" >&2; exit 1; }
 
+jq -e '.services["mine-server"].environment.MINE_OPERATION_RUNTIME_RABBIT_ENABLED == "true"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_ACCOUNT_USERNAME == "mine-server-operation"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_ACCOUNT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_operation_password"
+  and (.services["mine-server"].secrets | any(.source == "rabbitmq_server_operation_password"))
+  and (.services.rabbitmq.secrets | any(.source == "rabbitmq_server_operation_password"))' "${rendered}" >/dev/null \
+  || { echo "FAIL: mine-server 必须使用独立 secret 启用运营空间事件持久消费" >&2; exit 1; }
+
 jq -e '.services["mine-server"].environment.MINE_SPATIAL_REPLAY_ENABLED == "true"
   and .services["mine-server"].environment.MINE_SPATIAL_REPLAY_USERNAME == "mine_ts_replay"
   and .services["mine-server"].environment.MINE_SPATIAL_REPLAY_PASSWORD_FILE == "/run/secrets/timescale_replay_password"
@@ -266,14 +273,29 @@ jq -e '([.bindings[] | select(.vhost == "/mine-platform" and .source == "mine.te
     and .routing_key == "location.runtime.#")] | length == 1)' \
   "${definitions_file}" >/dev/null \
   || { echo "FAIL: RabbitMQ 定位观测或快照必须使用精确独立绑定" >&2; exit 1; }
+jq -e '[.queues[] | select(.vhost == "/mine-platform"
+  and .name == "mine.server.operation-spatial.q"
+  and .durable == true and .arguments["x-queue-type"] == "quorum"
+  and .arguments["x-dead-letter-exchange"] == "mine.dlx")] | length == 1' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少带死信的运营空间事件持久队列" >&2; exit 1; }
+jq -e '[.bindings[] | select(.vhost == "/mine-platform" and .source == "mine.realtime.x"
+  and .destination == "mine.server.operation-spatial.q"
+  and .routing_key == "realtime.spatial.#")] | length == 1' \
+  "${definitions_file}" >/dev/null \
+  || { echo "FAIL: RabbitMQ 缺少运营空间事件独立绑定" >&2; exit 1; }
 
 bootstrap_file="${ROOT_DIR}/deploy/scripts/rabbitmq-bootstrap.sh"
 grep -q 'upsert_user "mine-server-alarm"' "${bootstrap_file}" \
   || { echo "FAIL: RabbitMQ 启动脚本缺少告警消费账号" >&2; exit 1; }
+grep -q 'upsert_user "mine-server-operation"' "${bootstrap_file}" \
+  || { echo "FAIL: RabbitMQ 启动脚本缺少运营空间消费账号" >&2; exit 1; }
 grep -q "mine\\\\.business\\\\.x" "${bootstrap_file}" \
   || { echo "FAIL: telemetry 账号未获得业务事实交换机写权限" >&2; exit 1; }
 grep -q "mine\\\\.server\\\\.alarm-event\\\\.q" "${bootstrap_file}" \
   || { echo "FAIL: server 告警账号未限制为告警队列只读" >&2; exit 1; }
+grep -q "mine\\\\.server\\\\.operation-spatial\\\\.q" "${bootstrap_file}" \
+  || { echo "FAIL: server 运营账号未限制为运营空间队列只读" >&2; exit 1; }
 grep -q "mine\\\\.gateway\\\\.location-uplink\\\\.q" "${bootstrap_file}" \
   || { echo "FAIL: gateway device 账号未获得原始定位队列只读权限" >&2; exit 1; }
 grep -q "mine\\\\.location\\\\.q" "${bootstrap_file}" \

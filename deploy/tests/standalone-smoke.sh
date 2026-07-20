@@ -79,6 +79,10 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
   'rabbitmqctl -q authenticate_user mine-server-alarm "$(cat /run/secrets/rabbitmq_server_alarm_password)"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-alarm \
   | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\$[[:space:]]+\^mine\\\.server\\\.alarm-event\\\.q\$$'
+"${compose[@]}" exec -T rabbitmq sh -ec \
+  'rabbitmqctl -q authenticate_user mine-server-operation "$(cat /run/secrets/rabbitmq_server_operation_password)"'
+"${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-operation \
+  | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\$[[:space:]]+\^mine\\\.server\\\.operation-spatial\\\.q\$$'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-device name consumers \
   | awk '$1 == "mine.gateway.command-ack.q" && $2 >= 1 { found = 1 } END { exit !found }'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \
@@ -91,6 +95,8 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
   | awk '$1 == "mine.server.command-status.q" && $2 >= 1 { found = 1 } END { exit !found }'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \
   | awk '$1 == "mine.server.alarm-event.q" && $2 >= 1 { found = 1 } END { exit !found }'
+"${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \
+  | awk '$1 == "mine.server.operation-spatial.q" && $2 >= 1 { found = 1 } END { exit !found }'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-device name \
   | grep -qx 'mine.gateway.location-uplink.q'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name \
