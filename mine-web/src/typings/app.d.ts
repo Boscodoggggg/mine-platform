@@ -402,6 +402,7 @@ declare namespace App {
           readOnly: string;
           tab: Record<'overview' | 'shifts' | 'workOrders' | 'candidates' | 'records', string>;
           context: Record<'site' | 'selectSite' | 'updating' | 'notUpdated' | 'justUpdated' | 'updatedMinutes', string>;
+          realtime: Record<'connecting' | 'live' | 'resyncing' | 'degraded' | 'degradedTitle' | 'degradedHint', string>;
           filter: Record<'businessDate', string>;
           common: Record<'status' | 'unknown' | 'cycles' | 'tons' | 'tonsUnknown' | 'duration' | 'isoTime', string>;
           metric: Record<'progress' | 'cycles' | 'output' | 'plannedTons' | 'unknownTons' | 'cycleTime' | 'stageTime' | 'anomalies' | 'workOrders', string>;

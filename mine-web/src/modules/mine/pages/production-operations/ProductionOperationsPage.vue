@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, onMounted, reactive, ref } from 'vue';
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { DataTableColumns } from 'naive-ui';
 import {
@@ -33,6 +33,8 @@ import {
   NTimelineItem
 } from 'naive-ui';
 import { hasPermission } from '@/app/permission/permission';
+import { realtimeHub } from '@/realtime';
+import type { RealtimeOperationNotification } from '@/realtime';
 import { useAuthStore } from '@/store/modules/auth';
 import MineSiteContextBar from '../../components/MineSiteContextBar.vue';
 import { useMineContextStore } from '../../stores/mine-context';
@@ -71,6 +73,7 @@ import type {
 
 type WorkbenchTab = 'overview' | 'shifts' | 'workOrders' | 'candidates' | 'records';
 type WorkOrderLifecycleAction = 'start' | 'pause' | 'resume' | 'complete';
+type OperationRealtimeStatus = 'IDLE' | 'CONNECTING' | 'LIVE' | 'RESYNCING' | 'DEGRADED';
 
 const { t, locale } = useI18n();
 const mineContext = useMineContextStore();
@@ -117,7 +120,13 @@ const assignmentForm = reactive({
 const catalogLoading = ref(false);
 const vehicles = ref<Vehicle[]>([]);
 const people = ref<Person[]>([]);
+const realtimeStatus = ref<OperationRealtimeStatus>('IDLE');
+const realtimeFailureCode = ref<string | null>(null);
 let loadGeneration = 0;
+let operationSubscriptionGeneration = 0;
+let releaseOperationSubscription: (() => void) | null = null;
+let realtimeRefreshPromise: Promise<void> | null = null;
+let realtimeRefreshRequested = false;
 
 const isReadOnly = computed(
   () =>
@@ -146,6 +155,11 @@ const driverOptions = computed(() =>
     .filter(item => item.status === 'ACTIVE' && item.personType === 'DRIVER')
     .map(item => ({ label: `${item.name} · ${item.personCode}`, value: item.id }))
 );
+const realtimeStatusType = computed(() => {
+  if (realtimeStatus.value === 'LIVE') return 'success' as const;
+  if (realtimeStatus.value === 'DEGRADED') return 'warning' as const;
+  return 'info' as const;
+});
 
 const shiftColumns = computed<DataTableColumns<ShiftInstance>>(() => [
   { title: t('mine.production.shift.businessDate'), key: 'businessDate', width: 120 },
@@ -279,6 +293,7 @@ const driverSummaryColumns = computed<DataTableColumns<OperationSummary['drivers
 ]);
 
 onMounted(initialize);
+onBeforeUnmount(stopOperationSubscription);
 
 async function initialize() {
   try {
@@ -286,6 +301,7 @@ async function initialize() {
     if (!mineContext.selectedSiteId && mineContext.sites.length === 1) mineContext.selectSite(mineContext.sites[0]!.id);
     businessDate.value = siteBusinessDate();
     await loadActiveTab();
+    startOperationSubscription();
   } catch {
     problem.value = t('mine.production.error.context');
   }
@@ -299,9 +315,81 @@ async function selectTab(value: string) {
 
 async function changeSite(siteId: string) {
   if (!mineContext.selectSite(siteId)) return;
+  stopOperationSubscription();
   clearScopedState();
   businessDate.value = siteBusinessDate();
   await loadActiveTab();
+  startOperationSubscription();
+}
+
+function startOperationSubscription() {
+  const siteId = mineContext.selectedSiteId;
+  if (!siteId) return;
+  stopOperationSubscription();
+  const generation = operationSubscriptionGeneration;
+  realtimeStatus.value = 'CONNECTING';
+  realtimeFailureCode.value = null;
+  try {
+    releaseOperationSubscription = realtimeHub.subscribeMineOperation(siteId, notification => {
+      handleOperationNotification(notification, siteId, generation);
+    });
+  } catch {
+    realtimeStatus.value = 'DEGRADED';
+    realtimeFailureCode.value = 'REALTIME-CLIENT-SUBSCRIPTION-FAILED';
+  }
+}
+
+function stopOperationSubscription() {
+  operationSubscriptionGeneration += 1;
+  releaseOperationSubscription?.();
+  releaseOperationSubscription = null;
+  realtimeRefreshRequested = false;
+  realtimeStatus.value = 'IDLE';
+  realtimeFailureCode.value = null;
+}
+
+function handleOperationNotification(
+  notification: RealtimeOperationNotification,
+  siteId: string,
+  generation: number
+) {
+  if (
+    generation !== operationSubscriptionGeneration ||
+    notification.siteId !== siteId ||
+    mineContext.selectedSiteId !== siteId
+  ) return;
+  if (notification.mode === 'SUBSCRIPTION_FAILED') {
+    realtimeStatus.value = 'DEGRADED';
+    realtimeFailureCode.value = notification.code;
+    return;
+  }
+  realtimeFailureCode.value = null;
+  realtimeStatus.value = notification.mode === 'RESYNC_REQUIRED' ? 'RESYNCING' : 'LIVE';
+  scheduleRealtimeRefresh(siteId, generation);
+}
+
+function scheduleRealtimeRefresh(siteId: string, generation: number) {
+  realtimeRefreshRequested = true;
+  if (realtimeRefreshPromise) return;
+  const refresh = Promise.resolve().then(async () => {
+    while (realtimeRefreshRequested) {
+      if (generation !== operationSubscriptionGeneration || mineContext.selectedSiteId !== siteId) break;
+      realtimeRefreshRequested = false;
+      await loadActiveTab();
+    }
+    if (generation === operationSubscriptionGeneration && realtimeStatus.value !== 'DEGRADED') {
+      realtimeStatus.value = 'LIVE';
+    }
+  });
+  realtimeRefreshPromise = refresh;
+  void refresh.finally(() => {
+    if (realtimeRefreshPromise !== refresh) return;
+    realtimeRefreshPromise = null;
+    const selectedSiteId = mineContext.selectedSiteId;
+    if (realtimeRefreshRequested && selectedSiteId) {
+      scheduleRealtimeRefresh(selectedSiteId, operationSubscriptionGeneration);
+    }
+  });
 }
 
 async function refreshActiveTab() {
@@ -694,6 +782,12 @@ function clearScopedState() {
   recordDrawerVisible.value = false;
   releaseDrawerVisible.value = false;
   lastUpdatedAt.value = null;
+  realtimeStatus.value = 'IDLE';
+  realtimeFailureCode.value = null;
+}
+
+function realtimeLabel() {
+  return t(`mine.production.realtime.${realtimeStatus.value.toLowerCase()}` as App.I18n.I18nKey);
 }
 
 function dateQuery() {
@@ -815,7 +909,17 @@ function toIso(value: string) {
   <NSpace vertical :size="16">
     <NPageHeader :title="t('mine.production.title')" :subtitle="t('mine.production.subtitle')">
       <template #extra>
-        <NTag v-if="isReadOnly" type="warning" :bordered="false">{{ t('mine.production.readOnly') }}</NTag>
+        <NFlex align="center">
+          <NTag
+            v-if="realtimeStatus !== 'IDLE'"
+            data-realtime-status
+            :type="realtimeStatusType"
+            :bordered="false"
+          >
+            {{ realtimeLabel() }}
+          </NTag>
+          <NTag v-if="isReadOnly" type="warning" :bordered="false">{{ t('mine.production.readOnly') }}</NTag>
+        </NFlex>
       </template>
     </NPageHeader>
 
@@ -846,6 +950,15 @@ function toIso(value: string) {
         <span>{{ problem }}</span>
         <NButton data-action="retry-tab" size="small" @click="refreshActiveTab">{{ t('mine.production.action.retry') }}</NButton>
       </NFlex>
+    </NAlert>
+
+    <NAlert
+      v-if="realtimeStatus === 'DEGRADED'"
+      data-realtime-degraded
+      type="warning"
+      :title="t('mine.production.realtime.degradedTitle')"
+    >
+      {{ t('mine.production.realtime.degradedHint', { code: realtimeFailureCode ?? t('mine.production.common.unknown') }) }}
     </NAlert>
 
     <NSpin :show="loading">

@@ -102,6 +102,48 @@ export type RealtimeSpatialNotification =
 
 export type RealtimeSpatialListener = (notification: RealtimeSpatialNotification) => void;
 
+export type RealtimeOperationAggregateType =
+  | 'SHIFT_INSTANCE'
+  | 'WORK_ORDER'
+  | 'OPERATION_RECORD'
+  | 'OPERATION_CANDIDATE';
+
+export type RealtimeOperationUpdateType =
+  | 'RUNTIME_TRANSITIONED'
+  | 'RECORD_COMPLETED'
+  | 'CANDIDATE_CREATED'
+  | 'CANDIDATE_RESOLVED'
+  | 'CANDIDATE_IGNORED'
+  | 'RECORD_ADDED'
+  | 'RECORD_CORRECTED'
+  | 'RECORD_VOIDED'
+  | 'RECORD_RESTORED';
+
+export interface RealtimeOperationEvent {
+  eventId: string;
+  organizationId: string;
+  siteId: string;
+  aggregateType: RealtimeOperationAggregateType;
+  aggregateId: string;
+  updateType: RealtimeOperationUpdateType;
+  businessSequence: number;
+  occurredAt: string;
+  summary: Readonly<Record<string, string | number | boolean>>;
+}
+
+export type RealtimeOperationNotification =
+  | { mode: 'UPDATE'; siteId: string; item: RealtimeOperationEvent }
+  | { mode: 'SUBSCRIBED'; siteId: string }
+  | { mode: 'SUBSCRIPTION_FAILED'; siteId: string; code: string }
+  | {
+      mode: 'RESYNC_REQUIRED';
+      siteId: string;
+      expectedBusinessSequence?: number;
+      receivedBusinessSequence?: number;
+    };
+
+export type RealtimeOperationListener = (notification: RealtimeOperationNotification) => void;
+
 export interface RealtimeHubOptions {
   url: string;
   token: () => string;
@@ -114,6 +156,9 @@ export interface RealtimeHubOptions {
   spatialSubscriptionTimeoutMillis?: number;
   spatialSubscriptionRetryMillis?: number;
   spatialSubscriptionMaxAttempts?: number;
+  operationSubscriptionTimeoutMillis?: number;
+  operationSubscriptionRetryMillis?: number;
+  operationSubscriptionMaxAttempts?: number;
   onAuthenticationFailed?: (message: string) => void;
 }
 
@@ -143,7 +188,17 @@ interface SpatialRegistration {
   listener: RealtimeSpatialListener;
 }
 
+interface OperationRegistration {
+  siteId: string;
+  listener: RealtimeOperationListener;
+}
+
 interface PendingSpatialSubscription {
+  siteId: string;
+  timeoutTimer: ReturnType<typeof setTimeout>;
+}
+
+interface PendingOperationSubscription {
   siteId: string;
   timeoutTimer: ReturnType<typeof setTimeout>;
 }
@@ -162,6 +217,7 @@ interface ServerFrame {
   message?: string;
   topic?: string;
   siteId?: string;
+  businessSequence?: number;
   watermark?: number;
   source?: 'REDIS' | 'TIMESCALEDB';
   truncated?: boolean;
@@ -194,6 +250,9 @@ export class RealtimeHub {
       | 'spatialSubscriptionTimeoutMillis'
       | 'spatialSubscriptionRetryMillis'
       | 'spatialSubscriptionMaxAttempts'
+      | 'operationSubscriptionTimeoutMillis'
+      | 'operationSubscriptionRetryMillis'
+      | 'operationSubscriptionMaxAttempts'
       | 'onAuthenticationFailed'
     >
   > &
@@ -208,6 +267,9 @@ export class RealtimeHub {
       | 'spatialSubscriptionTimeoutMillis'
       | 'spatialSubscriptionRetryMillis'
       | 'spatialSubscriptionMaxAttempts'
+      | 'operationSubscriptionTimeoutMillis'
+      | 'operationSubscriptionRetryMillis'
+      | 'operationSubscriptionMaxAttempts'
       | 'onAuthenticationFailed'
     >;
 
@@ -225,6 +287,16 @@ export class RealtimeHub {
   private readonly spatialSubscriptionAttempts = new Map<string, number>();
   private readonly spatialSubscriptionFailures = new Map<string, string>();
   private readonly spatialSubscriptionRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly operationRegistrations = new Set<OperationRegistration>();
+  private readonly operationReferences = new Map<string, number>();
+  private readonly pendingOperationSubscriptions = new Map<string, PendingOperationSubscription>();
+  private readonly activeOperationSubscriptions = new Set<string>();
+  private readonly operationSubscriptionAttempts = new Map<string, number>();
+  private readonly operationSubscriptionFailures = new Map<string, string>();
+  private readonly operationSubscriptionRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly operationBusinessSequences = new Map<string, number>();
+  private readonly operationSeenEventIds = new Map<string, Set<string>>();
+  private readonly operationPreviouslySubscribed = new Set<string>();
   private readonly pendingLocationBatches = new Map<
     string,
     {
@@ -262,6 +334,12 @@ export class RealtimeHub {
       spatialSubscriptionTimeoutMillis: options.spatialSubscriptionTimeoutMillis ?? 10_000,
       spatialSubscriptionRetryMillis: options.spatialSubscriptionRetryMillis ?? 1000,
       spatialSubscriptionMaxAttempts: options.spatialSubscriptionMaxAttempts ?? 3,
+      operationSubscriptionTimeoutMillis:
+        options.operationSubscriptionTimeoutMillis ?? options.spatialSubscriptionTimeoutMillis ?? 10_000,
+      operationSubscriptionRetryMillis:
+        options.operationSubscriptionRetryMillis ?? options.spatialSubscriptionRetryMillis ?? 1000,
+      operationSubscriptionMaxAttempts:
+        options.operationSubscriptionMaxAttempts ?? options.spatialSubscriptionMaxAttempts ?? 3,
       onAuthenticationFailed: options.onAuthenticationFailed ?? (() => undefined)
     };
   }
@@ -284,6 +362,7 @@ export class RealtimeHub {
     this.clearReconnectTimer();
     this.clearHeartbeatTimer();
     this.resetSpatialSubscriptionState();
+    this.resetOperationSubscriptionState();
     const socket = this.socket;
     this.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'client disconnect');
@@ -397,6 +476,46 @@ export class RealtimeHub {
     };
   }
 
+  /** 订阅单个矿区的生产运营增量，并按矿区业务序号去重和检测缺口。 */
+  subscribeMineOperation(siteId: string, listener: RealtimeOperationListener): () => void {
+    const normalizedSiteId = siteId.trim();
+    if (!normalizedSiteId) throw new Error('矿区不能为空');
+    const registration: OperationRegistration = { siteId: normalizedSiteId, listener };
+    this.operationRegistrations.add(registration);
+    const referenceCount = this.operationReferences.get(normalizedSiteId) ?? 0;
+    this.operationReferences.set(normalizedSiteId, referenceCount + 1);
+    this.connect();
+    if (referenceCount === 0 && this.authenticated) {
+      this.sendOperationTopic('SUBSCRIBE', normalizedSiteId);
+    }
+    if (this.activeOperationSubscriptions.has(normalizedSiteId)) {
+      listener({ mode: 'SUBSCRIBED', siteId: normalizedSiteId });
+    } else {
+      const failureCode = this.operationSubscriptionFailures.get(normalizedSiteId);
+      if (failureCode) {
+        listener({ mode: 'SUBSCRIPTION_FAILED', siteId: normalizedSiteId, code: failureCode });
+      }
+    }
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.operationRegistrations.delete(registration);
+      const count = this.operationReferences.get(normalizedSiteId) ?? 0;
+      if (count <= 1) {
+        this.operationReferences.delete(normalizedSiteId);
+        this.clearOperationSubscriptionState(normalizedSiteId);
+        this.operationBusinessSequences.delete(normalizedSiteId);
+        this.operationSeenEventIds.delete(normalizedSiteId);
+        this.operationPreviouslySubscribed.delete(normalizedSiteId);
+        if (this.authenticated) this.sendOperationTopic('UNSUBSCRIBE', normalizedSiteId);
+      } else {
+        this.operationReferences.set(normalizedSiteId, count - 1);
+      }
+    };
+  }
+
   /** 订阅连接状态；注册时立即返回当前状态。 */
   subscribeConnectionState(listener: (state: RealtimeConnectionState) => void): () => void {
     this.connectionListeners.add(listener);
@@ -424,6 +543,7 @@ export class RealtimeHub {
     this.lastServerSequence = 0;
     this.resyncPending = false;
     this.resetSpatialSubscriptionState();
+    this.resetOperationSubscriptionState();
     socket.addEventListener('open', () => {
       if (this.socket !== socket) return;
       this.reconnectAttempt = 0;
@@ -438,6 +558,7 @@ export class RealtimeHub {
       if (this.socket === socket) this.socket = null;
       this.authenticated = false;
       this.resetSpatialSubscriptionState();
+      this.resetOperationSubscriptionState();
       this.clearHeartbeatTimer();
       if (this.desired) {
         this.setConnectionState('RECONNECTING');
@@ -478,16 +599,35 @@ export class RealtimeHub {
       this.failSpatialSubscription(frame.requestId, frame.code ?? 'REALTIME-SUBSCRIPTION-FAILED');
       return;
     }
+    if (frame.type === 'ERROR' && frame.requestId && this.pendingOperationSubscriptions.has(frame.requestId)) {
+      this.failOperationSubscription(frame.requestId, frame.code ?? 'REALTIME-SUBSCRIPTION-FAILED');
+      return;
+    }
     if (frame.type === 'ACK' && frame.action === 'SUBSCRIBE' && frame.requestId) {
-      const pending = this.pendingSpatialSubscriptions.get(frame.requestId);
-      if (pending) {
+      const spatialPending = this.pendingSpatialSubscriptions.get(frame.requestId);
+      if (spatialPending) {
         this.completePendingSpatialSubscription(frame.requestId);
-        if (this.spatialReferences.has(pending.siteId)) {
-          this.spatialSubscriptionAttempts.delete(pending.siteId);
-          this.spatialSubscriptionFailures.delete(pending.siteId);
-          this.clearSpatialSubscriptionRetryTimer(pending.siteId);
-          this.activeSpatialSubscriptions.add(pending.siteId);
-          this.notifySpatialSubscribed(pending.siteId);
+        if (this.spatialReferences.has(spatialPending.siteId)) {
+          this.spatialSubscriptionAttempts.delete(spatialPending.siteId);
+          this.spatialSubscriptionFailures.delete(spatialPending.siteId);
+          this.clearSpatialSubscriptionRetryTimer(spatialPending.siteId);
+          this.activeSpatialSubscriptions.add(spatialPending.siteId);
+          this.notifySpatialSubscribed(spatialPending.siteId);
+        }
+      }
+      const operationPending = this.pendingOperationSubscriptions.get(frame.requestId);
+      if (operationPending) {
+        this.completePendingOperationSubscription(frame.requestId);
+        if (this.operationReferences.has(operationPending.siteId)) {
+          this.operationSubscriptionAttempts.delete(operationPending.siteId);
+          this.operationSubscriptionFailures.delete(operationPending.siteId);
+          this.clearOperationSubscriptionRetryTimer(operationPending.siteId);
+          this.activeOperationSubscriptions.add(operationPending.siteId);
+          if (this.operationPreviouslySubscribed.has(operationPending.siteId)) {
+            this.notifyOperationResync(operationPending.siteId);
+          }
+          this.operationPreviouslySubscribed.add(operationPending.siteId);
+          this.notifyOperationSubscribed(operationPending.siteId);
         }
       }
       return;
@@ -507,6 +647,10 @@ export class RealtimeHub {
       if (frame.type === 'DATA') this.applySpatialData(frame);
       return;
     }
+    if (frame.topic === 'MINE_SITE_OPERATION') {
+      if (frame.type === 'DATA') this.applyOperationData(frame);
+      return;
+    }
     if (frame.type === 'SNAPSHOT') this.applySnapshot(frame);
     if (frame.type === 'DATA') this.applyData(frame);
   }
@@ -516,6 +660,7 @@ export class RealtimeHub {
     if (this.lastServerSequence > 0 && sequence !== this.lastServerSequence + 1 && !this.resyncPending) {
       this.resyncPending = true;
       this.notifySpatialResync();
+      this.notifyAllOperationResync();
       this.sendAction('RESYNC');
     }
     this.lastServerSequence = sequence;
@@ -531,6 +676,9 @@ export class RealtimeHub {
     this.spatialReferences.forEach((_count, siteId) => {
       this.sendSpatialTopic('SUBSCRIBE', siteId);
     });
+    this.operationReferences.forEach((_count, siteId) => {
+      this.sendOperationTopic('SUBSCRIBE', siteId);
+    });
   }
 
   private applySpatialData(frame: ServerFrame) {
@@ -542,6 +690,41 @@ export class RealtimeHub {
     });
   }
 
+  private applyOperationData(frame: ServerFrame) {
+    if (
+      !frame.siteId ||
+      !this.isOperationEvent(frame.item) ||
+      frame.item.siteId !== frame.siteId ||
+      frame.businessSequence !== frame.item.businessSequence
+    ) return;
+    const event = frame.item;
+    const seen = this.operationSeenEventIds.get(frame.siteId) ?? new Set<string>();
+    const previousSequence = this.operationBusinessSequences.get(frame.siteId);
+    if (seen.has(event.eventId) || (previousSequence !== undefined && event.businessSequence <= previousSequence)) return;
+    this.operationBusinessSequences.set(frame.siteId, event.businessSequence);
+    seen.add(event.eventId);
+    if (seen.size > 256) seen.delete(seen.values().next().value!);
+    this.operationSeenEventIds.set(frame.siteId, seen);
+    if (previousSequence !== undefined && event.businessSequence !== previousSequence + 1) {
+      this.operationRegistrations.forEach(registration => {
+        if (registration.siteId === frame.siteId) {
+          registration.listener({
+            mode: 'RESYNC_REQUIRED',
+            siteId: frame.siteId!,
+            expectedBusinessSequence: previousSequence + 1,
+            receivedBusinessSequence: event.businessSequence
+          });
+        }
+      });
+      return;
+    }
+    this.operationRegistrations.forEach(registration => {
+      if (registration.siteId === frame.siteId) {
+        registration.listener({ mode: 'UPDATE', siteId: frame.siteId!, item: event });
+      }
+    });
+  }
+
   private notifySpatialResync() {
     this.activeSpatialSubscriptions.forEach(siteId => {
       this.spatialRegistrations.forEach(registration => {
@@ -549,6 +732,30 @@ export class RealtimeHub {
           registration.listener({ mode: 'RESYNC_REQUIRED', siteId });
         }
       });
+    });
+  }
+
+  private notifyAllOperationResync() {
+    this.activeOperationSubscriptions.forEach(siteId => this.notifyOperationResync(siteId));
+  }
+
+  private notifyOperationResync(siteId: string) {
+    this.operationRegistrations.forEach(registration => {
+      if (registration.siteId === siteId) registration.listener({ mode: 'RESYNC_REQUIRED', siteId });
+    });
+  }
+
+  private notifyOperationSubscribed(siteId: string) {
+    this.operationRegistrations.forEach(registration => {
+      if (registration.siteId === siteId) registration.listener({ mode: 'SUBSCRIBED', siteId });
+    });
+  }
+
+  private notifyOperationSubscriptionFailed(siteId: string, code: string) {
+    this.operationRegistrations.forEach(registration => {
+      if (registration.siteId === siteId) {
+        registration.listener({ mode: 'SUBSCRIPTION_FAILED', siteId, code });
+      }
     });
   }
 
@@ -695,6 +902,50 @@ export class RealtimeHub {
     );
   };
 
+  private readonly isOperationEvent = (value: unknown): value is RealtimeOperationEvent => {
+    if (!value || typeof value !== 'object') return false;
+    const item = value as Partial<RealtimeOperationEvent>;
+    if (
+      !this.isNonBlankString(item.eventId) ||
+      !this.isNonBlankString(item.organizationId) ||
+      !this.isNonBlankString(item.siteId) ||
+      !this.isNonBlankString(item.aggregateId) ||
+      !['SHIFT_INSTANCE', 'WORK_ORDER', 'OPERATION_RECORD', 'OPERATION_CANDIDATE'].includes(
+        item.aggregateType ?? ''
+      ) ||
+      ![
+        'RUNTIME_TRANSITIONED',
+        'RECORD_COMPLETED',
+        'CANDIDATE_CREATED',
+        'CANDIDATE_RESOLVED',
+        'CANDIDATE_IGNORED',
+        'RECORD_ADDED',
+        'RECORD_CORRECTED',
+        'RECORD_VOIDED',
+        'RECORD_RESTORED'
+      ].includes(item.updateType ?? '') ||
+      !Number.isInteger(item.businessSequence) ||
+      (item.businessSequence ?? 0) < 1 ||
+      !this.isNonBlankString(item.occurredAt) ||
+      !Number.isFinite(Date.parse(item.occurredAt)) ||
+      !item.summary ||
+      typeof item.summary !== 'object' ||
+      Array.isArray(item.summary)
+    ) return false;
+    const entries = Object.entries(item.summary);
+    return (
+      entries.length <= 32 &&
+      JSON.stringify(item.summary).length <= 4096 &&
+      entries.every(
+        ([key, entry]) =>
+          /^[a-z][A-Za-z0-9]{0,63}$/.test(key) &&
+          ((typeof entry === 'string' && entry.length <= 1024) ||
+            (typeof entry === 'number' && Number.isFinite(entry)) ||
+            typeof entry === 'boolean')
+      )
+    );
+  };
+
   private isNonBlankString(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0;
   }
@@ -803,6 +1054,27 @@ export class RealtimeHub {
     });
   }
 
+  private sendOperationTopic(action: 'SUBSCRIBE' | 'UNSUBSCRIBE', siteId: string) {
+    const requestId = this.nextRequestId();
+    if (action === 'SUBSCRIBE') {
+      this.activeOperationSubscriptions.delete(siteId);
+      this.clearPendingOperationSubscriptions(siteId);
+      this.clearOperationSubscriptionRetryTimer(siteId);
+      this.operationSubscriptionAttempts.set(siteId, (this.operationSubscriptionAttempts.get(siteId) ?? 0) + 1);
+      const timeoutTimer = setTimeout(() => {
+        this.failOperationSubscription(requestId, 'REALTIME-SUBSCRIPTION-TIMEOUT');
+      }, this.options.operationSubscriptionTimeoutMillis);
+      this.pendingOperationSubscriptions.set(requestId, { siteId, timeoutTimer });
+    } else {
+      this.clearOperationSubscriptionState(siteId);
+    }
+    this.sendRaw({
+      action,
+      requestId,
+      topics: [{ type: 'MINE_SITE_OPERATION', ids: [siteId] }]
+    });
+  }
+
   private clearSpatialSubscriptionState(siteId: string) {
     this.activeSpatialSubscriptions.delete(siteId);
     this.clearPendingSpatialSubscriptions(siteId);
@@ -821,11 +1093,37 @@ export class RealtimeHub {
     this.spatialSubscriptionFailures.clear();
   }
 
+  private clearOperationSubscriptionState(siteId: string) {
+    this.activeOperationSubscriptions.delete(siteId);
+    this.clearPendingOperationSubscriptions(siteId);
+    this.clearOperationSubscriptionRetryTimer(siteId);
+    this.operationSubscriptionAttempts.delete(siteId);
+    this.operationSubscriptionFailures.delete(siteId);
+  }
+
+  private resetOperationSubscriptionState() {
+    this.activeOperationSubscriptions.clear();
+    this.pendingOperationSubscriptions.forEach(pending => clearTimeout(pending.timeoutTimer));
+    this.pendingOperationSubscriptions.clear();
+    this.operationSubscriptionRetryTimers.forEach(timer => clearTimeout(timer));
+    this.operationSubscriptionRetryTimers.clear();
+    this.operationSubscriptionAttempts.clear();
+    this.operationSubscriptionFailures.clear();
+  }
+
   private completePendingSpatialSubscription(requestId: string) {
     const pending = this.pendingSpatialSubscriptions.get(requestId);
     if (!pending) return null;
     clearTimeout(pending.timeoutTimer);
     this.pendingSpatialSubscriptions.delete(requestId);
+    return pending;
+  }
+
+  private completePendingOperationSubscription(requestId: string) {
+    const pending = this.pendingOperationSubscriptions.get(requestId);
+    if (!pending) return null;
+    clearTimeout(pending.timeoutTimer);
+    this.pendingOperationSubscriptions.delete(requestId);
     return pending;
   }
 
@@ -845,6 +1143,22 @@ export class RealtimeHub {
     this.spatialSubscriptionRetryTimers.set(pending.siteId, timer);
   }
 
+  private failOperationSubscription(requestId: string, code: string) {
+    const pending = this.completePendingOperationSubscription(requestId);
+    if (!pending || !this.operationReferences.has(pending.siteId)) return;
+    this.operationSubscriptionFailures.set(pending.siteId, code);
+    this.notifyOperationSubscriptionFailed(pending.siteId, code);
+    const attempts = this.operationSubscriptionAttempts.get(pending.siteId) ?? 0;
+    if (!this.authenticated || attempts >= this.options.operationSubscriptionMaxAttempts) return;
+    const timer = setTimeout(() => {
+      this.operationSubscriptionRetryTimers.delete(pending.siteId);
+      if (this.authenticated && this.operationReferences.has(pending.siteId)) {
+        this.sendOperationTopic('SUBSCRIBE', pending.siteId);
+      }
+    }, this.options.operationSubscriptionRetryMillis);
+    this.operationSubscriptionRetryTimers.set(pending.siteId, timer);
+  }
+
   private clearPendingSpatialSubscriptions(siteId: string) {
     this.pendingSpatialSubscriptions.forEach((pending, requestId) => {
       if (pending.siteId !== siteId) return;
@@ -853,11 +1167,26 @@ export class RealtimeHub {
     });
   }
 
+  private clearPendingOperationSubscriptions(siteId: string) {
+    this.pendingOperationSubscriptions.forEach((pending, requestId) => {
+      if (pending.siteId !== siteId) return;
+      clearTimeout(pending.timeoutTimer);
+      this.pendingOperationSubscriptions.delete(requestId);
+    });
+  }
+
   private clearSpatialSubscriptionRetryTimer(siteId: string) {
     const timer = this.spatialSubscriptionRetryTimers.get(siteId);
     if (!timer) return;
     clearTimeout(timer);
     this.spatialSubscriptionRetryTimers.delete(siteId);
+  }
+
+  private clearOperationSubscriptionRetryTimer(siteId: string) {
+    const timer = this.operationSubscriptionRetryTimers.get(siteId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.operationSubscriptionRetryTimers.delete(siteId);
   }
 
   private sendAction(action: 'RESYNC' | 'PING') {

@@ -487,6 +487,136 @@ describe('RealtimeHub', () => {
     expect(listener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
   });
 
+  it('运营主题应引用计数并按业务序号去重与发现缺口', () => {
+    const firstListener = vi.fn();
+    const secondListener = vi.fn();
+    const hub = createHub();
+    const releaseFirst = hub.subscribeMineOperation('site-a', firstListener);
+    const socket = sockets[0];
+    socket.open();
+    const auth = JSON.parse(socket.sent[0]);
+    socket.receive({ type: 'ACK', action: 'AUTH', requestId: auth.requestId, sequence: 1 });
+
+    const subscription = JSON.parse(socket.sent[1]);
+    expect(subscription).toMatchObject({
+      action: 'SUBSCRIBE',
+      topics: [{ type: 'MINE_SITE_OPERATION', ids: ['site-a'] }]
+    });
+    socket.receive({ type: 'ACK', action: 'SUBSCRIBE', requestId: subscription.requestId, sequence: 2 });
+    expect(firstListener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
+    firstListener.mockClear();
+
+    const releaseSecond = hub.subscribeMineOperation('site-a', secondListener);
+    expect(secondListener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
+    secondListener.mockClear();
+    socket.receive({
+      type: 'DATA',
+      topic: 'MINE_SITE_OPERATION',
+      siteId: 'site-a',
+      businessSequence: 17,
+      item: operationEvent(),
+      sequence: 3
+    });
+    socket.receive({
+      type: 'DATA',
+      topic: 'MINE_SITE_OPERATION',
+      siteId: 'site-a',
+      businessSequence: 17,
+      item: operationEvent(),
+      sequence: 4
+    });
+    expect(firstListener).toHaveBeenCalledTimes(1);
+    expect(secondListener).toHaveBeenCalledTimes(1);
+    expect(firstListener).toHaveBeenLastCalledWith(
+      expect.objectContaining({ mode: 'UPDATE', siteId: 'site-a' })
+    );
+
+    socket.receive({
+      type: 'DATA',
+      topic: 'MINE_SITE_OPERATION',
+      siteId: 'site-a',
+      businessSequence: 19,
+      item: operationEvent({
+        eventId: 'event-19',
+        businessSequence: 19,
+        occurredAt: '2026-07-20T05:00:19Z'
+      }),
+      sequence: 5
+    });
+    expect(firstListener).toHaveBeenCalledWith({
+      mode: 'RESYNC_REQUIRED',
+      siteId: 'site-a',
+      expectedBusinessSequence: 18,
+      receivedBusinessSequence: 19
+    });
+
+    socket.sent.length = 0;
+    releaseFirst();
+    expect(socket.sent).toHaveLength(0);
+    releaseSecond();
+    expect(JSON.parse(socket.sent[0])).toMatchObject({
+      action: 'UNSUBSCRIBE',
+      topics: [{ type: 'MINE_SITE_OPERATION', ids: ['site-a'] }]
+    });
+  });
+
+  it('运营连接重建后应请求页面回查离线窗口', () => {
+    const listener = vi.fn();
+    const hub = createHub();
+    hub.subscribeMineOperation('site-a', listener);
+    sockets[0].open();
+    const firstAuth = JSON.parse(sockets[0].sent[0]);
+    sockets[0].receive({ type: 'ACK', action: 'AUTH', requestId: firstAuth.requestId, sequence: 1 });
+    const firstSubscription = JSON.parse(sockets[0].sent[1]);
+    sockets[0].receive({ type: 'ACK', action: 'SUBSCRIBE', requestId: firstSubscription.requestId, sequence: 2 });
+    listener.mockClear();
+
+    sockets[0].remoteClose();
+    vi.advanceTimersByTime(1000);
+    sockets[1].open();
+    const secondAuth = JSON.parse(sockets[1].sent[0]);
+    sockets[1].receive({ type: 'ACK', action: 'AUTH', requestId: secondAuth.requestId, sequence: 1 });
+    const secondSubscription = JSON.parse(sockets[1].sent[1]);
+    sockets[1].receive({ type: 'ACK', action: 'SUBSCRIBE', requestId: secondSubscription.requestId, sequence: 2 });
+
+    expect(listener).toHaveBeenCalledWith({ mode: 'RESYNC_REQUIRED', siteId: 'site-a' });
+    expect(listener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
+  });
+
+  it('运营订阅失败应独立降级且不影响空间事件订阅', () => {
+    const operationListener = vi.fn();
+    const spatialListener = vi.fn();
+    const hub = createHub();
+    hub.subscribeMineSpatialEvent('site-a', spatialListener);
+    hub.subscribeMineOperation('site-a', operationListener);
+    const socket = sockets[0];
+    socket.open();
+    const auth = JSON.parse(socket.sent[0]);
+    socket.receive({ type: 'ACK', action: 'AUTH', requestId: auth.requestId, sequence: 1 });
+    const spatialSubscription = JSON.parse(socket.sent[1]);
+    const operationSubscription = JSON.parse(socket.sent[2]);
+
+    socket.receive({
+      type: 'ERROR',
+      requestId: operationSubscription.requestId,
+      code: 'REALTIME-LIMIT-EXCEEDED',
+      sequence: 2
+    });
+    socket.receive({
+      type: 'ACK',
+      action: 'SUBSCRIBE',
+      requestId: spatialSubscription.requestId,
+      sequence: 3
+    });
+
+    expect(operationListener).toHaveBeenCalledWith({
+      mode: 'SUBSCRIPTION_FAILED',
+      siteId: 'site-a',
+      code: 'REALTIME-LIMIT-EXCEEDED'
+    });
+    expect(spatialListener).toHaveBeenCalledWith({ mode: 'SUBSCRIBED', siteId: 'site-a' });
+  });
+
   it('应向页面发布连接与弱网重连状态', () => {
     const states: string[] = [];
     const hub = createHub();
@@ -555,6 +685,21 @@ function spatialEvent(overrides: Record<string, unknown> = {}) {
       qualityReason: null,
       zoneContentHash: `sha256:${'a'.repeat(64)}`
     },
+    ...overrides
+  };
+}
+
+function operationEvent(overrides: Record<string, unknown> = {}) {
+  return {
+    eventId: 'event-17',
+    organizationId: 'organization-1',
+    siteId: 'site-a',
+    aggregateType: 'OPERATION_RECORD',
+    aggregateId: 'record-1',
+    updateType: 'RECORD_COMPLETED',
+    businessSequence: 17,
+    occurredAt: '2026-07-20T05:00:17Z',
+    summary: { operationRecordId: 'record-1', effective: true },
     ...overrides
   };
 }

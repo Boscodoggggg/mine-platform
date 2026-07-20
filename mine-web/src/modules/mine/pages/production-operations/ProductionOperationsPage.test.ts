@@ -28,6 +28,15 @@ const catalogApi = vi.hoisted(() => ({
   getMinePeople: vi.fn(),
   getMineVehicles: vi.fn()
 }));
+const realtime = vi.hoisted(() => ({
+  listener: null as ((notification: Record<string, unknown>) => void) | null,
+  release: vi.fn(),
+  subscribeMineOperation: vi.fn((siteId: string, listener: (notification: Record<string, unknown>) => void) => {
+    void siteId;
+    realtime.listener = listener;
+    return realtime.release;
+  })
+}));
 const contextState = vi.hoisted(() => ({
   selectedSiteId: 'site-1' as string | null,
   selectedSite: { id: 'site-1', name: '北区矿', siteCode: 'NORTH', timezone: 'Asia/Shanghai' } as {
@@ -52,6 +61,7 @@ const authState = vi.hoisted(() => ({ buttons: [] as string[] }));
 
 vi.mock('@/modules/mine/api/operation', () => api);
 vi.mock('@/modules/mine/api/mine-api', () => catalogApi);
+vi.mock('@/realtime', () => ({ realtimeHub: { subscribeMineOperation: realtime.subscribeMineOperation } }));
 vi.mock('@/modules/mine/stores/mine-context', () => ({ useMineContextStore: () => contextState }));
 vi.mock('@/store/modules/auth', () => ({
   useAuthStore: () => ({
@@ -116,6 +126,9 @@ describe('ProductionOperationsPage', () => {
       size: 100,
       total: 1
     });
+    realtime.listener = null;
+    realtime.release.mockReset();
+    realtime.subscribeMineOperation.mockClear();
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
     window.$dialog = { warning: vi.fn() } as never;
   });
@@ -187,6 +200,47 @@ describe('ProductionOperationsPage', () => {
 
     expect(wrapper.text()).toContain('99 吨');
     expect(wrapper.text()).not.toContain('1 吨');
+  });
+
+  it('必须先读 REST 再订阅运营增量且切换矿区会释放旧订阅', async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(api.getOperationSummary).toHaveBeenCalledOnce();
+    expect(realtime.subscribeMineOperation).toHaveBeenCalledWith('site-1', expect.any(Function));
+    expect(api.getOperationSummary.mock.invocationCallOrder[0]).toBeLessThan(
+      realtime.subscribeMineOperation.mock.invocationCallOrder[0]!
+    );
+    realtime.listener?.({ mode: 'SUBSCRIBED', siteId: 'site-1' });
+    await flushPromises();
+    expect(api.getOperationSummary).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain('实时增量已连接');
+
+    await (wrapper.vm as unknown as { changeSite: (siteId: string) => Promise<void> }).changeSite('site-2');
+    await flushPromises();
+    expect(realtime.release).toHaveBeenCalledOnce();
+    expect(realtime.subscribeMineOperation).toHaveBeenLastCalledWith('site-2', expect.any(Function));
+  });
+
+  it('运营增量缺口只重同步当前运营页签且订阅失败时保持 REST 可用', async () => {
+    const wrapper = mountPage();
+    await flushPromises();
+    expect(wrapper.text()).toContain('12 吨');
+
+    realtime.listener?.({
+      mode: 'RESYNC_REQUIRED',
+      siteId: 'site-1',
+      expectedBusinessSequence: 18,
+      receivedBusinessSequence: 19
+    });
+    await flushPromises();
+    expect(api.getOperationSummary).toHaveBeenCalledTimes(2);
+
+    realtime.listener?.({ mode: 'SUBSCRIPTION_FAILED', siteId: 'site-1', code: 'REALTIME-LIMIT-EXCEEDED' });
+    await flushPromises();
+    expect(wrapper.text()).toContain('实时增量已降级');
+    expect(wrapper.text()).toContain('12 吨');
+    expect(wrapper.find('[data-realtime-degraded]').exists()).toBe(true);
   });
 
   it('无按钮权限时保持完整只读视图且不渲染写操作', async () => {

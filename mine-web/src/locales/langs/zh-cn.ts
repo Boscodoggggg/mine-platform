@@ -106,6 +106,14 @@ const local: App.I18n.Schema = {
         justUpdated: '刚刚更新',
         updatedMinutes: '{count} 分钟前更新'
       },
+      realtime: {
+        connecting: '实时增量连接中',
+        live: '实时增量已连接',
+        resyncing: '实时缺口恢复中',
+        degraded: '实时增量已降级',
+        degradedTitle: '运营实时通道已独立降级',
+        degradedHint: '当前仍可手动刷新 REST 数据，定位和空间事件通道不受影响。错误码：{code}'
+      },
       filter: { businessDate: '营业日期（YYYY-MM-DD）' },
       common: {
         status: '状态',

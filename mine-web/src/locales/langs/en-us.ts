@@ -106,6 +106,14 @@ const local: App.I18n.Schema = {
         justUpdated: 'Just updated',
         updatedMinutes: 'Updated {count} min ago'
       },
+      realtime: {
+        connecting: 'Connecting live updates',
+        live: 'Live updates connected',
+        resyncing: 'Recovering live update gap',
+        degraded: 'Live updates degraded',
+        degradedTitle: 'Operations live channel degraded independently',
+        degradedHint: 'REST refresh remains available. Location and spatial-event channels are unaffected. Error code: {code}'
+      },
       filter: { businessDate: 'Business date (YYYY-MM-DD)' },
       common: {
         status: 'Status',
