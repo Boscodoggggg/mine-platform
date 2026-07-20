@@ -139,6 +139,92 @@ class LocationRouteGeneratorTest {
     }
 
     @Test
+    void 完整运输循环应在固定装载区停留运输到卸载区停留并返回() {
+        LocationRouteGenerator.Sample loadStarted = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE, 1L);
+        LocationRouteGenerator.Sample loadDwelling = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE, 65L);
+        LocationRouteGenerator.Sample loadExited = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE, 75L);
+        LocationRouteGenerator.Sample unloadingArrived = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE, 115L);
+        LocationRouteGenerator.Sample unloadingDwelling = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE, 180L);
+        LocationRouteGenerator.Sample returned = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE, 220L);
+
+        assertThat(loadStarted.x()).isEqualTo(100D);
+        assertThat(loadStarted.y()).isEqualTo(100D);
+        assertThat(loadDwelling.x()).isEqualTo(loadStarted.x());
+        assertThat(loadDwelling.y()).isEqualTo(loadStarted.y());
+        assertThat(loadDwelling.speedMetersPerSecond()).isZero();
+        assertThat(Duration.between(loadStarted.occurredAt(), loadDwelling.occurredAt()))
+                .isEqualTo(Duration.ofSeconds(64L));
+        assertThat(loadExited.x()).isEqualTo(160D);
+        assertThat(loadExited.y()).isEqualTo(100D);
+        assertThat(loadExited.speedMetersPerSecond()).isPositive();
+        assertThat(loadExited.headingDegrees()).isEqualTo(90D);
+        assertThat(unloadingArrived.x()).isEqualTo(500D);
+        assertThat(unloadingArrived.y()).isEqualTo(400D);
+        assertThat(unloadingDwelling.x()).isEqualTo(unloadingArrived.x());
+        assertThat(unloadingDwelling.y()).isEqualTo(unloadingArrived.y());
+        assertThat(unloadingDwelling.speedMetersPerSecond()).isZero();
+        assertThat(returned.x()).isEqualTo(loadStarted.x());
+        assertThat(returned.y()).isEqualTo(loadStarted.y());
+        assertThat(returned.sourceSequence()).isEqualTo(220L);
+        assertThat(returned.occurredAt()).isEqualTo(NOW.plusSeconds(219L));
+        assertThat(new LocationRouteGenerator(20260718L).generate(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE, 115L,
+                NOW.plusSeconds(114L), 1000L, "tag-001"))
+                .isEqualTo(unloadingArrived);
+    }
+
+    @Test
+    void 跳过装载停留变体应在停留阈值前离开但仍保持连续运动学() {
+        LocationRouteGenerator.Sample loadStarted = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE_SKIP_LOAD_DWELL, 1L);
+        LocationRouteGenerator.Sample loadLast = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE_SKIP_LOAD_DWELL, 5L);
+        LocationRouteGenerator.Sample earlyExit = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE_SKIP_LOAD_DWELL, 6L);
+        LocationRouteGenerator.Sample unload = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE_SKIP_LOAD_DWELL, 55L);
+
+        assertThat(loadStarted.x()).isEqualTo(100D);
+        assertThat(loadLast.x()).isEqualTo(loadStarted.x());
+        assertThat(Duration.between(loadStarted.occurredAt(), loadLast.occurredAt()))
+                .isLessThan(Duration.ofSeconds(60L));
+        assertThat(earlyExit.x()).isGreaterThan(loadLast.x());
+        assertThat(earlyExit.speedMetersPerSecond()).isPositive();
+        assertThat(unload.x()).isEqualTo(500D);
+        assertThat(unload.y()).isEqualTo(400D);
+    }
+
+    @Test
+    void 重复卸载变体应完成首次停留后离开并再次进入卸载区() {
+        LocationRouteGenerator.Sample firstUnload = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE_REPEAT_UNLOAD, 180L);
+        LocationRouteGenerator.Sample exited = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE_REPEAT_UNLOAD, 190L);
+        LocationRouteGenerator.Sample reentered = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE_REPEAT_UNLOAD, 200L);
+        LocationRouteGenerator.Sample repeatedDwell = haul(
+                LocationRouteGenerator.Scenario.HAUL_CYCLE_REPEAT_UNLOAD, 265L);
+
+        assertThat(firstUnload.x()).isEqualTo(500D);
+        assertThat(firstUnload.y()).isEqualTo(400D);
+        assertThat(exited.x()).isEqualTo(440D);
+        assertThat(exited.speedMetersPerSecond()).isPositive();
+        assertThat(reentered.x()).isEqualTo(firstUnload.x());
+        assertThat(reentered.y()).isEqualTo(firstUnload.y());
+        assertThat(repeatedDwell.x()).isEqualTo(reentered.x());
+        assertThat(repeatedDwell.y()).isEqualTo(reentered.y());
+        assertThat(repeatedDwell.speedMetersPerSecond()).isZero();
+        assertThat(Duration.between(reentered.occurredAt(), repeatedDwell.occurredAt()))
+                .isEqualTo(Duration.ofSeconds(65L));
+    }
+
+    @Test
     void 非法序号间隔和标签应被拒绝() {
         assertThatThrownBy(() -> generator.generate(
                 LocationRouteGenerator.Scenario.CIRCLE, 0L, NOW, 1000L, "tag-001"))
@@ -152,5 +238,13 @@ class LocationRouteGeneratorTest {
                 LocationRouteGenerator.Scenario.CIRCLE, 1L, NOW, 1000L, " "))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("标签");
+    }
+
+    private LocationRouteGenerator.Sample haul(
+            LocationRouteGenerator.Scenario scenario,
+            long sequence
+    ) {
+        return generator.generate(
+                scenario, sequence, NOW.plusSeconds(sequence - 1L), 1000L, "tag-001");
     }
 }

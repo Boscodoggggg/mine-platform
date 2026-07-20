@@ -173,8 +173,12 @@
                 <option value="BOUNDARY_JITTER">BOUNDARY_JITTER · 边界抖动</option>
                 <option value="DWELL">DWELL · 区域停留</option>
                 <option value="LATE">LATE · 过晚定位</option>
+                <option value="HAUL_CYCLE">HAUL_CYCLE · 完整运输循环</option>
+                <option value="HAUL_CYCLE_SKIP_LOAD_DWELL">HAUL_CYCLE_SKIP_LOAD_DWELL · 跳过装载停留</option>
+                <option value="HAUL_CYCLE_REPEAT_UNLOAD">HAUL_CYCLE_REPEAT_UNLOAD · 重复卸载</option>
               </select>
               <button class="button secondary" id="applyLocationTemplateButton" type="button">应用定位模板</button>
+              <small>固定几何：装载区中心 (100, 100)，卸载区中心 (500, 400)。只有已发布区域与上述固定几何一致时，才会形成预期运输作业。</small>
             </div>
             <label class="wide template-label">报文模板
               <textarea name="payloadTemplate" required rows="8" spellcheck="false"></textarea>

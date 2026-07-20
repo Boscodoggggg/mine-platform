@@ -14,6 +14,18 @@ public final class LocationRouteGenerator {
     private static final int CIRCLE_STEPS = 120;
     private static final int DWELL_STEPS = 120;
     private static final int POLYLINE_SEGMENT_STEPS = 30;
+    private static final int LOAD_EXIT_STEPS = 10;
+    private static final int HAUL_STEPS = 40;
+    private static final int UNLOAD_DWELL_STEPS = 65;
+    private static final int RETURN_STEPS = 40;
+    private static final int COMPLETE_LOAD_DWELL_STEPS = 65;
+    private static final int SKIPPED_LOAD_DWELL_STEPS = 5;
+    private static final int REPEAT_UNLOAD_EXIT_STEPS = 10;
+    private static final int REPEAT_UNLOAD_RETURN_STEPS = 10;
+    private static final Coordinate LOAD_CENTER = new Coordinate(100D, 100D, 6D);
+    private static final Coordinate LOAD_EXIT = new Coordinate(160D, 100D, 6D);
+    private static final Coordinate UNLOAD_CENTER = new Coordinate(500D, 400D, 6D);
+    private static final Coordinate UNLOAD_EXIT = new Coordinate(440D, 400D, 6D);
     private static final double[][] POLYLINE = {
             {100D, 100D}, {500D, 100D}, {500D, 400D}, {100D, 400D}
     };
@@ -101,6 +113,15 @@ public final class LocationRouteGenerator {
     }
 
     private Coordinate coordinate(Scenario scenario, long sequence) {
+        if (scenario == Scenario.HAUL_CYCLE) {
+            return haulCycle(sequence, COMPLETE_LOAD_DWELL_STEPS, false);
+        }
+        if (scenario == Scenario.HAUL_CYCLE_SKIP_LOAD_DWELL) {
+            return haulCycle(sequence, SKIPPED_LOAD_DWELL_STEPS, false);
+        }
+        if (scenario == Scenario.HAUL_CYCLE_REPEAT_UNLOAD) {
+            return haulCycle(sequence, COMPLETE_LOAD_DWELL_STEPS, true);
+        }
         if (scenario == Scenario.POLYLINE) {
             return polyline(sequence);
         }
@@ -117,6 +138,66 @@ public final class LocationRouteGenerator {
             return new Coordinate(1_000_000D + sequence, -1_000_000D - sequence, 6D);
         }
         return circle(sequence);
+    }
+
+    private Coordinate haulCycle(long sequence, int loadDwellSteps, boolean repeatUnload) {
+        long cycleSteps = loadDwellSteps
+                + LOAD_EXIT_STEPS
+                + HAUL_STEPS
+                + UNLOAD_DWELL_STEPS
+                + RETURN_STEPS;
+        if (repeatUnload) {
+            cycleSteps += REPEAT_UNLOAD_EXIT_STEPS
+                    + REPEAT_UNLOAD_RETURN_STEPS
+                    + UNLOAD_DWELL_STEPS;
+        }
+        long step = Math.floorMod(sequence - 1L, cycleSteps);
+        if (step < loadDwellSteps) {
+            return LOAD_CENTER;
+        }
+        step -= loadDwellSteps;
+        if (step < LOAD_EXIT_STEPS) {
+            return interpolate(LOAD_CENTER, LOAD_EXIT, step, LOAD_EXIT_STEPS);
+        }
+        step -= LOAD_EXIT_STEPS;
+        if (step < HAUL_STEPS) {
+            return interpolate(LOAD_EXIT, UNLOAD_CENTER, step, HAUL_STEPS);
+        }
+        step -= HAUL_STEPS;
+        if (step < UNLOAD_DWELL_STEPS) {
+            return UNLOAD_CENTER;
+        }
+        step -= UNLOAD_DWELL_STEPS;
+        if (repeatUnload) {
+            if (step < REPEAT_UNLOAD_EXIT_STEPS) {
+                return interpolate(UNLOAD_CENTER, UNLOAD_EXIT, step,
+                        REPEAT_UNLOAD_EXIT_STEPS);
+            }
+            step -= REPEAT_UNLOAD_EXIT_STEPS;
+            if (step < REPEAT_UNLOAD_RETURN_STEPS) {
+                return interpolate(UNLOAD_EXIT, UNLOAD_CENTER, step,
+                        REPEAT_UNLOAD_RETURN_STEPS);
+            }
+            step -= REPEAT_UNLOAD_RETURN_STEPS;
+            if (step < UNLOAD_DWELL_STEPS) {
+                return UNLOAD_CENTER;
+            }
+            step -= UNLOAD_DWELL_STEPS;
+        }
+        return interpolate(UNLOAD_CENTER, LOAD_CENTER, step, RETURN_STEPS);
+    }
+
+    private Coordinate interpolate(
+            Coordinate start,
+            Coordinate end,
+            long step,
+            int segmentSteps
+    ) {
+        double progress = (step + 1D) / segmentSteps;
+        return new Coordinate(
+                round(start.x + (end.x - start.x) * progress),
+                round(start.y + (end.y - start.y) * progress),
+                round(start.z + (end.z - start.z) * progress));
     }
 
     private Coordinate crossBoundary(long sequence) {
@@ -191,7 +272,13 @@ public final class LocationRouteGenerator {
         /** 进入固定模拟区域后持续静止，用于单次停留事件。 */
         DWELL,
         /** 每五帧保持序号递增但回退发生时间，用于迟到排序。 */
-        LATE
+        LATE,
+        /** 在固定装载区、运输道路和卸载区之间循环，稳定触发完整运输作业。 */
+        HAUL_CYCLE,
+        /** 在达到装载停留阈值前离开，用于验证未形成装载作业的分支。 */
+        HAUL_CYCLE_SKIP_LOAD_DWELL,
+        /** 完成首次卸载后离开并再次进入，用于验证重复卸载和幂等处理。 */
+        HAUL_CYCLE_REPEAT_UNLOAD
     }
 
     /**

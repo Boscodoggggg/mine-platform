@@ -30,7 +30,13 @@ class StaticInteractionContractTest {
                 "CROSS_BOUNDARY",
                 "BOUNDARY_JITTER",
                 "DWELL",
-                "LATE");
+                "LATE",
+                "HAUL_CYCLE",
+                "HAUL_CYCLE_SKIP_LOAD_DWELL",
+                "HAUL_CYCLE_REPEAT_UNLOAD",
+                "装载区中心 (100, 100)",
+                "卸载区中心 (500, 400)",
+                "只有已发布区域与上述固定几何一致");
         assertThat(script).contains(
                 "locationTemplate",
                 "locationScenarioPreset",
