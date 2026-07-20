@@ -3,6 +3,7 @@ package com.bosco.mine.server.integration;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.server.MineServerApplication;
 import com.bosco.mine.server.modules.mine.dto.MineOrganizationResponse;
+import com.bosco.mine.server.modules.mine.operation.OperationActionIdempotencyService;
 import com.bosco.mine.server.modules.mine.operation.ShiftCommandService;
 import com.bosco.mine.server.modules.mine.operation.ShiftQueryService;
 import com.bosco.mine.server.modules.mine.operation.dto.ShiftDefinitionRequest;
@@ -30,7 +31,12 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -59,6 +65,9 @@ class ShiftManagementIT {
 
     @Autowired
     private ShiftQueryService queryService;
+
+    @Autowired
+    private OperationActionIdempotencyService idempotencyService;
 
     @Autowired
     private MineScopeCommandService scopeCommandService;
@@ -144,6 +153,85 @@ class ShiftManagementIT {
                         new ShiftInstanceRequest(
                                 definition.id(), LocalDate.parse("2026-08-01"), null)),
                 "MINE-SHIFT-422-002");
+    }
+
+    @Test
+    void 动作幂等键必须持久返回首次结果并拒绝同键异请求() {
+        ShiftDefinitionResponse definition = commandService.createDefinition(
+                firstSiteId,
+                definition("idempotent-shift", "幂等班次", "08:00", "16:00", false,
+                        "2026-01-01", null, 0));
+        ShiftInstanceResponse instance = commandService.createInstance(
+                firstSiteId,
+                new ShiftInstanceRequest(
+                        definition.id(), LocalDate.parse("2026-07-20"), null));
+        AtomicInteger calls = new AtomicInteger();
+
+        ShiftInstanceResponse opened = idempotencyService.execute(
+                firstSiteId, "open-shift-key", "OPEN_SHIFT", "SHIFT_INSTANCE", instance.id(),
+                Map.of("version", instance.version()), ShiftInstanceResponse.class,
+                () -> {
+                    calls.incrementAndGet();
+                    return commandService.openInstance(firstSiteId, instance.id(), instance.version());
+                });
+        ShiftInstanceResponse replayed = idempotencyService.execute(
+                firstSiteId, "open-shift-key", "OPEN_SHIFT", "SHIFT_INSTANCE", instance.id(),
+                Map.of("version", instance.version()), ShiftInstanceResponse.class,
+                () -> {
+                    calls.incrementAndGet();
+                    throw new AssertionError("重放不得再次执行班次动作");
+                });
+
+        assertThat(replayed).isEqualTo(opened);
+        assertThat(calls).hasValue(1);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM mine_operation_action_idempotency", Long.class)).isOne();
+        assertCode(() -> idempotencyService.execute(
+                        firstSiteId, "open-shift-key", "OPEN_SHIFT", "SHIFT_INSTANCE", instance.id(),
+                        Map.of("version", opened.version()), ShiftInstanceResponse.class,
+                        () -> opened),
+                "MINE-OPERATION-409-001");
+    }
+
+    @Test
+    void 并发同键动作必须只执行一次并向双方返回同一冻结结果() throws Exception {
+        ShiftDefinitionResponse definition = commandService.createDefinition(
+                firstSiteId,
+                definition("concurrent-shift", "并发班次", "08:00", "16:00", false,
+                        "2026-01-01", null, 0));
+        ShiftInstanceResponse instance = commandService.createInstance(
+                firstSiteId,
+                new ShiftInstanceRequest(
+                        definition.id(), LocalDate.parse("2026-07-21"), null));
+        AtomicInteger calls = new AtomicInteger();
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var action = (java.util.concurrent.Callable<ShiftInstanceResponse>) () -> {
+                assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+                return idempotencyService.execute(
+                        firstSiteId, "concurrent-open-key", "OPEN_SHIFT", "SHIFT_INSTANCE",
+                        instance.id(), Map.of("version", instance.version()),
+                        ShiftInstanceResponse.class,
+                        () -> {
+                            calls.incrementAndGet();
+                            return commandService.openInstance(
+                                    firstSiteId, instance.id(), instance.version());
+                        });
+            };
+            var first = executor.submit(action);
+            var second = executor.submit(action);
+            start.countDown();
+
+            assertThat(first.get(10, TimeUnit.SECONDS))
+                    .isEqualTo(second.get(10, TimeUnit.SECONDS));
+        }
+        assertThat(calls).hasValue(1);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM mine_operation_action_idempotency
+                WHERE idempotency_key = 'concurrent-open-key'
+                """, Long.class)).isOne();
     }
 
     @Test

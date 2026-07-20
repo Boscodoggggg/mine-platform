@@ -1,11 +1,14 @@
 package com.bosco.mine.server.modules.mine.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.bosco.mine.server.modules.mine.operation.ShiftController;
+import com.bosco.mine.server.modules.mine.operation.WorkOrderController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialEventController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialReplayController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialRouteController;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.yaml.snakeyaml.Yaml;
 
@@ -61,6 +64,24 @@ class MineManagementOpenApiTest {
                 "/mine/sites/{siteId}/spatial-events",
                 "/mine/sites/{siteId}/spatial-events/{eventId}",
                 "/mine/sites/{siteId}/spatial-events/replays",
+                "/mine/sites/{siteId}/shift-definitions",
+                "/mine/sites/{siteId}/shift-definitions/{definitionId}",
+                "/mine/sites/{siteId}/shift-definitions/{definitionId}/archive",
+                "/mine/sites/{siteId}/shift-instances",
+                "/mine/sites/{siteId}/shift-instances/{shiftId}",
+                "/mine/sites/{siteId}/shift-instances/{shiftId}/open",
+                "/mine/sites/{siteId}/shift-instances/{shiftId}/close",
+                "/mine/sites/{siteId}/shift-instances/{shiftId}/cancel",
+                "/mine/sites/{siteId}/work-orders",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/assignments",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/release",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/start",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/pause",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/resume",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/complete",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/cancel",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/abort",
                 "/mine/sites/{siteId}/people",
                 "/mine/sites/{siteId}/people/{personId}/sensitive",
                 "/mine/sites/{siteId}/bindings/preview",
@@ -99,7 +120,11 @@ class MineManagementOpenApiTest {
                 "GeofenceVersionResponse", "CurrentSpatialRegionResponse",
                 "CurrentSpatialRegionItem", "SpatialEventPageResponse",
                 "SpatialEventDetailResponse", "SpatialEventEvidence",
-                "SpatialReplayRequest", "SpatialReplayResponse");
+                "SpatialReplayRequest", "SpatialReplayResponse",
+                "ShiftDefinitionRequest", "ShiftDefinitionResponse",
+                "ShiftInstanceRequest", "ShiftInstanceResponse", "ShiftActionRequest",
+                "WorkOrderRequest", "WorkOrderAssignmentRequest",
+                "WorkOrderActionRequest", "WorkOrderResponse");
         assertThat(list(map(schemas.get("LocationSubjectType")).get("enum")))
                 .containsExactly("TAG", "VEHICLE", "PERSON");
         assertThat(map(map(schemas.get("LocationTrajectoryResponse")).get("properties")))
@@ -128,6 +153,52 @@ class MineManagementOpenApiTest {
         assertThat(list(replay.get("parameters")))
                 .anySatisfy(parameter -> assertThat(map(parameter).get("$ref"))
                         .isEqualTo("#/components/parameters/IdempotencyKey"));
+
+        Map<String, Object> shifts = map(map(
+                paths.get("/mine/sites/{siteId}/shift-instances")).get("get"));
+        assertThat(map(namedParameter(shifts, "limit").get("schema")))
+                .containsEntry("minimum", 1)
+                .containsEntry("maximum", 100)
+                .containsEntry("default", 20);
+        assertThat(list(map(namedParameter(shifts, "status").get("schema")).get("enum")))
+                .containsExactly("PLANNED", "OPEN", "CLOSED", "CANCELLED");
+
+        Map<String, Object> workOrders = map(map(
+                paths.get("/mine/sites/{siteId}/work-orders")).get("get"));
+        assertThat(map(namedParameter(workOrders, "limit").get("schema")))
+                .containsEntry("minimum", 1)
+                .containsEntry("maximum", 100)
+                .containsEntry("default", 20);
+        assertThat(list(map(namedParameter(workOrders, "status").get("schema")).get("enum")))
+                .containsExactly("DRAFT", "RELEASED", "RUNNING", "PAUSED",
+                        "COMPLETED", "CANCELLED", "ABORTED");
+
+        for (String path : List.of(
+                "/mine/sites/{siteId}/shift-instances/{shiftId}/open",
+                "/mine/sites/{siteId}/shift-instances/{shiftId}/close",
+                "/mine/sites/{siteId}/shift-instances/{shiftId}/cancel",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/release",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/start",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/pause",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/resume",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/complete",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/cancel",
+                "/mine/sites/{siteId}/work-orders/{workOrderId}/abort")) {
+            Map<String, Object> action = map(map(paths.get(path)).get("post"));
+            assertThat(list(action.get("parameters")))
+                    .anySatisfy(parameter -> assertThat(map(parameter).get("$ref"))
+                            .isEqualTo("#/components/parameters/IdempotencyKey"));
+        }
+
+        assertThat(list(map(schemas.get("ShiftActionRequest")).get("required")))
+                .contains("version");
+        assertThat(list(map(schemas.get("WorkOrderActionRequest")).get("required")))
+                .contains("version");
+        assertThat(map(schemas.get("WorkOrderRequest")).get("properties").toString())
+                .doesNotContain("status");
+        assertThat(root.toString()).contains(
+                "MINE-SHIFT-409-004", "MINE-WORK-409-004", "MINE-OPERATION-409-001",
+                "MINE-SCOPE-404-002");
     }
 
     @Test
@@ -190,8 +261,58 @@ class MineManagementOpenApiTest {
                 .containsExactly("mine:spatial:replay");
     }
 
+    @Test
+    void 生产运营控制器必须使用精确权限动作路径和乐观版本() {
+        assertPermission(ShiftController.class, "findDefinitions", "mine:operation:view");
+        assertPermission(ShiftController.class, "findDefinition", "mine:operation:view");
+        assertPermission(ShiftController.class, "findInstances", "mine:operation:view");
+        assertPermission(ShiftController.class, "findInstance", "mine:operation:view");
+        assertPermission(ShiftController.class, "createDefinition", "mine:shift:edit");
+        assertPermission(ShiftController.class, "updateDefinition", "mine:shift:edit");
+        assertPermission(ShiftController.class, "archiveDefinition", "mine:shift:edit");
+        assertPermission(ShiftController.class, "createInstance", "mine:shift:edit");
+        assertPermission(ShiftController.class, "openInstance", "mine:shift:edit");
+        assertPermission(ShiftController.class, "cancelInstance", "mine:shift:edit");
+        assertPermission(ShiftController.class, "closeInstance", "mine:shift:close");
+
+        assertPermission(WorkOrderController.class, "findWorkOrders", "mine:operation:view");
+        assertPermission(WorkOrderController.class, "findWorkOrder", "mine:operation:view");
+        assertPermission(WorkOrderController.class, "createWorkOrder", "mine:work-order:edit");
+        assertPermission(WorkOrderController.class, "updateWorkOrder", "mine:work-order:edit");
+        assertPermission(WorkOrderController.class, "assignWorkOrder", "mine:work-order:dispatch");
+        for (String method : List.of(
+                "releaseWorkOrder", "startWorkOrder", "pauseWorkOrder", "resumeWorkOrder",
+                "completeWorkOrder", "cancelWorkOrder", "abortWorkOrder")) {
+            assertPermission(WorkOrderController.class, method, "mine:work-order:dispatch");
+            assertThat(method(WorkOrderController.class, method).getAnnotation(PostMapping.class))
+                    .isNotNull();
+        }
+
+        assertThat(method(ShiftController.class, "updateDefinition")
+                .getAnnotation(PatchMapping.class).value())
+                .containsExactly("/shift-definitions/{definitionId}");
+        assertThat(method(WorkOrderController.class, "updateWorkOrder")
+                .getAnnotation(PatchMapping.class).value())
+                .containsExactly("/work-orders/{workOrderId}");
+        assertThat(method(ShiftController.class, "openInstance")
+                .getAnnotation(PostMapping.class).value()).containsExactly("/shift-instances/{shiftId}/open");
+        assertThat(method(ShiftController.class, "closeInstance")
+                .getAnnotation(PostMapping.class).value()).containsExactly("/shift-instances/{shiftId}/close");
+        assertThat(method(WorkOrderController.class, "releaseWorkOrder")
+                .getAnnotation(PostMapping.class).value()).containsExactly("/work-orders/{workOrderId}/release");
+        assertThat(method(WorkOrderController.class, "abortWorkOrder")
+                .getAnnotation(PostMapping.class).value()).containsExactly("/work-orders/{workOrderId}/abort");
+    }
+
     private void assertPermission(String methodName, String permission) {
         assertThat(method(methodName).getAnnotation(SaCheckPermission.class).value())
+                .containsExactly(permission);
+    }
+
+    private void assertPermission(
+            Class<?> controller, String methodName, String permission
+    ) {
+        assertThat(method(controller, methodName).getAnnotation(SaCheckPermission.class).value())
                 .containsExactly(permission);
     }
 

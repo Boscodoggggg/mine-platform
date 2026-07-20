@@ -769,6 +769,62 @@ public interface OperationMapper {
             @Param("reason") String reason,
             @Param("operatorId") UUID operatorId);
 
+    /** 原子认领一个矿区用户动作幂等键。 */
+    @Insert("""
+            INSERT INTO mine_operation_action_idempotency (
+                id, organization_id, site_id, operator_id, idempotency_key,
+                action_type, aggregate_type, aggregate_id, request_hash
+            ) VALUES (
+                #{id}, #{organizationId}, #{siteId}, #{operatorId}, #{idempotencyKey},
+                #{actionType}, #{aggregateType}, #{aggregateId}, #{requestHash}
+            )
+            ON CONFLICT (organization_id, site_id, operator_id, idempotency_key)
+            DO NOTHING
+            """)
+    int claimOperationAction(
+            @Param("id") UUID id,
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("operatorId") UUID operatorId,
+            @Param("idempotencyKey") String idempotencyKey,
+            @Param("actionType") String actionType,
+            @Param("aggregateType") String aggregateType,
+            @Param("aggregateId") UUID aggregateId,
+            @Param("requestHash") String requestHash);
+
+    /** 按操作者和矿区读取已认领的动作幂等结果。 */
+    @Select("""
+            SELECT id, organization_id AS organizationId, site_id AS siteId,
+                   operator_id AS operatorId, idempotency_key AS idempotencyKey,
+                   action_type AS actionType, aggregate_type AS aggregateType,
+                   aggregate_id AS aggregateId, request_hash AS requestHash,
+                   response_snapshot::TEXT AS responseSnapshotJson,
+                   created_at AS createdAt, completed_at AS completedAt
+            FROM mine_operation_action_idempotency
+            WHERE organization_id = #{organizationId}
+              AND site_id = #{siteId}
+              AND operator_id = #{operatorId}
+              AND idempotency_key = #{idempotencyKey}
+            """)
+    Optional<OperationActionIdempotencyRow> findOperationAction(
+            @Param("organizationId") UUID organizationId,
+            @Param("siteId") UUID siteId,
+            @Param("operatorId") UUID operatorId,
+            @Param("idempotencyKey") String idempotencyKey);
+
+    /** 冻结首次成功动作响应，后续重放只读取该快照。 */
+    @Update("""
+            UPDATE mine_operation_action_idempotency
+               SET response_snapshot = CAST(#{responseSnapshotJson} AS JSONB),
+                   completed_at = CURRENT_TIMESTAMP
+             WHERE id = #{id}
+               AND response_snapshot IS NULL
+               AND completed_at IS NULL
+            """)
+    int completeOperationAction(
+            @Param("id") UUID id,
+            @Param("responseSnapshotJson") String responseSnapshotJson);
+
     /** 运输作业单持久化投影。 */
     record WorkOrderRow(
             UUID id,
@@ -844,6 +900,23 @@ public interface OperationMapper {
             String contentHash,
             boolean vehicleCompatible,
             String geofenceType
+    ) {
+    }
+
+    /** 用户动作持久幂等记录投影。 */
+    record OperationActionIdempotencyRow(
+            UUID id,
+            UUID organizationId,
+            UUID siteId,
+            UUID operatorId,
+            String idempotencyKey,
+            String actionType,
+            String aggregateType,
+            UUID aggregateId,
+            String requestHash,
+            String responseSnapshotJson,
+            Instant createdAt,
+            Instant completedAt
     ) {
     }
 

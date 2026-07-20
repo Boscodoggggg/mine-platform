@@ -377,6 +377,124 @@ class PermissionIntegrationIT {
     }
 
     @Test
+    void 生产运营接口必须分别校验查看班次编辑关账作业编辑和调度权限() throws Exception {
+        UUID userId = createUser("test-operation-permission", "operation-permission-password");
+        LoginSession session = login("test-operation-permission", "operation-permission-password");
+        UUID siteId = UUID.randomUUID();
+        UUID shiftId = UUID.randomUUID();
+        UUID workOrderId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/v1/mine/sites/{siteId}/shift-definitions", siteId)
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+
+        grantPermission(userId, "mine:operation:view");
+        mockMvc.perform(get("/api/v1/mine/sites/{siteId}/shift-definitions", siteId)
+                        .header(session.tokenName(), session.tokenValue()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
+
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/open",
+                        siteId, shiftId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .header("Idempotency-Key", "permission-open")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+
+        grantPermission(userId, "mine:shift:edit");
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/open",
+                        siteId, shiftId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .header("Idempotency-Key", "permission-open")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
+
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/close",
+                        siteId, shiftId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .header("Idempotency-Key", "permission-close")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+
+        grantPermission(userId, "mine:shift:close");
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/close",
+                        siteId, shiftId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .header("Idempotency-Key", "permission-close")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
+
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders", siteId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "shiftInstanceId":"%s",
+                                  "orderNumber":"PERMISSION-001",
+                                  "title":"权限测试作业单",
+                                  "workType":"HAULAGE",
+                                  "plannedStartAt":"2026-07-20T00:00:00Z",
+                                  "plannedEndAt":"2026-07-20T01:00:00Z",
+                                  "plannedCycles":1,
+                                  "plannedTons":10,
+                                  "priority":50,
+                                  "version":0
+                                }
+                                """.formatted(shiftId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+
+        grantPermission(userId, "mine:work-order:edit");
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders", siteId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "shiftInstanceId":"%s",
+                                  "orderNumber":"PERMISSION-001",
+                                  "title":"权限测试作业单",
+                                  "workType":"HAULAGE",
+                                  "plannedStartAt":"2026-07-20T00:00:00Z",
+                                  "plannedEndAt":"2026-07-20T01:00:00Z",
+                                  "plannedCycles":1,
+                                  "plannedTons":10,
+                                  "priority":50,
+                                  "version":0
+                                }
+                                """.formatted(shiftId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
+
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders/{workOrderId}/start",
+                        siteId, workOrderId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .header("Idempotency-Key", "permission-start")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH-403-001"));
+
+        grantPermission(userId, "mine:work-order:dispatch");
+        mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders/{workOrderId}/start",
+                        siteId, workOrderId)
+                        .header(session.tokenName(), session.tokenValue())
+                        .header("Idempotency-Key", "permission-start")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
+    }
+
+    @Test
     void 应实时读取五表权限并区分缺权限和有权限() throws Exception {
         UUID userId = createUser("test-permission", "permission-password");
         LoginSession session = login("test-permission", "permission-password");

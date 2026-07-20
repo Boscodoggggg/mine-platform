@@ -46,6 +46,8 @@ tags:
     description: 当前位置快照和有界历史轨迹
   - name: MineSpatial
     description: 途径点、路线和电子围栏的草稿及不可变发布版本
+  - name: MineOperation
+    description: 班次、运输作业单、调度分配和生产运营生命周期
 paths:
   /dashboard/operations:
     get:
@@ -3263,6 +3265,429 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/LocationRuntimeUnavailable' }
+  /mine/sites/{siteId}/shift-definitions:
+    get:
+      tags: [MineOperation]
+      operationId: listMineShiftDefinitions
+      summary: 查询班次模板
+      description: 需要 mine:operation:view 权限并校验当前用户矿区数据范围。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [ACTIVE, ARCHIVED] }
+        - name: offset
+          in: query
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: 班次模板列表。
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ShiftDefinitionResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineOperation]
+      operationId: createMineShiftDefinition
+      summary: 创建班次模板
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftDefinitionRequest' } } }
+      responses:
+        '201':
+          description: 班次模板已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/ShiftDefinitionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/shift-definitions/{definitionId}:
+    get:
+      tags: [MineOperation]
+      operationId: getMineShiftDefinition
+      summary: 查询班次模板详情
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: definitionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 班次模板详情。
+          content: { application/json: { schema: { $ref: '#/components/schemas/ShiftDefinitionResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    patch:
+      tags: [MineOperation]
+      operationId: updateMineShiftDefinition
+      summary: 乐观修改活动班次模板
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: definitionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftDefinitionRequest' } } }
+      responses:
+        '200':
+          description: 修改后的班次模板。
+          content: { application/json: { schema: { $ref: '#/components/schemas/ShiftDefinitionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/shift-definitions/{definitionId}/archive:
+    post:
+      tags: [MineOperation]
+      operationId: archiveMineShiftDefinition
+      summary: 乐观归档班次模板
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: definitionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftActionRequest' } } }
+      responses:
+        '200':
+          description: 已归档班次模板。
+          content: { application/json: { schema: { $ref: '#/components/schemas/ShiftDefinitionResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/shift-instances:
+    get:
+      tags: [MineOperation]
+      operationId: listMineShiftInstances
+      summary: 按营业日期查询班次实例
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: fromDate, in: query, required: true, schema: { type: string, format: date } }
+        - { name: toDate, in: query, required: true, schema: { type: string, format: date } }
+        - name: status
+          in: query
+          schema: { type: string, enum: [PLANNED, OPEN, CLOSED, CANCELLED] }
+        - name: offset
+          in: query
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: 班次实例列表。
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ShiftInstanceResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineOperation]
+      operationId: createMineShiftInstance
+      summary: 按矿区时区和营业日期创建计划班次
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftInstanceRequest' } } }
+      responses:
+        '201':
+          description: 计划班次已创建。
+          content: { application/json: { schema: { $ref: '#/components/schemas/ShiftInstanceResponse' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/shift-instances/{shiftId}:
+    get:
+      tags: [MineOperation]
+      operationId: getMineShiftInstance
+      summary: 查询班次实例详情
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: shiftId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: 班次实例详情。
+          content: { application/json: { schema: { $ref: '#/components/schemas/ShiftInstanceResponse' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+  /mine/sites/{siteId}/shift-instances/{shiftId}/open:
+    post:
+      tags: [MineOperation]
+      operationId: openMineShiftInstance
+      summary: 幂等开启计划班次
+      description: 同键异请求返回 MINE-OPERATION-409-001；非法状态返回 MINE-SHIFT-409-004；无矿区范围返回 MINE-SCOPE-404-002。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: shiftId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftActionRequest' } } }
+      responses:
+        '200': { description: 首次开启结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/ShiftInstanceResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/shift-instances/{shiftId}/close:
+    post:
+      tags: [MineOperation]
+      operationId: closeMineShiftInstance
+      summary: 使用高风险权限幂等关闭班次
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: shiftId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftActionRequest' } } }
+      responses:
+        '200': { description: 首次关账结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/ShiftInstanceResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/shift-instances/{shiftId}/cancel:
+    post:
+      tags: [MineOperation]
+      operationId: cancelMineShiftInstance
+      summary: 幂等取消计划班次
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: shiftId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShiftActionRequest' } } }
+      responses:
+        '200': { description: 首次取消结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/ShiftInstanceResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/work-orders:
+    get:
+      tags: [MineOperation]
+      operationId: listMineWorkOrders
+      summary: 查询运输作业单和调度分配
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: shiftInstanceId, in: query, schema: { type: string, format: uuid } }
+        - name: status
+          in: query
+          schema: { type: string, enum: [DRAFT, RELEASED, RUNNING, PAUSED, COMPLETED, CANCELLED, ABORTED] }
+        - name: offset
+          in: query
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: 运输作业单列表。
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineOperation]
+      operationId: createMineWorkOrder
+      summary: 创建运输作业单草稿
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderRequest' } } }
+      responses:
+        '201': { description: 作业单草稿已创建。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}:
+    get:
+      tags: [MineOperation]
+      operationId: getMineWorkOrder
+      summary: 查询运输作业单详情
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 作业单、冻结快照和全部分配。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+    patch:
+      tags: [MineOperation]
+      operationId: updateMineWorkOrder
+      summary: 乐观修改运输作业单草稿
+      description: 请求不接受 status 字段，生命周期只能使用独立动作路径推进。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderRequest' } } }
+      responses:
+        '200': { description: 修改后的作业单草稿。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}/assignments:
+    post:
+      tags: [MineOperation]
+      operationId: assignMineWorkOrder
+      summary: 追加车辆和可选司机调度分配
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderAssignmentRequest' } } }
+      responses:
+        '201': { description: 调度分配已创建。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}/release:
+    post:
+      tags: [MineOperation]
+      operationId: releaseMineWorkOrder
+      summary: 幂等发布并冻结运输计划和空间版本
+      description: 同键异请求返回 MINE-OPERATION-409-001；非法状态返回 MINE-WORK-409-004；无矿区范围返回 MINE-SCOPE-404-002。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      responses:
+        '200': { description: 首次发布结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}/start:
+    post:
+      tags: [MineOperation]
+      operationId: startMineWorkOrder
+      summary: 幂等启动已发布作业单
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      responses:
+        '200': { description: 首次启动结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}/pause:
+    post:
+      tags: [MineOperation]
+      operationId: pauseMineWorkOrder
+      summary: 幂等暂停运行作业单
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      responses:
+        '200': { description: 首次暂停结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}/resume:
+    post:
+      tags: [MineOperation]
+      operationId: resumeMineWorkOrder
+      summary: 幂等恢复暂停作业单
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      responses:
+        '200': { description: 首次恢复结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}/complete:
+    post:
+      tags: [MineOperation]
+      operationId: completeMineWorkOrder
+      summary: 幂等完成运行或暂停作业单
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      responses:
+        '200': { description: 首次完成结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}/cancel:
+    post:
+      tags: [MineOperation]
+      operationId: cancelMineWorkOrder
+      summary: 幂等取消草稿或已发布作业单
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      responses:
+        '200': { description: 首次取消结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/work-orders/{workOrderId}/abort:
+    post:
+      tags: [MineOperation]
+      operationId: abortMineWorkOrder
+      summary: 幂等异常终止运行或暂停作业单
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: workOrderId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderActionRequest' } } } }
+      responses:
+        '200': { description: 首次异常终止结果或冻结幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/WorkOrderResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
 components:
   securitySchemes:
     MineToken:
@@ -6326,6 +6751,162 @@ components:
         source:
           type: string
           enum: [RAW, ROLLUP]
+    ShiftDefinitionRequest:
+      type: object
+      additionalProperties: false
+      required: [definitionCode, name, startLocal, endLocal, crossesMidnight, validFrom, version]
+      properties:
+        definitionCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        startLocal: { type: string, format: time }
+        endLocal: { type: string, format: time }
+        crossesMidnight: { type: boolean }
+        validFrom: { type: string, format: date }
+        validTo: { type: [string, 'null'], format: date }
+        version: { type: integer, format: int64, minimum: 0 }
+    ShiftDefinitionResponse:
+      type: object
+      required: [id, organizationId, siteId, definitionCode, name, startLocal, endLocal, crossesMidnight, validFrom, validTo, status, createdAt, updatedAt, archivedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        definitionCode: { type: string }
+        name: { type: string }
+        startLocal: { type: string, format: time }
+        endLocal: { type: string, format: time }
+        crossesMidnight: { type: boolean }
+        validFrom: { type: string, format: date }
+        validTo: { type: [string, 'null'], format: date }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    ShiftInstanceRequest:
+      type: object
+      additionalProperties: false
+      required: [shiftDefinitionId, businessDate]
+      properties:
+        shiftDefinitionId: { type: string, format: uuid }
+        businessDate: { type: string, format: date }
+        supervisorPersonId: { type: [string, 'null'], format: uuid }
+    ShiftActionRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+        reason: { type: [string, 'null'], maxLength: 500 }
+    ShiftInstanceResponse:
+      type: object
+      required: [id, organizationId, siteId, shiftDefinitionId, businessDate, plannedStartAt, plannedEndAt, actualStartAt, actualEndAt, supervisorPersonId, definitionSnapshot, status, openedAt, closedAt, cancelledAt, cancellationReason, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        shiftDefinitionId: { type: string, format: uuid }
+        businessDate: { type: string, format: date }
+        plannedStartAt: { type: string, format: date-time }
+        plannedEndAt: { type: string, format: date-time }
+        actualStartAt: { type: [string, 'null'], format: date-time }
+        actualEndAt: { type: [string, 'null'], format: date-time }
+        supervisorPersonId: { type: [string, 'null'], format: uuid }
+        definitionSnapshot: { type: object, additionalProperties: true, readOnly: true }
+        status: { type: string, enum: [PLANNED, OPEN, CLOSED, CANCELLED] }
+        openedAt: { type: [string, 'null'], format: date-time }
+        closedAt: { type: [string, 'null'], format: date-time }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        cancellationReason: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    WorkOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [shiftInstanceId, orderNumber, title, workType, plannedStartAt, plannedEndAt, priority, version]
+      properties:
+        shiftInstanceId: { type: string, format: uuid }
+        orderNumber: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$' }
+        title: { type: string, minLength: 1, maxLength: 128 }
+        workType: { type: string, enum: [HAULAGE] }
+        plannedStartAt: { type: string, format: date-time }
+        plannedEndAt: { type: string, format: date-time }
+        plannedCycles: { type: [integer, 'null'], minimum: 1, maximum: 1000000 }
+        plannedTons: { type: [number, 'null'], exclusiveMinimum: 0 }
+        priority: { type: integer, minimum: 1, maximum: 100 }
+        version: { type: integer, format: int64, minimum: 0 }
+    WorkOrderAssignmentRequest:
+      type: object
+      additionalProperties: false
+      required: [vehicleId, validFrom, validTo, assignmentReason]
+      properties:
+        vehicleId: { type: string, format: uuid }
+        driverPersonId: { type: [string, 'null'], format: uuid }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: string, format: date-time }
+        assignmentReason: { type: string, minLength: 1, maxLength: 500 }
+    WorkOrderActionRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+        routeVersionId: { type: [string, 'null'], format: uuid }
+        loadGeofenceVersionId: { type: [string, 'null'], format: uuid }
+        unloadGeofenceVersionId: { type: [string, 'null'], format: uuid }
+        reason: { type: [string, 'null'], maxLength: 500 }
+    WorkOrderAssignmentResponse:
+      type: object
+      required: [id, vehicleId, vehicleCode, vehicleName, vehicleType, driverPersonId, driverName, validFrom, validTo, status, assignmentReason, createdAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        vehicleId: { type: string, format: uuid }
+        vehicleCode: { type: string }
+        vehicleName: { type: string }
+        vehicleType: { type: string, enum: [HAUL_TRUCK] }
+        driverPersonId: { type: [string, 'null'], format: uuid }
+        driverName: { type: [string, 'null'] }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: string, format: date-time }
+        status: { type: string, enum: [ACTIVE, CANCELLED] }
+        assignmentReason: { type: string }
+        createdAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    WorkOrderResponse:
+      type: object
+      required: [id, organizationId, siteId, shiftInstanceId, orderNumber, title, workType, plannedStartAt, plannedEndAt, plannedCycles, plannedTons, priority, routeVersionId, loadGeofenceVersionId, unloadGeofenceVersionId, releaseSnapshot, status, releasedAt, startedAt, pausedAt, completedAt, cancelledAt, abortedAt, terminalReason, createdAt, updatedAt, version, assignments]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        shiftInstanceId: { type: string, format: uuid }
+        orderNumber: { type: string }
+        title: { type: string }
+        workType: { type: string, enum: [HAULAGE] }
+        plannedStartAt: { type: string, format: date-time }
+        plannedEndAt: { type: string, format: date-time }
+        plannedCycles: { type: [integer, 'null'] }
+        plannedTons: { type: [number, 'null'] }
+        priority: { type: integer }
+        routeVersionId: { type: [string, 'null'], format: uuid }
+        loadGeofenceVersionId: { type: [string, 'null'], format: uuid }
+        unloadGeofenceVersionId: { type: [string, 'null'], format: uuid }
+        releaseSnapshot: { type: [object, 'null'], additionalProperties: true, readOnly: true }
+        status: { type: string, enum: [DRAFT, RELEASED, RUNNING, PAUSED, COMPLETED, CANCELLED, ABORTED] }
+        releasedAt: { type: [string, 'null'], format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        pausedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        cancelledAt: { type: [string, 'null'], format: date-time }
+        abortedAt: { type: [string, 'null'], format: date-time }
+        terminalReason: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+        assignments:
+          type: array
+          items: { $ref: '#/components/schemas/WorkOrderAssignmentResponse' }
     ApiError:
       type: object
       required: [code, message, traceId, timestamp, details]

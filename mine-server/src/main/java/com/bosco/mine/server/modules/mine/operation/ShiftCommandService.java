@@ -241,8 +241,30 @@ public class ShiftCommandService {
      */
     @Transactional
     public ShiftInstanceResponse openInstance(UUID siteId, UUID shiftId) {
+        return openInstance(siteId, shiftId, null);
+    }
+
+    /**
+     * 使用客户端乐观版本幂等开启一个计划班次。
+     *
+     * @param siteId 矿区标识
+     * @param shiftId 班次实例标识
+     * @param expectedVersion 客户端看到的当前版本
+     * @return 开启后的班次实例
+     */
+    @Transactional
+    public ShiftInstanceResponse openInstance(
+            UUID siteId, UUID shiftId, long expectedVersion
+    ) {
+        return openInstance(siteId, shiftId, Long.valueOf(expectedVersion));
+    }
+
+    private ShiftInstanceResponse openInstance(
+            UUID siteId, UUID shiftId, Long expectedVersion
+    ) {
         MineSite site = authorizer.requireSite(siteId);
         OperationMapper.ShiftInstanceRow before = lockInstance(site, shiftId);
+        requireActionVersion(before, expectedVersion);
         if ("OPEN".equals(before.status())) {
             return queryService.toResponse(before);
         }
@@ -268,8 +290,30 @@ public class ShiftCommandService {
      */
     @Transactional
     public ShiftInstanceResponse closeInstance(UUID siteId, UUID shiftId) {
+        return closeInstance(siteId, shiftId, null);
+    }
+
+    /**
+     * 使用客户端乐观版本关闭没有运行作业或循环的已开启班次。
+     *
+     * @param siteId 矿区标识
+     * @param shiftId 班次实例标识
+     * @param expectedVersion 客户端看到的当前版本
+     * @return 关账后的班次实例
+     */
+    @Transactional
+    public ShiftInstanceResponse closeInstance(
+            UUID siteId, UUID shiftId, long expectedVersion
+    ) {
+        return closeInstance(siteId, shiftId, Long.valueOf(expectedVersion));
+    }
+
+    private ShiftInstanceResponse closeInstance(
+            UUID siteId, UUID shiftId, Long expectedVersion
+    ) {
         MineSite site = authorizer.requireSite(siteId);
         OperationMapper.ShiftInstanceRow before = lockInstance(site, shiftId);
+        requireActionVersion(before, expectedVersion);
         if ("CLOSED".equals(before.status())) {
             return queryService.toResponse(before);
         }
@@ -299,9 +343,32 @@ public class ShiftCommandService {
      */
     @Transactional
     public ShiftInstanceResponse cancelInstance(UUID siteId, UUID shiftId, String reason) {
+        return cancelInstance(siteId, shiftId, null, reason);
+    }
+
+    /**
+     * 使用客户端乐观版本取消一个尚未开启的计划班次。
+     *
+     * @param siteId 矿区标识
+     * @param shiftId 班次实例标识
+     * @param expectedVersion 客户端看到的当前版本
+     * @param reason 取消原因
+     * @return 取消后的班次实例
+     */
+    @Transactional
+    public ShiftInstanceResponse cancelInstance(
+            UUID siteId, UUID shiftId, long expectedVersion, String reason
+    ) {
+        return cancelInstance(siteId, shiftId, Long.valueOf(expectedVersion), reason);
+    }
+
+    private ShiftInstanceResponse cancelInstance(
+            UUID siteId, UUID shiftId, Long expectedVersion, String reason
+    ) {
         MineSite site = authorizer.requireSite(siteId);
         String normalizedReason = required(reason, 500);
         OperationMapper.ShiftInstanceRow before = lockInstance(site, shiftId);
+        requireActionVersion(before, expectedVersion);
         if ("CANCELLED".equals(before.status())) {
             if (normalizedReason.equals(before.cancellationReason())) {
                 return queryService.toResponse(before);
@@ -319,6 +386,17 @@ public class ShiftCommandService {
         audit("CANCEL_SHIFT", "mine:shift:edit", "MINE_SHIFT_INSTANCE", shiftId,
                 instanceSummary(queryService.toResponse(before)), instanceSummary(cancelled));
         return cancelled;
+    }
+
+    private void requireActionVersion(
+            OperationMapper.ShiftInstanceRow instance, Long expectedVersion
+    ) {
+        if (expectedVersion != null && instance.version() != expectedVersion) {
+            throw new MineException(LIFECYCLE_CONFLICT, Map.of(
+                    "shiftId", instance.id(),
+                    "expectedVersion", expectedVersion,
+                    "actualVersion", instance.version()));
+        }
     }
 
     private OperationMapper.ShiftDefinitionRow requireDefinition(

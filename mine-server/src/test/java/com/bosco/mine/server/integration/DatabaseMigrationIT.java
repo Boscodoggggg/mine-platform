@@ -104,6 +104,7 @@ class DatabaseMigrationIT {
             "mine_operation_correction",
             "mine_operation_effective_record",
             "mine_operation_outbox",
+            "mine_operation_action_idempotency",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -151,6 +152,24 @@ class DatabaseMigrationIT {
         assertThat(constraintColumns("pk_sys_inbox_event"))
                 .containsExactly("consumer_name", "event_id");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM sys_role", Long.class)).isZero();
+    }
+
+    @Test
+    void 生产运营动作幂等账本必须具备作用域唯一约束和完整中文注释() {
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT obj_description('mine_operation_action_idempotency'::regclass, 'pg_class')
+                """, String.class)).contains("幂等");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid = 'mine_operation_action_idempotency'::regclass
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_mine_operation_action_idempotency_key"))
+                .containsExactly(
+                        "organization_id", "site_id", "operator_id", "idempotency_key");
     }
 
     @Test
@@ -777,6 +796,7 @@ class DatabaseMigrationIT {
                 "mine-binding-management",
                 "mine-location-monitor",
                 "mine-location-tag-management",
+                "mine-operation-management",
                 "mine-person-management",
                 "mine-site-archive",
                 "mine-spatial-management",
@@ -894,6 +914,8 @@ class DatabaseMigrationIT {
                 "mine:location-tag:edit",
                 "mine:location-tag:view",
                 "mine:location:view",
+                "mine:operation:correct",
+                "mine:operation:view",
                 "mine:organization:edit",
                 "mine:organization:view",
                 "mine:person:edit",
@@ -902,6 +924,8 @@ class DatabaseMigrationIT {
                 "mine:person:sensitive:view",
                 "mine:person:view",
                 "mine:scope:assign",
+                "mine:shift:close",
+                "mine:shift:edit",
                 "mine:site:edit",
                 "mine:site:view",
                 "mine:spatial:edit",
@@ -910,7 +934,9 @@ class DatabaseMigrationIT {
                 "mine:spatial:replay",
                 "mine:spatial:view",
                 "mine:vehicle:edit",
-                "mine:vehicle:view"
+                "mine:vehicle:view",
+                "mine:work-order:dispatch",
+                "mine:work-order:edit"
         );
         assertThat(jdbcTemplate.queryForMap("""
                 SELECT id, name, path, sort_order, visible, i18n_key, protected_node
@@ -934,7 +960,8 @@ class DatabaseMigrationIT {
                 "mine-location-tag-management",
                 "mine-binding-management",
                 "mine-location-monitor",
-                "mine-spatial-management"
+                "mine-spatial-management",
+                "mine-operation-management"
         );
         assertThat(jdbcTemplate.queryForMap("""
                 SELECT name, path, component_key, permission, i18n_key, protected_node
@@ -944,6 +971,15 @@ class DatabaseMigrationIT {
                 .containsEntry("path", "/mine/spatial")
                 .containsEntry("permission", "mine:spatial:view")
                 .containsEntry("i18n_key", "mine.menu.mineSpatial")
+                .containsEntry("protected_node", true);
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT name, path, component_key, permission, i18n_key, protected_node
+                FROM sys_menu
+                WHERE component_key = 'mine-operation-management'
+                """)).containsEntry("name", "生产运营")
+                .containsEntry("path", "/mine/operations")
+                .containsEntry("permission", "mine:operation:view")
+                .containsEntry("i18n_key", "mine.menu.mineOperations")
                 .containsEntry("protected_node", true);
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
