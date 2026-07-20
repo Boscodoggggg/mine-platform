@@ -153,20 +153,40 @@ UWB 数据流：
 
 ## 9. 作业和运营记录
 
-建议状态：
+班次、作业单和运输循环已经落地为显式状态机。班次模板使用矿区本地时间、有效营业日期和跨午夜标识生成实例，实例状态固定为：
+
+~~~text
+PLANNED → OPEN → CLOSED
+    └────────→ CANCELLED
+~~~
+
+运输作业单当前只开放 `HAULAGE` 类型；发布时冻结路线、装载区、卸载区版本以及车辆/司机显示快照，状态固定为：
 
 ~~~mermaid
 stateDiagram-v2
-    [*] --> PLANNED
-    PLANNED --> RUNNING
+    [*] --> DRAFT
+    DRAFT --> RELEASED
+    RELEASED --> RUNNING
     RUNNING --> PAUSED
     PAUSED --> RUNNING
     RUNNING --> COMPLETED
+    PAUSED --> COMPLETED
     RUNNING --> ABORTED
-    PLANNED --> CANCELLED
+    PAUSED --> ABORTED
+    DRAFT --> CANCELLED
+    RELEASED --> CANCELLED
 ~~~
 
-OperationRecord 包含：
+自动运输循环只接受严格递增的五步空间证据：
+
+~~~text
+LOAD_ENTER → LOAD_DWELL → LOAD_EXIT → UNLOAD_ENTER → UNLOAD_DWELL
+~~~
+
+事件发生时必须存在唯一活动车辆分配，班次为 `OPEN`，作业单在该时刻为 `RUNNING`，车辆身份和区域版本与发布快照一致。
+重复事件保持幂等；暂停、关账、身份/区域不匹配、步骤超时、过晚和顺序异常不会被猜测归属，而是形成待人工处置候选或固定跳过。
+
+OperationRecord 保存：
 
 - workOrderId、shiftInstanceId。
 - vehicleId、driverId、routeVersionId。
@@ -174,10 +194,13 @@ OperationRecord 包含：
 - start/end waypoint、作业单号、地点编码。
 - 里程、趟数、深度、载重、油耗等可选指标。
 - 完成状态和异常原因。
-- 数据来源：自动推导、设备上报、人工修正。
-- manualCorrectionReason 和审计信息。
+- 数据来源：自动推导或人工补录，以及吨位等指标来源。
+- 五个固定角色的不可变空间证据或人工证据。
+- 当前有效投影版本和全部追加式修正历史。
 
-自动识别依据围栏、途径点、设备事件和时间窗口。人工允许修正，但不能静默覆盖原始计算结果。
+人工处置只允许追加 `ADD/AMEND/VOID/RESTORE`，必须保留原因、操作人、幂等键和当前投影版本；原始事实和证据不可修改。
+记录分页按营业日期和固定矿区业务水位读取，实时变更使用连续业务序号，缺口必须回查 REST。配置、值班流程、告警和恢复见
+[矿区生产运营运行手册](runbooks/mine-production-operation-runtime.md)。
 
 ## 10. 实时监控
 

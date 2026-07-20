@@ -248,6 +248,25 @@ GET               /api/v1/mine/sites/{siteId}/spatial-events
 GET               /api/v1/mine/sites/{siteId}/spatial-events/{eventId}
 POST              /api/v1/mine/sites/{siteId}/spatial-events/replays
 
+GET/POST          /api/v1/mine/sites/{siteId}/shift-definitions
+GET/PATCH         /api/v1/mine/sites/{siteId}/shift-definitions/{definitionId}
+POST              /api/v1/mine/sites/{siteId}/shift-definitions/{definitionId}/archive
+GET/POST          /api/v1/mine/sites/{siteId}/shift-instances
+GET               /api/v1/mine/sites/{siteId}/shift-instances/{shiftId}
+POST              /api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/open|close|cancel
+
+GET/POST          /api/v1/mine/sites/{siteId}/work-orders
+GET/PATCH         /api/v1/mine/sites/{siteId}/work-orders/{workOrderId}
+POST              /api/v1/mine/sites/{siteId}/work-orders/{workOrderId}/assignments
+POST              /api/v1/mine/sites/{siteId}/work-orders/{workOrderId}/release|start|pause|resume|complete|cancel|abort
+
+GET               /api/v1/mine/sites/{siteId}/operation-candidates
+POST              /api/v1/mine/sites/{siteId}/operation-candidates/{candidateId}/resolve
+GET/POST          /api/v1/mine/sites/{siteId}/operation-records
+GET               /api/v1/mine/sites/{siteId}/operation-records/{recordId}
+POST              /api/v1/mine/sites/{siteId}/operation-records/{recordId}/corrections
+GET               /api/v1/mine/sites/{siteId}/operation-summary
+
 GET               /api/v1/internal/location-snapshots/latest
 GET               /api/v1/internal/location-snapshots/{snapshotId}
 ~~~
@@ -263,7 +282,11 @@ GET               /api/v1/internal/location-snapshots/{snapshotId}
 围栏顶点不可变；发布生成 `SPATIAL_CHANGE` 定位快照。空间事件查询需要 `mine:spatial:event:view`，默认过去 24 小时、
 最长 31 天、每页最多 200 条，使用固定事件序号水位和不透明游标。重放需要 `mine:spatial:replay`、稳定
 `Idempotency-Key`、原因和不超过 31 天的 `[from,to)` 窗口，只异步返回 HTTP 202；请求线程不得扫描历史。
-班次、作业单和运营记录仍属于后续 Phase 3 切片，不得把路线/围栏闭环解释为整个矿山业务阶段完成。
+
+班次、作业单和运营接口固定使用 `mine:operation:view` 读取权限，并按职责拆分 `mine:shift:edit`、`mine:shift:close`、
+`mine:work-order:edit`、`mine:work-order:dispatch`、`mine:operation:correct`。开启/关账/取消班次、作业单生命周期动作、候选处置和
+记录补录/修正使用持久 `Idempotency-Key`；乐观版本冲突必须刷新后人工决定，不能更换键盲目重放。运营记录查询窗口最长 31 个营业日，
+首页返回固定矿区业务水位，后续页原样传回 `watermark` 和不透明 `cursor`；运营汇总只统计当前有效且未作废投影。
 
 ### 2.5 命令与告警
 
@@ -597,6 +620,22 @@ mine_geofence
 mine_geofence_version
 mine_geofence_vertex
 
+mine_shift_definition
+mine_shift_instance
+mine_work_order
+mine_work_order_assignment
+mine_work_order_status_history
+mine_operation_spatial_event_queue
+mine_operation_runtime_state
+mine_operation_candidate
+mine_operation_record
+mine_operation_evidence
+mine_operation_correction
+mine_operation_effective_record
+mine_operation_outbox
+mine_operation_site_sequence
+mine_operation_action_idempotency
+
 cmd_template
 cmd_instance
 cmd_attempt
@@ -606,9 +645,14 @@ alarm_event
 alarm_acknowledgement
 ~~~
 
-班次、作业单、运营记录和运营指标仍是后续切片，其最终物理表名必须由迁移固化，不能把早期 `biz_*` 概念名当成已存在表。
 空间控制面八张表采用稳定对象与 `DRAFT/PUBLISHED` 版本，数据库约束和触发器保护矿区/统一坐标一致性、发布时间范围、
 路线引用顺序、多边形拓扑、摘要格式和发布后不可变。V39 创建表，V40 发布菜单权限，V41 扩展定位快照并保护被引用坐标系和版本。
+
+生产运营表由 V43～V49 固化。V43 创建班次、作业单、调度、事件队列、运行态、候选、不可变记录/证据、追加修正、有效投影和
+Outbox；V44 增加用户动作幂等账本与精确权限；V45 加固生命周期和不可变约束；V46 增加按车辆/未解析标签的事件顺序索引；
+V47 创建发生时作业状态历史；V48 创建矿区连续业务序号；V49 把菜单组件键升级为 `mine-production-operations`。
+自动识别消费 `realtime.spatial.event.created` v1，运营变更通过同事务 Outbox 发布 `realtime.operation.updated` v1；前端订阅
+`MINE_SITE_OPERATION`，发现连续业务序号缺口后回查固定水位 REST。
 
 `alarm_event` 以告警周期为聚合根，保存设备与规则快照、策略运行证据，以及相互正交的触发、恢复、首次确认和关闭事实。推导状态包括 `ACTIVE_UNACKNOWLEDGED`、`ACTIVE_ACKNOWLEDGED`、`RECOVERED_UNACKNOWLEDGED`、`RECOVERED_ACKNOWLEDGED`、`CLOSED`；数据库约束保证关闭一定晚于恢复。`alarm_acknowledgement` 是每个周期唯一的首次确认事实，保存操作人、说明、幂等键和时间。V26 为两表及全部字段提供中文注释，`DatabaseMigrationIT` 校验完整性、索引、约束和菜单权限节点。
 

@@ -66,7 +66,9 @@ Phase 2 的 [TCP 二进制插件纵向样例验收报告](reports/phase-2-tcp-bi
 Phase 3 的 [矿区定位纵向闭环自动化验收报告](reports/phase-3-mine-location-acceptance.md) 已覆盖矿区作用域、资产、发生时绑定、双坐标、固定定位接入、历史/当前位置/实时链路、前端工作台和确定性模拟；
 运行准备、模拟场景、指标、告警和安全回退遵循 [矿区定位运行与模拟验收手册](runbooks/mine-location-runtime.md)。
 Phase 3 的 [路线、围栏与空间事件自动化验收报告](reports/phase-3-spatial-event-acceptance.md) 已覆盖版本化空间主数据、快照、事件时间排序、边界消抖、进入/离开/停留、可靠事件、查询、实时增量、确定性模拟与受控重放；
-发布、模拟、核查、告警和安全回退遵循 [矿区路线、围栏与空间事件运行手册](runbooks/mine-spatial-event-runtime.md)。班次/作业/运营闭环和三维场景仍待继续开发；真实 UWB、坐标/围栏标定、事件参数、容量、HA、备份恢复和长稳均为 `DEFERRED` 生产阻断项。
+发布、模拟、核查、告警和安全回退遵循 [矿区路线、围栏与空间事件运行手册](runbooks/mine-spatial-event-runtime.md)。
+Phase 3 的 [班次、作业单与生产运营自动化验收报告](reports/phase-3-production-operation-acceptance.md) 已覆盖班次、运输调度、空间事件自动识别、异常候选、不可变事实与追加修正、固定水位统计、可靠实时、确定性模拟和运行告警；
+值班操作、对账、故障处置和安全停启遵循 [矿区生产运营运行手册](runbooks/mine-production-operation-runtime.md)。当前下一切片为 Cesium 三维与二维独立降级；真实 UWB、坐标/围栏和运营参数标定、真实吨位、容量、HA、备份恢复和长稳均为 `DEFERRED` 生产阻断项。
 现场执行必须遵循 [MQTT 真实设备现场接入与 24 小时验收手册](runbooks/device-onboarding.md)，并按
 [Phase 1 真实设备验收记录契约](contracts/phase-1-device-acceptance-v1.schema.json) 留存结构化证据。
 
