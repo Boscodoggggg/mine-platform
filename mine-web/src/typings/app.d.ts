@@ -683,6 +683,21 @@ declare namespace App {
           };
           canvas: Record<"xAxis" | "yAxis" | "current" | "trajectory" | "events" | "empty" | "ariaLabel", string>;
         };
+        scene3d: Record<"ariaLabel" | "loading" | "fallbackTitle" | "retry", string> & {
+          reason: Record<
+            | "noDefaultScene"
+            | "defaultSceneUnpublished"
+            | "unsupportedSchemaVersion"
+            | "invalidPublishedSnapshot"
+            | "sceneStorageUnavailable"
+            | "forced2d"
+            | "noRuntimeSnapshot"
+            | "webglUnavailable"
+            | "threeDLoadFailed"
+            | "threeDRuntimeFailed",
+            string
+          >;
+        };
         spatial: Record<'title' | 'description', string> & {
           tab: Record<'routes' | 'waypoints' | 'geofences' | 'events', string>;
           object: Record<'create' | 'createTitle' | 'code' | 'empty' | 'search' | 'loadFailed' | 'retry' | 'archive' | 'archiveTitle' | 'archiveImpact' | 'archiveAria', string> & {

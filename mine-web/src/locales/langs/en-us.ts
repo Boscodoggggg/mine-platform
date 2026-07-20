@@ -776,6 +776,24 @@ const local: App.I18n.Schema = {
       },
       canvas: { xAxis: "X / m", yAxis: "Y / m", current: "Current positions", trajectory: "Trajectory", events: "Live spatial events", empty: "No location data is available in this mine", ariaLabel: "2D mine location canvas" }
     },
+    scene3d: {
+      ariaLabel: "3D mine scene viewport",
+      loading: "Loading the local 3D mine scene",
+      fallbackTitle: "2D operations view",
+      retry: "Retry 3D view",
+      reason: {
+        noDefaultScene: "No default scene is configured. 2D location and spatial layers remain available.",
+        defaultSceneUnpublished: "The default scene is not published. The 2D operations view remains active.",
+        unsupportedSchemaVersion: "This scene version requires a newer client. Upgrade the client and retry.",
+        invalidPublishedSnapshot: "The published scene failed integrity checks. No partial 3D package was loaded.",
+        sceneStorageUnavailable: "Scene asset storage is unavailable. 2D operational data is unaffected.",
+        forced2d: "The independent 2D operations view is active for the selected mode.",
+        noRuntimeSnapshot: "No 3D runtime snapshot is available. 2D operational data remains visible.",
+        webglUnavailable: "WebGL is unavailable in this browser or GPU. The view switched to 2D automatically.",
+        threeDLoadFailed: "The 3D runtime could not be loaded. Check the connection and retry.",
+        threeDRuntimeFailed: "The 3D scene could not initialize. Resources were released and the view switched to 2D."
+      }
+    },
     common: {
       action: 'Actions',
       edit: 'Edit',

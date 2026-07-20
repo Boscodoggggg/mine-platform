@@ -32,6 +32,22 @@ describe('平台 API 客户端', () => {
     await expect(request<void>('/system/roles/role-1', { method: 'DELETE' })).resolves.toBeUndefined();
   });
 
+  it('FormData 请求应由浏览器生成 multipart 边界而不是写死 JSON 类型', async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(JSON.stringify({ id: 'asset-1' }), {
+        status: 201,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    );
+    const formData = new FormData();
+    formData.set('file', new File(['glb'], 'mine.glb', { type: 'model/gltf-binary' }));
+
+    await request('/mine/sites/site-1/scene-assets', { method: 'POST', body: formData });
+
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(new Headers(init?.headers).has('Content-Type')).toBe(false);
+  });
+
   it('应保留统一错误码链路号和状态码', async () => {
     vi.mocked(fetch).mockResolvedValue(
       new Response(

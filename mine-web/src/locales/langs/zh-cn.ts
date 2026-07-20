@@ -750,6 +750,24 @@ const local: App.I18n.Schema = {
       },
       canvas: { xAxis: "X / 米", yAxis: "Y / 米", current: "当前位置", trajectory: "历史轨迹", events: "实时空间事件", empty: "当前矿区暂无可展示的位置数据", ariaLabel: "矿区二维定位画布" }
     },
+    scene3d: {
+      ariaLabel: "矿区三维场景视口",
+      loading: "正在加载本地三维场景",
+      fallbackTitle: "二维运行视图",
+      retry: "重试三维视图",
+      reason: {
+        noDefaultScene: "当前矿区尚未设置默认场景，二维位置与空间图层仍可使用",
+        defaultSceneUnpublished: "默认场景尚未发布，当前继续使用二维运行视图",
+        unsupportedSchemaVersion: "场景版本暂不受当前客户端支持，请升级客户端后重试",
+        invalidPublishedSnapshot: "已发布场景完整性校验未通过，未加载任何三维半包",
+        sceneStorageUnavailable: "场景资源存储暂不可读取，二维运行数据不受影响",
+        forced2d: "已按当前模式使用独立二维运行视图",
+        noRuntimeSnapshot: "当前没有可用的三维运行快照，二维运行数据仍可查看",
+        webglUnavailable: "浏览器或显卡未提供 WebGL，已自动切换二维视图",
+        threeDLoadFailed: "三维运行组件加载失败，请检查网络后重试",
+        threeDRuntimeFailed: "三维场景初始化失败，已安全释放资源并切换二维视图"
+      }
+    },
     common: {
       action: '操作',
       edit: '编辑',

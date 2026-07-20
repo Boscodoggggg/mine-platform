@@ -73,4 +73,15 @@ describe('Cesium bundle boundary', () => {
 
     expect(globalStyles).not.toContain('cesium/Build/Cesium/Widgets/widgets.css');
   });
+
+  it('二维场景组件只依赖矿区公共入口且不触达 Cesium 加载器', () => {
+    const canvasSource = readFileSync(
+      resolve(sourceRoot, 'modules/scene3d/components/CanvasSceneViewport.vue'),
+      'utf8'
+    );
+
+    expect(canvasSource).toContain("from '@/modules/mine'");
+    expect(canvasSource).not.toContain('load-cesium');
+    expect(importsCesiumRoot(canvasSource)).toBe(false);
+  });
 });

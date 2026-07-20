@@ -1,4 +1,4 @@
-type CesiumModule = typeof import('cesium');
+export type CesiumModule = typeof import('cesium');
 
 const CESIUM_OFFLINE_BASE_URL = '/cesium/';
 
