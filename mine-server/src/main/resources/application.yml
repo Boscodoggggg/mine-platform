@@ -56,6 +56,15 @@ mine:
       ttl: ${MINE_STRATEGY_CACHE_TTL:PT30S}
   site:
     zone-id: ${MINE_SITE_ZONE_ID:Asia/Shanghai}
+  scene-storage:
+    root: ${MINE_SCENE_STORAGE_ROOT:${java.io.tmpdir}/mine-scene-assets}
+    max-upload-bytes: ${MINE_SCENE_STORAGE_MAX_UPLOAD_BYTES:2147483648}
+    max-expanded-bytes: ${MINE_SCENE_STORAGE_MAX_EXPANDED_BYTES:8589934592}
+    max-single-file-bytes: ${MINE_SCENE_STORAGE_MAX_SINGLE_FILE_BYTES:1073741824}
+    max-file-count: ${MINE_SCENE_STORAGE_MAX_FILE_COUNT:10000}
+    max-compression-ratio: ${MINE_SCENE_STORAGE_MAX_COMPRESSION_RATIO:100}
+    max-json-bytes: ${MINE_SCENE_STORAGE_MAX_JSON_BYTES:16777216}
+    orphan-grace-period: ${MINE_SCENE_STORAGE_ORPHAN_GRACE_PERIOD:PT24H}
   dashboard:
     freshness-seconds: ${MINE_DASHBOARD_FRESHNESS_SECONDS:300}
   operations:
