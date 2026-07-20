@@ -14,6 +14,7 @@
 | `postgres` | 业务数据 | 否 |
 | `timescale` | 遥测时序数据 | 否 |
 | `redis` | 会话、缓存和实时状态 | 否 |
+| `rustfs` | 开发与测试环境的 S3 兼容对象存储 | 否 |
 
 启用 `observability` profile 后还会启动 Prometheus、Grafana、Loki、Alloy 以及 PostgreSQL/TimescaleDB exporter。Grafana `3000`、Prometheus `9090` 和 Loki `3100` 默认都只绑定宿主机 `127.0.0.1`。需要让运维工作站直接访问 Grafana 时，把 `MINE_GRAFANA_BIND_ADDRESS` 改为指定管理网 IP，并由现场防火墙限制来源；不要把它开放到设备网。
 
@@ -64,6 +65,7 @@ mkdir -p deploy/secrets
 - 需要避开现有端口时，修改 `MINE_HTTPS_PORT` 和 `MINE_MQTTS_PORT`。
 - 镜像标签在发布前固定；生产离线包应额外记录镜像 digest。
 - `MINE_TLS_SERVER_NAME` 必须与证书名称一致。
+- 修改示例中的 `MINE_RUSTFS_ACCESS_KEY` 和 `MINE_RUSTFS_SECRET_KEY`；生产环境不得继续使用开发默认值。
 
 环境文件和 `deploy/secrets/` 已被 Git 忽略，不得提交仓库。
 
@@ -119,6 +121,11 @@ docker compose \
 bash deploy/scripts/health-check.sh
 ~~~
 
+Standalone 默认让三维资源通过标准 S3 API 写入 RustFS，并把数据保存在 `rustfs_data` 命名卷。应用启动时仅在
+`MINE_OBJECT_STORAGE_S3_INITIALIZE_BUCKET=true` 时幂等创建 bucket；该开关只适用于开发和验收环境，生产 bucket
+应由基础设施流程预创建并关闭自动初始化。切换其他 S3 兼容服务时只需替换 endpoint、region、bucket 和凭据，业务代码
+不依赖 RustFS SDK。`MINE_SCENE_STORAGE_ROOT` 在 S3 模式下仅作为上传校验的临时暂存目录，不保存最终资源。
+
 健康检查会等待全部容器健康，并验证 HTTPS API、MQTTS 证书、PostgreSQL、TimescaleDB 扩展、RabbitMQ 和 Redis。查看状态与日志：
 
 ~~~bash
@@ -163,7 +170,7 @@ docker compose --env-file deploy/env/standalone.env \
   -f deploy/compose/compose-standalone.yml down
 ~~~
 
-不要在生产环境执行 `down -v`，它会删除 PostgreSQL、TimescaleDB、RabbitMQ 和 Redis 数据卷。确需销毁测试环境时，必须先确认没有生产数据并完成备份。
+不要在生产环境执行 `down -v`，它会删除 PostgreSQL、TimescaleDB、RabbitMQ、Redis 和 RustFS 数据卷。确需销毁测试环境时，必须先确认没有生产数据并完成备份。
 
 ## 7. 配置变更边界
 
@@ -183,6 +190,6 @@ gateway 以只读方式挂载整个 `deploy/config/gateway/` 目录，身份快�
 - 单机 Redis 默认在 512 MiB 容器限制内设置 `384mb + noeviction`。达到上限时写入明确失败并让 RabbitMQ 消息背压，不能静默驱逐 boot/sequence 状态；现场容量评估后可调整 `MINE_REDIS_MAXMEMORY`，但必须为进程和 AOF 留出余量，并对 Redis 内存、RabbitMQ 积压和拒绝写入告警。
 - 弱网设备应使用持久会话、QoS、消息序号和幂等处理，命令必须具有超时、回执和审计记录。
 - 发布新版本前先备份，再执行冒烟测试；数据库迁移必须使用向前兼容的 expand/contract 方式。
-- 当前 Compose 不包含对象存储和主机容灾。五节点生产方案及完整 RPO/RTO 见 [部署与运维设计](../docs/09-deployment-operations.md)。
+- 当前 Compose 已包含单节点 RustFS，但仍不提供主机级容灾。五节点生产方案及完整 RPO/RTO 见 [部署与运维设计](../docs/09-deployment-operations.md)。
 - Alloy 为采集容器日志只读挂载了 Docker socket；它仍具备读取 Docker 元数据和日志的高权限。必须使用固定可信镜像、限制 Grafana/Alloy 管理入口，并且不能给业务用户容器管理权限。
 - 单机 Loki 使用本地文件系统并保留 30 天日志，Prometheus 默认保留 15 天指标；现场磁盘容量评估后再调整，不能把它们当作审计数据的唯一副本。

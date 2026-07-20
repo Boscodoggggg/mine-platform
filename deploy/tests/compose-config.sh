@@ -42,6 +42,20 @@ jq -e '.services["mine-server"].environment.MINE_CONFIGURATION_DISTRIBUTION_ENAB
   and (.services["mine-gateway"].secrets | any(.source == "mine_configuration_distribution_token"))' "${rendered}" >/dev/null \
   || { echo "FAIL: server 与 gateway 必须启用基于 secret 的配置分发闭环" >&2; exit 1; }
 
+jq -e '.services.rustfs.image | startswith("rustfs/rustfs:1.0.0-beta.10@sha256:")' \
+  "${rendered}" >/dev/null \
+  || { echo "FAIL: RustFS 必须固定到已验证的版本和镜像摘要" >&2; exit 1; }
+
+jq -e '.services.rustfs.environment.RUSTFS_CONSOLE_ENABLE == "false"
+  and (.services.rustfs.volumes | any(.source == "rustfs_data" and .target == "/data"))
+  and .services["mine-server"].environment.MINE_SCENE_STORAGE_TYPE == "s3"
+  and .services["mine-server"].environment.MINE_OBJECT_STORAGE_TYPE == "s3"
+  and .services["mine-server"].environment.MINE_OBJECT_STORAGE_S3_ENDPOINT == "http://rustfs:9000"
+  and .services["mine-server"].environment.MINE_OBJECT_STORAGE_S3_INITIALIZE_BUCKET == "true"
+  and .services["mine-server"].depends_on.rustfs.condition == "service_healthy"' \
+  "${rendered}" >/dev/null \
+  || { echo "FAIL: standalone 必须通过标准 S3 API 使用健康且持久化的 RustFS" >&2; exit 1; }
+
 jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED == "true"
   and .services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_SERVER_URL == "http://mine-server:8080"
   and (.services["mine-telemetry"].secrets | any(.source == "mine_configuration_distribution_token"))

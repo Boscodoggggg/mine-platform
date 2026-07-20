@@ -27,7 +27,7 @@ fi
 compose+=(--env-file "${ENV_FILE}" -f "${COMPOSE_FILE}")
 "${compose[@]}" config --quiet
 
-services=(nginx mine-server mine-gateway mine-telemetry rabbitmq postgres timescale redis)
+services=(nginx mine-server mine-gateway mine-telemetry rabbitmq postgres timescale redis rustfs)
 for service in "${services[@]}"; do
   container_id="$("${compose[@]}" ps --quiet "${service}")"
   if [[ -z "${container_id}" ]]; then
@@ -114,6 +114,7 @@ if "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform
 fi
 "${compose[@]}" exec -T redis sh -ec \
   'redis-cli --no-auth-warning -a "$(cat /run/secrets/redis_password)" ping' | grep -q PONG
+"${compose[@]}" exec -T rustfs curl --fail --silent --show-error http://127.0.0.1:9000/health >/dev/null
 
 if [[ -n "${MINE_SMOKE_ADMIN_PASSWORD:-}" ]]; then
   api_base="https://127.0.0.1:${MINE_HTTPS_PORT:-443}/api/v1"

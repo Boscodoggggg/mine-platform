@@ -7,6 +7,8 @@ import com.bosco.mine.server.modules.mine.scene.SceneAssetService;
 import com.bosco.mine.server.modules.mine.scene.dto.SceneAssetResponse;
 import com.bosco.mine.server.modules.mine.service.MineRequestIdentity;
 import com.bosco.mine.server.modules.mine.service.MineScopeCommandService;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,13 +22,23 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.http.urlconnection.UrlConnectionHttpClient;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
@@ -39,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 使用真实 PostgreSQL 校验三维资源上传、清单、矿区隔离和归档读取闭环。
+ * 使用真实 PostgreSQL 与 RustFS 校验三维资源上传、清单、矿区隔离和归档读取闭环。
  */
 @Testcontainers
 @ActiveProfiles("test")
@@ -51,6 +63,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SceneAssetManagementIT {
 
     private static final Path STORAGE_ROOT = temporaryStorageRoot();
+    private static final String RUSTFS_ACCESS_KEY = "mine-scene-it";
+    private static final String RUSTFS_SECRET_KEY = "mine-scene-it-secret";
+    private static final String RUSTFS_BUCKET = "mine-scene-test";
 
     @Container
     @ServiceConnection
@@ -58,6 +73,18 @@ class SceneAssetManagementIT {
             .withDatabaseName("mine")
             .withUsername("mine")
             .withPassword("mine-test-password");
+
+    @Container
+    static final GenericContainer<?> RUSTFS = new GenericContainer<>(
+            "rustfs/rustfs:1.0.0-beta.10")
+            .withEnv("RUSTFS_ACCESS_KEY", RUSTFS_ACCESS_KEY)
+            .withEnv("RUSTFS_SECRET_KEY", RUSTFS_SECRET_KEY)
+            .withEnv("RUSTFS_CONSOLE_ENABLE", "false")
+            .withEnv("RUSTFS_ADDRESS", "0.0.0.0:9000")
+            .withExposedPorts(9000)
+            .waitingFor(Wait.forHttp("/health").forPort(9000));
+
+    private static S3Client rustFsClient;
 
     @Autowired
     private SceneAssetService service;
@@ -78,8 +105,46 @@ class SceneAssetManagementIT {
 
     @DynamicPropertySource
     static void sceneStorageProperties(DynamicPropertyRegistry registry) {
+        registry.add("mine.scene-storage.type", () -> "s3");
         registry.add("mine.scene-storage.root", STORAGE_ROOT::toString);
         registry.add("mine.scene-storage.max-upload-bytes", () -> "1048576");
+        registry.add("mine.object-storage.type", () -> "s3");
+        registry.add("mine.object-storage.s3.endpoint", SceneAssetManagementIT::rustFsEndpoint);
+        registry.add("mine.object-storage.s3.region", () -> "us-east-1");
+        registry.add("mine.object-storage.s3.bucket", () -> RUSTFS_BUCKET);
+        registry.add("mine.object-storage.s3.access-key", () -> RUSTFS_ACCESS_KEY);
+        registry.add("mine.object-storage.s3.secret-key", () -> RUSTFS_SECRET_KEY);
+        registry.add("mine.object-storage.s3.path-style-access", () -> "true");
+    }
+
+    /** 在业务测试执行前通过标准 S3 API 创建隔离 bucket。 */
+    @BeforeAll
+    static void 创建RustFSBucket() {
+        rustFsClient = S3Client.builder()
+                .endpointOverride(URI.create(rustFsEndpoint()))
+                .region(Region.US_EAST_1)
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(RUSTFS_ACCESS_KEY, RUSTFS_SECRET_KEY)))
+                .httpClientBuilder(UrlConnectionHttpClient.builder())
+                .serviceConfiguration(S3Configuration.builder()
+                        .pathStyleAccessEnabled(true)
+                        .build())
+                .build();
+        rustFsClient.createBucket(CreateBucketRequest.builder()
+                .bucket(RUSTFS_BUCKET)
+                .build());
+    }
+
+    /** 释放测试专用 S3 客户端。 */
+    @AfterAll
+    static void 关闭RustFS客户端() {
+        if (rustFsClient != null) {
+            rustFsClient.close();
+        }
+    }
+
+    private static String rustFsEndpoint() {
+        return "http://" + RUSTFS.getHost() + ":" + RUSTFS.getMappedPort(9000);
     }
 
     @BeforeEach

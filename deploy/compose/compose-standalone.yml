@@ -140,6 +140,15 @@ services:
       MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
       MINE_OPERATIONS_PROMETHEUS_ENABLED: "true"
       MINE_OPERATIONS_PROMETHEUS_URL: http://prometheus:9090
+      MINE_SCENE_STORAGE_TYPE: s3
+      MINE_OBJECT_STORAGE_TYPE: s3
+      MINE_OBJECT_STORAGE_S3_ENDPOINT: http://rustfs:9000
+      MINE_OBJECT_STORAGE_S3_REGION: ${MINE_OBJECT_STORAGE_S3_REGION:-us-east-1}
+      MINE_OBJECT_STORAGE_S3_BUCKET: ${MINE_OBJECT_STORAGE_S3_BUCKET:-mine-scene-assets}
+      MINE_OBJECT_STORAGE_S3_ACCESS_KEY: ${MINE_RUSTFS_ACCESS_KEY:-mine-rustfs-dev}
+      MINE_OBJECT_STORAGE_S3_SECRET_KEY: ${MINE_RUSTFS_SECRET_KEY:-mine-rustfs-dev-secret}
+      MINE_OBJECT_STORAGE_S3_PATH_STYLE_ACCESS: "true"
+      MINE_OBJECT_STORAGE_S3_INITIALIZE_BUCKET: "true"
     volumes:
       - ../../mine-server/target:/opt/mine/source:ro
       - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
@@ -169,6 +178,8 @@ services:
         condition: service_healthy
       timescale-reader-bootstrap:
         condition: service_completed_successfully
+      rustfs:
+        condition: service_healthy
     networks:
       - app
       - data
@@ -182,6 +193,39 @@ services:
       resources:
         limits:
           cpus: "2.0"
+          memory: 1g
+
+  rustfs:
+    image: ${MINE_RUSTFS_IMAGE:-rustfs/rustfs:1.0.0-beta.10@sha256:60f4f2f41ce95216f8cac676e69f9d90c0bfec458a3bc7fd7fb9b7c2452ac57a}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_ACCESS_KEY: ${MINE_RUSTFS_ACCESS_KEY:-mine-rustfs-dev}
+      RUSTFS_SECRET_KEY: ${MINE_RUSTFS_SECRET_KEY:-mine-rustfs-dev-secret}
+      RUSTFS_OBS_LOGGER_LEVEL: warn
+      RUSTFS_OBS_LOG_DIRECTORY: /logs
+    volumes:
+      - rustfs_data:/data
+    tmpfs:
+      - /logs:size=64m,uid=10001,gid=10001,mode=0750
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
           memory: 1g
 
   mine-gateway-cache-init:
@@ -799,6 +843,7 @@ volumes:
   loki_data: {}
   alloy_data: {}
   gateway_configuration_cache: {}
+  rustfs_data: {}
 
 secrets:
   postgres_password:

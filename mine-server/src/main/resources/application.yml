@@ -61,6 +61,7 @@ mine:
   site:
     zone-id: ${MINE_SITE_ZONE_ID:Asia/Shanghai}
   scene-storage:
+    type: ${MINE_SCENE_STORAGE_TYPE:filesystem}
     root: ${MINE_SCENE_STORAGE_ROOT:${java.io.tmpdir}/mine-scene-assets}
     max-upload-bytes: ${MINE_SCENE_STORAGE_MAX_UPLOAD_BYTES:2147483648}
     max-expanded-bytes: ${MINE_SCENE_STORAGE_MAX_EXPANDED_BYTES:8589934592}
@@ -69,6 +70,17 @@ mine:
     max-compression-ratio: ${MINE_SCENE_STORAGE_MAX_COMPRESSION_RATIO:100}
     max-json-bytes: ${MINE_SCENE_STORAGE_MAX_JSON_BYTES:16777216}
     orphan-grace-period: ${MINE_SCENE_STORAGE_ORPHAN_GRACE_PERIOD:PT24H}
+  object-storage:
+    type: ${MINE_OBJECT_STORAGE_TYPE:filesystem}
+    s3:
+      endpoint: ${MINE_OBJECT_STORAGE_S3_ENDPOINT:http://127.0.0.1:9000}
+      region: ${MINE_OBJECT_STORAGE_S3_REGION:us-east-1}
+      bucket: ${MINE_OBJECT_STORAGE_S3_BUCKET:mine-scene-assets}
+      access-key: ${MINE_OBJECT_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${MINE_OBJECT_STORAGE_S3_SECRET_KEY:}
+      path-style-access: ${MINE_OBJECT_STORAGE_S3_PATH_STYLE_ACCESS:true}
+      # 仅供开发环境初始化；生产环境应由基础设施流程预创建 bucket。
+      initialize-bucket: ${MINE_OBJECT_STORAGE_S3_INITIALIZE_BUCKET:false}
   dashboard:
     freshness-seconds: ${MINE_DASHBOARD_FRESHNESS_SECONDS:300}
   operations:

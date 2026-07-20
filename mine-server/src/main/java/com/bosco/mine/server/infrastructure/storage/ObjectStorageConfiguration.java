@@ -54,4 +54,23 @@ public class ObjectStorageConfiguration {
     ) {
         return new S3ObjectStorage(client, properties);
     }
+
+    /**
+     * 创建可显式启用的开发环境 bucket 初始化器。
+     *
+     * @param client 标准 S3 客户端
+     * @param properties 对象存储配置
+     * @return 应用启动阶段执行的 bucket 初始化器
+     */
+    @Bean
+    @ConditionalOnProperty(
+            prefix = "mine.object-storage.s3",
+            name = "initialize-bucket",
+            havingValue = "true")
+    public S3BucketInitializer s3BucketInitializer(
+            S3Client client,
+            ObjectStorageProperties properties
+    ) {
+        return new S3BucketInitializer(client, properties.s3().bucket());
+    }
 }
