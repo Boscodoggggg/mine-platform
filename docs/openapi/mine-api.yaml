@@ -3694,6 +3694,159 @@ paths:
         '404': { $ref: '#/components/responses/MineResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/operation-candidates:
+    get:
+      tags: [MineOperation]
+      operationId: listMineOperationCandidates
+      summary: 分页查询运营候选处置队列
+      description: 需要 mine:operation:view 权限；候选证据按发生时间倒序返回，每页最多一百条。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, RESOLVED, IGNORED, CONVERTED] }
+        - name: offset
+          in: query
+          schema: { type: integer, format: int64, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: 运营候选列表。
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/OperationCandidateResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /mine/sites/{siteId}/operation-candidates/{candidateId}/resolve:
+    post:
+      tags: [MineOperation]
+      operationId: resolveMineOperationCandidate
+      summary: 幂等处置运营候选
+      description: 需要 mine:operation:correct 权限；可关联、忽略或转为人工补录执行记录，原始证据不会被覆盖。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: candidateId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OperationCandidateResolutionRequest' } } }
+      responses:
+        '200': { description: 候选处置结果或相同请求的幂等重放。, content: { application/json: { schema: { $ref: '#/components/schemas/OperationCandidateResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/operation-records:
+    get:
+      tags: [MineOperation]
+      operationId: listMineOperationRecords
+      summary: 固定业务水位分页查询有效执行记录
+      description: |
+        需要 mine:operation:view 权限。fromDate 和 toDate 是包含边界的营业日期，最长 31 天；
+        首页固定矿区运营 business watermark，后续页必须原样携带 watermark 和 nextCursor。
+        作废记录不返回，人工修正读取最新有效投影，跨午夜记录仍归属于班次营业日期。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: fromDate, in: query, required: true, schema: { type: string, format: date } }
+        - { name: toDate, in: query, required: true, schema: { type: string, format: date } }
+        - { name: watermark, in: query, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 4096 } }
+        - { name: shiftInstanceId, in: query, schema: { type: string, format: uuid } }
+        - { name: workOrderId, in: query, schema: { type: string, format: uuid } }
+        - { name: vehicleId, in: query, schema: { type: string, format: uuid } }
+        - { name: driverPersonId, in: query, schema: { type: string, format: uuid } }
+        - name: recordStatus
+          in: query
+          schema: { type: string, enum: [COMPLETED, ABORTED] }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200': { description: 固定业务水位的最新有效执行记录页。, content: { application/json: { schema: { $ref: '#/components/schemas/OperationRecordPageResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '503': { $ref: '#/components/responses/OperationQueryUnavailable' }
+    post:
+      tags: [MineOperation]
+      operationId: createMineOperationRecord
+      summary: 幂等人工补录不可变执行记录
+      description: 需要 mine:operation:correct 权限；基础事实只追加，统计读取单独的当前有效投影。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OperationCorrectionRequest' } } }
+      responses:
+        '201': { description: 已补录的执行事实。, content: { application/json: { schema: { $ref: '#/components/schemas/OperationRecordResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/operation-records/{recordId}:
+    get:
+      tags: [MineOperation]
+      operationId: getMineOperationRecord
+      summary: 查询执行基础事实、当前投影和修正历史
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: recordId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: 完整执行记录证据链。, content: { application/json: { schema: { $ref: '#/components/schemas/OperationRecordResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+  /mine/sites/{siteId}/operation-records/{recordId}/corrections:
+    post:
+      tags: [MineOperation]
+      operationId: correctMineOperationRecord
+      summary: 幂等追加修正、作废或恢复事实
+      description: 需要 mine:operation:correct 权限；必须携带当前 projectionVersion，历史修正不可覆盖。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: recordId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OperationCorrectionRequest' } } }
+      responses:
+        '200': { description: 修正后的当前有效投影和完整历史。, content: { application/json: { schema: { $ref: '#/components/schemas/OperationRecordResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/operation-summary:
+    get:
+      tags: [MineOperation]
+      operationId: getMineOperationSummary
+      summary: 查询生产运营汇总和车辆人员维度
+      description: |
+        需要 mine:operation:view 权限。营业日期窗口最长 31 天，跨午夜按班次营业日期归集；
+        作废记录排除，异常终止单独统计，吨位未知返回 null 而真实零吨保持 0。
+        任一纳入作业单的计划趟数未知时，整体完成率返回 null，避免错误放大。
+        车辆利用率按有效循环时长除以该车参与班次的去重开放时长计算。
+        作业单、车辆和司机明细维度各最多五百条，超限时 breakdownsTruncated 为 true。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { name: fromDate, in: query, required: true, schema: { type: string, format: date } }
+        - { name: toDate, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { description: 生产计划、有效产量、阶段时长、车辆利用率和司机作业量。, content: { application/json: { schema: { $ref: '#/components/schemas/OperationSummaryResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/MineResourceNotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '503': { $ref: '#/components/responses/OperationQueryUnavailable' }
 
 components:
   securitySchemes:
@@ -6929,6 +7082,247 @@ components:
         assignments:
           type: array
           items: { $ref: '#/components/schemas/WorkOrderAssignmentResponse' }
+    OperationCorrectionRequest:
+      type: object
+      additionalProperties: false
+      required: [action, reason]
+      properties:
+        action: { type: string, enum: [ADD, AMEND, VOID, RESTORE] }
+        workOrderId: { type: [string, 'null'], format: uuid }
+        assignmentId: { type: [string, 'null'], format: uuid }
+        recordStatus: { type: [string, 'null'], enum: [COMPLETED, ABORTED, null] }
+        startedAt: { type: [string, 'null'], format: date-time }
+        loadCompletedAt: { type: [string, 'null'], format: date-time }
+        unloadingStartedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: [string, 'null'], format: date-time }
+        distanceMeters: { type: [number, 'null'], minimum: 0 }
+        actualTons:
+          type: [number, 'null']
+          minimum: 0
+          description: null 表示吨位未知，0 表示已知真实零吨。
+        tonsSource: { type: [string, 'null'], enum: [SCALE, VEHICLE, MANUAL, ESTIMATED, null] }
+        projectionVersion: { type: [integer, 'null'], minimum: 0 }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    OperationCandidateResolutionRequest:
+      type: object
+      additionalProperties: false
+      required: [action, reason, version]
+      properties:
+        action: { type: string, enum: [ASSOCIATE, IGNORE, CONVERT_MANUAL] }
+        workOrderId: { type: [string, 'null'], format: uuid }
+        assignmentId: { type: [string, 'null'], format: uuid }
+        manualRecord:
+          oneOf:
+            - { $ref: '#/components/schemas/OperationCorrectionRequest' }
+            - { type: 'null' }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    OperationCandidateResponse:
+      type: object
+      required: [id, organizationId, siteId, spatialEventId, workOrderId, assignmentId, candidateType, reasonCode, occurredAt, candidatePayload, status, resolutionAction, resolutionReason, resolvedRecordId, resolvedAt, resolvedBy, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        spatialEventId: { type: string, format: uuid }
+        workOrderId: { type: [string, 'null'], format: uuid }
+        assignmentId: { type: [string, 'null'], format: uuid }
+        candidateType: { type: string }
+        reasonCode: { type: string }
+        occurredAt: { type: string, format: date-time }
+        candidatePayload: { type: object, additionalProperties: true, readOnly: true }
+        status: { type: string, enum: [PENDING, RESOLVED, IGNORED, CONVERTED] }
+        resolutionAction: { type: [string, 'null'], enum: [ASSOCIATE, IGNORE, CONVERT_MANUAL, null] }
+        resolutionReason: { type: [string, 'null'] }
+        resolvedRecordId: { type: [string, 'null'], format: uuid }
+        resolvedAt: { type: [string, 'null'], format: date-time }
+        resolvedBy: { type: [string, 'null'], format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    OperationRecordCorrection:
+      type: object
+      required: [id, correctionVersion, correctionType, beforeValues, afterValues, reason, createdAt, createdBy]
+      properties:
+        id: { type: string, format: uuid }
+        correctionVersion: { type: integer, minimum: 1 }
+        correctionType: { type: string, enum: [AMEND, VOID, RESTORE] }
+        beforeValues: { type: object, additionalProperties: true, readOnly: true }
+        afterValues: { type: object, additionalProperties: true, readOnly: true }
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string, format: uuid }
+    OperationRecordResponse:
+      type: object
+      required: [id, organizationId, siteId, shiftInstanceId, workOrderId, assignmentId, cycleNumber, workType, recordStatus, recordSource, vehicleId, driverPersonId, startedAt, loadCompletedAt, unloadingStartedAt, completedAt, baseDistanceMeters, baseActualTons, baseTonsSource, frozenSnapshot, createdAt, createdBy, effective, distanceMeters, actualTons, tonsSource, correctionVersion, projectedAt, corrections]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        shiftInstanceId: { type: string, format: uuid }
+        workOrderId: { type: string, format: uuid }
+        assignmentId: { type: string, format: uuid }
+        cycleNumber: { type: integer, format: int64, minimum: 1 }
+        workType: { type: string, enum: [HAULAGE] }
+        recordStatus: { type: string, enum: [COMPLETED, ABORTED] }
+        recordSource: { type: string, enum: [AUTOMATIC, MANUAL] }
+        vehicleId: { type: string, format: uuid }
+        driverPersonId: { type: [string, 'null'], format: uuid }
+        startedAt: { type: string, format: date-time }
+        loadCompletedAt: { type: [string, 'null'], format: date-time }
+        unloadingStartedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: string, format: date-time }
+        baseDistanceMeters: { type: [number, 'null'], minimum: 0 }
+        baseActualTons: { type: [number, 'null'], minimum: 0 }
+        baseTonsSource: { type: [string, 'null'] }
+        frozenSnapshot: { type: object, additionalProperties: true, readOnly: true }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: [string, 'null'], format: uuid }
+        effective: { type: boolean }
+        distanceMeters: { type: [number, 'null'], minimum: 0 }
+        actualTons:
+          type: [number, 'null']
+          minimum: 0
+          description: null 表示未知，0 表示已知真实零吨。
+        tonsSource: { type: [string, 'null'] }
+        correctionVersion: { type: integer, minimum: 0 }
+        projectedAt: { type: string, format: date-time }
+        corrections:
+          type: array
+          items: { $ref: '#/components/schemas/OperationRecordCorrection' }
+    OperationRecordPageResponse:
+      type: object
+      required: [siteId, fromDate, toDate, watermark, nextCursor, items]
+      properties:
+        siteId: { type: string, format: uuid }
+        fromDate: { type: string, format: date }
+        toDate: { type: string, format: date }
+        watermark: { type: integer, format: int64, minimum: 0 }
+        nextCursor: { type: [string, 'null'], maxLength: 4096 }
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/OperationRecordPageItem' }
+    OperationRecordPageItem:
+      type: object
+      required: [recordId, recordSequence, shiftInstanceId, businessDate, workOrderId, orderNumber, orderTitle, assignmentId, cycleNumber, recordStatus, vehicleId, vehicleCode, vehicleName, driverPersonId, driverName, startedAt, loadCompletedAt, unloadingStartedAt, completedAt, totalDurationSeconds, loadingSeconds, haulingSeconds, unloadingSeconds, distanceMeters, actualTons, tonsKnown, tonsSource, correctionVersion, projectedAt]
+      properties:
+        recordId: { type: string, format: uuid }
+        recordSequence: { type: integer, format: int64, minimum: 1 }
+        shiftInstanceId: { type: string, format: uuid }
+        businessDate: { type: string, format: date }
+        workOrderId: { type: string, format: uuid }
+        orderNumber: { type: string }
+        orderTitle: { type: string }
+        assignmentId: { type: string, format: uuid }
+        cycleNumber: { type: integer, format: int64, minimum: 1 }
+        recordStatus: { type: string, enum: [COMPLETED, ABORTED] }
+        vehicleId: { type: string, format: uuid }
+        vehicleCode: { type: string }
+        vehicleName: { type: string }
+        driverPersonId: { type: [string, 'null'], format: uuid }
+        driverName: { type: [string, 'null'] }
+        startedAt: { type: string, format: date-time }
+        loadCompletedAt: { type: [string, 'null'], format: date-time }
+        unloadingStartedAt: { type: [string, 'null'], format: date-time }
+        completedAt: { type: string, format: date-time }
+        totalDurationSeconds: { type: integer, format: int64, minimum: 0 }
+        loadingSeconds: { type: [integer, 'null'], format: int64, minimum: 0 }
+        haulingSeconds: { type: [integer, 'null'], format: int64, minimum: 0 }
+        unloadingSeconds: { type: [integer, 'null'], format: int64, minimum: 0 }
+        distanceMeters: { type: [number, 'null'], minimum: 0 }
+        actualTons: { type: [number, 'null'], minimum: 0 }
+        tonsKnown: { type: boolean }
+        tonsSource: { type: [string, 'null'] }
+        correctionVersion: { type: integer, minimum: 0 }
+        projectedAt: { type: string, format: date-time }
+    OperationWorkOrderProgress:
+      type: object
+      required: [workOrderId, orderNumber, title, plannedCycles, plannedTons, effectiveCompletedCycles, anomalyCycles, completionRatePercent, actualTons, knownTonsCycles, unknownTonsCycles]
+      properties:
+        workOrderId: { type: string, format: uuid }
+        orderNumber: { type: string }
+        title: { type: string }
+        plannedCycles: { type: [integer, 'null'], minimum: 1 }
+        plannedTons: { type: [number, 'null'], minimum: 0 }
+        effectiveCompletedCycles: { type: integer, format: int64, minimum: 0 }
+        anomalyCycles: { type: integer, format: int64, minimum: 0 }
+        completionRatePercent: { type: [number, 'null'], minimum: 0 }
+        actualTons: { type: [number, 'null'], minimum: 0 }
+        knownTonsCycles: { type: integer, format: int64, minimum: 0 }
+        unknownTonsCycles: { type: integer, format: int64, minimum: 0 }
+    OperationVehicleUtilization:
+      type: object
+      required: [vehicleId, vehicleCode, vehicleName, shiftOpenSeconds, activeSeconds, utilizationRatePercent, effectiveCycles, effectiveCompletedCycles, anomalyCycles, actualTons, unknownTonsCycles]
+      properties:
+        vehicleId: { type: string, format: uuid }
+        vehicleCode: { type: string }
+        vehicleName: { type: string }
+        shiftOpenSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 车辆参与作业的班次去重后实际开放总秒数；开放中班次统计至查询时刻。
+        activeSeconds: { type: integer, format: int64, minimum: 0 }
+        utilizationRatePercent: { type: [number, 'null'], minimum: 0 }
+        effectiveCycles: { type: integer, format: int64, minimum: 0 }
+        effectiveCompletedCycles: { type: integer, format: int64, minimum: 0 }
+        anomalyCycles: { type: integer, format: int64, minimum: 0 }
+        actualTons: { type: [number, 'null'], minimum: 0 }
+        unknownTonsCycles: { type: integer, format: int64, minimum: 0 }
+    OperationDriverWorkload:
+      type: object
+      required: [driverPersonId, driverName, effectiveCycles, effectiveCompletedCycles, anomalyCycles, activeSeconds, actualTons, unknownTonsCycles]
+      properties:
+        driverPersonId: { type: [string, 'null'], format: uuid }
+        driverName: { type: [string, 'null'] }
+        effectiveCycles: { type: integer, format: int64, minimum: 0 }
+        effectiveCompletedCycles: { type: integer, format: int64, minimum: 0 }
+        anomalyCycles: { type: integer, format: int64, minimum: 0 }
+        activeSeconds: { type: integer, format: int64, minimum: 0 }
+        actualTons: { type: [number, 'null'], minimum: 0 }
+        unknownTonsCycles: { type: integer, format: int64, minimum: 0 }
+    OperationSummaryResponse:
+      type: object
+      required: [siteId, fromDate, toDate, workOrderCount, plannedCycles, effectiveCompletedCycles, anomalyCycles, completionRatePercent, plannedTons, actualTons, knownTonsCycles, unknownTonsCycles, distanceMeters, totalCycleSeconds, averageCycleSeconds, averageLoadingSeconds, averageHaulingSeconds, averageUnloadingSeconds, breakdownsTruncated, workOrders, vehicles, drivers]
+      properties:
+        siteId: { type: string, format: uuid }
+        fromDate: { type: string, format: date }
+        toDate: { type: string, format: date }
+        workOrderCount: { type: integer, minimum: 0 }
+        plannedCycles: { type: [integer, 'null'], format: int64, minimum: 0 }
+        effectiveCompletedCycles: { type: integer, format: int64, minimum: 0 }
+        anomalyCycles: { type: integer, format: int64, minimum: 0 }
+        completionRatePercent:
+          type: [number, 'null']
+          minimum: 0
+          description: 窗口内任一作业单计划趟数未知时为 null。
+        plannedTons: { type: [number, 'null'], minimum: 0 }
+        actualTons:
+          type: [number, 'null']
+          minimum: 0
+          description: 全部有效完成趟次吨位未知时为 null；至少一趟已知零吨时可为 0。
+        knownTonsCycles: { type: integer, format: int64, minimum: 0 }
+        unknownTonsCycles: { type: integer, format: int64, minimum: 0 }
+        distanceMeters: { type: [number, 'null'], minimum: 0 }
+        totalCycleSeconds: { type: integer, format: int64, minimum: 0 }
+        averageCycleSeconds: { type: [number, 'null'], minimum: 0 }
+        averageLoadingSeconds: { type: [number, 'null'], minimum: 0 }
+        averageHaulingSeconds: { type: [number, 'null'], minimum: 0 }
+        averageUnloadingSeconds: { type: [number, 'null'], minimum: 0 }
+        breakdownsTruncated: { type: boolean }
+        workOrders:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/OperationWorkOrderProgress' }
+        vehicles:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/OperationVehicleUtilization' }
+        drivers:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/OperationDriverWorkload' }
     ApiError:
       type: object
       required: [code, message, traceId, timestamp, details]
@@ -7044,6 +7438,12 @@ components:
             $ref: '#/components/schemas/ApiError'
     SpatialRuntimeUnavailable:
       description: 空间事件只读查询或最小权限重放登记连接不可用，错误码前缀为 MINE-SPATIAL-*-503。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    OperationQueryUnavailable:
+      description: 运营记录或统计关系化查询失败，错误码 MINE-OPERATION-503-001。
       content:
         application/json:
           schema:

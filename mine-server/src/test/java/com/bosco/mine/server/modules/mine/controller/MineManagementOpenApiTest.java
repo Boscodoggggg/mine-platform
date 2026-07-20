@@ -2,6 +2,7 @@ package com.bosco.mine.server.modules.mine.controller;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.server.modules.mine.operation.ShiftController;
+import com.bosco.mine.server.modules.mine.operation.OperationController;
 import com.bosco.mine.server.modules.mine.operation.WorkOrderController;
 import com.bosco.mine.server.modules.mine.operation.dto.ShiftActionRequest;
 import com.bosco.mine.server.modules.mine.operation.dto.ShiftDefinitionRequest;
@@ -88,6 +89,12 @@ class MineManagementOpenApiTest {
                 "/mine/sites/{siteId}/work-orders/{workOrderId}/complete",
                 "/mine/sites/{siteId}/work-orders/{workOrderId}/cancel",
                 "/mine/sites/{siteId}/work-orders/{workOrderId}/abort",
+                "/mine/sites/{siteId}/operation-candidates",
+                "/mine/sites/{siteId}/operation-candidates/{candidateId}/resolve",
+                "/mine/sites/{siteId}/operation-records",
+                "/mine/sites/{siteId}/operation-records/{recordId}",
+                "/mine/sites/{siteId}/operation-records/{recordId}/corrections",
+                "/mine/sites/{siteId}/operation-summary",
                 "/mine/sites/{siteId}/people",
                 "/mine/sites/{siteId}/people/{personId}/sensitive",
                 "/mine/sites/{siteId}/bindings/preview",
@@ -132,7 +139,12 @@ class MineManagementOpenApiTest {
                 "ShiftCancellationRequest",
                 "WorkOrderRequest", "WorkOrderAssignmentRequest",
                 "WorkOrderActionRequest", "WorkOrderTerminalActionRequest",
-                "WorkOrderResponse");
+                "WorkOrderResponse", "OperationCandidateResolutionRequest",
+                "OperationCandidateResponse", "OperationCorrectionRequest",
+                "OperationRecordResponse", "OperationRecordPageResponse",
+                "OperationRecordPageItem", "OperationSummaryResponse",
+                "OperationWorkOrderProgress", "OperationVehicleUtilization",
+                "OperationDriverWorkload");
         assertThat(list(map(schemas.get("LocationSubjectType")).get("enum")))
                 .containsExactly("TAG", "VEHICLE", "PERSON");
         assertThat(map(map(schemas.get("LocationTrajectoryResponse")).get("properties")))
@@ -186,6 +198,38 @@ class MineManagementOpenApiTest {
         assertThat(list(map(namedParameter(workOrders, "status").get("schema")).get("enum")))
                 .containsExactly("DRAFT", "RELEASED", "RUNNING", "PAUSED",
                         "COMPLETED", "CANCELLED", "ABORTED");
+
+        Map<String, Object> operationRecords = map(map(
+                paths.get("/mine/sites/{siteId}/operation-records")).get("get"));
+        assertThat(map(namedParameter(operationRecords, "pageSize").get("schema")))
+                .containsEntry("minimum", 1)
+                .containsEntry("maximum", 200)
+                .containsEntry("default", 50);
+        assertThat(operationRecords.get("description").toString())
+                .contains("31 天", "watermark", "营业日期");
+        assertThat(namedParameter(operationRecords, "fromDate"))
+                .containsEntry("required", true);
+        assertThat(namedParameter(operationRecords, "toDate"))
+                .containsEntry("required", true);
+        assertThat(map(operationRecords.get("responses"))).containsKey("404");
+        Map<String, Object> summary = map(map(
+                paths.get("/mine/sites/{siteId}/operation-summary")).get("get"));
+        assertThat(summary.get("description").toString())
+                .contains("31 天", "未知", "零吨", "作废", "任一", "去重开放时长");
+        assertThat(map(summary.get("responses"))).containsKey("404");
+        Map<String, Object> vehicleUtilization = map(
+                schemas.get("OperationVehicleUtilization"));
+        assertThat(list(vehicleUtilization.get("required")))
+                .contains("shiftOpenSeconds")
+                .doesNotContain("assignmentSeconds");
+        assertThat(map(vehicleUtilization.get("properties")))
+                .containsKey("shiftOpenSeconds")
+                .doesNotContainKey("assignmentSeconds");
+        Map<String, Object> summaryProperties = map(
+                map(schemas.get("OperationSummaryResponse")).get("properties"));
+        assertThat(map(summaryProperties.get("completionRatePercent"))
+                .get("description").toString())
+                .contains("任一作业单计划趟数未知");
 
         for (String path : List.of(
                 "/mine/sites/{siteId}/shift-instances/{shiftId}/open",
@@ -332,6 +376,14 @@ class MineManagementOpenApiTest {
                 .getAnnotation(PostMapping.class).value()).containsExactly("/work-orders/{workOrderId}/release");
         assertThat(method(WorkOrderController.class, "abortWorkOrder")
                 .getAnnotation(PostMapping.class).value()).containsExactly("/work-orders/{workOrderId}/abort");
+
+        assertPermission(OperationController.class, "findCandidates", "mine:operation:view");
+        assertPermission(OperationController.class, "findRecord", "mine:operation:view");
+        assertPermission(OperationController.class, "findOperationRecords", "mine:operation:view");
+        assertPermission(OperationController.class, "summarizeOperations", "mine:operation:view");
+        assertPermission(OperationController.class, "resolveCandidate", "mine:operation:correct");
+        assertPermission(OperationController.class, "addRecord", "mine:operation:correct");
+        assertPermission(OperationController.class, "correctRecord", "mine:operation:correct");
     }
 
     private void assertPermission(String methodName, String permission) {
