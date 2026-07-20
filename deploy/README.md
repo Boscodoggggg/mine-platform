@@ -126,6 +126,24 @@ Standalone 默认让三维资源通过标准 S3 API 写入 RustFS，并把数据
 应由基础设施流程预创建并关闭自动初始化。切换其他 S3 兼容服务时只需替换 endpoint、region、bucket 和凭据，业务代码
 不依赖 RustFS SDK。`MINE_SCENE_STORAGE_ROOT` 在 S3 模式下仅作为上传校验的临时暂存目录，不保存最终资源。
 
+`scene_upload_workspace` 由 `mine-scene-staging-init` 创建为应用 UID/GID `10001` 可写、权限 `0700`；不要改成共享临时目录。
+默认上传上限为 2 GiB，解压、单文件、文件数、压缩比和 JSON 还有独立业务限制，调整前必须同时复核反向代理、Multipart、
+暂存空间、对象存储和目标模型。应用就绪后会立即对场景存储执行一次有界创建/读取/删除探针，之后每 30 秒刷新指标；探针故障
+只降级三维，二维位置和业务事实不加入该 readiness 门禁。
+
+仓库确定性演示资源为 `deploy/demo/scene/demo-mine-grid.glb`。发布或验收前执行：
+
+~~~bash
+node scripts/generate-demo-scene-assets.mjs --check
+bash deploy/tests/compose-config.sh
+bash deploy/tests/prometheus-rules.sh
+~~~
+
+演示资源 SHA-256 固定为 `4e6e5c0c2a35bcea48a9a6679583f3bed5c1d5b225869cb27f9998e4cc611c78`；它仅用于非现场回归，
+不能替代真实模型、坐标或许可证验收。管理 PostgreSQL 和 `rustfs_data` 必须作为同一恢复点备份到主机之外；只备份其中一个无法
+恢复场景。禁止执行 `down -v`、清空 bucket/卷、覆盖摘要对象、直接修改已发布场景或向浏览器暴露 S3 凭据。详细发布、告警、
+孤儿对象对账和安全回退见 [矿区三维场景运行与安全回退手册](../docs/runbooks/mine-scene-runtime.md)。
+
 健康检查会等待全部容器健康，并验证 HTTPS API、MQTTS 证书、PostgreSQL、TimescaleDB 扩展、RabbitMQ 和 Redis。查看状态与日志：
 
 ~~~bash

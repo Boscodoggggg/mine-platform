@@ -267,6 +267,23 @@ GET               /api/v1/mine/sites/{siteId}/operation-records/{recordId}
 POST              /api/v1/mine/sites/{siteId}/operation-records/{recordId}/corrections
 GET               /api/v1/mine/sites/{siteId}/operation-summary
 
+POST              /api/v1/mine/sites/{siteId}/scene-assets
+GET               /api/v1/mine/sites/{siteId}/scene-assets
+GET               /api/v1/mine/sites/{siteId}/scene-assets/{assetId}
+POST              /api/v1/mine/sites/{siteId}/scene-assets/{assetId}/archive
+GET               /api/v1/mine/sites/{siteId}/scene-assets/{assetId}/files/{relativePath}
+
+GET/POST          /api/v1/mine/sites/{siteId}/scenes
+GET/PATCH         /api/v1/mine/sites/{siteId}/scenes/{sceneId}
+POST              /api/v1/mine/sites/{siteId}/scenes/{sceneId}/archive
+POST              /api/v1/mine/sites/{siteId}/scenes/{sceneId}/make-default
+GET/POST          /api/v1/mine/sites/{siteId}/scenes/{sceneId}/versions
+POST              /api/v1/mine/sites/{siteId}/scenes/{sceneId}/versions/next-draft
+GET/PATCH         /api/v1/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}
+PUT               /api/v1/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/layers
+POST              /api/v1/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/publish
+GET               /api/v1/mine/sites/{siteId}/scene-runtime
+
 GET               /api/v1/internal/location-snapshots/latest
 GET               /api/v1/internal/location-snapshots/{snapshotId}
 ~~~
@@ -287,6 +304,16 @@ GET               /api/v1/internal/location-snapshots/{snapshotId}
 `mine:work-order:edit`、`mine:work-order:dispatch`、`mine:operation:correct`。开启/关账/取消班次、作业单生命周期动作、候选处置和
 记录补录/修正使用持久 `Idempotency-Key`；乐观版本冲突必须刷新后人工决定，不能更换键盲目重放。运营记录查询窗口最长 31 个营业日，
 首页返回固定矿区业务水位，后续页原样传回 `watermark` 和不透明 `cursor`；运营汇总只统计当前有效且未作废投影。
+
+场景读取使用 `mine:scene:view`，编辑、资源上传/归档、发布/默认切换分别使用 `mine:scene:edit`、
+`mine:scene:asset:upload`、`mine:scene:publish`。GLB 或 3D Tiles ZIP 上传先完成大小、路径、包结构和外链校验，再以
+SHA-256 内容寻址并登记逐文件清单；相同矿区摘要幂等复用。文件读取必须先以 `siteId + assetId + relativePath` 命中清单，
+只支持同源受权 URL、私有不可变缓存、`ETag/If-None-Match` 和单一字节 `Range`，禁止客户端传入宿主机路径、对象存储键或任意外链。
+
+场景采用稳定对象和草稿/发布版本。草稿修改与图层整体替换使用乐观版本；发布、默认切换、场景归档和资源归档要求持久
+`Idempotency-Key`。发布版本、图层和内容摘要不可原地修改，归档资源仍为历史发布版本保持受权可读。`scene-runtime` 只返回摘要、
+schema、图层数量和入口均复核成功的完整 `READY` 快照；否则返回无快照的固定 `DEGRADED` 原因。三维存储故障不阻断二维位置、
+空间事件、告警和运营 REST 契约。
 
 ### 2.5 命令与告警
 
@@ -636,6 +663,13 @@ mine_operation_outbox
 mine_operation_site_sequence
 mine_operation_action_idempotency
 
+mine_scene_asset
+mine_scene_asset_file
+mine_scene
+mine_scene_version
+mine_scene_layer
+mine_scene_action_idempotency
+
 cmd_template
 cmd_instance
 cmd_attempt
@@ -653,6 +687,12 @@ Outbox；V44 增加用户动作幂等账本与精确权限；V45 加固生命周
 V47 创建发生时作业状态历史；V48 创建矿区连续业务序号；V49 把菜单组件键升级为 `mine-production-operations`。
 自动识别消费 `realtime.spatial.event.created` v1，运营变更通过同事务 Outbox 发布 `realtime.operation.updated` v1；前端订阅
 `MINE_SITE_OPERATION`，发现连续业务序号缺口后回查固定水位 REST。
+
+场景控制面由 V50、V50.1、V50.2 和 V51 固化。V50 创建内容寻址资源、逐文件清单、稳定场景、版本和有序图层，使用数据库约束与触发器保护
+组织/矿区/坐标一致性、摘要、入口、文件数、单草稿/单当前发布、默认唯一、图层类型/顺序/上限和发布不可变；V50.1 增加资源
+乐观版本，V50.2 增加场景草稿乐观版本和发布/默认/归档动作幂等账本；V51 发布菜单与四类精确权限。服务端把全部图层、默认相机和
+二维视口纳入发布摘要，数据库触发器保护发布后版本和子事实。对象存储只保存 `scene/{上传摘要}/{安全相对路径}` 内容，数据库清单仍是受权和完整性事实；
+归档不是物理删除依据，未登记对象的清理必须经过宽限期、数据库/对象清单对账、备份和双人复核。
 
 `alarm_event` 以告警周期为聚合根，保存设备与规则快照、策略运行证据，以及相互正交的触发、恢复、首次确认和关闭事实。推导状态包括 `ACTIVE_UNACKNOWLEDGED`、`ACTIVE_ACKNOWLEDGED`、`RECOVERED_UNACKNOWLEDGED`、`RECOVERED_ACKNOWLEDGED`、`CLOSED`；数据库约束保证关闭一定晚于恢复。`alarm_acknowledgement` 是每个周期唯一的首次确认事实，保存操作人、说明、幂等键和时间。V26 为两表及全部字段提供中文注释，`DatabaseMigrationIT` 校验完整性、索引、约束和菜单权限节点。
 

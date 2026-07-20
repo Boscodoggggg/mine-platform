@@ -45,6 +45,10 @@ Java 21 不是因为框架不能运行在 Java 25，而是一期减少 JDK、驱
 
 克隆 SoybeanAdmin 后要保留原 MIT LICENSE 和 NOTICE 信息，并记录基线 commit，而不只记录版本字符串。
 
+CesiumJS 1.141.0 使用 Apache-2.0。项目只加载随前端制品发布的 Cesium Workers、Assets、Widgets 和 ThirdParty，不使用 Cesium ion
+token 或运行时公网模型。仓库确定性演示 GLB 由项目脚本从自制几何生成，标记为 CC0-1.0 并固定 SHA-256；客户提供的
+GLB/3D Tiles、纹理、地形、影像和 CAD 转换产物仍须逐项确认来源、再分发权和 NOTICE，不能因平台采用 Apache-2.0 而默认获得授权。
+
 ## 4. 数据与消息基线
 
 | 技术 | 基线 | 说明 |
@@ -136,9 +140,14 @@ release/
 ├── licenses/
 ├── config/
 ├── migrations/
+├── web/cesium/              # 与前端版本锁一致的 Workers/Assets/Widgets/ThirdParty
+├── demo/scene/              # 自制确定性演示资产、许可证和摘要
 ├── scripts/
 └── RELEASE-NOTES.md
 ~~~
+
+正式发行清单必须记录前端 lockfile、Cesium 版本/许可证、Cesium 静态目录摘要、演示资源生成器版本和 SHA-256。客户模型默认不进入
+公开发行包；确需交付时必须在客户授权边界内单独列出来源、许可、摘要、坐标版本和适用矿区。
 
 ## 10. 官方资料
 
@@ -168,5 +177,7 @@ release/
 - Timescale OSS 镜像确实包含指定 PostgreSQL、Timescale 和 PostGIS。
 - Redis 许可文件进入发行包。
 - SoybeanAdmin 基线构建在离线 Node 镜像中成功。
-- Cesium 无 ion 也能加载本地 demo。
+- Cesium 无 ion 加载本地确定性 demo，并通过真实 WebGL 浏览器回归。
+- 非三维路由不加载 Cesium chunk/Workers/Assets/Widgets/ThirdParty，WebGL 不可用时二维仍可运行。
+- 客户模型、GPU/浏览器矩阵、共享 S3、容量和长稳在生产版本锁定前形成现场证据。
 - 所有镜像存在 amd64 版本；如现场使用 arm64，单独验证多架构。

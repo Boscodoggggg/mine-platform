@@ -331,11 +331,17 @@ pnpm build
 
 ## 11. 三维场景
 
-- Cesium 模块路由级异步加载。
-- 模型和瓦片从矿区本地对象存储加载，不依赖 Cesium ion。
-- RealtimeHub 直接向 Cesium adapter 提供批量位置，不把全部 Entity 放 Pinia。
-- 车辆图标/模型使用对象池，历史轨迹按视距和时间窗抽稀。
-- WebGL 不可用或模型缺失时降级到二维列表/地图，不影响管理功能。
+- “三维场景”路径固定为 `/mine/scene`，组件白名单键为 `mine-scene-workbench`。运行查看、场景编辑、资源上传/归档和发布/默认切换分别使用 `mine:scene:view`、`mine:scene:edit`、`mine:scene:asset:upload`、`mine:scene:publish`。
+- 工作台分运行和治理两个页签；查看用户不因缺少写权限请求治理接口，上传、发布、默认切换和归档仍由后端做最终鉴权与矿区隔离。
+- Cesium 模块、Workers、Assets、Widgets 和 ThirdParty 按路由异步加载，离开页面销毁 Viewer；非三维路由不得请求 Cesium chunk 或静态资源。
+- 模型和瓦片只使用运行快照返回的同源受权 URL，不依赖 Cesium ion，不接受任意外链、对象存储凭据或浏览器拼接存储键。
+- 前端在渲染前复核运行 schema、有限数值、图层数量、摘要格式和资源 URL 结构；非法快照不部分加载。
+- RealtimeHub 和业务 composable 分别提供位置、空间事件、告警与运营增量，不把高频对象放入 Pinia；轨迹有时间窗和点数上限，车辆/人员标记使用有界对象集合。
+- 静态 GLB/3D Tiles、位置、轨迹、区域、空间事件、告警和运营图层独立维护状态；一个子链路失败只显示对应降级，不清空其他已提交事实。
+- 页面提供自动、三维、二维三种模式。WebGL 不可用时自动切换二维；二维视口不创建 Cesium Viewer，仍接收位置/业务增量、展示最后更新时间并支持矿区切换。
+- 位置连接序号缺口通过 RealtimeHub 发送 WebSocket `RESYNC` 并接收新 `SNAPSHOT`；空间事件和运营业务序号缺口按各自固定水位 REST 有界回查。矿区切换释放旧订阅、取消支持 AbortSignal 的治理/轨迹/业务请求，并用世代号丢弃其他迟到响应，禁止跨矿区复用缓存。
+
+详细运行边界见 [矿区三维场景运行与安全回退手册](runbooks/mine-scene-runtime.md)。
 
 ## 12. 请求层与契约
 
@@ -367,7 +373,7 @@ pnpm build
 - Vitest + Vue Test Utils：动态表单、权限指令、策略继承展示、RealtimeHub。
 - Mock Service Worker 或类型安全 stub：API 边界。
 - Playwright：登录、角色菜单、设备注册、协议发布、策略回滚、命令下发和告警确认。
-- Cesium 单元测试 mock adapter，另设真实浏览器演示场景 smoke test。
+- Cesium adapter 和运行快照使用 Vitest 行为测试；Playwright 使用真实 WebGL 和仓库确定性 GLB 验证离线加载，并覆盖单图层 500 降级、WebGL 不可用时二维仍接收位置/业务事实及切换矿区、非三维路由不加载 Cesium。
 - 不以快照测试代替行为断言。
 
 动态授权至少覆盖：DIRECTORY 层级保留、BUTTON 不生成路由、未知组件降级、任一/全部权限语义、超级管理员
