@@ -1,0 +1,247 @@
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/api/client';
+import { i18n, setLocale } from '@/locales';
+import SceneWorkbenchPage from './SceneWorkbenchPage.vue';
+
+const api = vi.hoisted(() => ({
+  archiveScene: vi.fn(),
+  archiveSceneAsset: vi.fn(),
+  cloneNextSceneDraft: vi.fn(),
+  createScene: vi.fn(),
+  createSceneDraft: vi.fn(),
+  getSceneRuntime: vi.fn(),
+  listSceneAssets: vi.fn(),
+  listSceneVersions: vi.fn(),
+  listScenes: vi.fn(),
+  makeDefaultScene: vi.fn(),
+  publishSceneVersion: vi.fn(),
+  replaceSceneLayers: vi.fn(),
+  updateSceneDraft: vi.fn(),
+  uploadSceneAsset: vi.fn()
+}));
+const mineApi = vi.hoisted(() => ({ getMineCoordinateSystems: vi.fn() }));
+const authState = vi.hoisted(() => ({ userInfo: { buttons: [] as string[] } }));
+const contextState = vi.hoisted(() => ({
+  selectedSiteId: 'site-1' as string | null,
+  sites: [
+    { id: 'site-1', name: 'A矿', siteCode: 'PIT-A' },
+    { id: 'site-2', name: 'B矿', siteCode: 'PIT-B' }
+  ],
+  loading: false,
+  refreshContext: vi.fn(),
+  selectSite: vi.fn()
+}));
+const routeGuard = vi.hoisted(() => ({ callback: undefined as undefined | ((...args: never[]) => unknown) }));
+
+vi.mock('../api/scene', () => api);
+vi.mock('@/modules/mine/api/mine-api', () => mineApi);
+vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
+vi.mock('@/modules/mine/stores/mine-context', () => ({ useMineContextStore: () => contextState }));
+vi.mock('vue-router', () => ({
+  onBeforeRouteLeave: (callback: (...args: never[]) => unknown) => {
+    routeGuard.callback = callback;
+  }
+}));
+vi.mock('../components/SceneViewport.vue', () => ({
+  default: {
+    props: ['snapshot', 'degradationReason'],
+    template: '<div data-testid="scene-runtime" :data-ready="Boolean(snapshot)" :data-reason="degradationReason"></div>'
+  }
+}));
+vi.mock('../components/SceneAssetPanel.vue', () => ({
+  default: {
+    props: ['assets', 'canUpload', 'uploading', 'uploadProgress'],
+    emits: ['upload', 'archive'],
+    template:
+      '<div data-testid="scene-asset-panel" :data-progress="uploadProgress"><button data-testid="emit-upload" @click="$emit(\'upload\', {})">upload</button></div>'
+  }
+}));
+vi.mock('../components/SceneVersionEditor.vue', () => ({
+  default: {
+    props: ['version', 'assets', 'canEdit', 'canPublish'],
+    emits: ['save', 'publish', 'dirty-change'],
+    template:
+      '<div data-testid="scene-version-editor"><button data-testid="emit-dirty" @click="$emit(\'dirty-change\', true)">dirty</button><button data-testid="emit-publish" @click="$emit(\'publish\')">publish</button></div>'
+  }
+}));
+
+describe('SceneWorkbenchPage', () => {
+  beforeEach(() => {
+    setLocale('zh-CN');
+    Object.values(api).forEach(mock => mock.mockReset());
+    mineApi.getMineCoordinateSystems.mockReset();
+    contextState.selectedSiteId = 'site-1';
+    contextState.refreshContext.mockReset().mockResolvedValue(undefined);
+    contextState.selectSite.mockReset().mockImplementation((siteId: string | null) => {
+      contextState.selectedSiteId = siteId;
+      return true;
+    });
+    api.listScenes.mockResolvedValue({ items: [scene()], page: 1, size: 100, total: 1 });
+    api.listSceneAssets.mockResolvedValue({ items: [], page: 1, size: 100, total: 0 });
+    const draft = version();
+    api.listSceneVersions.mockResolvedValue({
+      items: [draft, { ...version(), sceneId: draft.sceneId, status: 'PUBLISHED', revisionNumber: 0 }],
+      page: 1,
+      size: 100,
+      total: 2
+    });
+    api.getSceneRuntime.mockResolvedValue({
+      siteId: 'site-1',
+      status: 'DEGRADED',
+      reason: 'NO_DEFAULT_SCENE',
+      snapshot: null
+    });
+    mineApi.getMineCoordinateSystems.mockResolvedValue({ items: [], page: 1, size: 100, total: 0 });
+    window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
+    window.$dialog = { warning: vi.fn() } as never;
+  });
+
+  it('只读用户只加载运行场景，治理数据和写操作不进入页面', async () => {
+    authState.userInfo.buttons = ['mine:scene:view'];
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(api.getSceneRuntime).toHaveBeenCalledWith('site-1', expect.any(AbortSignal));
+    expect(wrapper.find('[data-testid="scene-runtime"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="scene-governance"]').exists()).toBe(false);
+    expect(api.listSceneAssets).not.toHaveBeenCalled();
+  });
+
+  it('切换矿区会主动取消旧作用域请求并只接受新矿区结果', async () => {
+    grantAllPermissions();
+    const wrapper = mountPage();
+    await flushPromises();
+    const oldSignal = api.listScenes.mock.calls[0]?.[2] as AbortSignal;
+
+    await (wrapper.vm as unknown as { changeSite: (siteId: string) => Promise<void> }).changeSite('site-2');
+    await flushPromises();
+
+    expect(oldSignal.aborted).toBe(true);
+    expect(api.listScenes).toHaveBeenLastCalledWith('site-2', expect.any(Object), expect.any(AbortSignal));
+  });
+
+  it('未保存草稿在切换矿区前要求确认，确认后才释放旧作用域', async () => {
+    grantAllPermissions();
+    const wrapper = mountPage();
+    await flushPromises();
+    await openGovernance(wrapper);
+    await wrapper.get('[data-testid="emit-dirty"]').trigger('click');
+
+    await (wrapper.vm as unknown as { changeSite: (siteId: string) => Promise<void> }).changeSite('site-2');
+    expect(window.$dialog?.warning).toHaveBeenCalledOnce();
+    expect(api.listScenes).not.toHaveBeenCalledWith('site-2', expect.anything(), expect.anything());
+
+    const options = vi.mocked(window.$dialog!.warning).mock.calls[0]?.[0] as { onPositiveClick: () => Promise<void> };
+    await options.onPositiveClick();
+    await flushPromises();
+    expect(api.listScenes).toHaveBeenCalledWith('site-2', expect.any(Object), expect.any(AbortSignal));
+  });
+
+  it('上传展示真实进度且错误不会污染资源清单', async () => {
+    grantAllPermissions();
+    let rejectUpload!: (reason?: unknown) => void;
+    api.uploadSceneAsset.mockImplementation((_siteId, _file, options) => {
+      options.onProgress({ loaded: 37, total: 100, percent: 37 });
+      return new Promise((_resolve, reject) => {
+        rejectUpload = reject;
+      });
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+    await openGovernance(wrapper);
+
+    await wrapper.get('[data-testid="emit-upload"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-testid="scene-asset-panel"]').attributes('data-progress')).toBe('37');
+
+    rejectUpload(new ApiError({ code: 'SCENE-ASSET-422-001', message: '资源包校验失败' }, 422));
+    await flushPromises();
+    expect(window.$message?.error).toHaveBeenCalledWith('资源包校验失败');
+  });
+
+  it('发布冲突会刷新服务端版本，默认切换成功后重读运行快照', async () => {
+    grantAllPermissions();
+    api.publishSceneVersion.mockRejectedValue(new ApiError({ code: 'SCENE-409-001' }, 409));
+    api.makeDefaultScene.mockResolvedValue({ ...scene(), defaultScene: true });
+    const wrapper = mountPage();
+    await flushPromises();
+    await openGovernance(wrapper);
+
+    await wrapper.get('[data-testid="emit-publish"]').trigger('click');
+    let options = vi.mocked(window.$dialog!.warning).mock.calls.at(-1)?.[0] as { onPositiveClick: () => Promise<void> };
+    await options.onPositiveClick();
+    await flushPromises();
+    expect(api.listSceneVersions).toHaveBeenCalledTimes(2);
+    expect(window.$message?.warning).toHaveBeenCalled();
+
+    await wrapper.get('[data-testid="make-default-scene"]').trigger('click');
+    options = vi.mocked(window.$dialog!.warning).mock.calls.at(-1)?.[0] as { onPositiveClick: () => Promise<void> };
+    await options.onPositiveClick();
+    await flushPromises();
+    expect(api.makeDefaultScene).toHaveBeenCalledWith(
+      'site-1',
+      expect.any(String),
+      expect.any(Number),
+      expect.any(String)
+    );
+    expect(api.getSceneRuntime).toHaveBeenCalledTimes(2);
+  });
+});
+
+function mountPage() {
+  return mount(SceneWorkbenchPage, { global: { plugins: [i18n] } });
+}
+
+async function openGovernance(wrapper: ReturnType<typeof mountPage>) {
+  await wrapper.get('.n-tabs-tab[data-name="GOVERNANCE"]').trigger('click');
+  await flushPromises();
+}
+
+function grantAllPermissions() {
+  authState.userInfo.buttons = ['mine:scene:view', 'mine:scene:edit', 'mine:scene:asset:upload', 'mine:scene:publish'];
+}
+
+function scene() {
+  return {
+    id: crypto.randomUUID(),
+    organizationId: crypto.randomUUID(),
+    siteId: 'site-1',
+    sceneCode: 'north-pit',
+    name: '北采区',
+    description: null,
+    defaultScene: false,
+    status: 'ACTIVE' as const,
+    createdAt: '2026-07-20T08:00:00Z',
+    updatedAt: '2026-07-20T08:00:00Z',
+    archivedAt: null,
+    version: 0
+  };
+}
+
+function version() {
+  return {
+    id: crypto.randomUUID(),
+    sceneId: crypto.randomUUID(),
+    coordinateSystemId: crypto.randomUUID(),
+    revisionNumber: 1,
+    schemaVersion: 1,
+    coordinateMode: 'LOCAL_ENU' as const,
+    originX: 0,
+    originY: 0,
+    originZ: 0,
+    headingDegrees: 0,
+    pitchDegrees: 0,
+    rollDegrees: 0,
+    scale: 1,
+    defaultCamera: {},
+    fallbackViewport: {},
+    status: 'DRAFT' as const,
+    contentHash: null,
+    publishedAt: null,
+    supersededAt: null,
+    createdAt: '2026-07-20T08:00:00Z',
+    version: 0,
+    layers: []
+  };
+}

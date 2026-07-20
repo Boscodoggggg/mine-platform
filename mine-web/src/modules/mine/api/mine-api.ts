@@ -220,8 +220,13 @@ export function archiveMineLocationTag(siteId: string, tagId: string, version: n
 }
 
 /** 分页查询坐标系。 */
-export function getMineCoordinateSystems(siteId: string, query: PageQuery<'ACTIVE' | 'ARCHIVED'> = {}) {
-  return request<CoordinateSystemPage>(withQuery(sitePath(siteId, 'coordinate-systems'), query));
+export function getMineCoordinateSystems(
+  siteId: string,
+  query: PageQuery<'ACTIVE' | 'ARCHIVED'> = {},
+  signal?: AbortSignal
+) {
+  const path = withQuery(sitePath(siteId, 'coordinate-systems'), query);
+  return signal ? request<CoordinateSystemPage>(path, { signal }) : request<CoordinateSystemPage>(path);
 }
 
 /** 创建坐标系。 */

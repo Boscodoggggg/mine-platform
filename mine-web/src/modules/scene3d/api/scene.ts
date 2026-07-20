@@ -1,5 +1,6 @@
 import type { components } from '@/generated/mine-api';
-import { request } from '@/api/client';
+import type { UploadOptions } from '@/api/client';
+import { request, upload } from '@/api/client';
 
 export type SceneAsset = components['schemas']['SceneAssetResponse'];
 export type SceneAssetPage = components['schemas']['SceneAssetPage'];
@@ -52,18 +53,15 @@ export class SceneRuntimeContractError extends Error {
 }
 
 /** 分页读取当前矿区三维资源。 */
-export function listSceneAssets(siteId: string, query: SceneAssetQuery = {}) {
-  return request<SceneAssetPage>(withQuery(sitePath(siteId, 'scene-assets'), query));
+export function listSceneAssets(siteId: string, query: SceneAssetQuery = {}, signal?: AbortSignal) {
+  return requestWithSignal<SceneAssetPage>(withQuery(sitePath(siteId, 'scene-assets'), query), signal);
 }
 
 /** 上传由服务端同步校验的 GLB 或 3D Tiles ZIP。 */
-export function uploadSceneAsset(siteId: string, file: File) {
+export function uploadSceneAsset(siteId: string, file: File, options: UploadOptions = {}) {
   const formData = new FormData();
   formData.set('file', file);
-  return request<SceneAsset>(sitePath(siteId, 'scene-assets'), {
-    method: 'POST',
-    body: formData
-  });
+  return upload<SceneAsset>(sitePath(siteId, 'scene-assets'), formData, options);
 }
 
 /** 读取资源和一页有界文件清单。 */
@@ -80,8 +78,8 @@ export function archiveSceneAsset(siteId: string, assetId: string, version: numb
 }
 
 /** 分页读取稳定场景。 */
-export function listScenes(siteId: string, query: SceneQuery = {}) {
-  return request<ScenePage>(withQuery(sitePath(siteId, 'scenes'), query));
+export function listScenes(siteId: string, query: SceneQuery = {}, signal?: AbortSignal) {
+  return requestWithSignal<ScenePage>(withQuery(sitePath(siteId, 'scenes'), query), signal);
 }
 
 /** 创建稳定场景。 */
@@ -110,8 +108,13 @@ export function makeDefaultScene(siteId: string, sceneId: string, version: numbe
 }
 
 /** 分页读取场景版本和有序图层。 */
-export function listSceneVersions(siteId: string, sceneId: string, query: SceneVersionQuery = {}) {
-  return request<SceneVersionPage>(withQuery(versionPath(siteId, sceneId), query));
+export function listSceneVersions(
+  siteId: string,
+  sceneId: string,
+  query: SceneVersionQuery = {},
+  signal?: AbortSignal
+) {
+  return requestWithSignal<SceneVersionPage>(withQuery(versionPath(siteId, sceneId), query), signal);
 }
 
 /** 创建场景首个草稿。 */
@@ -163,8 +166,10 @@ export function publishSceneVersion(
 }
 
 /** 读取并运行时校验默认场景最后正确快照。 */
-export async function getSceneRuntime(siteId: string): Promise<SceneRuntime> {
-  const runtime = parseSceneRuntimeResponse(await request<unknown>(sitePath(siteId, 'scene-runtime')));
+export async function getSceneRuntime(siteId: string, signal?: AbortSignal): Promise<SceneRuntime> {
+  const runtime = parseSceneRuntimeResponse(
+    await requestWithSignal<unknown>(sitePath(siteId, 'scene-runtime'), signal)
+  );
   if (runtime.siteId !== siteId) invalid('siteId');
   return runtime;
 }
@@ -382,6 +387,10 @@ function withQuery(path: string, query: object) {
   });
   const queryString = parameters.toString();
   return queryString ? `${path}?${queryString}` : path;
+}
+
+function requestWithSignal<T>(path: string, signal?: AbortSignal) {
+  return signal ? request<T>(path, { signal }) : request<T>(path);
 }
 
 function objectValue(value: unknown, field: string): Record<string, unknown> {

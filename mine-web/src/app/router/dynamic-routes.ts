@@ -37,7 +37,8 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'mine-binding-management': () => import('@/modules/mine/pages/binding-management/BindingManagementPage.vue'),
   'mine-location-monitor': () => import('@/modules/mine/pages/realtime-location/RealtimeLocationPage.vue'),
   'mine-spatial-management': () => import('@/modules/mine/pages/spatial-management/SpatialManagementPage.vue'),
-  'mine-production-operations': () => import('@/modules/mine/pages/production-operations/ProductionOperationsPage.vue')
+  'mine-production-operations': () => import('@/modules/mine/pages/production-operations/ProductionOperationsPage.vue'),
+  'mine-scene-workbench': () => import('@/modules/scene3d/pages/SceneWorkbenchPage.vue')
 };
 
 const safeRoutePathPattern = /^\/[A-Za-z0-9/_-]*$/;
@@ -69,7 +70,8 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/mine/bindings': 'mine.menu.mineBindings',
   '/mine/location': 'mine.menu.mineLocation',
   '/mine/spatial': 'mine.menu.mineSpatial',
-  '/mine/operations': 'mine.menu.mineOperations'
+  '/mine/operations': 'mine.menu.mineOperations',
+  '/mine/scene': 'mine.menu.mineScene'
 };
 const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18nKey>>> = {
   'home-overview': 'mine.menu.overview',
@@ -94,7 +96,8 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'mine-binding-management': 'mine.menu.mineBindings',
   'mine-location-monitor': 'mine.menu.mineLocation',
   'mine-spatial-management': 'mine.menu.mineSpatial',
-  'mine-production-operations': 'mine.menu.mineOperations'
+  'mine-production-operations': 'mine.menu.mineOperations',
+  'mine-scene-workbench': 'mine.menu.mineScene'
 };
 
 export interface DynamicNavigationResult {

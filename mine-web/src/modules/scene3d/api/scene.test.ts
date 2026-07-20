@@ -22,13 +22,14 @@ import {
   uploadSceneAsset
 } from './scene';
 
-const client = vi.hoisted(() => ({ request: vi.fn() }));
+const client = vi.hoisted(() => ({ request: vi.fn(), upload: vi.fn() }));
 
 vi.mock('@/api/client', () => client);
 
 describe('scene api', () => {
   beforeEach(() => {
     client.request.mockReset().mockResolvedValue({});
+    client.upload.mockReset().mockResolvedValue({});
   });
 
   it('使用编码后的矿区路径和有界分页参数读取资源、场景和版本', async () => {
@@ -51,18 +52,37 @@ describe('scene api', () => {
     expect(client.request).toHaveBeenLastCalledWith('/mine/sites/site%2F1/scenes/scene%2F1/versions?page=2&size=30');
   });
 
-  it('上传使用 FormData 且不手工设置 multipart Content-Type', async () => {
+  it('上传使用可取消进度传输且不手工设置 multipart Content-Type', async () => {
     const file = new File(['glb'], 'mine.glb', { type: 'model/gltf-binary' });
+    const controller = new AbortController();
+    const onProgress = vi.fn();
 
-    await uploadSceneAsset('site/1', file);
+    await uploadSceneAsset('site/1', file, { signal: controller.signal, onProgress });
 
-    expect(client.request).toHaveBeenLastCalledWith(
-      '/mine/sites/site%2F1/scene-assets',
-      expect.objectContaining({ method: 'POST', body: expect.any(FormData) })
-    );
-    const init = client.request.mock.calls.at(-1)?.[1] as RequestInit;
-    expect((init.body as FormData).get('file')).toBe(file);
-    expect(init.headers).toBeUndefined();
+    expect(client.upload).toHaveBeenLastCalledWith('/mine/sites/site%2F1/scene-assets', expect.any(FormData), {
+      signal: controller.signal,
+      onProgress
+    });
+    const formData = client.upload.mock.calls.at(-1)?.[1] as FormData;
+    expect(formData.get('file')).toBe(file);
+  });
+
+  it('只读列表和运行快照支持矿区切换时主动取消旧请求', async () => {
+    const signal = new AbortController().signal;
+
+    await listSceneAssets('site/1', {}, signal);
+    await listScenes('site/1', {}, signal);
+    await listSceneVersions('site/1', 'scene/1', {}, signal);
+    const siteId = crypto.randomUUID();
+    client.request.mockResolvedValue({
+      siteId,
+      status: 'DEGRADED',
+      reason: 'NO_DEFAULT_SCENE',
+      snapshot: null
+    });
+    await getSceneRuntime(siteId, signal);
+
+    expect(client.request.mock.calls.slice(-4).every(call => call[1]?.signal === signal)).toBe(true);
   });
 
   it('治理动作传递 JSON、乐观版本和调用方提供的稳定幂等键', async () => {

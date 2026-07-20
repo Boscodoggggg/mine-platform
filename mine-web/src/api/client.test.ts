@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { localStg } from '@/utils/storage';
-import { ApiError, request } from './client';
+import { ApiError, request, upload } from './client';
 
 describe('平台 API 客户端', () => {
   beforeEach(() => {
@@ -108,4 +108,100 @@ describe('平台 API 客户端', () => {
       message: '无法连接矿区服务，请检查网络后重试'
     });
   });
+
+  it('主动取消请求应返回稳定取消错误而不是伪装成弱网故障', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
+
+    await expect(request('/mine/sites/site-1/scenes', { signal: AbortSignal.abort() })).rejects.toMatchObject({
+      code: 'SYS-REQUEST-CANCELLED',
+      status: 0
+    });
+  });
+
+  it('上传应保留认证、报告真实进度并支持取消', async () => {
+    const transport = new FakeXmlHttpRequest();
+    vi.stubGlobal('XMLHttpRequest', function XMLHttpRequestMock() {
+      return transport;
+    });
+    localStg.set('tokenName', 'X-Mine-Token');
+    localStg.set('token', 'token-value');
+    const progress = vi.fn();
+    const controller = new AbortController();
+    const body = new FormData();
+    body.set('file', new File(['glb'], 'mine.glb'));
+
+    const task = upload<{ id: string }>('/mine/sites/site-1/scene-assets', body, {
+      signal: controller.signal,
+      onProgress: progress
+    });
+    transport.emitProgress(512, 1024);
+    transport.succeed({ id: 'asset-1' });
+
+    await expect(task).resolves.toEqual({ id: 'asset-1' });
+    expect(transport.open).toHaveBeenCalledWith('POST', '/api/v1/mine/sites/site-1/scene-assets', true);
+    expect(transport.headers.get('X-Mine-Token')).toBe('token-value');
+    expect(transport.headers.has('Content-Type')).toBe(false);
+    expect(transport.withCredentials).toBe(true);
+    expect(progress).toHaveBeenCalledWith({ loaded: 512, total: 1024, percent: 50 });
+    expect(transport.body).toBe(body);
+
+    const cancelledTransport = new FakeXmlHttpRequest();
+    vi.stubGlobal('XMLHttpRequest', function XMLHttpRequestMock() {
+      return cancelledTransport;
+    });
+    const cancelledController = new AbortController();
+    const cancelled = upload('/mine/sites/site-1/scene-assets', body, { signal: cancelledController.signal });
+    cancelledController.abort();
+    await expect(cancelled).rejects.toMatchObject({ code: 'SYS-REQUEST-CANCELLED' });
+    expect(cancelledTransport.abort).toHaveBeenCalledOnce();
+  });
 });
+
+class FakeXmlHttpRequest {
+  readonly headers = new Headers();
+  readonly upload = {
+    addEventListener: (_type: string, listener: EventListenerOrEventListenerObject) => {
+      this.progressListener = eventListener(listener);
+    }
+  };
+  readonly open = vi.fn();
+  readonly abort = vi.fn(() => this.emit('abort'));
+  withCredentials = false;
+  responseType: XMLHttpRequestResponseType = '';
+  status = 0;
+  response: unknown = null;
+  responseText = '';
+  body: Document | XMLHttpRequestBodyInit | null = null;
+  private readonly listeners = new Map<string, EventListener>();
+  private progressListener: EventListener | null = null;
+
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject) {
+    this.listeners.set(type, eventListener(listener));
+  }
+
+  setRequestHeader(name: string, value: string) {
+    this.headers.set(name, value);
+  }
+
+  send(body: Document | XMLHttpRequestBodyInit | null) {
+    this.body = body;
+  }
+
+  emitProgress(loaded: number, total: number) {
+    this.progressListener?.({ loaded, total, lengthComputable: true } as ProgressEvent);
+  }
+
+  succeed(response: unknown) {
+    this.status = 201;
+    this.response = response;
+    this.emit('load');
+  }
+
+  private emit(type: string) {
+    this.listeners.get(type)?.(new ProgressEvent(type));
+  }
+}
+
+function eventListener(listener: EventListenerOrEventListenerObject): EventListener {
+  return typeof listener === 'function' ? listener : event => listener.handleEvent(event);
+}

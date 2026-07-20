@@ -9,6 +9,17 @@ export interface ApiErrorPayload {
   details?: Record<string, unknown>;
 }
 
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+  percent: number | null;
+}
+
+export interface UploadOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: UploadProgress) => void;
+}
+
 /** 平台 API 返回的稳定错误。 */
 export class ApiError extends Error {
   readonly code: string;
@@ -47,7 +58,8 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
       cache: 'no-store',
       credentials: 'same-origin'
     });
-  } catch {
+  } catch (error) {
+    if (isAbortError(error) || init.signal?.aborted) throw cancelledError();
     throw new ApiError(
       {
         code: 'SYS-NETWORK-001',
@@ -67,6 +79,58 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     return undefined as T;
   }
   return (await response.json()) as T;
+}
+
+/** 使用浏览器上传通道提交表单，并报告真实字节进度。 */
+export function upload<T>(path: string, body: FormData, options: UploadOptions = {}): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const transport = new XMLHttpRequest();
+    const headers = new Headers({ Accept: 'application/json' });
+    appendToken(headers);
+    transport.open('POST', `${API_BASE_URL}${path}`, true);
+    transport.withCredentials = true;
+    transport.responseType = 'json';
+    headers.forEach((value, name) => transport.setRequestHeader(name, value));
+
+    const removeAbortListener = () => options.signal?.removeEventListener('abort', abortUpload);
+    const abortUpload = () => transport.abort();
+    transport.upload.addEventListener('progress', event => {
+      const total = event.lengthComputable ? event.total : 0;
+      options.onProgress?.({
+        loaded: event.loaded,
+        total,
+        percent: total > 0 ? Math.min(100, Math.round((event.loaded / total) * 100)) : null
+      });
+    });
+    transport.addEventListener('load', () => {
+      removeAbortListener();
+      if (transport.status >= 200 && transport.status < 300) {
+        if (transport.status !== 204 && transport.response === null) {
+          reject(new ApiError({ code: 'SYS-RESPONSE-INVALID', message: '服务返回了无法识别的响应' }, transport.status));
+          return;
+        }
+        resolve((transport.status === 204 ? undefined : transport.response) as T);
+        return;
+      }
+      if (transport.status === 401) clearInvalidSession();
+      reject(new ApiError(readUploadErrorPayload(transport), transport.status));
+    });
+    transport.addEventListener('error', () => {
+      removeAbortListener();
+      reject(networkError());
+    });
+    transport.addEventListener('abort', () => {
+      removeAbortListener();
+      reject(cancelledError());
+    });
+
+    if (options.signal?.aborted) {
+      transport.abort();
+      return;
+    }
+    options.signal?.addEventListener('abort', abortUpload, { once: true });
+    transport.send(body);
+  });
 }
 
 function appendToken(headers: Headers) {
@@ -93,4 +157,31 @@ async function readErrorPayload(response: Response): Promise<ApiErrorPayload> {
       message: '服务返回了无法识别的响应'
     };
   }
+}
+
+function readUploadErrorPayload(transport: XMLHttpRequest): ApiErrorPayload {
+  if (transport.response && typeof transport.response === 'object') {
+    return transport.response as ApiErrorPayload;
+  }
+  try {
+    const responseText = transport.responseText;
+    return JSON.parse(responseText) as ApiErrorPayload;
+  } catch {
+    return {
+      code: `HTTP-${transport.status}`,
+      message: '服务返回了无法识别的响应'
+    };
+  }
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function cancelledError() {
+  return new ApiError({ code: 'SYS-REQUEST-CANCELLED', message: '请求已取消' }, 0);
+}
+
+function networkError() {
+  return new ApiError({ code: 'SYS-NETWORK-001', message: '无法连接矿区服务，请检查网络后重试' }, 0);
 }
