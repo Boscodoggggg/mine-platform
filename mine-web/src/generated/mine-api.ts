@@ -2152,6 +2152,465 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mine/sites/{siteId}/shift-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询班次模板
+         * @description 需要 mine:operation:view 权限并校验当前用户矿区数据范围。
+         */
+        get: operations["listMineShiftDefinitions"];
+        put?: never;
+        /** 创建班次模板 */
+        post: operations["createMineShiftDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/shift-definitions/{definitionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询班次模板详情 */
+        get: operations["getMineShiftDefinition"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 乐观修改活动班次模板 */
+        patch: operations["updateMineShiftDefinition"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/shift-definitions/{definitionId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 乐观归档班次模板 */
+        post: operations["archiveMineShiftDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/shift-instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 按营业日期查询班次实例 */
+        get: operations["listMineShiftInstances"];
+        put?: never;
+        /** 按矿区时区和营业日期创建计划班次 */
+        post: operations["createMineShiftInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/shift-instances/{shiftId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询班次实例详情 */
+        get: operations["getMineShiftInstance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/shift-instances/{shiftId}/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等开启计划班次
+         * @description 同键异请求返回 MINE-OPERATION-409-001；非法状态返回 MINE-SHIFT-409-004；无矿区范围返回 MINE-SCOPE-404-002。
+         */
+        post: operations["openMineShiftInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/shift-instances/{shiftId}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 使用高风险权限幂等关闭班次
+         * @description 存在未终结作业单或循环运行态时返回 MINE-SHIFT-409-003。
+         */
+        post: operations["closeMineShiftInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/shift-instances/{shiftId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等取消计划班次 */
+        post: operations["cancelMineShiftInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询运输作业单和调度分配 */
+        get: operations["listMineWorkOrders"];
+        put?: never;
+        /** 创建运输作业单草稿 */
+        post: operations["createMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询运输作业单详情 */
+        get: operations["getMineWorkOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 乐观修改运输作业单草稿
+         * @description 请求不接受 status 字段，生命周期只能使用独立动作路径推进。
+         */
+        patch: operations["updateMineWorkOrder"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}/assignments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 追加车辆和可选司机调度分配 */
+        post: operations["assignMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等发布并冻结运输计划和空间版本
+         * @description 同键异请求返回 MINE-OPERATION-409-001；非法状态返回 MINE-WORK-409-004；无矿区范围返回 MINE-SCOPE-404-002。
+         */
+        post: operations["releaseMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等启动已发布作业单 */
+        post: operations["startMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等暂停运行作业单 */
+        post: operations["pauseMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等恢复暂停作业单 */
+        post: operations["resumeMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等完成运行或暂停作业单
+         * @description 运输循环未回到 WAITING_LOAD 空闲边界时返回 MINE-WORK-409-005。
+         */
+        post: operations["completeMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等取消草稿或已发布作业单 */
+        post: operations["cancelMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/work-orders/{workOrderId}/abort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等异常终止运行或暂停作业单
+         * @description 尚未完成的运输循环会在同一事务中固化为 ABORTED 执行事实并清理运行态。
+         */
+        post: operations["abortMineWorkOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/operation-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分页查询运营候选处置队列
+         * @description 需要 mine:operation:view 权限；候选证据按发生时间倒序返回，每页最多一百条。
+         */
+        get: operations["listMineOperationCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/operation-candidates/{candidateId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等处置运营候选
+         * @description 需要 mine:operation:correct 权限；可关联、忽略或转为人工补录执行记录，原始证据不会被覆盖。
+         */
+        post: operations["resolveMineOperationCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/operation-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 固定业务水位分页查询有效执行记录
+         * @description 需要 mine:operation:view 权限。fromDate 和 toDate 是包含边界的营业日期，最长 31 天；
+         *     首页固定矿区运营 business watermark，后续页必须原样携带 watermark 和 nextCursor。
+         *     作废记录不返回，人工修正读取最新有效投影，跨午夜记录仍归属于班次营业日期。
+         */
+        get: operations["listMineOperationRecords"];
+        put?: never;
+        /**
+         * 幂等人工补录不可变执行记录
+         * @description 需要 mine:operation:correct 权限；基础事实只追加，统计读取单独的当前有效投影。
+         */
+        post: operations["createMineOperationRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/operation-records/{recordId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询执行基础事实、当前投影和修正历史 */
+        get: operations["getMineOperationRecord"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/operation-records/{recordId}/corrections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等追加修正、作废或恢复事实
+         * @description 需要 mine:operation:correct 权限；必须携带当前 projectionVersion，历史修正不可覆盖。
+         */
+        post: operations["correctMineOperationRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/operation-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询生产运营汇总和车辆人员维度
+         * @description 需要 mine:operation:view 权限。营业日期窗口最长 31 天，跨午夜按班次营业日期归集；
+         *     作废记录排除，异常终止单独统计，吨位未知返回 null 而真实零吨保持 0。
+         *     任一纳入作业单的计划趟数未知时，整体完成率返回 null，避免错误放大。
+         *     车辆利用率按有效循环时长除以该车参与班次的去重开放时长计算。
+         *     作业单、车辆和司机明细维度各最多五百条，超限时 breakdownsTruncated 为 true。
+         */
+        get: operations["getMineOperationSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4538,6 +4997,530 @@ export interface components {
             /** @enum {string} */
             source: "RAW" | "ROLLUP";
         };
+        ShiftDefinitionRequest: {
+            definitionCode: string;
+            name: string;
+            /** Format: time */
+            startLocal: string;
+            /** Format: time */
+            endLocal: string;
+            crossesMidnight: boolean;
+            /** Format: date */
+            validFrom: string;
+            /** Format: date */
+            validTo?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        ShiftDefinitionResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            definitionCode: string;
+            name: string;
+            /** Format: time */
+            startLocal: string;
+            /** Format: time */
+            endLocal: string;
+            crossesMidnight: boolean;
+            /** Format: date */
+            validFrom: string;
+            /** Format: date */
+            validTo: string | null;
+            /** @enum {string} */
+            status: "ACTIVE" | "ARCHIVED";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        ShiftInstanceRequest: {
+            /** Format: uuid */
+            shiftDefinitionId: string;
+            /** Format: date */
+            businessDate: string;
+            /** Format: uuid */
+            supervisorPersonId?: string | null;
+        };
+        ShiftActionRequest: {
+            /** Format: int64 */
+            version: number;
+            reason?: string | null;
+        };
+        ShiftCancellationRequest: {
+            /** Format: int64 */
+            version: number;
+            reason: string;
+        };
+        ShiftInstanceResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            shiftDefinitionId: string;
+            /** Format: date */
+            businessDate: string;
+            /** Format: date-time */
+            plannedStartAt: string;
+            /** Format: date-time */
+            plannedEndAt: string;
+            /** Format: date-time */
+            actualStartAt: string | null;
+            /** Format: date-time */
+            actualEndAt: string | null;
+            /** Format: uuid */
+            supervisorPersonId: string | null;
+            readonly definitionSnapshot: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            status: "PLANNED" | "OPEN" | "CLOSED" | "CANCELLED";
+            /** Format: date-time */
+            openedAt: string | null;
+            /** Format: date-time */
+            closedAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            cancellationReason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        WorkOrderRequest: {
+            /** Format: uuid */
+            shiftInstanceId: string;
+            orderNumber: string;
+            title: string;
+            /** @enum {string} */
+            workType: "HAULAGE";
+            /** Format: date-time */
+            plannedStartAt: string;
+            /** Format: date-time */
+            plannedEndAt: string;
+            plannedCycles?: number | null;
+            plannedTons?: number | null;
+            priority: number;
+            /** Format: int64 */
+            version: number;
+        };
+        WorkOrderAssignmentRequest: {
+            /** Format: uuid */
+            vehicleId: string;
+            /** Format: uuid */
+            driverPersonId?: string | null;
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: string;
+            assignmentReason: string;
+            /** Format: int64 */
+            version: number;
+        };
+        WorkOrderActionRequest: {
+            /** Format: int64 */
+            version: number;
+            /** Format: uuid */
+            routeVersionId?: string | null;
+            /** Format: uuid */
+            loadGeofenceVersionId?: string | null;
+            /** Format: uuid */
+            unloadGeofenceVersionId?: string | null;
+            reason?: string | null;
+        };
+        WorkOrderTerminalActionRequest: {
+            /** Format: int64 */
+            version: number;
+            reason: string;
+        };
+        WorkOrderAssignmentResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            vehicleId: string;
+            vehicleCode: string;
+            vehicleName: string;
+            /** @enum {string} */
+            vehicleType: "HAUL_TRUCK";
+            /** Format: uuid */
+            driverPersonId: string | null;
+            driverName: string | null;
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "COMPLETED" | "CANCELLED";
+            assignmentReason: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        WorkOrderResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            shiftInstanceId: string;
+            orderNumber: string;
+            title: string;
+            /** @enum {string} */
+            workType: "HAULAGE";
+            /** Format: date-time */
+            plannedStartAt: string;
+            /** Format: date-time */
+            plannedEndAt: string;
+            plannedCycles: number | null;
+            plannedTons: number | null;
+            priority: number;
+            /** Format: uuid */
+            routeVersionId: string | null;
+            /** Format: uuid */
+            loadGeofenceVersionId: string | null;
+            /** Format: uuid */
+            unloadGeofenceVersionId: string | null;
+            readonly releaseSnapshot: {
+                [key: string]: unknown;
+            } | null;
+            /** @enum {string} */
+            status: "DRAFT" | "RELEASED" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED" | "ABORTED";
+            /** Format: date-time */
+            releasedAt: string | null;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            pausedAt: string | null;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            cancelledAt: string | null;
+            /** Format: date-time */
+            abortedAt: string | null;
+            terminalReason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+            assignments: components["schemas"]["WorkOrderAssignmentResponse"][];
+        };
+        OperationCorrectionRequest: {
+            /** @enum {string} */
+            action: "ADD" | "AMEND" | "VOID" | "RESTORE";
+            /** Format: uuid */
+            workOrderId?: string | null;
+            /** Format: uuid */
+            assignmentId?: string | null;
+            /** @enum {string|null} */
+            recordStatus?: "COMPLETED" | "ABORTED" | null;
+            /** Format: date-time */
+            startedAt?: string | null;
+            /** Format: date-time */
+            loadCompletedAt?: string | null;
+            /** Format: date-time */
+            unloadingStartedAt?: string | null;
+            /** Format: date-time */
+            completedAt?: string | null;
+            distanceMeters?: number | null;
+            /** @description null 表示吨位未知，0 表示已知真实零吨。 */
+            actualTons?: number | null;
+            /** @enum {string|null} */
+            tonsSource?: "SCALE" | "VEHICLE" | "MANUAL" | "ESTIMATED" | null;
+            projectionVersion?: number | null;
+            reason: string;
+        };
+        OperationCandidateResolutionRequest: {
+            /** @enum {string} */
+            action: "ASSOCIATE" | "IGNORE" | "CONVERT_MANUAL";
+            /** Format: uuid */
+            workOrderId?: string | null;
+            /** Format: uuid */
+            assignmentId?: string | null;
+            manualRecord?: components["schemas"]["OperationCorrectionRequest"] | null;
+            reason: string;
+            /** Format: int64 */
+            version: number;
+        };
+        OperationCandidateResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            spatialEventId: string;
+            /** Format: uuid */
+            workOrderId: string | null;
+            /** Format: uuid */
+            assignmentId: string | null;
+            candidateType: string;
+            reasonCode: string;
+            /** Format: date-time */
+            occurredAt: string;
+            readonly candidatePayload: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            status: "PENDING" | "RESOLVED" | "IGNORED" | "CONVERTED";
+            /** @enum {string|null} */
+            resolutionAction: "ASSOCIATE" | "IGNORE" | "CONVERT_MANUAL" | null;
+            resolutionReason: string | null;
+            /** Format: uuid */
+            resolvedRecordId: string | null;
+            /** Format: date-time */
+            resolvedAt: string | null;
+            /** Format: uuid */
+            resolvedBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        OperationRecordCorrection: {
+            /** Format: uuid */
+            id: string;
+            correctionVersion: number;
+            /** @enum {string} */
+            correctionType: "AMEND" | "VOID" | "RESTORE";
+            readonly beforeValues: {
+                [key: string]: unknown;
+            };
+            readonly afterValues: {
+                [key: string]: unknown;
+            };
+            reason: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+        };
+        OperationRecordResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** Format: uuid */
+            shiftInstanceId: string;
+            /** Format: uuid */
+            workOrderId: string;
+            /** Format: uuid */
+            assignmentId: string;
+            /** Format: int64 */
+            cycleNumber: number;
+            /** @enum {string} */
+            workType: "HAULAGE";
+            /** @enum {string} */
+            recordStatus: "COMPLETED" | "ABORTED";
+            /** @enum {string} */
+            recordSource: "AUTOMATIC" | "MANUAL";
+            /** Format: uuid */
+            vehicleId: string;
+            /** Format: uuid */
+            driverPersonId: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            loadCompletedAt: string | null;
+            /** Format: date-time */
+            unloadingStartedAt: string | null;
+            /** Format: date-time */
+            completedAt: string;
+            baseDistanceMeters: number | null;
+            baseActualTons: number | null;
+            baseTonsSource: string | null;
+            readonly frozenSnapshot: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string | null;
+            effective: boolean;
+            distanceMeters: number | null;
+            /** @description null 表示未知，0 表示已知真实零吨。 */
+            actualTons: number | null;
+            tonsSource: string | null;
+            correctionVersion: number;
+            /** Format: date-time */
+            projectedAt: string;
+            corrections: components["schemas"]["OperationRecordCorrection"][];
+        };
+        OperationRecordPageResponse: {
+            /** Format: uuid */
+            siteId: string;
+            /** Format: date */
+            fromDate: string;
+            /** Format: date */
+            toDate: string;
+            /** Format: int64 */
+            watermark: number;
+            nextCursor: string | null;
+            items: components["schemas"]["OperationRecordPageItem"][];
+        };
+        OperationRecordPageItem: {
+            /** Format: uuid */
+            recordId: string;
+            /** Format: int64 */
+            recordSequence: number;
+            /** Format: uuid */
+            shiftInstanceId: string;
+            /** Format: date */
+            businessDate: string;
+            /** Format: uuid */
+            workOrderId: string;
+            orderNumber: string;
+            orderTitle: string;
+            /** Format: uuid */
+            assignmentId: string;
+            /** Format: int64 */
+            cycleNumber: number;
+            /** @enum {string} */
+            recordStatus: "COMPLETED" | "ABORTED";
+            /** Format: uuid */
+            vehicleId: string;
+            vehicleCode: string;
+            vehicleName: string;
+            /** Format: uuid */
+            driverPersonId: string | null;
+            driverName: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            loadCompletedAt: string | null;
+            /** Format: date-time */
+            unloadingStartedAt: string | null;
+            /** Format: date-time */
+            completedAt: string;
+            /** Format: int64 */
+            totalDurationSeconds: number;
+            /** Format: int64 */
+            loadingSeconds: number | null;
+            /** Format: int64 */
+            haulingSeconds: number | null;
+            /** Format: int64 */
+            unloadingSeconds: number | null;
+            distanceMeters: number | null;
+            actualTons: number | null;
+            tonsKnown: boolean;
+            tonsSource: string | null;
+            correctionVersion: number;
+            /** Format: date-time */
+            projectedAt: string;
+        };
+        OperationWorkOrderProgress: {
+            /** Format: uuid */
+            workOrderId: string;
+            orderNumber: string;
+            title: string;
+            plannedCycles: number | null;
+            plannedTons: number | null;
+            /** Format: int64 */
+            effectiveCompletedCycles: number;
+            /** Format: int64 */
+            anomalyCycles: number;
+            completionRatePercent: number | null;
+            actualTons: number | null;
+            /** Format: int64 */
+            knownTonsCycles: number;
+            /** Format: int64 */
+            unknownTonsCycles: number;
+        };
+        OperationVehicleUtilization: {
+            /** Format: uuid */
+            vehicleId: string;
+            vehicleCode: string;
+            vehicleName: string;
+            /**
+             * Format: int64
+             * @description 车辆参与作业的班次去重后实际开放总秒数；开放中班次统计至查询时刻。
+             */
+            shiftOpenSeconds: number;
+            /** Format: int64 */
+            activeSeconds: number;
+            utilizationRatePercent: number | null;
+            /** Format: int64 */
+            effectiveCycles: number;
+            /** Format: int64 */
+            effectiveCompletedCycles: number;
+            /** Format: int64 */
+            anomalyCycles: number;
+            actualTons: number | null;
+            /** Format: int64 */
+            unknownTonsCycles: number;
+        };
+        OperationDriverWorkload: {
+            /** Format: uuid */
+            driverPersonId: string | null;
+            driverName: string | null;
+            /** Format: int64 */
+            effectiveCycles: number;
+            /** Format: int64 */
+            effectiveCompletedCycles: number;
+            /** Format: int64 */
+            anomalyCycles: number;
+            /** Format: int64 */
+            activeSeconds: number;
+            actualTons: number | null;
+            /** Format: int64 */
+            unknownTonsCycles: number;
+        };
+        OperationSummaryResponse: {
+            /** Format: uuid */
+            siteId: string;
+            /** Format: date */
+            fromDate: string;
+            /** Format: date */
+            toDate: string;
+            workOrderCount: number;
+            /** Format: int64 */
+            plannedCycles: number | null;
+            /** Format: int64 */
+            effectiveCompletedCycles: number;
+            /** Format: int64 */
+            anomalyCycles: number;
+            /** @description 窗口内任一作业单计划趟数未知时为 null。 */
+            completionRatePercent: number | null;
+            plannedTons: number | null;
+            /** @description 全部有效完成趟次吨位未知时为 null；至少一趟已知零吨时可为 0。 */
+            actualTons: number | null;
+            /** Format: int64 */
+            knownTonsCycles: number;
+            /** Format: int64 */
+            unknownTonsCycles: number;
+            distanceMeters: number | null;
+            /** Format: int64 */
+            totalCycleSeconds: number;
+            averageCycleSeconds: number | null;
+            averageLoadingSeconds: number | null;
+            averageHaulingSeconds: number | null;
+            averageUnloadingSeconds: number | null;
+            breakdownsTruncated: boolean;
+            workOrders: components["schemas"]["OperationWorkOrderProgress"][];
+            vehicles: components["schemas"]["OperationVehicleUtilization"][];
+            drivers: components["schemas"]["OperationDriverWorkload"][];
+        };
         ApiError: {
             code: string;
             message: string;
@@ -4696,6 +5679,15 @@ export interface components {
         };
         /** @description 空间事件只读查询或最小权限重放登记连接不可用，错误码前缀为 MINE-SPATIAL-*-503。 */
         SpatialRuntimeUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 运营记录或统计关系化查询失败，错误码 MINE-OPERATION-503-001。 */
+        OperationQueryUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -9375,6 +10367,1014 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             503: components["responses"]["LocationRuntimeUnavailable"];
+        };
+    };
+    listMineShiftDefinitions: {
+        parameters: {
+            query?: {
+                status?: "ACTIVE" | "ARCHIVED";
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 班次模板列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftDefinitionResponse"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineShiftDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description 班次模板已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftDefinitionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineShiftDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 班次模板详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftDefinitionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    updateMineShiftDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的班次模板。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftDefinitionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    archiveMineShiftDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已归档班次模板。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftDefinitionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineShiftInstances: {
+        parameters: {
+            query: {
+                fromDate: string;
+                toDate: string;
+                status?: "PLANNED" | "OPEN" | "CLOSED" | "CANCELLED";
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 班次实例列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftInstanceResponse"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineShiftInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftInstanceRequest"];
+            };
+        };
+        responses: {
+            /** @description 计划班次已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftInstanceResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineShiftInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                shiftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 班次实例详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftInstanceResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    openMineShiftInstance: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                shiftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次开启结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftInstanceResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    closeMineShiftInstance: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                shiftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次关账结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftInstanceResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelMineShiftInstance: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                shiftId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShiftCancellationRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次取消结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShiftInstanceResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listMineWorkOrders: {
+        parameters: {
+            query?: {
+                shiftInstanceId?: string;
+                status?: "DRAFT" | "RELEASED" | "RUNNING" | "PAUSED" | "COMPLETED" | "CANCELLED" | "ABORTED";
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 运输作业单列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description 作业单草稿已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 作业单、冻结快照和全部分配。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    updateMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的作业单草稿。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    assignMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderAssignmentRequest"];
+            };
+        };
+        responses: {
+            /** @description 调度分配已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    releaseMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次发布结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    startMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次启动结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    pauseMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次暂停结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    resumeMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次恢复结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    completeMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次完成结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderTerminalActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次取消结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    abortMineWorkOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                workOrderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderTerminalActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 首次异常终止结果或冻结幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkOrderResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listMineOperationCandidates: {
+        parameters: {
+            query?: {
+                status?: "PENDING" | "RESOLVED" | "IGNORED" | "CONVERTED";
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 运营候选列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationCandidateResponse"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    resolveMineOperationCandidate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationCandidateResolutionRequest"];
+            };
+        };
+        responses: {
+            /** @description 候选处置结果或相同请求的幂等重放。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationCandidateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listMineOperationRecords: {
+        parameters: {
+            query: {
+                fromDate: string;
+                toDate: string;
+                watermark?: number;
+                cursor?: string;
+                shiftInstanceId?: string;
+                workOrderId?: string;
+                vehicleId?: string;
+                driverPersonId?: string;
+                recordStatus?: "COMPLETED" | "ABORTED";
+                pageSize?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 固定业务水位的最新有效执行记录页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationRecordPageResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            503: components["responses"]["OperationQueryUnavailable"];
+        };
+    };
+    createMineOperationRecord: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已补录的执行事实。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationRecordResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineOperationRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                recordId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 完整执行记录证据链。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationRecordResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+        };
+    };
+    correctMineOperationRecord: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                recordId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OperationCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description 修正后的当前有效投影和完整历史。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationRecordResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineOperationSummary: {
+        parameters: {
+            query: {
+                fromDate: string;
+                toDate: string;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 生产计划、有效产量、阶段时长、车辆利用率和司机作业量。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationSummaryResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["MineResourceNotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            503: components["responses"]["OperationQueryUnavailable"];
         };
     };
 }

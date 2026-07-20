@@ -391,10 +391,34 @@ declare namespace App {
           | 'mineLocationTags'
           | 'mineBindings'
           | 'mineLocation'
-          | 'mineSpatial',
+          | 'mineSpatial'
+          | 'mineOperations',
           string
         >;
         context: Record<'scopeRevoked' | 'invalidSelection' | 'loadFailed', string>;
+        production: {
+          title: string;
+          subtitle: string;
+          readOnly: string;
+          tab: Record<'overview' | 'shifts' | 'workOrders' | 'candidates' | 'records', string>;
+          context: Record<'site' | 'selectSite' | 'updating' | 'notUpdated' | 'justUpdated' | 'updatedMinutes', string>;
+          filter: Record<'businessDate', string>;
+          common: Record<'status' | 'unknown' | 'cycles' | 'tons' | 'tonsUnknown' | 'duration' | 'isoTime', string>;
+          metric: Record<'progress' | 'cycles' | 'output' | 'plannedTons' | 'unknownTons' | 'cycleTime' | 'stageTime' | 'anomalies' | 'workOrders', string>;
+          overview: Record<'vehicleUtilization' | 'utilization' | 'driverWorkload' | 'effectiveCycles', string>;
+          shift: Record<'businessDate' | 'name' | 'window' | 'templateTitle' | 'templateEmpty' | 'instanceTitle' | 'createTitle' | 'definition' | 'definitionPlaceholder', string>;
+          workOrder: Record<'number' | 'title' | 'plan' | 'assignment' | 'assignmentCount' | 'frozenVersion' | 'notFrozen' | 'frozenSummary' | 'listTitle' | 'createTitle' | 'shift' | 'shiftPlaceholder' | 'shiftRequiredHint' | 'plannedStart' | 'plannedEnd' | 'plannedCycles' | 'plannedTons' | 'priority', string>;
+          assignment: Record<'title' | 'qualificationHint' | 'vehicle' | 'vehiclePlaceholder' | 'driver' | 'driverPlaceholder' | 'validFrom' | 'validTo' | 'reason' | 'reasonPlaceholder', string>;
+          candidate: Record<'title' | 'type' | 'reason' | 'occurredAt' | 'empty' | 'emptyHint' | 'manualIgnoreReason', string>;
+          record: Record<'title' | 'sequence' | 'order' | 'vehicle' | 'driver' | 'completedAt' | 'duration' | 'tons' | 'detailTitle' | 'currentProjection' | 'status' | 'correctionVersion' | 'frozenEvidence' | 'frozenRoute' | 'contentHash' | 'frozenLoad' | 'frozenUnload' | 'evidence' | 'started' | 'loaded' | 'unloading' | 'finished' | 'corrections' | 'noCorrections', string>;
+          action: Record<'openShift' | 'closeShift' | 'release' | 'start' | 'pause' | 'resume' | 'complete' | 'createShift' | 'createWorkOrder' | 'assign' | 'ignoreCandidate' | 'viewEvidence' | 'retry' | 'loadMore', string>;
+          confirm: Record<'closeShiftTitle' | 'closeShiftImpact' | 'closeShift' | 'completeTitle' | 'completeImpact' | 'ignoreCandidateTitle' | 'ignoreCandidateImpact', string>;
+          message: Record<'shiftCreated' | 'shiftOpened' | 'shiftClosed' | 'workOrderCreated' | 'assignmentCreated' | 'workOrderReleased' | 'start' | 'pause' | 'resume' | 'complete' | 'candidateIgnored', string>;
+          validation: Record<'frozenVersions' | 'shiftRequired' | 'workOrderRequired' | 'assignmentRequired', string>;
+          error: Record<'title' | 'context' | 'dataUnavailable' | 'catalog' | 'recordDetail' | 'actionFailed', string>;
+          release: Record<'title' | 'immutableTitle' | 'immutableImpact' | 'routeVersion' | 'loadVersion' | 'unloadVersion', string>;
+          status: Record<'planned' | 'open' | 'closed' | 'cancelled' | 'draft' | 'released' | 'running' | 'paused' | 'completed' | 'aborted' | 'pending' | 'resolved' | 'ignored' | 'converted', string>;
+        };
         assets: {
           context: Record<
             "label" | "placeholder" | "refresh" | "empty",

@@ -846,8 +846,8 @@ class DatabaseMigrationIT {
                 "mine-binding-management",
                 "mine-location-monitor",
                 "mine-location-tag-management",
-                "mine-operation-management",
                 "mine-person-management",
+                "mine-production-operations",
                 "mine-site-archive",
                 "mine-spatial-management",
                 "mine-vehicle-management",
@@ -1011,7 +1011,7 @@ class DatabaseMigrationIT {
                 "mine-binding-management",
                 "mine-location-monitor",
                 "mine-spatial-management",
-                "mine-operation-management"
+                "mine-production-operations"
         );
         assertThat(jdbcTemplate.queryForMap("""
                 SELECT name, path, component_key, permission, i18n_key, protected_node
@@ -1025,7 +1025,7 @@ class DatabaseMigrationIT {
         assertThat(jdbcTemplate.queryForMap("""
                 SELECT name, path, component_key, permission, i18n_key, protected_node
                 FROM sys_menu
-                WHERE component_key = 'mine-operation-management'
+                WHERE component_key = 'mine-production-operations'
                 """)).containsEntry("name", "生产运营")
                 .containsEntry("path", "/mine/operations")
                 .containsEntry("permission", "mine:operation:view")
