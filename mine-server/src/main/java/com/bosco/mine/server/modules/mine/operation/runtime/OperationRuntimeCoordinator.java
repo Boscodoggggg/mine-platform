@@ -11,6 +11,7 @@ import com.bosco.mine.server.modules.mine.operation.domain.HaulCycleStateMachine
 import com.bosco.mine.server.modules.mine.operation.domain.HaulCycleStateMachine.Outcome;
 import com.bosco.mine.server.modules.mine.operation.domain.HaulCycleStateMachine.SpatialSignal;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -39,6 +40,7 @@ public class OperationRuntimeCoordinator {
     private final OperationRuntimeRepository repository;
     private final OperationEventQueue eventQueue;
     private final OperationAuditService auditService;
+    private final OperationMetrics metrics;
     private final HaulCycleStateMachine stateMachine = new HaulCycleStateMachine();
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
@@ -49,15 +51,34 @@ public class OperationRuntimeCoordinator {
      * @param repository 运输运行仓储
      * @param eventQueue 持久空间事件队列
      * @param auditService 不可变操作审计服务
+     * @param metrics 生产运营运行指标
+     */
+    @Autowired
+    public OperationRuntimeCoordinator(
+            OperationRuntimeRepository repository,
+            OperationEventQueue eventQueue,
+            OperationAuditService auditService,
+            OperationMetrics metrics
+    ) {
+        this.repository = Objects.requireNonNull(repository, "运输运行仓储不能为空");
+        this.eventQueue = Objects.requireNonNull(eventQueue, "空间事件队列不能为空");
+        this.auditService = Objects.requireNonNull(auditService, "运营审计服务不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "生产运营指标不能为空");
+    }
+
+    /**
+     * 创建供独立集成测试和事务恢复验证使用的兼容协调器。
+     *
+     * @param repository 运输运行仓储
+     * @param eventQueue 持久空间事件队列
+     * @param auditService 不可变操作审计服务
      */
     public OperationRuntimeCoordinator(
             OperationRuntimeRepository repository,
             OperationEventQueue eventQueue,
             OperationAuditService auditService
     ) {
-        this.repository = Objects.requireNonNull(repository, "运输运行仓储不能为空");
-        this.eventQueue = Objects.requireNonNull(eventQueue, "空间事件队列不能为空");
-        this.auditService = Objects.requireNonNull(auditService, "运营审计服务不能为空");
+        this(repository, eventQueue, auditService, OperationMetrics.noop());
     }
 
     /**
@@ -155,6 +176,8 @@ public class OperationRuntimeCoordinator {
                             "RUNTIME_TRANSITIONED", event, match, next, null)));
             auditTransition(match, runtime.state(), next, event.eventId());
             completeEvent(event);
+            metrics.stage(OperationMetrics.Stage.AUTOMATION,
+                    OperationMetrics.Result.SUCCESS, OperationMetrics.Reason.NONE);
             return ProcessResult.TRANSITIONED;
         }
 
@@ -179,6 +202,10 @@ public class OperationRuntimeCoordinator {
                         "RECORD_COMPLETED", event, match, reset, record.id())));
         auditCompleted(match, record, event.eventId());
         completeEvent(event);
+        metrics.stage(OperationMetrics.Stage.AUTOMATION,
+                OperationMetrics.Result.SUCCESS, OperationMetrics.Reason.NONE);
+        metrics.record(OperationMetrics.WorkType.HAULAGE,
+                OperationMetrics.Result.SUCCESS);
         return ProcessResult.RECORD_COMPLETED;
     }
 
@@ -230,6 +257,7 @@ public class OperationRuntimeCoordinator {
                     canonicalJson(candidateOutboxPayload(
                             candidateId, event, candidateType, reasonCode, match)));
             auditCandidate(candidateId, event, candidateType, reasonCode, match);
+            metrics.candidate(candidateType, reasonCode);
         }
         completeEvent(event);
         return ProcessResult.CANDIDATE;

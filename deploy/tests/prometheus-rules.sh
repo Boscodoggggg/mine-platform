@@ -31,9 +31,35 @@ required_metrics=(
   mine_telemetry_spatial_replay_oldest_active_age_seconds
 )
 
+operation_alerts=(
+  MineOperationQueueBacklogHigh
+  MineOperationTooLateRateHigh
+  MineOperationStateAdvanceFailures
+  MineOperationCandidateSpike
+  MineOperationOutboxDead
+  MineOperationShiftCloseLeftovers
+)
+operation_metrics=(
+  mine_server_operation_queue_backlog
+  mine_server_operation_queue_events_total
+  mine_server_operation_stage_events_total
+  mine_server_operation_candidates_total
+  mine_server_operation_outbox_dead
+  mine_server_operation_shift_close_leftovers
+)
+
 for alert in "${required_alerts[@]}"; do
   grep -Fq "alert: ${alert}" "${RULES_FILE}" \
     || { echo "FAIL: 缺少定位告警 ${alert}" >&2; exit 1; }
+done
+
+for alert in "${operation_alerts[@]}"; do
+  grep -Fq "alert: ${alert}" "${RULES_FILE}" \
+    || { echo "FAIL: 缺少生产运营告警 ${alert}" >&2; exit 1; }
+done
+for metric in "${operation_metrics[@]}"; do
+  grep -Fq "${metric}" "${RULES_FILE}" \
+    || { echo "FAIL: 生产运营告警未引用指标 ${metric}" >&2; exit 1; }
 done
 for metric in "${required_metrics[@]}"; do
   grep -Fq "${metric}" "${RULES_FILE}" \
@@ -48,6 +74,17 @@ location_rules="$(awk '
 if grep -Eq '(^|[,{[:space:]])(site|device|tag|person|vehicle|coordinate|exception|error_text)=' \
     <<<"${location_rules}"; then
   echo "FAIL: 定位告警规则不得使用高基数业务身份或异常文本标签" >&2
+  exit 1
+fi
+
+operation_rules="$(awk '
+  /^  - name: mine-operation-runtime$/ { capture=1 }
+  capture && /^  - name:/ && $0 !~ /mine-operation-runtime/ { capture=0 }
+  capture { print }
+' "${RULES_FILE}")"
+if grep -Eq '(^|[,{[:space:]])(organization|site|workOrder|vehicle|driver|person|event|exception|error_text)=' \
+    <<<"${operation_rules}"; then
+  echo "FAIL: 生产运营告警规则不得使用业务身份或异常文本标签" >&2
   exit 1
 fi
 
@@ -67,4 +104,4 @@ else
     test rules platform.test.yml
 fi
 
-echo "PASS: 定位与空间低基数告警规则和 PromQL 行为测试通过"
+echo "PASS: 定位、空间与生产运营低基数告警规则和 PromQL 行为测试通过"

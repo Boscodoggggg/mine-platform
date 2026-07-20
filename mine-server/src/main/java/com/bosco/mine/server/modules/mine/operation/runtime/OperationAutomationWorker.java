@@ -2,6 +2,7 @@ package com.bosco.mine.server.modules.mine.operation.runtime;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -19,9 +20,28 @@ public class OperationAutomationWorker {
 
     private final OperationEventQueue eventQueue;
     private final OperationRuntimeCoordinator coordinator;
+    private final OperationMetrics metrics;
 
     /**
      * 创建运输循环自动化工作器。
+     *
+     * @param eventQueue 持久空间事件队列
+     * @param coordinator 运输运行事务协调器
+     * @param metrics 生产运营运行指标
+     */
+    @Autowired
+    public OperationAutomationWorker(
+            OperationEventQueue eventQueue,
+            OperationRuntimeCoordinator coordinator,
+            OperationMetrics metrics
+    ) {
+        this.eventQueue = Objects.requireNonNull(eventQueue, "空间事件队列不能为空");
+        this.coordinator = Objects.requireNonNull(coordinator, "运输运行协调器不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "生产运营指标不能为空");
+    }
+
+    /**
+     * 创建供独立集成测试和恢复验证使用的兼容工作器。
      *
      * @param eventQueue 持久空间事件队列
      * @param coordinator 运输运行事务协调器
@@ -30,8 +50,7 @@ public class OperationAutomationWorker {
             OperationEventQueue eventQueue,
             OperationRuntimeCoordinator coordinator
     ) {
-        this.eventQueue = Objects.requireNonNull(eventQueue, "空间事件队列不能为空");
-        this.coordinator = Objects.requireNonNull(coordinator, "运输运行协调器不能为空");
+        this(eventQueue, coordinator, OperationMetrics.noop());
     }
 
     /**
@@ -78,20 +97,46 @@ public class OperationAutomationWorker {
         }
         OperationEventQueue.ClaimedEvent event = claimed.orElseThrow();
         try {
-            coordinator.process(event, stepTimeout);
+            OperationRuntimeCoordinator.ProcessResult result =
+                    coordinator.process(event, stepTimeout);
+            if (event.tooLate()) {
+                metrics.queue(OperationMetrics.Result.SKIPPED,
+                        OperationMetrics.Reason.TOO_LATE);
+            } else if (result == OperationRuntimeCoordinator.ProcessResult.DUPLICATE) {
+                metrics.queue(OperationMetrics.Result.SKIPPED,
+                        OperationMetrics.Reason.DUPLICATE);
+            } else {
+                metrics.queue(OperationMetrics.Result.SUCCESS,
+                        OperationMetrics.Reason.NONE);
+            }
         } catch (OperationRuntimeCoordinator.LeaseLostException exception) {
+            metrics.stage(OperationMetrics.Stage.AUTOMATION,
+                    OperationMetrics.Result.FAILURE,
+                    OperationMetrics.Reason.LEASE_LOST);
             LOGGER.warn("运营空间事件处理租约已丢失，旧执行器停止提交: eventId={}",
                     event.eventId());
         } catch (RuntimeException exception) {
             OperationEventQueue.FailureResult result = eventQueue.fail(event, exception, policy);
             if (result == OperationEventQueue.FailureResult.DEAD) {
+                recordFailure(OperationMetrics.Result.DEAD);
                 LOGGER.error("运营空间事件超过处理上限并进入 DEAD: eventId={}",
                         event.eventId(), exception);
             } else if (result == OperationEventQueue.FailureResult.RETRY_SCHEDULED) {
+                recordFailure(OperationMetrics.Result.FAILURE);
                 LOGGER.warn("运营空间事件处理失败并已退避: eventId={}",
                         event.eventId(), exception);
+            } else {
+                metrics.stage(OperationMetrics.Stage.AUTOMATION,
+                        OperationMetrics.Result.FAILURE,
+                        OperationMetrics.Reason.LEASE_LOST);
             }
         }
         return true;
+    }
+
+    private void recordFailure(OperationMetrics.Result result) {
+        metrics.queue(result, OperationMetrics.Reason.STATE_ADVANCE);
+        metrics.stage(OperationMetrics.Stage.AUTOMATION, result,
+                OperationMetrics.Reason.STATE_ADVANCE);
     }
 }

@@ -292,3 +292,138 @@ tests:
       - eval_time: 10m
         alertname: MineSpatialReplayTimeout
         exp_alerts: []
+
+  - name: 运营事件队列持续积压应在等待期后告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_queue_backlog{job="mine-server"}'
+        values: '1500+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineOperationQueueBacklogHigh
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: MineOperationQueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: warning
+            exp_annotations:
+              summary: 生产运营空间事件队列持续积压
+              description: 生产运营待处理或待重试空间事件已连续 5 分钟超过 1000 条，请检查自动化工作器、数据库锁竞争和事件时间水位。
+
+  - name: 运营事件队列等于阈值时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_queue_backlog{job="mine-server"}'
+        values: '1000+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineOperationQueueBacklogHigh
+        exp_alerts: []
+
+  - name: 运营过晚事件在足量样本下升高应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_queue_events_total{job="mine-server", result="success", reason="none"}'
+        values: '0+8x25'
+      - series: 'mine_server_operation_queue_events_total{job="mine-server", result="skipped", reason="too_late"}'
+        values: '0+2x25'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: MineOperationTooLateRateHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MineOperationTooLateRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 生产运营过晚空间事件比例升高
+              description: 最近 10 分钟运营自动化样本不少于 100 条且过晚事件比例持续超过 5%，请检查设备时钟、网络延迟和允许乱序窗口。
+
+  - name: 运营过晚事件样本不足时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_queue_events_total{job="mine-server", result="success", reason="none"}'
+        values: '0+8x9'
+      - series: 'mine_server_operation_queue_events_total{job="mine-server", result="skipped", reason="too_late"}'
+        values: '0+2x9'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MineOperationTooLateRateHigh
+        exp_alerts: []
+
+  - name: 运营状态推进失败应在等待期后告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_stage_events_total{job="mine-server", stage="automation", result="failure", reason="state_advance"}'
+        values: '0+1x10'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: MineOperationStateAdvanceFailures
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: MineOperationStateAdvanceFailures
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: 生产运营状态推进失败
+              description: 最近 10 分钟运输循环状态推进发生失败或死信，请检查持久队列租约、运行快照和数据库事务。
+
+  - name: 运营候选持续突增应在等待期后告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_candidates_total{job="mine-server", candidateType="unexpected_event", reason="unexpected_event"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineOperationCandidateSpike
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: MineOperationCandidateSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 生产运营待确认候选持续突增
+              description: 最近 10 分钟新增待确认候选不少于 20 条，请检查班次、作业分配、区域版本、定位顺序和步骤超时配置。
+
+  - name: 运营Outbox死信应在等待期后告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_outbox_dead{job="mine-server"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: MineOperationOutboxDead
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: MineOperationOutboxDead
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: critical
+            exp_annotations:
+              summary: 生产运营实时事件出现死信
+              description: 运营 Outbox 存在 DEAD 记录，实时变更已停止自动重试；数据库运营事实不受影响，必须检查 RabbitMQ 和发布确认后恢复。
+
+  - name: 班次关账遗留持续存在应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_shift_close_leftovers{job="mine-server"}'
+        values: '2+0x20'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: MineOperationShiftCloseLeftovers
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MineOperationShiftCloseLeftovers
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: warning
+            exp_annotations:
+              summary: 到期班次存在关账遗留状态
+              description: 已超过计划结束时间的开放班次仍有未终结作业或运输循环，请在生产运营工作台完成处置后关账。

@@ -63,6 +63,15 @@ jq -e '.services["mine-server"].environment.MINE_ALARM_RABBIT_ENABLED == "true"
   || { echo "FAIL: mine-server 必须使用独立 secret 启用告警消息消费" >&2; exit 1; }
 
 jq -e '.services["mine-server"].environment.MINE_OPERATION_RUNTIME_RABBIT_ENABLED == "true"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_AUTO_STARTUP == "true"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_PREFETCH == "50"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_ALLOWED_LATENESS == "30s"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_IDLE_FLUSH == "5s"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_LEASE_DURATION == "30s"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_MAX_ATTEMPTS == "8"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_AUTOMATION_INTERVAL == "250ms"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_STEP_TIMEOUT == "2h"
+  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_DRAIN_LIMIT == "100"
   and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_ACCOUNT_USERNAME == "mine-server-operation"
   and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_ACCOUNT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_operation_password"
   and (.services["mine-server"].secrets | any(.source == "rabbitmq_server_operation_password"))
@@ -70,11 +79,23 @@ jq -e '.services["mine-server"].environment.MINE_OPERATION_RUNTIME_RABBIT_ENABLE
   || { echo "FAIL: mine-server 必须使用独立 secret 启用运营空间事件持久消费" >&2; exit 1; }
 
 jq -e '.services["mine-server"].environment.MINE_OPERATION_OUTBOX_ENABLED == "true"
+  and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_CONFIRM_TIMEOUT == "5s"
+  and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_LEASE_DURATION == "30s"
+  and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_MAX_ATTEMPTS == "8"
+  and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_RECOVERY_LIMIT == "500"
+  and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_RECOVERY_INTERVAL == "1s"
   and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_RABBIT_USERNAME == "mine-server-operation-outbox"
   and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_RABBIT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_operation_outbox_password"
   and (.services["mine-server"].secrets | any(.source == "rabbitmq_server_operation_outbox_password"))
   and (.services.rabbitmq.secrets | any(.source == "rabbitmq_server_operation_outbox_password"))' "${rendered}" >/dev/null \
   || { echo "FAIL: mine-server 必须使用独立最小权限账号启用运营事件可靠发布" >&2; exit 1; }
+
+grep -Fq '# 关闭后空间事件仍会保留在持久队列，但不会自动形成运营记录。' \
+  "${ROOT_DIR}/mine-server/src/main/resources/application.yml" \
+  || { echo "FAIL: 应用配置必须说明停用运营消费者的业务影响" >&2; exit 1; }
+grep -Fq '# 关闭后运营事实仍会提交，但实时变更将留在 Outbox 等待恢复。' \
+  "${ROOT_DIR}/mine-server/src/main/resources/application.yml" \
+  || { echo "FAIL: 应用配置必须说明停用运营 Outbox 的业务影响" >&2; exit 1; }
 
 jq -e '.services["mine-server"].environment.MINE_SPATIAL_REPLAY_ENABLED == "true"
   and .services["mine-server"].environment.MINE_SPATIAL_REPLAY_USERNAME == "mine_ts_replay"
