@@ -95,6 +95,7 @@ class DatabaseMigrationIT {
             "mine_shift_definition",
             "mine_shift_instance",
             "mine_work_order",
+            "mine_work_order_status_history",
             "mine_work_order_assignment",
             "mine_operation_spatial_event_queue",
             "mine_operation_runtime_state",
@@ -170,6 +171,23 @@ class DatabaseMigrationIT {
         assertThat(constraintColumns("uk_mine_operation_action_idempotency_key"))
                 .containsExactly(
                         "organization_id", "site_id", "operator_id", "idempotency_key");
+    }
+
+    @Test
+    void 作业单状态历史必须具备发生时区间约束和完整中文注释() {
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT obj_description('mine_work_order_status_history'::regclass, 'pg_class')
+                """, String.class)).contains("状态历史");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid = 'mine_work_order_status_history'::regclass
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_mine_work_order_status_history_version"))
+                .containsExactly("work_order_id", "status_version");
     }
 
     @Test

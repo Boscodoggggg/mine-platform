@@ -5,12 +5,15 @@ import com.bosco.mine.messaging.MessageType;
 import com.bosco.mine.messaging.realtime.RealtimeSpatialEvent;
 import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.server.modules.mine.operation.runtime.OperationEventQueue;
+import com.bosco.mine.server.modules.mine.operation.runtime.OperationAutomationWorker;
 import com.bosco.mine.server.modules.mine.operation.runtime.OperationRuntimeConfiguration;
 import com.rabbitmq.client.Channel;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.aopalliance.intercept.MethodInvocation;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.ImmediateRequeueAmqpException;
 import org.springframework.amqp.core.Message;
@@ -18,6 +21,7 @@ import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.nio.file.Files;
@@ -35,6 +39,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.timeout;
 
 /**
  * 校验运营空间事件消费者的契约白名单、手工确认和独立持久队列配置。
@@ -161,6 +166,38 @@ class OperationSpatialEventConsumerTest {
         factory.destroy();
     }
 
+    @Test
+    void 持久事件工作器必须由独立单线程按受控批次持续调度() throws Exception {
+        Path password = Files.writeString(
+                tempDirectory.resolve("worker-password"), "operation-secret\n");
+        OperationRuntimeConfiguration.RuntimeProperties properties =
+                new OperationRuntimeConfiguration.RuntimeProperties(
+                        true, false, "rabbitmq", 5672, 23,
+                        3, Duration.ofSeconds(1), Duration.ofSeconds(4),
+                        Duration.ZERO, Duration.ofSeconds(5),
+                        Duration.ofSeconds(30), 8,
+                        Duration.ofSeconds(1), Duration.ofMinutes(1),
+                        Duration.ofMillis(20), Duration.ofMinutes(45), 17,
+                        new OperationRuntimeConfiguration.Account(
+                                "mine-server-operation", password));
+        OperationRuntimeConfiguration configuration = new OperationRuntimeConfiguration();
+        OperationAutomationWorker worker = mock(OperationAutomationWorker.class);
+        ThreadPoolTaskScheduler scheduler = configuration.operationAutomationTaskScheduler();
+        ApplicationRunner runner = configuration.operationAutomationRunner(
+                scheduler, worker, properties);
+
+        scheduler.initialize();
+        try {
+            runner.run(mock(ApplicationArguments.class));
+            verify(worker, timeout(1_000).atLeastOnce()).drainBounded(
+                    properties.claimPolicy(), Duration.ofMinutes(45), 17);
+            assertThat(scheduler.getScheduledThreadPoolExecutor().getCorePoolSize())
+                    .isEqualTo(1);
+        } finally {
+            scheduler.shutdown();
+        }
+    }
+
     private OperationRuntimeConfiguration.RuntimeProperties properties(
             Path password,
             int ingressRetryAttempts,
@@ -173,6 +210,7 @@ class OperationSpatialEventConsumerTest {
                 Duration.ofSeconds(30), Duration.ofSeconds(5),
                 Duration.ofSeconds(30), 8,
                 Duration.ofSeconds(1), Duration.ofMinutes(1),
+                Duration.ofMillis(250), Duration.ofHours(2), 100,
                 new OperationRuntimeConfiguration.Account(
                         "mine-server-operation", password));
     }

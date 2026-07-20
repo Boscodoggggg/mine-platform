@@ -3,17 +3,21 @@ package com.bosco.mine.server.modules.mine.operation.runtime;
 import com.bosco.mine.messaging.topology.MineTopology;
 import com.bosco.mine.server.modules.mine.operation.messaging.OperationSpatialEventConsumer;
 import org.aopalliance.intercept.MethodInterceptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.amqp.rabbit.retry.ImmediateRequeueMessageRecoverer;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,6 +35,9 @@ import java.time.Duration;
         havingValue = "true"
 )
 public class OperationRuntimeConfiguration {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(
+            OperationRuntimeConfiguration.class);
 
     /** 创建运营空间事件只读连接，密码只从只读密钥文件加载。 */
     @Bean(name = "operationConnectionFactory", destroyMethod = "destroy")
@@ -109,6 +116,45 @@ public class OperationRuntimeConfiguration {
         return container;
     }
 
+    /** 创建运营事件持久处理专用单线程调度器。 */
+    @Bean(name = "operationAutomationTaskScheduler", destroyMethod = "shutdown")
+    public ThreadPoolTaskScheduler operationAutomationTaskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(1);
+        scheduler.setThreadNamePrefix("operation-automation-");
+        scheduler.setRemoveOnCancelPolicy(true);
+        return scheduler;
+    }
+
+    /**
+     * 服务启动后持续有界排空持久事件；单轮异常被隔离，避免调度任务永久停止。
+     */
+    @Bean
+    public ApplicationRunner operationAutomationRunner(
+            @Qualifier("operationAutomationTaskScheduler") ThreadPoolTaskScheduler scheduler,
+            OperationAutomationWorker worker,
+            RuntimeProperties properties
+    ) {
+        Duration interval = properties.resolvedAutomationInterval();
+        Duration stepTimeout = properties.resolvedStepTimeout();
+        int drainLimit = properties.resolvedDrainLimit();
+        if (interval.compareTo(Duration.ofMillis(10)) < 0
+                || interval.compareTo(Duration.ofMinutes(1)) > 0
+                || stepTimeout.isZero() || stepTimeout.isNegative()
+                || stepTimeout.compareTo(Duration.ofDays(7)) > 0
+                || drainLimit < 1 || drainLimit > 10_000) {
+            throw new IllegalArgumentException("运营自动处理调度配置不合法");
+        }
+        OperationEventQueue.ClaimPolicy policy = properties.claimPolicy();
+        return arguments -> scheduler.scheduleWithFixedDelay(() -> {
+            try {
+                worker.drainBounded(policy, stepTimeout, drainLimit);
+            } catch (RuntimeException exception) {
+                LOGGER.error("运营持久事件单轮排空失败，下轮将继续恢复", exception);
+            }
+        }, interval);
+    }
+
     private String readSecret(Path path) {
         try {
             String value = Files.readString(path).strip();
@@ -138,6 +184,9 @@ public class OperationRuntimeConfiguration {
      * @param maxAttempts 最大处理尝试次数
      * @param retryBaseDelay 首次失败退避
      * @param retryMaxDelay 最大失败退避
+     * @param automationInterval 自动处理轮询间隔
+     * @param stepTimeout 单个运输步骤最大持续时间
+     * @param drainLimit 单轮最大处理事件数
      * @param account 运营只读消费账号
      */
     @ConfigurationProperties("mine.operation-runtime")
@@ -156,6 +205,9 @@ public class OperationRuntimeConfiguration {
             Integer maxAttempts,
             Duration retryBaseDelay,
             Duration retryMaxDelay,
+            Duration automationInterval,
+            Duration stepTimeout,
+            Integer drainLimit,
             Account account
     ) {
         /** 返回 RabbitMQ 主机。 */
@@ -204,6 +256,21 @@ public class OperationRuntimeConfiguration {
                     maxAttempts == null ? 8 : maxAttempts,
                     retryBaseDelay == null ? Duration.ofSeconds(1) : retryBaseDelay,
                     retryMaxDelay == null ? Duration.ofMinutes(1) : retryMaxDelay);
+        }
+
+        /** 返回自动处理轮询间隔。 */
+        public Duration resolvedAutomationInterval() {
+            return automationInterval == null ? Duration.ofMillis(250) : automationInterval;
+        }
+
+        /** 返回单个运输步骤最大持续时间。 */
+        public Duration resolvedStepTimeout() {
+            return stepTimeout == null ? Duration.ofHours(2) : stepTimeout;
+        }
+
+        /** 返回单轮最大处理事件数。 */
+        public int resolvedDrainLimit() {
+            return drainLimit == null ? 100 : drainLimit;
         }
     }
 
