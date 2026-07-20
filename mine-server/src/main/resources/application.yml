@@ -10,6 +10,8 @@ spring:
     multipart:
       max-file-size: ${MINE_SCENE_MULTIPART_MAX_FILE_SIZE:2GB}
       max-request-size: ${MINE_SCENE_MULTIPART_MAX_REQUEST_SIZE:2050MB}
+      file-size-threshold: ${MINE_SCENE_MULTIPART_FILE_SIZE_THRESHOLD:0B}
+      location: ${MINE_SCENE_MULTIPART_LOCATION:/tmp}
 
 server:
   port: ${MINE_SERVER_HTTP_PORT:8080}

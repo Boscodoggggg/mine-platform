@@ -58,6 +58,24 @@ services:
           memory: 256m
     logging: *default-logging
 
+  mine-scene-staging-init:
+    image: ${MINE_JAVA_IMAGE:-eclipse-temurin:21.0.7_6-jre-jammy}
+    restart: "no"
+    user: "0:0"
+    read_only: true
+    command:
+      - /bin/bash
+      - -ec
+      - |
+        mkdir -p /var/lib/mine/scene-upload/multipart /var/lib/mine/scene-upload/workspace
+        chown -R 10001:10001 /var/lib/mine/scene-upload
+        chmod 0700 /var/lib/mine/scene-upload /var/lib/mine/scene-upload/multipart /var/lib/mine/scene-upload/workspace
+    volumes:
+      - scene_upload_workspace:/var/lib/mine/scene-upload
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
   mine-server:
     <<: *java-service
     command:
@@ -140,6 +158,12 @@ services:
       MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
       MINE_OPERATIONS_PROMETHEUS_ENABLED: "true"
       MINE_OPERATIONS_PROMETHEUS_URL: http://prometheus:9090
+      MINE_SCENE_MULTIPART_MAX_FILE_SIZE: 2GB
+      MINE_SCENE_MULTIPART_MAX_REQUEST_SIZE: 2050MB
+      MINE_SCENE_MULTIPART_FILE_SIZE_THRESHOLD: 0B
+      MINE_SCENE_MULTIPART_LOCATION: /var/lib/mine/scene-upload/multipart
+      MINE_SCENE_STORAGE_ROOT: /var/lib/mine/scene-upload/workspace
+      MINE_SCENE_STORAGE_MAX_UPLOAD_BYTES: "2147483648"
       MINE_SCENE_STORAGE_TYPE: s3
       MINE_OBJECT_STORAGE_TYPE: s3
       MINE_OBJECT_STORAGE_S3_ENDPOINT: http://rustfs:9000
@@ -152,6 +176,7 @@ services:
     volumes:
       - ../../mine-server/target:/opt/mine/source:ro
       - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
+      - scene_upload_workspace:/var/lib/mine/scene-upload
     secrets:
       - postgres_password
       - redis_password
@@ -177,6 +202,8 @@ services:
       timescale:
         condition: service_healthy
       timescale-reader-bootstrap:
+        condition: service_completed_successfully
+      mine-scene-staging-init:
         condition: service_completed_successfully
       rustfs:
         condition: service_healthy
@@ -843,6 +870,7 @@ volumes:
   loki_data: {}
   alloy_data: {}
   gateway_configuration_cache: {}
+  scene_upload_workspace: {}
   rustfs_data: {}
 
 secrets:

@@ -14,6 +14,8 @@ docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FI
   >"${rendered}"
 
 nginx_config="${ROOT_DIR}/deploy/config/nginx/nginx.conf"
+node "${ROOT_DIR}/scripts/generate-demo-scene-assets.mjs" --check
+
 grep -Fq "connect-src 'self' wss://\$host" "${nginx_config}" \
   || { echo "FAIL: Web 和三维资源连接必须限制为同源 HTTPS/WSS" >&2; exit 1; }
 grep -Fq "worker-src 'self' blob:" "${nginx_config}" \
@@ -48,13 +50,27 @@ jq -e '.services.rustfs.image | startswith("rustfs/rustfs:1.0.0-beta.10@sha256:"
 
 jq -e '.services.rustfs.environment.RUSTFS_CONSOLE_ENABLE == "false"
   and (.services.rustfs.volumes | any(.source == "rustfs_data" and .target == "/data"))
+  and .services["mine-server"].environment.MINE_SCENE_MULTIPART_MAX_FILE_SIZE == "2GB"
+  and .services["mine-server"].environment.MINE_SCENE_MULTIPART_MAX_REQUEST_SIZE == "2050MB"
+  and .services["mine-server"].environment.MINE_SCENE_MULTIPART_FILE_SIZE_THRESHOLD == "0B"
+  and .services["mine-server"].environment.MINE_SCENE_MULTIPART_LOCATION == "/var/lib/mine/scene-upload/multipart"
+  and .services["mine-server"].environment.MINE_SCENE_STORAGE_ROOT == "/var/lib/mine/scene-upload/workspace"
+  and .services["mine-server"].environment.MINE_SCENE_STORAGE_MAX_UPLOAD_BYTES == "2147483648"
+  and (.services["mine-server"].volumes | any(.source == "scene_upload_workspace" and .target == "/var/lib/mine/scene-upload"))
+  and .services["mine-server"].depends_on["mine-scene-staging-init"].condition == "service_completed_successfully"
+  and .services["mine-scene-staging-init"].user == "0:0"
+  and (.services["mine-scene-staging-init"].volumes | any(.source == "scene_upload_workspace" and .target == "/var/lib/mine/scene-upload"))
   and .services["mine-server"].environment.MINE_SCENE_STORAGE_TYPE == "s3"
   and .services["mine-server"].environment.MINE_OBJECT_STORAGE_TYPE == "s3"
   and .services["mine-server"].environment.MINE_OBJECT_STORAGE_S3_ENDPOINT == "http://rustfs:9000"
   and .services["mine-server"].environment.MINE_OBJECT_STORAGE_S3_INITIALIZE_BUCKET == "true"
   and .services["mine-server"].depends_on.rustfs.condition == "service_healthy"' \
   "${rendered}" >/dev/null \
-  || { echo "FAIL: standalone 必须通过标准 S3 API 使用健康且持久化的 RustFS" >&2; exit 1; }
+  || { echo "FAIL: standalone 必须使用显式上传上限，并通过标准 S3 API 使用健康且持久化的 RustFS" >&2; exit 1; }
+
+grep -Fq 'location: ${MINE_SCENE_MULTIPART_LOCATION:/tmp}' \
+  "${ROOT_DIR}/mine-server/src/main/resources/application.yml" \
+  || { echo "FAIL: Servlet multipart 必须支持独立暂存目录，禁止大文件依赖公共小容量 /tmp" >&2; exit 1; }
 
 jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED == "true"
   and .services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_SERVER_URL == "http://mine-server:8080"

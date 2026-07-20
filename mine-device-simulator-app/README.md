@@ -108,6 +108,21 @@ JSON v1 报文；Topic 必须使用 `mine/v1/{productKey}/{clientId}/up/location
 [矿区定位运行与模拟验收手册](../docs/runbooks/mine-location-runtime.md)。模拟器是开发和自动化验收工具，不替代真实
 UWB 厂商协议、坐标标定、精度、容量、高可用和长稳验证。
 
+## 三维场景联调演示
+
+仓库提供可离线、可复现的自制三维资源
+[`demo-mine-grid.glb`](../deploy/demo/scene/demo-mine-grid.glb)。先按
+[`确定性矿区三维演示资源`](../deploy/demo/scene/README.md)上传、发布并设为矿区默认场景，再用 `CIRCLE` 或
+`POLYLINE` 定位场景持续发送数据，即可验证以下自动化和演示链路：
+
+- 来源坐标经控制面已发布的双坐标模型转换为矿区局部 ENU 坐标；
+- 同一位置增量同时进入三维视口和完全独立的二维画布；
+- MQTT、MQTTS 或 TCP 透明传输保持既有协议边界；
+- 静态 GLB、WebGL 或实时业务图层故障时按图层独立降级。
+
+演示前必须把模板中的 `sourceCoordinateSystemCode` 改为目标矿区已发布坐标快照中的真实编码。该流程只验证平台数据闭环，
+不构成真实设备协议、矿区测绘、坐标标定、GPU 兼容性或现场生产资格证明。
+
 ## 协议边界
 
 模拟器实现 MQTT 和透明 TCP 传输层，适合测试平台连接、鉴权、Topic 路由和自定义 JSON/二进制报文接入。平台已经提供

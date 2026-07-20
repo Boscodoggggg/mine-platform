@@ -91,6 +91,8 @@ export function useEcharts<T extends ECOption>(optionsFactory: () => T, hooks: C
   const { width, height } = useElementSize(domRef, initialSize);
 
   const chart = shallowRef<echarts.ECharts | null>(null);
+  let chartElement: HTMLElement | null = null;
+  let lifecycleVersion = 0;
   const chartOptions: T = optionsFactory();
 
   const {
@@ -113,7 +115,7 @@ export function useEcharts<T extends ECOption>(optionsFactory: () => T, hooks: C
 
   /** is chart rendered */
   function isRendered() {
-    return Boolean(domRef.value && chart.value);
+    return Boolean(domRef.value && chart.value && chartElement === domRef.value);
   }
 
   /**
@@ -145,11 +147,18 @@ export function useEcharts<T extends ECOption>(optionsFactory: () => T, hooks: C
 
   /** render chart */
   async function render() {
-    if (isRendered()) return;
+    const element = domRef.value;
+    if (!element) return;
+    if (chart.value && chartElement === element) return;
+
+    const version = ++lifecycleVersion;
+    await disposeCurrentChart();
+    if (version !== lifecycleVersion || domRef.value !== element || chart.value) return;
 
     const chartTheme = darkMode.value ? 'dark' : 'light';
 
-    chart.value = echarts.init(domRef.value, chartTheme);
+    chart.value = echarts.init(element, chartTheme);
+    chartElement = element;
 
     chart.value?.setOption({ ...chartOptions, backgroundColor: 'transparent' });
 
@@ -163,18 +172,28 @@ export function useEcharts<T extends ECOption>(optionsFactory: () => T, hooks: C
 
   /** destroy chart */
   async function destroy() {
-    if (!chart.value) return;
+    lifecycleVersion += 1;
+    await disposeCurrentChart();
+  }
 
-    await onDestroy?.(chart.value);
-    chart.value?.dispose();
+  async function disposeCurrentChart() {
+    const current = chart.value;
     chart.value = null;
+    chartElement = null;
+    if (!current) return;
+
+    try {
+      await onDestroy?.(current);
+    } finally {
+      current.dispose();
+    }
   }
 
   /** change chart theme */
   async function changeTheme() {
     await destroy();
     await render();
-    await onUpdated?.(chart.value!);
+    if (chart.value) await onUpdated?.(chart.value);
   }
 
   /**
@@ -186,6 +205,8 @@ export function useEcharts<T extends ECOption>(optionsFactory: () => T, hooks: C
   async function renderChartBySize(w: number, h: number) {
     initialSize.width = w;
     initialSize.height = h;
+
+    if (!domRef.value) return;
 
     // resize chart
     if (isRendered()) {
