@@ -339,7 +339,7 @@ class PermissionIntegrationIT {
         grantPermission(userId, "mine:spatial:view");
         mockMvc.perform(get("/api/v1/mine/sites/{siteId}/waypoints", siteId)
                         .header(session.tokenName(), session.tokenValue()))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
 
         mockMvc.perform(post("/api/v1/mine/sites/{siteId}/waypoints", siteId)
@@ -354,7 +354,7 @@ class PermissionIntegrationIT {
                         .header(session.tokenName(), session.tokenValue())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"code\":\"permission-waypoint\"}"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
 
         mockMvc.perform(post(
@@ -373,7 +373,7 @@ class PermissionIntegrationIT {
                         .header(session.tokenName(), session.tokenValue())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\":0}"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
     }
 
@@ -393,7 +393,7 @@ class PermissionIntegrationIT {
         grantPermission(userId, "mine:operation:view");
         mockMvc.perform(get("/api/v1/mine/sites/{siteId}/shift-definitions", siteId)
                         .header(session.tokenName(), session.tokenValue()))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
 
         mockMvc.perform(post("/api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/open",
@@ -421,7 +421,7 @@ class PermissionIntegrationIT {
                         .header("Idempotency-Key", "permission-open")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\":0}"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
 
         mockMvc.perform(post("/api/v1/mine/sites/{siteId}/shift-instances/{shiftId}/close",
@@ -440,7 +440,7 @@ class PermissionIntegrationIT {
                         .header("Idempotency-Key", "permission-close")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\":0}"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
 
         mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders", siteId)
@@ -496,7 +496,7 @@ class PermissionIntegrationIT {
                                   "version":0
                                 }
                                 """.formatted(shiftId)))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
 
         mockMvc.perform(post("/api/v1/mine/sites/{siteId}/work-orders/{workOrderId}/start",
@@ -524,7 +524,7 @@ class PermissionIntegrationIT {
                         .header("Idempotency-Key", "permission-start")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"version\":0}"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MINE-SCOPE-404-002"));
     }
 

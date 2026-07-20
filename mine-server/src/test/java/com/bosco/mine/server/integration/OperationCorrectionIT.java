@@ -397,6 +397,10 @@ class OperationCorrectionIT {
     void 关账后仍可追溯修正但越权矿区和缺少修正权限接口必须拒绝() throws Exception {
         OperationRecordResponse added = correctionService.addRecord(
                 siteId, "closed-add-key", manualAddRequest("关账前补录"));
+        Instant completedAt = jdbcTemplate.queryForObject(
+                "SELECT started_at FROM mine_work_order WHERE id = ?",
+                (resultSet, rowNumber) -> resultSet.getTimestamp(1).toInstant(),
+                workOrderId).plusSeconds(1);
         jdbcTemplate.update("""
                 UPDATE mine_work_order_assignment
                 SET status = 'COMPLETED', updated_at = CURRENT_TIMESTAMP,
@@ -408,14 +412,14 @@ class OperationCorrectionIT {
                 SET status = 'COMPLETED', completed_at = ?, completed_by = ?,
                     updated_at = ?, updated_by = ?, version = version + 1
                 WHERE id = ?
-                """, Timestamp.from(SHIFT_END.minusSeconds(60)), userId,
-                Timestamp.from(SHIFT_END.minusSeconds(60)), userId, workOrderId);
+                """, Timestamp.from(completedAt), userId,
+                Timestamp.from(completedAt), userId, workOrderId);
         jdbcTemplate.update("""
                 UPDATE mine_shift_instance
                 SET status = 'CLOSED', actual_end_at = ?, closed_at = ?, closed_by = ?,
                     updated_at = CURRENT_TIMESTAMP, updated_by = ?, version = version + 1
                 WHERE id = ?
-                """, Timestamp.from(SHIFT_END), Timestamp.from(SHIFT_END),
+                """, Timestamp.from(completedAt), Timestamp.from(completedAt),
                 userId, userId, shiftId);
 
         OperationRecordResponse corrected = correctionService.correctRecord(
