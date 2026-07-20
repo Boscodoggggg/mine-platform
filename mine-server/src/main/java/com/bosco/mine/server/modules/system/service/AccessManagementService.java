@@ -54,6 +54,12 @@ public class AccessManagementService {
             UUID.fromString("019b0000-0000-7000-8000-000000000220"),
             UUID.fromString("019b0000-0000-7000-8000-00000000024b")
     );
+    /** 三维场景工作台入口标识。 */
+    private static final UUID SCENE_WORKBENCH_MENU_ID =
+            UUID.fromString("019b0000-0000-7000-8000-000000000690");
+    /** 三维场景编辑器读取矿区统一坐标模型所需的最小只读节点。 */
+    private static final UUID COORDINATE_VIEW_MENU_ID =
+            UUID.fromString("019b0000-0000-7000-8000-000000000642");
 
     private final AccessManagementMapper mapper;
     private final PasswordEncoder passwordEncoder;
@@ -432,6 +438,9 @@ public class AccessManagementService {
         LinkedHashSet<UUID> expanded = new LinkedHashSet<>(menuIds);
         if (expanded.contains(RETENTION_GOVERNANCE_MENU_ID)) {
             expanded.addAll(RETENTION_GOVERNANCE_DEPENDENCIES);
+        }
+        if (expanded.contains(SCENE_WORKBENCH_MENU_ID)) {
+            expanded.add(COORDINATE_VIEW_MENU_ID);
         }
         return List.copyOf(expanded);
     }

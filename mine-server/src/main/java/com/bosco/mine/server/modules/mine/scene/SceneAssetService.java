@@ -45,6 +45,7 @@ public class SceneAssetService {
     private final SceneAssetStorage storage;
     private final MineScopeAuthorizer authorizer;
     private final OperationAuditService auditService;
+    private final SceneActionIdempotencyService idempotencyService;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -54,17 +55,21 @@ public class SceneAssetService {
      * @param storage 内容寻址存储端口
      * @param authorizer 矿区作用域授权器
      * @param auditService 操作审计服务
+     * @param idempotencyService 场景动作幂等服务
      */
     public SceneAssetService(
             SceneMapper mapper,
             SceneAssetStorage storage,
             MineScopeAuthorizer authorizer,
-            OperationAuditService auditService
+            OperationAuditService auditService,
+            SceneActionIdempotencyService idempotencyService
     ) {
         this.mapper = Objects.requireNonNull(mapper, "场景数据访问接口不能为空");
         this.storage = Objects.requireNonNull(storage, "三维资源存储不能为空");
         this.authorizer = Objects.requireNonNull(authorizer, "矿区授权器不能为空");
         this.auditService = Objects.requireNonNull(auditService, "操作审计服务不能为空");
+        this.idempotencyService = Objects.requireNonNull(
+                idempotencyService, "场景动作幂等服务不能为空");
     }
 
     /**
@@ -177,15 +182,28 @@ public class SceneAssetService {
     }
 
     /**
-     * 使用乐观版本归档可用资源；归档只阻止新引用，不破坏历史发布版本读取。
+     * 使用持久幂等键和乐观版本归档可用资源；归档只阻止新引用，不破坏历史发布版本读取。
      *
      * @param siteId 矿区标识
      * @param assetId 资源标识
      * @param version 当前乐观版本
+     * @param idempotencyKey 调用方稳定幂等键
      * @return 归档后的资源详情
      */
-    @Transactional
-    public SceneAssetResponse archive(UUID siteId, UUID assetId, long version) {
+    public SceneAssetResponse archive(
+            UUID siteId,
+            UUID assetId,
+            long version,
+            String idempotencyKey
+    ) {
+        return idempotencyService.execute(
+                siteId, idempotencyKey, "ARCHIVE_SCENE_ASSET", "SCENE_ASSET", assetId,
+                Map.of("assetId", assetId, "version", version),
+                SceneAssetResponse.class,
+                () -> archiveOnce(siteId, assetId, version));
+    }
+
+    private SceneAssetResponse archiveOnce(UUID siteId, UUID assetId, long version) {
         authorizer.requireSite(siteId);
         SceneMapper.SceneAssetRecord before = requiredAsset(siteId, assetId);
         if (version < 0 || mapper.archiveAsset(siteId, assetId, version) != 1) {
@@ -193,7 +211,7 @@ public class SceneAssetService {
         }
         SceneMapper.SceneAssetRecord archived = requiredAsset(siteId, assetId);
         auditService.recordSuccess(
-                "MINE_SCENE", "ARCHIVE_SCENE_ASSET", "mine:scene:edit",
+                "MINE_SCENE", "ARCHIVE_SCENE_ASSET", "mine:scene:asset:upload",
                 "SCENE_ASSET", assetId,
                 Map.of("status", before.status(), "version", before.version()),
                 Map.of("status", archived.status(), "version", archived.version()));

@@ -292,6 +292,27 @@ class AccessManagementServiceTest {
     }
 
     @Test
+    void 三维场景入口授权应只补齐坐标只读依赖() {
+        UUID roleId = UUID.randomUUID();
+        UUID sceneMenuId = UUID.fromString("019b0000-0000-7000-8000-000000000690");
+        UUID coordinateViewId = UUID.fromString("019b0000-0000-7000-8000-000000000642");
+        List<UUID> expectedMenuIds = List.of(sceneMenuId, coordinateViewId);
+        when(mapper.findManagedRoleById(roleId)).thenReturn(Optional.of(role(roleId, 0)));
+        when(mapper.countEnabledMenuIds(expectedMenuIds)).thenReturn(2L);
+
+        service.replaceRoleMenus(roleId, List.of(sceneMenuId));
+
+        expectedMenuIds.forEach(menuId -> verify(mapper).insertRoleMenu(
+                any(UUID.class),
+                org.mockito.ArgumentMatchers.eq(roleId),
+                org.mockito.ArgumentMatchers.eq(menuId),
+                any()
+        ));
+        verify(mapper, org.mockito.Mockito.times(2))
+                .insertRoleMenu(any(), any(), any(), any());
+    }
+
+    @Test
     void 只读菜单应按父子关系构建树并保留按钮权限码() {
         UUID rootId = UUID.randomUUID();
         UUID buttonId = UUID.randomUUID();

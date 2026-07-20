@@ -112,6 +112,7 @@ class DatabaseMigrationIT {
             "mine_scene",
             "mine_scene_version",
             "mine_scene_layer",
+            "mine_scene_action_idempotency",
             "sys_login_log",
             "sys_operation_log",
             "sys_outbox_event",
@@ -853,6 +854,7 @@ class DatabaseMigrationIT {
                 "mine-location-tag-management",
                 "mine-person-management",
                 "mine-production-operations",
+                "mine-scene-workbench",
                 "mine-site-archive",
                 "mine-spatial-management",
                 "mine-vehicle-management",
@@ -978,6 +980,10 @@ class DatabaseMigrationIT {
                 "mine:person:sensitive:edit",
                 "mine:person:sensitive:view",
                 "mine:person:view",
+                "mine:scene:asset:upload",
+                "mine:scene:edit",
+                "mine:scene:publish",
+                "mine:scene:view",
                 "mine:scope:assign",
                 "mine:shift:close",
                 "mine:shift:edit",
@@ -1016,7 +1022,8 @@ class DatabaseMigrationIT {
                 "mine-binding-management",
                 "mine-location-monitor",
                 "mine-spatial-management",
-                "mine-production-operations"
+                "mine-production-operations",
+                "mine-scene-workbench"
         );
         assertThat(jdbcTemplate.queryForMap("""
                 SELECT name, path, component_key, permission, i18n_key, protected_node
@@ -1036,6 +1043,32 @@ class DatabaseMigrationIT {
                 .containsEntry("permission", "mine:operation:view")
                 .containsEntry("i18n_key", "mine.menu.mineOperations")
                 .containsEntry("protected_node", true);
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT name, path, component_key, permission, i18n_key, protected_node
+                FROM sys_menu
+                WHERE component_key = 'mine-scene-workbench'
+                """)).containsEntry("name", "三维场景")
+                .containsEntry("path", "/mine/scene")
+                .containsEntry("permission", "mine:scene:view")
+                .containsEntry("i18n_key", "mine.menu.mineScene")
+                .containsEntry("protected_node", true);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE parent_id = (
+                    SELECT id FROM sys_menu WHERE component_key = 'mine-scene-workbench'
+                )
+                ORDER BY sort_order
+                """, String.class)).containsExactly(
+                "mine:scene:edit", "mine:scene:asset:upload", "mine:scene:publish");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM sys_menu
+                WHERE parent_id = (
+                    SELECT id FROM sys_menu WHERE component_key = 'mine-scene-workbench'
+                )
+                  AND (type <> 'BUTTON' OR path IS NOT NULL OR component_key IS NOT NULL)
+                """, Long.class)).isZero();
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu child

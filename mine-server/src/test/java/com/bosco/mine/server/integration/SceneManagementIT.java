@@ -145,12 +145,12 @@ class SceneManagementIT {
     @Test
     void 稳定场景应支持唯一编码单一默认乐观修改和幂等归档() {
         SceneResponse first = commandService.createScene(
-                firstSiteId, new SceneRequest("north-main", "北矿主场景", "主生产区", 0));
+                firstSiteId, new SceneRequest("north-main", "北矿主场景", "主生产区", 0L));
         SceneResponse second = commandService.createScene(
-                firstSiteId, new SceneRequest("north-backup", "北矿备用场景", null, 0));
+                firstSiteId, new SceneRequest("north-backup", "北矿备用场景", null, 0L));
 
         assertThatThrownBy(() -> commandService.createScene(
-                firstSiteId, new SceneRequest("north-main", "重复场景", null, 0)))
+                firstSiteId, new SceneRequest("north-main", "重复场景", null, 0L)))
                 .isInstanceOfSatisfying(MineException.class, exception ->
                         assertThat(exception.errorCode().code()).isEqualTo("MINE-SCENE-409-001"));
 
@@ -192,7 +192,7 @@ class SceneManagementIT {
     @Test
     void 草稿应校验跨矿引用并确定性发布不可变版本() {
         SceneResponse scene = commandService.createScene(
-                firstSiteId, new SceneRequest("pit-digital-twin", "矿区数字孪生", null, 0));
+                firstSiteId, new SceneRequest("pit-digital-twin", "矿区数字孪生", null, 0L));
         SceneVersionResponse draft = commandService.createDraft(
                 firstSiteId, scene.id(), versionRequest(firstCoordinate.id(), 0));
 
@@ -239,13 +239,20 @@ class SceneManagementIT {
 
         SceneVersionResponse failingDraft = commandService.createNextDraft(firstSiteId, scene.id());
         var asset = assetService.findAsset(firstSiteId, assetId, 1, 20);
-        assetService.archive(firstSiteId, assetId, asset.version());
+        assetService.archive(
+                firstSiteId, assetId, asset.version(), "archive-invalid-publish-asset");
         assertThatThrownBy(() -> commandService.publish(
                 firstSiteId, scene.id(), failingDraft.id(), failingDraft.version(), "publish-invalid"))
                 .isInstanceOfSatisfying(MineException.class, exception ->
                         assertThat(exception.errorCode().code()).isEqualTo("MINE-SCENE-422-004"));
         assertThat(queryService.findCurrentPublished(firstSiteId, scene.id()).id())
                 .isEqualTo(nextPublished.id());
+        var versionPage = queryService.findVersions(firstSiteId, scene.id(), 1, 1);
+        assertThat(versionPage.items()).hasSize(1);
+        assertThat(versionPage.total()).isEqualTo(3);
+        assertThatThrownBy(() -> queryService.findVersions(firstSiteId, scene.id(), 1, 101))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-SCENE-422-001"));
     }
 
     private SceneVersionRequest versionRequest(UUID coordinateSystemId, long version) {

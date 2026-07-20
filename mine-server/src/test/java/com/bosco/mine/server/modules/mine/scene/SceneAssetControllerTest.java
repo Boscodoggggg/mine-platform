@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -129,5 +130,21 @@ class SceneAssetControllerTest {
                 .getAnnotation(SaCheckPermission.class);
         assertThat(uploadPermission.value()).containsExactly("mine:scene:asset:upload");
         assertThat(readPermission.value()).containsExactly("mine:scene:view");
+    }
+
+    @Test
+    void 资源归档必须要求幂等头并使用独立上传权限() throws Exception {
+        mockMvc.perform(post(
+                        "/api/v1/mine/sites/{siteId}/scene-assets/{assetId}/archive",
+                        siteId, assetId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"version\":0}"))
+                .andExpect(status().isBadRequest());
+
+        SaCheckPermission archivePermission = SceneAssetController.class
+                .getMethod("archive", UUID.class, UUID.class, String.class,
+                        com.bosco.mine.server.modules.mine.dto.MineArchiveRequest.class)
+                .getAnnotation(SaCheckPermission.class);
+        assertThat(archivePermission.value()).containsExactly("mine:scene:asset:upload");
     }
 }

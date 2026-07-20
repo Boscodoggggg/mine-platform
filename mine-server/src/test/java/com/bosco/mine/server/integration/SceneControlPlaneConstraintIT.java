@@ -35,7 +35,8 @@ class SceneControlPlaneConstraintIT {
             "mine_scene_asset_file",
             "mine_scene",
             "mine_scene_version",
-            "mine_scene_layer");
+            "mine_scene_layer",
+            "mine_scene_action_idempotency");
 
     @Container
     @ServiceConnection
@@ -57,6 +58,7 @@ class SceneControlPlaneConstraintIT {
     void 准备矿区和坐标系() {
         jdbcTemplate.execute("""
                 TRUNCATE TABLE
+                    mine_scene_action_idempotency,
                     mine_scene_layer,
                     mine_scene_version,
                     mine_scene,
@@ -88,7 +90,7 @@ class SceneControlPlaneConstraintIT {
     }
 
     @Test
-    void 五张场景控制面表及每个字段都必须有中文注释() {
+    void 六张场景控制面表及每个字段都必须有中文注释() {
         for (String table : SCENE_TABLES) {
             assertThat(jdbcTemplate.queryForObject("""
                     SELECT obj_description(to_regclass(?), 'pg_class')

@@ -12,6 +12,8 @@ import com.bosco.mine.server.modules.mine.operation.dto.WorkOrderRequest;
 import com.bosco.mine.server.modules.mine.spatial.SpatialEventController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialReplayController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialRouteController;
+import com.bosco.mine.server.modules.mine.scene.SceneAssetController;
+import com.bosco.mine.server.modules.mine.scene.SceneController;
 import jakarta.validation.constraints.NotNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -95,6 +97,19 @@ class MineManagementOpenApiTest {
                 "/mine/sites/{siteId}/operation-records/{recordId}",
                 "/mine/sites/{siteId}/operation-records/{recordId}/corrections",
                 "/mine/sites/{siteId}/operation-summary",
+                "/mine/sites/{siteId}/scene-assets",
+                "/mine/sites/{siteId}/scene-assets/{assetId}",
+                "/mine/sites/{siteId}/scene-assets/{assetId}/archive",
+                "/mine/sites/{siteId}/scene-assets/{assetId}/files/{relativePath}",
+                "/mine/sites/{siteId}/scenes",
+                "/mine/sites/{siteId}/scenes/{sceneId}",
+                "/mine/sites/{siteId}/scenes/{sceneId}/archive",
+                "/mine/sites/{siteId}/scenes/{sceneId}/make-default",
+                "/mine/sites/{siteId}/scenes/{sceneId}/versions",
+                "/mine/sites/{siteId}/scenes/{sceneId}/versions/next-draft",
+                "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}",
+                "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/layers",
+                "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/publish",
                 "/mine/sites/{siteId}/people",
                 "/mine/sites/{siteId}/people/{personId}/sensitive",
                 "/mine/sites/{siteId}/bindings/preview",
@@ -144,7 +159,10 @@ class MineManagementOpenApiTest {
                 "OperationRecordResponse", "OperationRecordPageResponse",
                 "OperationRecordPageItem", "OperationSummaryResponse",
                 "OperationWorkOrderProgress", "OperationVehicleUtilization",
-                "OperationDriverWorkload");
+                "OperationDriverWorkload", "SceneAssetPage", "SceneAssetResponse",
+                "SceneAssetFilePage", "SceneResponse", "ScenePage",
+                "SceneVersionRequest", "SceneVersionResponse", "SceneVersionPage",
+                "SceneLayerRequest");
         assertThat(list(map(schemas.get("LocationSubjectType")).get("enum")))
                 .containsExactly("TAG", "VEHICLE", "PERSON");
         assertThat(map(map(schemas.get("LocationTrajectoryResponse")).get("properties")))
@@ -266,7 +284,53 @@ class MineManagementOpenApiTest {
         assertThat(root.toString()).contains(
                 "MINE-SHIFT-409-003", "MINE-SHIFT-409-004",
                 "MINE-WORK-409-004", "MINE-WORK-409-005",
-                "MINE-OPERATION-409-001", "MINE-SCOPE-404-002");
+                "MINE-OPERATION-409-001", "MINE-SCOPE-404-002",
+                "MINE-SCENE-409-005", "MINE-SCENE-ASSET-404-002");
+
+        Map<String, Object> sceneList = map(map(
+                paths.get("/mine/sites/{siteId}/scenes")).get("get"));
+        assertThat(map(namedParameter(sceneList, "size").get("schema")))
+                .containsEntry("minimum", 1)
+                .containsEntry("maximum", 100)
+                .containsEntry("default", 20);
+        Map<String, Object> versionList = map(map(
+                paths.get("/mine/sites/{siteId}/scenes/{sceneId}/versions")).get("get"));
+        assertThat(map(namedParameter(versionList, "size").get("schema")))
+                .containsEntry("maximum", 100);
+        Map<String, Object> assetDetail = map(map(
+                paths.get("/mine/sites/{siteId}/scene-assets/{assetId}")).get("get"));
+        assertThat(map(namedParameter(assetDetail, "fileSize").get("schema")))
+                .containsEntry("maximum", 500);
+        Map<String, Object> assetDownload = map(map(paths.get(
+                "/mine/sites/{siteId}/scene-assets/{assetId}/files/{relativePath}")).get("get"));
+        assertThat(list(assetDownload.get("parameters")))
+                .anySatisfy(parameter -> assertThat(map(parameter))
+                        .containsEntry("name", "Range")
+                        .containsEntry("in", "header"));
+        assertThat(map(assetDownload.get("responses"))).containsKeys("200", "206", "304", "416");
+
+        Map<String, Object> replaceLayers = map(map(paths.get(
+                "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/layers")).get("put"));
+        Map<String, Object> layerBatchSchema = map(map(map(map(
+                replaceLayers.get("requestBody")).get("content")).get("application/json"))
+                .get("schema"));
+        assertThat(layerBatchSchema).containsEntry("maxItems", 256);
+        assertThat(map(schemas.get("SceneLayerResponse")))
+                .doesNotContainKey("allOf");
+        assertThat(map(map(schemas.get("SceneLayerResponse")).get("properties")))
+                .containsKeys("id", "layerCode", "layerType", "options");
+
+        for (String actionPath : List.of(
+                "/mine/sites/{siteId}/scene-assets/{assetId}/archive",
+                "/mine/sites/{siteId}/scenes/{sceneId}/archive",
+                "/mine/sites/{siteId}/scenes/{sceneId}/make-default",
+                "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/publish")) {
+            Map<String, Object> action = map(map(paths.get(actionPath)).get("post"));
+            assertThat(list(action.get("parameters")))
+                    .anySatisfy(parameter -> assertThat(map(parameter).get("$ref"))
+                            .isEqualTo("#/components/parameters/IdempotencyKey"));
+            assertThat(map(action.get("responses"))).containsKeys("403", "409");
+        }
     }
 
     @Test
@@ -384,6 +448,38 @@ class MineManagementOpenApiTest {
         assertPermission(OperationController.class, "resolveCandidate", "mine:operation:correct");
         assertPermission(OperationController.class, "addRecord", "mine:operation:correct");
         assertPermission(OperationController.class, "correctRecord", "mine:operation:correct");
+    }
+
+    @Test
+    void 三维场景控制器必须使用精确权限和固定动作路径() {
+        for (String methodName : List.of(
+                "findAssets", "findAsset", "readFile")) {
+            assertPermission(SceneAssetController.class, methodName, "mine:scene:view");
+        }
+        assertPermission(SceneAssetController.class, "upload", "mine:scene:asset:upload");
+        assertPermission(SceneAssetController.class, "archive", "mine:scene:asset:upload");
+
+        for (String methodName : List.of(
+                "findScenes", "findScene", "findVersions", "findVersion")) {
+            assertPermission(SceneController.class, methodName, "mine:scene:view");
+        }
+        for (String methodName : List.of(
+                "createScene", "updateScene", "archiveScene", "createDraft",
+                "createNextDraft", "updateDraft", "replaceLayers")) {
+            assertPermission(SceneController.class, methodName, "mine:scene:edit");
+        }
+        assertPermission(SceneController.class, "setDefault", "mine:scene:publish");
+        assertPermission(SceneController.class, "publish", "mine:scene:publish");
+
+        assertThat(method(SceneController.class, "updateScene")
+                .getAnnotation(PatchMapping.class).value())
+                .containsExactly("/scenes/{sceneId}");
+        assertThat(method(SceneController.class, "setDefault")
+                .getAnnotation(PostMapping.class).value())
+                .containsExactly("/scenes/{sceneId}/make-default");
+        assertThat(method(SceneController.class, "publish")
+                .getAnnotation(PostMapping.class).value())
+                .containsExactly("/scenes/{sceneId}/versions/{versionId}/publish");
     }
 
     private void assertPermission(String methodName, String permission) {

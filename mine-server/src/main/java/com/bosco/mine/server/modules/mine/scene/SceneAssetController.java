@@ -2,10 +2,13 @@ package com.bosco.mine.server.modules.mine.scene;
 
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
+import com.bosco.mine.server.modules.mine.dto.MineArchiveRequest;
 import com.bosco.mine.server.modules.mine.scene.dto.SceneAssetResponse;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.core.io.AbstractResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -97,13 +101,14 @@ public class SceneAssetController {
 
     /** 使用乐观版本归档资源。 */
     @PostMapping("/{assetId}/archive")
-    @SaCheckPermission("mine:scene:edit")
+    @SaCheckPermission("mine:scene:asset:upload")
     public SceneAssetResponse archive(
             @PathVariable UUID siteId,
             @PathVariable UUID assetId,
-            @RequestParam @Min(0) long version
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 128) String idempotencyKey,
+            @Valid @RequestBody MineArchiveRequest request
     ) {
-        return service.archive(siteId, assetId, version);
+        return service.archive(siteId, assetId, request.version(), idempotencyKey);
     }
 
     /**

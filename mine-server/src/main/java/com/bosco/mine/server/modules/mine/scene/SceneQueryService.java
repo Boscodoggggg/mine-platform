@@ -92,14 +92,22 @@ public class SceneQueryService {
         return sceneResponse(requiredScene(siteId, sceneId));
     }
 
-    /** 按修订号倒序查询场景全部版本及其图层。 */
+    /** 按修订号倒序分页查询场景版本及其图层。 */
     @Transactional(readOnly = true)
-    public List<SceneVersionResponse> findVersions(UUID siteId, UUID sceneId) {
+    public PageResponse<SceneVersionResponse> findVersions(
+            UUID siteId,
+            UUID sceneId,
+            int page,
+            int size
+    ) {
         authorizer.requireSite(siteId);
         requiredScene(siteId, sceneId);
-        return mapper.findSceneVersions(siteId, sceneId).stream()
-                .map(this::versionResponse)
-                .toList();
+        validatePage(page, size);
+        return new PageResponse<>(
+                mapper.findSceneVersions(siteId, sceneId, offset(page, size), size).stream()
+                        .map(this::versionResponse)
+                        .toList(),
+                page, size, mapper.countSceneVersions(siteId, sceneId));
     }
 
     /** 查询一个场景版本及其有序图层。 */

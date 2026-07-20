@@ -64,7 +64,8 @@ class MenuManagementServiceTest {
                         "mine-person-management",
                         "mine-location-tag-management",
                         "mine-binding-management",
-                        "mine-location-monitor"
+                        "mine-location-monitor",
+                        "mine-scene-workbench"
                 );
     }
 

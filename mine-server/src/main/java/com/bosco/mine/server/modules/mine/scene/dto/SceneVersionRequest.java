@@ -26,15 +26,15 @@ import java.util.UUID;
 public record SceneVersionRequest(
         @NotNull UUID coordinateSystemId,
         @NotBlank String coordinateMode,
-        double originX,
-        double originY,
-        double originZ,
-        double headingDegrees,
-        double pitchDegrees,
-        double rollDegrees,
-        double scale,
+        @NotNull Double originX,
+        @NotNull Double originY,
+        @NotNull Double originZ,
+        @NotNull Double headingDegrees,
+        @NotNull Double pitchDegrees,
+        @NotNull Double rollDegrees,
+        @NotNull Double scale,
         @NotNull JsonNode defaultCamera,
         @NotNull JsonNode fallbackViewport,
-        @Min(0) long version
+        @NotNull @Min(0) Long version
 ) {
 }

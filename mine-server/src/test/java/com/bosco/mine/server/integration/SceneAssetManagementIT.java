@@ -159,10 +159,14 @@ class SceneAssetManagementIT {
     void 归档资源仍应允许历史发布版本读取而未知清单路径应拒绝() throws Exception {
         SceneAssetResponse asset = upload(firstSiteId, "history.glb", minimalGlb());
         UUID publishedVersionId = publishSceneReferencing(asset.id());
-        SceneAssetResponse archived = service.archive(firstSiteId, asset.id(), asset.version());
+        SceneAssetResponse archived = service.archive(
+                firstSiteId, asset.id(), asset.version(), "archive-history-asset");
+        SceneAssetResponse replayed = service.archive(
+                firstSiteId, asset.id(), asset.version(), "archive-history-asset");
 
         assertThat(archived.status()).isEqualTo("ARCHIVED");
         assertThat(archived.version()).isEqualTo(asset.version() + 1);
+        assertThat(replayed).isEqualTo(archived);
         assertThat(Files.readAllBytes(
                 service.openFile(firstSiteId, asset.id(), "model.glb").path()))
                 .isEqualTo(minimalGlb());
@@ -172,9 +176,14 @@ class SceneAssetManagementIT {
         assertThatThrownBy(() -> service.openFile(firstSiteId, asset.id(), "not-in-manifest.glb"))
                 .isInstanceOfSatisfying(MineException.class, exception ->
                         assertThat(exception.errorCode().code()).isEqualTo("MINE-SCENE-ASSET-404-002"));
-        assertThatThrownBy(() -> service.archive(firstSiteId, asset.id(), asset.version()))
+        assertThatThrownBy(() -> service.archive(
+                firstSiteId, asset.id(), asset.version(), "archive-stale-asset"))
                 .isInstanceOfSatisfying(MineException.class, exception ->
                         assertThat(exception.errorCode().code()).isEqualTo("MINE-SCENE-ASSET-409-001"));
+        assertThatThrownBy(() -> service.archive(
+                firstSiteId, asset.id(), archived.version(), "archive-history-asset"))
+                .isInstanceOfSatisfying(MineException.class, exception ->
+                        assertThat(exception.errorCode().code()).isEqualTo("MINE-SCENE-409-005"));
     }
 
     private SceneAssetResponse upload(UUID siteId, String fileName, byte[] content) {

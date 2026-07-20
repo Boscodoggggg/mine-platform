@@ -2,6 +2,7 @@ package com.bosco.mine.server.modules.mine.scene.dto;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -19,6 +20,6 @@ public record SceneRequest(
         String sceneCode,
         @NotBlank @Size(max = 128) String name,
         @Size(max = 500) String description,
-        @Min(0) long version
+        @NotNull @Min(0) Long version
 ) {
 }

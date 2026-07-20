@@ -48,6 +48,8 @@ tags:
     description: 途径点、路线和电子围栏的草稿及不可变发布版本
   - name: MineOperation
     description: 班次、运输作业单、调度分配和生产运营生命周期
+  - name: MineScene
+    description: 三维资源、稳定场景、草稿版本、有序图层和不可变发布
 paths:
   /dashboard/operations:
     get:
@@ -3848,6 +3850,388 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '503': { $ref: '#/components/responses/OperationQueryUnavailable' }
 
+  /mine/sites/{siteId}/scene-assets:
+    get:
+      tags: [MineScene]
+      operationId: listMineSceneAssets
+      summary: 分页查询矿区三维资源
+      description: 需要 mine:scene:view 权限，组织和矿区范围在读取资源前校验。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [QUARANTINED, AVAILABLE, ARCHIVED] }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+      responses:
+        '200': { description: 三维资源分页。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneAssetPage' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineScene]
+      operationId: uploadMineSceneAsset
+      summary: 上传并同步安全校验三维资源
+      description: |
+        需要 mine:scene:asset:upload 权限。仅接受 GLB 或 3D Tiles ZIP；服务端 multipart
+        单文件上限为 2GB，校验通过并完整登记文件清单后资源才进入 AVAILABLE。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201': { description: 三维资源已安全登记，重复摘要返回既有资源。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneAssetResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { description: multipart 请求超过服务端固定上限。 }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '503': { $ref: '#/components/responses/SceneStorageUnavailable' }
+  /mine/sites/{siteId}/scene-assets/{assetId}:
+    get:
+      tags: [MineScene]
+      operationId: getMineSceneAsset
+      summary: 查询三维资源详情和有界文件清单
+      description: 需要 mine:scene:view 权限；跨组织或跨矿区资源按作用域边界拒绝。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneAssetId' }
+        - name: filePage
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: fileSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        '200': { description: 资源详情和一页文件清单。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneAssetResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+  /mine/sites/{siteId}/scene-assets/{assetId}/archive:
+    post:
+      tags: [MineScene]
+      operationId: archiveMineSceneAsset
+      summary: 幂等归档三维资源
+      description: 需要 mine:scene:asset:upload 权限；归档阻止新引用，但不破坏已发布版本读取。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneAssetId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '200': { description: 归档后的资源。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneAssetResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/scene-assets/{assetId}/files/{relativePath}:
+    get:
+      tags: [MineScene]
+      operationId: downloadMineSceneAssetFile
+      summary: 受权读取一个已登记的三维资源文件
+      description: |
+        需要 mine:scene:view 权限。服务端先校验组织/矿区范围，再从数据库文件清单解析内容寻址对象；
+        不接受宿主机路径或任意外链。支持 ETag 条件请求和一个 bytes Range，多范围及越界范围返回 416。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneAssetId' }
+        - name: relativePath
+          in: path
+          required: true
+          allowReserved: true
+          description: 已登记的完整包内相对路径，可包含斜杠。
+          schema: { type: string, minLength: 1, maxLength: 1024 }
+        - name: Range
+          in: header
+          required: false
+          description: 单一 bytes 字节范围，例如 bytes=0-1023。
+          schema: { type: string, pattern: '^bytes=[0-9]*-[0-9]*$' }
+        - name: If-None-Match
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: 完整文件流。
+          headers:
+            ETag: { schema: { type: string } }
+            Accept-Ranges: { schema: { type: string, const: bytes } }
+            X-Content-Type-Options: { schema: { type: string, const: nosniff } }
+            Content-Length: { schema: { type: integer, format: int64, minimum: 0 } }
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        '206':
+          description: 单一字节范围文件流。
+          headers:
+            ETag: { schema: { type: string } }
+            Content-Range: { schema: { type: string } }
+            Content-Length: { schema: { type: integer, format: int64, minimum: 1 } }
+          content:
+            application/octet-stream: { schema: { type: string, format: binary } }
+        '304': { description: ETag 未变化，无响应体。 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '416':
+          description: 多范围、非法范围或越界范围，Content-Range 返回完整资源长度。
+          headers:
+            Content-Range: { schema: { type: string } }
+        '503': { $ref: '#/components/responses/SceneStorageUnavailable' }
+  /mine/sites/{siteId}/scenes:
+    get:
+      tags: [MineScene]
+      operationId: listMineScenes
+      summary: 分页查询稳定场景
+      description: 需要 mine:scene:view 权限，结果严格限定在当前矿区作用域。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/Keyword' }
+        - name: status
+          in: query
+          schema: { type: string, enum: [ACTIVE, ARCHIVED] }
+        - { $ref: '#/components/parameters/Page' }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: 稳定场景分页。, content: { application/json: { schema: { $ref: '#/components/schemas/ScenePage' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [MineScene]
+      operationId: createMineScene
+      summary: 创建稳定场景
+      parameters: [{ $ref: '#/components/parameters/SiteId' }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SceneRequest' } } }
+      responses:
+        '201': { description: 场景已创建。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/scenes/{sceneId}:
+    get:
+      tags: [MineScene]
+      operationId: getMineScene
+      summary: 查询稳定场景
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+      responses:
+        '200': { description: 稳定场景详情。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+    patch:
+      tags: [MineScene]
+      operationId: updateMineScene
+      summary: 使用乐观版本修改稳定场景
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SceneRequest' } } }
+      responses:
+        '200': { description: 修改后的稳定场景。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/scenes/{sceneId}/archive:
+    post:
+      tags: [MineScene]
+      operationId: archiveMineScene
+      summary: 幂等归档非默认场景
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '200': { description: 归档后的稳定场景。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/scenes/{sceneId}/make-default:
+    post:
+      tags: [MineScene]
+      operationId: makeDefaultMineScene
+      summary: 幂等切换矿区默认场景
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '200': { description: 新默认场景。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /mine/sites/{siteId}/scenes/{sceneId}/versions:
+    get:
+      tags: [MineScene]
+      operationId: listMineSceneVersions
+      summary: 分页查询场景版本及有序图层
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+        - { $ref: '#/components/parameters/Page' }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: 场景版本分页。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionPage' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+    post:
+      tags: [MineScene]
+      operationId: createMineSceneDraft
+      summary: 创建场景首个草稿
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionRequest' } } }
+      responses:
+        '201': { description: 草稿已创建。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/scenes/{sceneId}/versions/next-draft:
+    post:
+      tags: [MineScene]
+      operationId: cloneNextMineSceneDraft
+      summary: 从当前发布版本完整复制下一草稿
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+      responses:
+        '201': { description: 下一草稿已创建。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}:
+    get:
+      tags: [MineScene]
+      operationId: getMineSceneVersion
+      summary: 查询场景版本及有序图层
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+        - { $ref: '#/components/parameters/SceneVersionId' }
+      responses:
+        '200': { description: 场景版本详情。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+    patch:
+      tags: [MineScene]
+      operationId: updateMineSceneDraft
+      summary: 使用乐观版本修改场景草稿
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+        - { $ref: '#/components/parameters/SceneVersionId' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionRequest' } } }
+      responses:
+        '200': { description: 修改后的场景草稿。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/layers:
+    put:
+      tags: [MineScene]
+      operationId: replaceMineSceneLayers
+      summary: 使用乐观版本原子替换全部场景图层
+      description: 不提供增量更新，整批最多 256 层；任一图层失败时整批回滚。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+        - { $ref: '#/components/parameters/SceneVersionId' }
+        - name: version
+          in: query
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 256
+              items: { $ref: '#/components/schemas/SceneLayerRequest' }
+      responses:
+        '200': { description: 替换图层后的场景草稿。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/publish:
+    post:
+      tags: [MineScene]
+      operationId: publishMineSceneVersion
+      summary: 幂等发布并永久锁定场景版本
+      description: 需要 mine:scene:publish 权限；失败事务不影响最后正确的已发布版本。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - { $ref: '#/components/parameters/SceneId' }
+        - { $ref: '#/components/parameters/SceneVersionId' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MineArchiveRequest' } } }
+      responses:
+        '200': { description: 不可变已发布场景版本。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneVersionResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+
 components:
   securitySchemes:
     MineToken:
@@ -3975,6 +4359,24 @@ components:
       in: path
       required: true
       description: 空间对象版本 UUID。
+      schema: { type: string, format: uuid }
+    SceneAssetId:
+      name: assetId
+      in: path
+      required: true
+      description: 三维资源 UUID。
+      schema: { type: string, format: uuid }
+    SceneId:
+      name: sceneId
+      in: path
+      required: true
+      description: 稳定场景 UUID。
+      schema: { type: string, format: uuid }
+    SceneVersionId:
+      name: versionId
+      in: path
+      required: true
+      description: 场景草稿或发布版本 UUID。
       schema: { type: string, format: uuid }
     PersonId:
       name: personId
@@ -7323,6 +7725,185 @@ components:
           type: array
           maxItems: 500
           items: { $ref: '#/components/schemas/OperationDriverWorkload' }
+    SceneAssetFileResponse:
+      type: object
+      required: [id, relativePath, contentType, contentDigest, sizeBytes, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        relativePath: { type: string, minLength: 1, maxLength: 1024 }
+        contentType: { type: string }
+        contentDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        sizeBytes: { type: integer, format: int64, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+    SceneAssetFilePage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, maxItems: 500, items: { $ref: '#/components/schemas/SceneAssetFileResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 500 }
+        total: { type: integer, format: int64, minimum: 0 }
+    SceneAssetResponse:
+      type: object
+      required: [id, organizationId, siteId, assetType, originalFilename, contentType, contentDigest, sourceSizeBytes, expandedSizeBytes, fileCount, entryPath, status, createdAt, createdBy, archivedAt, version, files]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        assetType: { type: string, enum: [GLB, TILES_3D] }
+        originalFilename: { type: string, maxLength: 255 }
+        contentType: { type: string, enum: [model/gltf-binary, application/zip] }
+        contentDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        sourceSizeBytes: { type: integer, format: int64, minimum: 1 }
+        expandedSizeBytes: { type: integer, format: int64, minimum: 1 }
+        fileCount: { type: integer, minimum: 1, maximum: 10000 }
+        entryPath: { type: string, minLength: 1, maxLength: 1024 }
+        status: { type: string, enum: [QUARANTINED, AVAILABLE, ARCHIVED] }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string, format: uuid }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+        files:
+          oneOf:
+            - { $ref: '#/components/schemas/SceneAssetFilePage' }
+            - { type: 'null' }
+    SceneAssetPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/SceneAssetResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    SceneRequest:
+      type: object
+      additionalProperties: false
+      required: [sceneCode, name, version]
+      properties:
+        sceneCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
+    SceneResponse:
+      type: object
+      required: [id, organizationId, siteId, sceneCode, name, description, defaultScene, status, createdAt, updatedAt, archivedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        organizationId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        sceneCode: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        defaultScene: { type: boolean }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    ScenePage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/SceneResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    SceneVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [coordinateSystemId, coordinateMode, originX, originY, originZ, headingDegrees, pitchDegrees, rollDegrees, scale, defaultCamera, fallbackViewport, version]
+      properties:
+        coordinateSystemId: { type: string, format: uuid }
+        coordinateMode: { type: string, enum: [LOCAL_ENU, WGS84_ANCHOR] }
+        originX: { type: number, format: double }
+        originY: { type: number, format: double }
+        originZ: { type: number, format: double }
+        headingDegrees: { type: number, format: double }
+        pitchDegrees: { type: number, format: double }
+        rollDegrees: { type: number, format: double }
+        scale: { type: number, format: double, exclusiveMinimum: 0 }
+        defaultCamera: { type: object, additionalProperties: true }
+        fallbackViewport: { type: object, additionalProperties: true }
+        version: { type: integer, format: int64, minimum: 0 }
+    SceneLayerRequest:
+      type: object
+      additionalProperties: false
+      required: [layerCode, orderNumber, layerType, assetId, visible, opacity, minimumDistance, maximumDistance, offsetX, offsetY, offsetZ, headingDegrees, pitchDegrees, rollDegrees, scale, maxItems, options]
+      properties:
+        layerCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        orderNumber: { type: integer, minimum: 1, maximum: 10000 }
+        layerType: { type: string, enum: [GRID, STATIC_GLB, STATIC_3D_TILES, DYNAMIC_LOCATIONS, DYNAMIC_REGIONS, DYNAMIC_TRAJECTORY, DYNAMIC_ALARMS, DYNAMIC_OPERATIONS] }
+        assetId: { type: [string, 'null'], format: uuid }
+        visible: { type: boolean }
+        opacity: { type: number, format: double, minimum: 0, maximum: 1 }
+        minimumDistance: { type: number, format: double, minimum: 0 }
+        maximumDistance: { type: number, format: double, minimum: 0 }
+        offsetX: { type: number, format: double }
+        offsetY: { type: number, format: double }
+        offsetZ: { type: number, format: double }
+        headingDegrees: { type: number, format: double }
+        pitchDegrees: { type: number, format: double }
+        rollDegrees: { type: number, format: double }
+        scale: { type: number, format: double, exclusiveMinimum: 0 }
+        maxItems: { type: integer, minimum: 0, maximum: 100000 }
+        options: { type: object, additionalProperties: true }
+    SceneLayerResponse:
+      type: object
+      additionalProperties: false
+      required: [id, layerCode, orderNumber, layerType, assetId, visible, opacity, minimumDistance, maximumDistance, offsetX, offsetY, offsetZ, headingDegrees, pitchDegrees, rollDegrees, scale, maxItems, options]
+      properties:
+        id: { type: string, format: uuid }
+        layerCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        orderNumber: { type: integer, minimum: 1, maximum: 10000 }
+        layerType: { type: string, enum: [GRID, STATIC_GLB, STATIC_3D_TILES, DYNAMIC_LOCATIONS, DYNAMIC_REGIONS, DYNAMIC_TRAJECTORY, DYNAMIC_ALARMS, DYNAMIC_OPERATIONS] }
+        assetId: { type: [string, 'null'], format: uuid }
+        visible: { type: boolean }
+        opacity: { type: number, format: double, minimum: 0, maximum: 1 }
+        minimumDistance: { type: number, format: double, minimum: 0 }
+        maximumDistance: { type: number, format: double, minimum: 0 }
+        offsetX: { type: number, format: double }
+        offsetY: { type: number, format: double }
+        offsetZ: { type: number, format: double }
+        headingDegrees: { type: number, format: double }
+        pitchDegrees: { type: number, format: double }
+        rollDegrees: { type: number, format: double }
+        scale: { type: number, format: double, exclusiveMinimum: 0 }
+        maxItems: { type: integer, minimum: 0, maximum: 100000 }
+        options: { type: object, additionalProperties: true }
+    SceneVersionResponse:
+      type: object
+      required: [id, sceneId, coordinateSystemId, revisionNumber, schemaVersion, coordinateMode, originX, originY, originZ, headingDegrees, pitchDegrees, rollDegrees, scale, defaultCamera, fallbackViewport, status, contentHash, publishedAt, supersededAt, createdAt, version, layers]
+      properties:
+        id: { type: string, format: uuid }
+        sceneId: { type: string, format: uuid }
+        coordinateSystemId: { type: string, format: uuid }
+        revisionNumber: { type: integer, minimum: 1 }
+        schemaVersion: { type: integer, minimum: 1 }
+        coordinateMode: { type: string, enum: [LOCAL_ENU, WGS84_ANCHOR] }
+        originX: { type: number, format: double }
+        originY: { type: number, format: double }
+        originZ: { type: number, format: double }
+        headingDegrees: { type: number, format: double }
+        pitchDegrees: { type: number, format: double }
+        rollDegrees: { type: number, format: double }
+        scale: { type: number, format: double, exclusiveMinimum: 0 }
+        defaultCamera: { type: object, additionalProperties: true }
+        fallbackViewport: { type: object, additionalProperties: true }
+        status: { type: string, enum: [DRAFT, PUBLISHED, SUPERSEDED] }
+        contentHash: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        supersededAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+        layers: { type: array, maxItems: 256, items: { $ref: '#/components/schemas/SceneLayerResponse' } }
+    SceneVersionPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/SceneVersionResponse' } }
+        page: { type: integer, minimum: 1 }
+        size: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
     ApiError:
       type: object
       required: [code, message, traceId, timestamp, details]
@@ -7401,7 +7982,7 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
     Conflict:
-      description: 编码重复、状态冲突、策略同级异值、幂等语义或乐观锁版本冲突。
+      description: 编码重复、状态冲突、策略同级异值、幂等语义或乐观锁版本冲突；场景幂等键冲突码为 MINE-SCENE-409-005。
       content:
         application/json:
           schema:
@@ -7444,6 +8025,18 @@ components:
             $ref: '#/components/schemas/ApiError'
     OperationQueryUnavailable:
       description: 运营记录或统计关系化查询失败，错误码 MINE-OPERATION-503-001。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    SceneResourceNotFound:
+      description: 三维资源、资源文件、稳定场景或场景版本不存在，例如 MINE-SCENE-ASSET-404-002。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    SceneStorageUnavailable:
+      description: 三维资源存储不可用，错误码 MINE-SCENE-ASSET-503-001。
       content:
         application/json:
           schema:

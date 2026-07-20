@@ -2611,6 +2611,258 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mine/sites/{siteId}/scene-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分页查询矿区三维资源
+         * @description 需要 mine:scene:view 权限，组织和矿区范围在读取资源前校验。
+         */
+        get: operations["listMineSceneAssets"];
+        put?: never;
+        /**
+         * 上传并同步安全校验三维资源
+         * @description 需要 mine:scene:asset:upload 权限。仅接受 GLB 或 3D Tiles ZIP；服务端 multipart
+         *     单文件上限为 2GB，校验通过并完整登记文件清单后资源才进入 AVAILABLE。
+         */
+        post: operations["uploadMineSceneAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scene-assets/{assetId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询三维资源详情和有界文件清单
+         * @description 需要 mine:scene:view 权限；跨组织或跨矿区资源按作用域边界拒绝。
+         */
+        get: operations["getMineSceneAsset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scene-assets/{assetId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等归档三维资源
+         * @description 需要 mine:scene:asset:upload 权限；归档阻止新引用，但不破坏已发布版本读取。
+         */
+        post: operations["archiveMineSceneAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scene-assets/{assetId}/files/{relativePath}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 受权读取一个已登记的三维资源文件
+         * @description 需要 mine:scene:view 权限。服务端先校验组织/矿区范围，再从数据库文件清单解析内容寻址对象；
+         *     不接受宿主机路径或任意外链。支持 ETag 条件请求和一个 bytes Range，多范围及越界范围返回 416。
+         */
+        get: operations["downloadMineSceneAssetFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分页查询稳定场景
+         * @description 需要 mine:scene:view 权限，结果严格限定在当前矿区作用域。
+         */
+        get: operations["listMineScenes"];
+        put?: never;
+        /** 创建稳定场景 */
+        post: operations["createMineScene"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes/{sceneId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询稳定场景 */
+        get: operations["getMineScene"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 使用乐观版本修改稳定场景 */
+        patch: operations["updateMineScene"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes/{sceneId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等归档非默认场景 */
+        post: operations["archiveMineScene"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes/{sceneId}/make-default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等切换矿区默认场景 */
+        post: operations["makeDefaultMineScene"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes/{sceneId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 分页查询场景版本及有序图层 */
+        get: operations["listMineSceneVersions"];
+        put?: never;
+        /** 创建场景首个草稿 */
+        post: operations["createMineSceneDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes/{sceneId}/versions/next-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 从当前发布版本完整复制下一草稿 */
+        post: operations["cloneNextMineSceneDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询场景版本及有序图层 */
+        get: operations["getMineSceneVersion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 使用乐观版本修改场景草稿 */
+        patch: operations["updateMineSceneDraft"];
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/layers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 使用乐观版本原子替换全部场景图层
+         * @description 不提供增量更新，整批最多 256 层；任一图层失败时整批回滚。
+         */
+        put: operations["replaceMineSceneLayers"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 幂等发布并永久锁定场景版本
+         * @description 需要 mine:scene:publish 权限；失败事务不影响最后正确的已发布版本。
+         */
+        post: operations["publishMineSceneVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5521,6 +5773,245 @@ export interface components {
             vehicles: components["schemas"]["OperationVehicleUtilization"][];
             drivers: components["schemas"]["OperationDriverWorkload"][];
         };
+        SceneAssetFileResponse: {
+            /** Format: uuid */
+            id: string;
+            relativePath: string;
+            contentType: string;
+            contentDigest: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        SceneAssetFilePage: {
+            items: components["schemas"]["SceneAssetFileResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        SceneAssetResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            /** @enum {string} */
+            assetType: "GLB" | "TILES_3D";
+            originalFilename: string;
+            /** @enum {string} */
+            contentType: "model/gltf-binary" | "application/zip";
+            contentDigest: string;
+            /** Format: int64 */
+            sourceSizeBytes: number;
+            /** Format: int64 */
+            expandedSizeBytes: number;
+            fileCount: number;
+            entryPath: string;
+            /** @enum {string} */
+            status: "QUARANTINED" | "AVAILABLE" | "ARCHIVED";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: int64 */
+            version: number;
+            files: components["schemas"]["SceneAssetFilePage"] | null;
+        };
+        SceneAssetPage: {
+            items: components["schemas"]["SceneAssetResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        SceneRequest: {
+            sceneCode: string;
+            name: string;
+            description?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        SceneResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            siteId: string;
+            sceneCode: string;
+            name: string;
+            description: string | null;
+            defaultScene: boolean;
+            /** @enum {string} */
+            status: "ACTIVE" | "ARCHIVED";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        ScenePage: {
+            items: components["schemas"]["SceneResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
+        SceneVersionRequest: {
+            /** Format: uuid */
+            coordinateSystemId: string;
+            /** @enum {string} */
+            coordinateMode: "LOCAL_ENU" | "WGS84_ANCHOR";
+            /** Format: double */
+            originX: number;
+            /** Format: double */
+            originY: number;
+            /** Format: double */
+            originZ: number;
+            /** Format: double */
+            headingDegrees: number;
+            /** Format: double */
+            pitchDegrees: number;
+            /** Format: double */
+            rollDegrees: number;
+            /** Format: double */
+            scale: number;
+            defaultCamera: {
+                [key: string]: unknown;
+            };
+            fallbackViewport: {
+                [key: string]: unknown;
+            };
+            /** Format: int64 */
+            version: number;
+        };
+        SceneLayerRequest: {
+            layerCode: string;
+            orderNumber: number;
+            /** @enum {string} */
+            layerType: "GRID" | "STATIC_GLB" | "STATIC_3D_TILES" | "DYNAMIC_LOCATIONS" | "DYNAMIC_REGIONS" | "DYNAMIC_TRAJECTORY" | "DYNAMIC_ALARMS" | "DYNAMIC_OPERATIONS";
+            /** Format: uuid */
+            assetId: string | null;
+            visible: boolean;
+            /** Format: double */
+            opacity: number;
+            /** Format: double */
+            minimumDistance: number;
+            /** Format: double */
+            maximumDistance: number;
+            /** Format: double */
+            offsetX: number;
+            /** Format: double */
+            offsetY: number;
+            /** Format: double */
+            offsetZ: number;
+            /** Format: double */
+            headingDegrees: number;
+            /** Format: double */
+            pitchDegrees: number;
+            /** Format: double */
+            rollDegrees: number;
+            /** Format: double */
+            scale: number;
+            maxItems: number;
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        SceneLayerResponse: {
+            /** Format: uuid */
+            id: string;
+            layerCode: string;
+            orderNumber: number;
+            /** @enum {string} */
+            layerType: "GRID" | "STATIC_GLB" | "STATIC_3D_TILES" | "DYNAMIC_LOCATIONS" | "DYNAMIC_REGIONS" | "DYNAMIC_TRAJECTORY" | "DYNAMIC_ALARMS" | "DYNAMIC_OPERATIONS";
+            /** Format: uuid */
+            assetId: string | null;
+            visible: boolean;
+            /** Format: double */
+            opacity: number;
+            /** Format: double */
+            minimumDistance: number;
+            /** Format: double */
+            maximumDistance: number;
+            /** Format: double */
+            offsetX: number;
+            /** Format: double */
+            offsetY: number;
+            /** Format: double */
+            offsetZ: number;
+            /** Format: double */
+            headingDegrees: number;
+            /** Format: double */
+            pitchDegrees: number;
+            /** Format: double */
+            rollDegrees: number;
+            /** Format: double */
+            scale: number;
+            maxItems: number;
+            options: {
+                [key: string]: unknown;
+            };
+        };
+        SceneVersionResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            sceneId: string;
+            /** Format: uuid */
+            coordinateSystemId: string;
+            revisionNumber: number;
+            schemaVersion: number;
+            /** @enum {string} */
+            coordinateMode: "LOCAL_ENU" | "WGS84_ANCHOR";
+            /** Format: double */
+            originX: number;
+            /** Format: double */
+            originY: number;
+            /** Format: double */
+            originZ: number;
+            /** Format: double */
+            headingDegrees: number;
+            /** Format: double */
+            pitchDegrees: number;
+            /** Format: double */
+            rollDegrees: number;
+            /** Format: double */
+            scale: number;
+            defaultCamera: {
+                [key: string]: unknown;
+            };
+            fallbackViewport: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            status: "DRAFT" | "PUBLISHED" | "SUPERSEDED";
+            contentHash: string | null;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** Format: date-time */
+            supersededAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int64 */
+            version: number;
+            layers: components["schemas"]["SceneLayerResponse"][];
+        };
+        SceneVersionPage: {
+            items: components["schemas"]["SceneVersionResponse"][];
+            page: number;
+            size: number;
+            /** Format: int64 */
+            total: number;
+        };
         ApiError: {
             code: string;
             message: string;
@@ -5623,7 +6114,7 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
-        /** @description 编码重复、状态冲突、策略同级异值、幂等语义或乐观锁版本冲突。 */
+        /** @description 编码重复、状态冲突、策略同级异值、幂等语义或乐观锁版本冲突；场景幂等键冲突码为 MINE-SCENE-409-005。 */
         Conflict: {
             headers: {
                 [name: string]: unknown;
@@ -5695,6 +6186,24 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
+        /** @description 三维资源、资源文件、稳定场景或场景版本不存在，例如 MINE-SCENE-ASSET-404-002。 */
+        SceneResourceNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 三维资源存储不可用，错误码 MINE-SCENE-ASSET-503-001。 */
+        SceneStorageUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
     };
     parameters: {
         ProductId: string;
@@ -5734,6 +6243,12 @@ export interface components {
         GeofenceId: string;
         /** @description 空间对象版本 UUID。 */
         SpatialVersionId: string;
+        /** @description 三维资源 UUID。 */
+        SceneAssetId: string;
+        /** @description 稳定场景 UUID。 */
+        SceneId: string;
+        /** @description 场景草稿或发布版本 UUID。 */
+        SceneVersionId: string;
         /** @description 人员 UUID。 */
         PersonId: string;
         /** @description 司机资质 UUID。 */
@@ -11375,6 +11890,657 @@ export interface operations {
             404: components["responses"]["MineResourceNotFound"];
             422: components["responses"]["UnprocessableEntity"];
             503: components["responses"]["OperationQueryUnavailable"];
+        };
+    };
+    listMineSceneAssets: {
+        parameters: {
+            query?: {
+                status?: "QUARANTINED" | "AVAILABLE" | "ARCHIVED";
+                page?: components["parameters"]["Page"];
+                size?: components["parameters"]["PageSize"];
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 三维资源分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneAssetPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    uploadMineSceneAsset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 三维资源已安全登记，重复摘要返回既有资源。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneAssetResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description multipart 请求超过服务端固定上限。 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            422: components["responses"]["UnprocessableEntity"];
+            503: components["responses"]["SceneStorageUnavailable"];
+        };
+    };
+    getMineSceneAsset: {
+        parameters: {
+            query?: {
+                filePage?: number;
+                fileSize?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 三维资源 UUID。 */
+                assetId: components["parameters"]["SceneAssetId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 资源详情和一页文件清单。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneAssetResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+        };
+    };
+    archiveMineSceneAsset: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 三维资源 UUID。 */
+                assetId: components["parameters"]["SceneAssetId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 归档后的资源。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneAssetResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    downloadMineSceneAssetFile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description 单一 bytes 字节范围，例如 bytes=0-1023。 */
+                Range?: string;
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 三维资源 UUID。 */
+                assetId: components["parameters"]["SceneAssetId"];
+                /** @description 已登记的完整包内相对路径，可包含斜杠。 */
+                relativePath: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 完整文件流。 */
+            200: {
+                headers: {
+                    ETag?: string;
+                    "Accept-Ranges"?: "bytes";
+                    "X-Content-Type-Options"?: "nosniff";
+                    "Content-Length"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description 单一字节范围文件流。 */
+            206: {
+                headers: {
+                    ETag?: string;
+                    "Content-Range"?: string;
+                    "Content-Length"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description ETag 未变化，无响应体。 */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            /** @description 多范围、非法范围或越界范围，Content-Range 返回完整资源长度。 */
+            416: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            503: components["responses"]["SceneStorageUnavailable"];
+        };
+    };
+    listMineScenes: {
+        parameters: {
+            query?: {
+                keyword?: components["parameters"]["Keyword"];
+                status?: "ACTIVE" | "ARCHIVED";
+                page?: components["parameters"]["Page"];
+                size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 稳定场景分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScenePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMineScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SceneRequest"];
+            };
+        };
+        responses: {
+            /** @description 场景已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 稳定场景详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+        };
+    };
+    updateMineScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SceneRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的稳定场景。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    archiveMineScene: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 归档后的稳定场景。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    makeDefaultMineScene: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 新默认场景。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listMineSceneVersions: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 场景版本分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneVersionPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+        };
+    };
+    createMineSceneDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SceneVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 草稿已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    cloneNextMineSceneDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 下一草稿已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneVersionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineSceneVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+                /** @description 场景草稿或发布版本 UUID。 */
+                versionId: components["parameters"]["SceneVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 场景版本详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneVersionResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+        };
+    };
+    updateMineSceneDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+                /** @description 场景草稿或发布版本 UUID。 */
+                versionId: components["parameters"]["SceneVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SceneVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的场景草稿。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    replaceMineSceneLayers: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+                /** @description 场景草稿或发布版本 UUID。 */
+                versionId: components["parameters"]["SceneVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SceneLayerRequest"][];
+            };
+        };
+        responses: {
+            /** @description 替换图层后的场景草稿。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    publishMineSceneVersion: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description 同一业务操作重试时保持不变的稳定幂等键。 */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+                /** @description 稳定场景 UUID。 */
+                sceneId: components["parameters"]["SceneId"];
+                /** @description 场景草稿或发布版本 UUID。 */
+                versionId: components["parameters"]["SceneVersionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MineArchiveRequest"];
+            };
+        };
+        responses: {
+            /** @description 不可变已发布场景版本。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneVersionResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
         };
     };
 }

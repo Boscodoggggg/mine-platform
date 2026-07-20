@@ -403,7 +403,7 @@ public class SceneCommandService {
         Map<String, SceneLayerRequest> byCode = new HashMap<>();
         List<SceneVersionPolicy.LayerDefinition> definitions = new ArrayList<>();
         for (SceneLayerRequest request : requests) {
-            if (request == null) {
+            if (request == null || missingRequiredLayerValue(request)) {
                 throw invalid();
             }
             SceneVersionPolicy.LayerType type = layerType(request.layerType());
@@ -448,6 +448,17 @@ public class SceneCommandService {
         return normalized.stream()
                 .map(definition -> new NormalizedLayer(byCode.get(definition.code()), definition))
                 .toList();
+    }
+
+    /** 判断图层请求中是否缺少允许零值但禁止缺失的标量字段。 */
+    private boolean missingRequiredLayerValue(SceneLayerRequest request) {
+        return request.orderNumber() == null || request.visible() == null
+                || request.opacity() == null || request.minimumDistance() == null
+                || request.maximumDistance() == null || request.offsetX() == null
+                || request.offsetY() == null || request.offsetZ() == null
+                || request.headingDegrees() == null || request.pitchDegrees() == null
+                || request.rollDegrees() == null || request.scale() == null
+                || request.maxItems() == null;
     }
 
     private List<SceneVersionPolicy.LayerDefinition> validateLayerRecords(
@@ -533,7 +544,11 @@ public class SceneCommandService {
 
     private NormalizedVersion normalizeVersion(UUID siteId, SceneVersionRequest request) {
         if (request == null || request.coordinateSystemId() == null
-                || request.version() < 0) {
+                || request.originX() == null || request.originY() == null
+                || request.originZ() == null || request.headingDegrees() == null
+                || request.pitchDegrees() == null || request.rollDegrees() == null
+                || request.scale() == null
+                || request.version() == null || request.version() < 0) {
             throw invalid();
         }
         validateCoordinate(siteId, request.coordinateSystemId());
@@ -585,7 +600,7 @@ public class SceneCommandService {
                 || !CODE.matcher(request.sceneCode()).matches()
                 || request.name() == null || request.name().isBlank()
                 || request.name().strip().length() > 128
-                || request.version() < 0) {
+                || request.version() == null || request.version() < 0) {
             throw invalid();
         }
         String description = request.description();

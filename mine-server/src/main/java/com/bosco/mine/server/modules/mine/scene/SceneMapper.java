@@ -401,7 +401,7 @@ public interface SceneMapper {
             @Param("sceneId") UUID sceneId,
             @Param("versionId") UUID versionId);
 
-    /** 按修订号倒序查询场景全部版本。 */
+    /** 按修订号倒序分页查询场景版本。 */
     @Select("""
             SELECT id, organization_id AS organizationId, site_id AS siteId,
                    scene_id AS sceneId, coordinate_system_id AS coordinateSystemId,
@@ -419,8 +419,21 @@ public interface SceneMapper {
             FROM mine_scene_version
             WHERE site_id = #{siteId} AND scene_id = #{sceneId}
             ORDER BY revision_number DESC, id
+            OFFSET #{offset} LIMIT #{limit}
             """)
     List<SceneVersionRecord> findSceneVersions(
+            @Param("siteId") UUID siteId,
+            @Param("sceneId") UUID sceneId,
+            @Param("offset") long offset,
+            @Param("limit") int limit);
+
+    /** 统计稳定场景的历史版本数量。 */
+    @Select("""
+            SELECT COUNT(*)
+            FROM mine_scene_version
+            WHERE site_id = #{siteId} AND scene_id = #{sceneId}
+            """)
+    long countSceneVersions(
             @Param("siteId") UUID siteId,
             @Param("sceneId") UUID sceneId);
 
