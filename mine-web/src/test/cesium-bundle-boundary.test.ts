@@ -2,10 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import packageJson from '../../package.json';
-import {
-  CESIUM_STATIC_DIRECTORIES,
-  cesiumManualChunk
-} from '../../build/plugins/cesium';
+import { CESIUM_STATIC_DIRECTORIES, cesiumManualChunk } from '../../build/plugins/cesium';
 
 const projectRoot = resolve(import.meta.dirname, '../..');
 const sourceRoot = resolve(projectRoot, 'src');
@@ -25,23 +22,15 @@ function productionSourceFiles(directory: string): string[] {
 }
 
 function importsCesiumRoot(source: string): boolean {
-  return [
-    "from 'cesium'",
-    'from "cesium"',
-    "import('cesium')",
-    'import("cesium")'
-  ].some(pattern => source.includes(pattern));
+  return ["from 'cesium'", 'from "cesium"', "import('cesium')", 'import("cesium")'].some(pattern =>
+    source.includes(pattern)
+  );
 }
 
 describe('Cesium bundle boundary', () => {
   it('固定 Cesium 版本并声明完整离线静态目录', () => {
     expect(packageJson.dependencies.cesium).toBe('1.141.0');
-    expect(CESIUM_STATIC_DIRECTORIES).toEqual([
-      'Workers',
-      'Assets',
-      'Widgets',
-      'ThirdParty'
-    ]);
+    expect(CESIUM_STATIC_DIRECTORIES).toEqual(['Workers', 'Assets', 'Widgets', 'ThirdParty']);
   });
 
   it('只有场景运行加载器可以导入 Cesium 根包', () => {
@@ -72,6 +61,12 @@ describe('Cesium bundle boundary', () => {
       .join('\n');
 
     expect(globalStyles).not.toContain('cesium/Build/Cesium/Widgets/widgets.css');
+  });
+
+  it('离线资源根从 Vite 部署基路径派生', () => {
+    const loaderSource = readFileSync(resolve(projectRoot, loaderPath), 'utf8');
+
+    expect(loaderSource).toContain('import.meta.env.BASE_URL');
   });
 
   it('二维场景组件只依赖矿区公共入口且不触达 Cesium 加载器', () => {

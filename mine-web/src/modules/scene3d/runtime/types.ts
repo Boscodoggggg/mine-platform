@@ -23,10 +23,12 @@ export type SceneViewportAdapterFactory = (
 
 export type WebGlCapabilityProbe = () => boolean;
 
-/** Task 11 接入真实渲染器前提供严格可释放的生命周期适配器。 */
+/** Task 11 接入真实渲染器前显式失败，禁止把空白容器报告为成功三维。 */
 export function createLifecycleAdapter(): SceneViewportAdapter {
   return {
-    mount: () => undefined,
+    mount: () => {
+      throw new Error('Production scene viewport adapter is unavailable');
+    },
     destroy: () => undefined
   };
 }

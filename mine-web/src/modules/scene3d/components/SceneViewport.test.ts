@@ -85,6 +85,76 @@ describe('SceneViewport', () => {
     wrapper.unmount();
     expect(second.destroy).toHaveBeenCalledOnce();
   });
+
+  it('旧挂载晚于新挂载完成时只释放旧适配器', async () => {
+    const firstMount = deferred<void>();
+    const first = mockAdapter();
+    first.mount.mockReturnValue(firstMount.promise);
+    const second = mockAdapter();
+    const wrapper = mountViewport({
+      mode: '3D',
+      supportsWebGl: () => true,
+      createAdapter: () => first
+    });
+    await flushPromises();
+
+    await wrapper.setProps({ createAdapter: () => second });
+    await flushPromises();
+    expect(first.destroy).toHaveBeenCalledOnce();
+    expect(second.mount).toHaveBeenCalledOnce();
+
+    firstMount.resolve();
+    await flushPromises();
+    expect(second.destroy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="scene-3d-viewport"]').exists()).toBe(true);
+  });
+
+  it('旧挂载晚失败时不覆盖新一代三维视口', async () => {
+    const firstMount = deferred<void>();
+    const first = mockAdapter();
+    first.mount.mockReturnValue(firstMount.promise);
+    const second = mockAdapter();
+    const wrapper = mountViewport({
+      mode: '3D',
+      supportsWebGl: () => true,
+      createAdapter: () => first
+    });
+    await flushPromises();
+
+    await wrapper.setProps({ createAdapter: () => second });
+    await flushPromises();
+    firstMount.reject(new Error('stale mount failed'));
+    await flushPromises();
+
+    expect(second.destroy).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="scene-3d-viewport"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="canvas-viewport"]').exists()).toBe(false);
+  });
+
+  it('挂载中卸载只释放一次适配器', async () => {
+    const mountTask = deferred<void>();
+    const adapter = mockAdapter();
+    adapter.mount.mockReturnValue(mountTask.promise);
+    const wrapper = mountViewport({
+      mode: '3D',
+      supportsWebGl: () => true,
+      createAdapter: () => adapter
+    });
+    await flushPromises();
+
+    wrapper.unmount();
+    mountTask.resolve();
+    await flushPromises();
+
+    expect(adapter.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('未提供生产适配器时明确降级而不是把空白容器当作成功三维', async () => {
+    const wrapper = mountViewport({ mode: '3D', supportsWebGl: () => true });
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="canvas-viewport"]').attributes('data-reason')).toBe('THREE_D_RUNTIME_FAILED');
+  });
 });
 
 describe('CanvasSceneViewport', () => {
@@ -145,6 +215,16 @@ function mockAdapter() {
   const mountAdapter = vi.fn<SceneViewportAdapter['mount']>();
   const destroy = vi.fn<SceneViewportAdapter['destroy']>();
   return { mount: mountAdapter, destroy };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 function snapshot(): SceneRuntimeSnapshot {

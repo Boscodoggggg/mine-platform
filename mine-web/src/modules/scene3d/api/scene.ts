@@ -279,7 +279,7 @@ function validateRuntimeAsset(
 ) {
   const path = `${layerPath}.asset`;
   const asset = objectValue(value, path);
-  uuidValue(asset.assetId, `${path}.assetId`);
+  const assetId = uuidValue(asset.assetId, `${path}.assetId`);
   const assetType = enumValue(asset.assetType, ['GLB', 'TILES_3D'] as const, `${path}.assetType`);
   if (
     (layerType === 'STATIC_GLB' && assetType !== 'GLB') ||
@@ -290,15 +290,61 @@ function validateRuntimeAsset(
   digestValue(asset.contentDigest, `${path}.contentDigest`);
   integerValue(asset.fileCount, `${path}.fileCount`, 1, 10000);
   const entryUrl = nonBlankString(asset.entryUrl, `${path}.entryUrl`);
-  const prefix = `/api/v1/mine/sites/${siteId}/scene-assets/`;
-  if (
-    !entryUrl.startsWith(prefix) ||
-    entryUrl.includes('://') ||
-    entryUrl.includes('\\') ||
-    /(?:^|\/)(?:\.|\.\.)(?:\/|$)/.test(entryUrl)
-  ) {
-    invalid(`${path}.entryUrl`);
+  validateAssetEntryUrl(entryUrl, siteId, assetId, `${path}.entryUrl`);
+}
+
+function validateAssetEntryUrl(entryUrl: string, siteId: string, assetId: string, field: string) {
+  if (!entryUrl.startsWith('/') || entryUrl.startsWith('//')) invalid(field);
+
+  let url: URL;
+  try {
+    url = new URL(entryUrl, 'https://scene-runtime.invalid');
+  } catch {
+    invalid(field);
   }
+  if (url.origin !== 'https://scene-runtime.invalid' || url.search || url.hash) invalid(field);
+
+  const segments = entryUrl.split('/');
+  if (segments.length < 10 || segments[0] !== '') invalid(field);
+  const decoded = segments.slice(1).map(segmentValue => decodeRuntimePathSegment(segmentValue, field));
+  if (
+    decoded[0] !== 'api' ||
+    decoded[1] !== 'v1' ||
+    decoded[2] !== 'mine' ||
+    decoded[3] !== 'sites' ||
+    decoded[4] !== siteId ||
+    decoded[5] !== 'scene-assets' ||
+    decoded[6] !== assetId ||
+    decoded[7] !== 'files' ||
+    decoded.length < 9
+  ) {
+    invalid(field);
+  }
+}
+
+function decodeRuntimePathSegment(value: string, field: string): string {
+  if (!value) invalid(field);
+  let decoded = value;
+  try {
+    for (let index = 0; index < 3; index += 1) {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    }
+  } catch {
+    invalid(field);
+  }
+  if (
+    !decoded ||
+    decoded === '.' ||
+    decoded === '..' ||
+    decoded.includes('/') ||
+    decoded.includes('\\') ||
+    decoded.includes('\0')
+  ) {
+    invalid(field);
+  }
+  return decoded;
 }
 
 function json(method: 'POST' | 'PATCH' | 'PUT', body: unknown): RequestInit {

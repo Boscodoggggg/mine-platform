@@ -50,7 +50,7 @@ const renderMode = ref<SceneViewportRenderMode>('2D');
 const fallbackReason = ref<SceneViewportFallbackReason>('NO_RUNTIME_SNAPSHOT');
 const initializing = ref(false);
 let generation = 0;
-let activeAdapter: SceneViewportAdapter | null = null;
+let activeAdapter: { adapter: SceneViewportAdapter; release: () => void } | null = null;
 
 const retryable = computed(
   () =>
@@ -103,27 +103,32 @@ async function activate() {
 
   let stage: 'LOAD' | 'RUNTIME' = 'LOAD';
   let candidate: SceneViewportAdapter | null = null;
+  let released = false;
+  const releaseCandidate = () => {
+    if (!candidate || released) return;
+    released = true;
+    if (activeAdapter?.adapter === candidate) activeAdapter = null;
+    candidate.destroy();
+  };
   try {
     const runtime = await loadCesium();
     if (currentGeneration !== generation) return;
     stage = 'RUNTIME';
     candidate = await props.createAdapter(runtime, snapshot);
     if (currentGeneration !== generation) {
-      candidate.destroy();
+      releaseCandidate();
       return;
     }
-    activeAdapter = candidate;
-    candidate = null;
     const container = containerRef.value;
     if (!container) throw new Error('Scene viewport container is unavailable');
-    await activeAdapter.mount(container, snapshot);
-    if (currentGeneration !== generation) releaseAdapter();
+    activeAdapter = { adapter: candidate, release: releaseCandidate };
+    await candidate.mount(container, snapshot);
+    if (currentGeneration !== generation) releaseCandidate();
   } catch {
+    releaseCandidate();
     if (currentGeneration !== generation) {
-      candidate?.destroy();
       return;
     }
-    releaseAdapter();
     useCanvas(stage === 'LOAD' ? 'THREE_D_LOAD_FAILED' : 'THREE_D_RUNTIME_FAILED');
   } finally {
     if (currentGeneration === generation) initializing.value = false;
@@ -136,8 +141,9 @@ function useCanvas(reason: SceneViewportFallbackReason) {
 }
 
 function releaseAdapter() {
-  activeAdapter?.destroy();
+  const current = activeAdapter;
   activeAdapter = null;
+  current?.release();
 }
 </script>
 

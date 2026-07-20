@@ -181,6 +181,42 @@ describe('scene api', () => {
     };
     expect(() => parseSceneRuntimeResponse(externalAsset)).toThrow(SceneRuntimeContractError);
   });
+
+  it('资源入口必须绑定声明资产且拒绝编码穿越、查询串和片段', () => {
+    const response = readyRuntime() as unknown as {
+      siteId: string;
+      snapshot: { layers: Array<Record<string, unknown>> };
+    };
+    const assetId = crypto.randomUUID();
+    const validAsset = {
+      assetId,
+      assetType: 'GLB' as const,
+      contentDigest: `sha256:${'b'.repeat(64)}`,
+      fileCount: 1,
+      entryUrl: `/api/v1/mine/sites/${response.siteId}/scene-assets/${assetId}/files/models/mine%20truck.glb`
+    };
+    response.snapshot.layers[0] = {
+      ...response.snapshot.layers[0],
+      layerType: 'STATIC_GLB',
+      asset: validAsset
+    };
+
+    expect(parseSceneRuntimeResponse(response)).toEqual(response);
+
+    const invalidUrls = [
+      `/api/v1/mine/sites/${response.siteId}/scene-assets/${crypto.randomUUID()}/files/model.glb`,
+      `/api/v1/mine/sites/${response.siteId}/scene-assets/${assetId}/files/%2e%2e/model.glb`,
+      `/api/v1/mine/sites/${response.siteId}/scene-assets/${assetId}/files/%252e%252e/model.glb`,
+      `/api/v1/mine/sites/${response.siteId}/scene-assets/${assetId}/files/model.glb?download=true`,
+      `/api/v1/mine/sites/${response.siteId}/scene-assets/${assetId}/files/model.glb#fragment`,
+      `//assets.example/api/v1/mine/sites/${response.siteId}/scene-assets/${assetId}/files/model.glb`
+    ];
+    invalidUrls.forEach(entryUrl => {
+      const invalidResponse = structuredClone(response);
+      invalidResponse.snapshot.layers[0]!.asset = { ...validAsset, entryUrl };
+      expect(() => parseSceneRuntimeResponse(invalidResponse), entryUrl).toThrow(SceneRuntimeContractError);
+    });
+  });
 });
 
 function mutation(body: object, idempotencyKey: string) {

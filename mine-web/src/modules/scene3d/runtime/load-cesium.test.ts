@@ -37,4 +37,13 @@ describe('loadCesium', () => {
     expect(cesium.Ion.defaultAccessToken).toBe('cesium-library-default');
     expect(cesiumMock.defaultAccessToken).toBe('cesium-library-default');
   });
+
+  it('离线资源根跟随应用部署子路径', async () => {
+    const { resolveCesiumBaseUrl } = await import('./load-cesium');
+
+    expect(resolveCesiumBaseUrl('/')).toBe('/cesium/');
+    expect(resolveCesiumBaseUrl('/mine/')).toBe('/mine/cesium/');
+    expect(resolveCesiumBaseUrl('/mine')).toBe('/mine/cesium/');
+    expect(resolveCesiumBaseUrl('./')).toBe('./cesium/');
+  });
 });
