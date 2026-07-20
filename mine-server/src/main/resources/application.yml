@@ -6,6 +6,10 @@ spring:
       - org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration
   lifecycle:
     timeout-per-shutdown-phase: 30s
+  servlet:
+    multipart:
+      max-file-size: ${MINE_SCENE_MULTIPART_MAX_FILE_SIZE:2GB}
+      max-request-size: ${MINE_SCENE_MULTIPART_MAX_REQUEST_SIZE:2050MB}
 
 server:
   port: ${MINE_SERVER_HTTP_PORT:8080}

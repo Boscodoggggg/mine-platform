@@ -30,7 +30,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final String UNKNOWN_TRACE_ID = "unknown";
     private static final Pattern ERROR_CODE_STATUS = Pattern.compile(
-            "^[A-Z][A-Z0-9_]*-(?<status>[45]\\d{2})-\\d+$"
+            "^[A-Z][A-Z0-9_-]*-(?<status>[45]\\d{2})-\\d+$"
     );
 
     private final MineClock clock = MineClock.systemUtc();
