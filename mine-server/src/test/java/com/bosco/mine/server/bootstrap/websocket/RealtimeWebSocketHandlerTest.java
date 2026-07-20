@@ -6,6 +6,7 @@ import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
 import com.bosco.mine.messaging.realtime.RealtimeSpatialEvent;
 import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
 import com.bosco.mine.messaging.realtime.RealtimeLocationEvent;
+import com.bosco.mine.messaging.realtime.RealtimeOperationEvent;
 import com.bosco.mine.server.modules.device.dto.DeviceLatestResponse;
 import com.bosco.mine.server.modules.device.dto.TelemetryLatestItemResponse;
 import com.bosco.mine.server.modules.mine.dto.CurrentLocationResponse;
@@ -24,7 +25,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.security.Principal;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -54,15 +58,18 @@ class RealtimeWebSocketHandlerTest {
     private final AtomicBoolean siteAuthorized = new AtomicBoolean(true);
     private final AtomicInteger locationSnapshotCalls = new AtomicInteger();
     private final AtomicReference<Set<String>> permissions = new AtomicReference<>(Set.of(
-            "device:telemetry:view", "mine:location:view", "mine:spatial:event:view"));
+            "device:telemetry:view", "mine:location:view", "mine:spatial:event:view",
+            "mine:operation:view"));
     private RecordingWebSocketSession session;
+    private MutableClock clock;
     private RealtimeSessionRegistry registry;
     private RealtimeWebSocketHandler handler;
 
     @BeforeEach
     void 创建实时通道测试环境() throws Exception {
         session = new RecordingWebSocketSession("session-1");
-        registry = new RealtimeSessionRegistry(jsonMapper);
+        clock = new MutableClock(Instant.parse("2026-07-15T00:00:00Z"));
+        registry = new RealtimeSessionRegistry(jsonMapper, clock, Duration.ofSeconds(30));
         RealtimeAuthenticator authenticator = token -> {
             if (!"valid-token".equals(token) || !tokenValid.get()) {
                 throw new RealtimeAuthenticationException("令牌无效");
@@ -407,6 +414,60 @@ class RealtimeWebSocketHandlerTest {
         assertThat(session.messages()).isEmpty();
     }
 
+    @Test
+    void 运营订阅必须按独立权限和矿区作用域推送连续业务序号() throws Exception {
+        permissions.set(Set.of("mine:operation:view"));
+        authenticate();
+        session.clearMessages();
+
+        send(operationSubscription("operation-sub-1", SITE_ID));
+
+        assertThat(lastMessage().get("type").asString()).isEqualTo("ACK");
+        assertThat(registry.operationSiteSubscriptions(session.getId()))
+                .containsExactly(SITE_ID);
+        session.clearMessages();
+
+        registry.publishOperation(operationEvent(OTHER_SITE_ID, 91L));
+        assertThat(session.messages()).isEmpty();
+        registry.publishOperation(operationEvent(SITE_ID, 92L));
+
+        JsonNode data = lastMessage();
+        assertThat(data.get("type").asString()).isEqualTo("DATA");
+        assertThat(data.get("topic").asString()).isEqualTo("MINE_SITE_OPERATION");
+        assertThat(data.get("siteId").asString()).isEqualTo(SITE_ID.toString());
+        assertThat(data.get("businessSequence").asLong()).isEqualTo(92L);
+    }
+
+    @Test
+    void 运营权限撤销后下一次动作必须清除鉴权并立即停止推送() throws Exception {
+        permissions.set(Set.of("mine:operation:view"));
+        authenticate();
+        send(operationSubscription("operation-sub-1", SITE_ID));
+        session.clearMessages();
+        permissions.set(Set.of());
+
+        send("{\"action\":\"PING\",\"requestId\":\"operation-revoked\"}");
+
+        assertThat(lastMessage().get("code").asString()).isEqualTo("REALTIME-AUTH-FAILED");
+        session.clearMessages();
+        registry.publishOperation(operationEvent(SITE_ID, 93L));
+        assertThat(session.messages()).isEmpty();
+    }
+
+    @Test
+    void 空闲连接的授权快照过期后必须自动停止运营推送() throws Exception {
+        permissions.set(Set.of("mine:operation:view"));
+        authenticate();
+        send(operationSubscription("operation-sub-1", SITE_ID));
+        session.clearMessages();
+        permissions.set(Set.of());
+
+        clock.advance(Duration.ofSeconds(31));
+        registry.publishOperation(operationEvent(SITE_ID, 94L));
+
+        assertThat(session.messages()).isEmpty();
+    }
+
     private void authenticate() throws Exception {
         send("{\"action\":\"AUTH\",\"requestId\":\"auth-1\",\"token\":\"valid-token\"}");
         assertThat(lastMessage().get("type").asString()).isEqualTo("ACK");
@@ -441,6 +502,17 @@ class RealtimeWebSocketHandlerTest {
                 "requestId", requestId,
                 "topics", List.of(Map.of(
                         "type", "MINE_SITE_SPATIAL_EVENT",
+                        "ids", List.of(siteId.toString(), siteId.toString())
+                ))
+        ));
+    }
+
+    private String operationSubscription(String requestId, UUID siteId) throws Exception {
+        return jsonMapper.writeValueAsString(Map.of(
+                "action", "SUBSCRIBE",
+                "requestId", requestId,
+                "topics", List.of(Map.of(
+                        "type", "MINE_SITE_OPERATION",
                         "ids", List.of(siteId.toString(), siteId.toString())
                 ))
         ));
@@ -491,6 +563,23 @@ class RealtimeWebSocketHandlerTest {
                 new RealtimeSpatialEvent.Evidence(
                         120.5D, 88.25D, null, "INSIDE", "GOOD", null,
                         "sha256:" + "a".repeat(64)));
+    }
+
+    private RealtimeOperationEvent operationEvent(UUID siteId, long sequence) {
+        String suffix = String.format("%012d", sequence);
+        UUID eventId = UUID.fromString("0198aef6-2e80-7000-8000-" + suffix);
+        return new RealtimeOperationEvent(
+                eventId,
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000501"),
+                siteId,
+                RealtimeOperationEvent.AggregateType.OPERATION_RECORD,
+                UUID.fromString("0198aef6-2e80-7000-8000-000000000801"),
+                "RECORD_COMPLETED",
+                sequence,
+                Instant.parse("2026-07-15T02:00:00Z").plusSeconds(sequence),
+                Map.of("operationRecordId",
+                        "0198aef6-2e80-7000-8000-000000000801")
+        );
     }
 
     private void send(String payload) throws Exception {
@@ -612,6 +701,37 @@ class RealtimeWebSocketHandlerTest {
         @Override
         public void close(CloseStatus status) throws IOException {
             open = false;
+        }
+    }
+
+    /**
+     * 支持测试主动推进时间的时钟。
+     */
+    private static final class MutableClock extends Clock {
+
+        private Instant instant;
+
+        private MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        private void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneId.of("UTC");
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
         }
     }
 }

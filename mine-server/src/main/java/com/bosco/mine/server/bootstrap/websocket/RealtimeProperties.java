@@ -3,6 +3,7 @@ package com.bosco.mine.server.bootstrap.websocket;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.regex.Pattern;
 
 /**
@@ -15,6 +16,7 @@ import java.util.regex.Pattern;
  * @param maxDevices 单连接最大设备数
  * @param maxProperties 单连接最大属性数
  * @param maxMessageBytes 单条客户端消息最大字节数
+ * @param authorizationTtl 服务端推送可使用的授权快照最长有效期
  * @param rabbitEnabled RabbitMQ 实时事件桥接是否启用
  * @param rabbitHost RabbitMQ 主机名
  * @param rabbitPort RabbitMQ AMQP 端口
@@ -31,6 +33,7 @@ public record RealtimeProperties(
         Integer maxDevices,
         Integer maxProperties,
         Integer maxMessageBytes,
+        Duration authorizationTtl,
         Boolean rabbitEnabled,
         String rabbitHost,
         Integer rabbitPort,
@@ -88,6 +91,21 @@ public record RealtimeProperties(
                 positiveOrDefault(maxProperties, 1024, "maxProperties"),
                 positiveOrDefault(maxMessageBytes, 65_536, "maxMessageBytes")
         );
+    }
+
+    /**
+     * 返回服务端推送可使用的授权快照最长有效期。
+     *
+     * @return 授权快照有效期
+     */
+    public Duration resolvedAuthorizationTtl() {
+        Duration resolved = authorizationTtl == null
+                ? Duration.ofSeconds(30) : authorizationTtl;
+        if (resolved.compareTo(Duration.ofSeconds(30)) < 0
+                || resolved.compareTo(Duration.ofMinutes(5)) > 0) {
+            throw new IllegalArgumentException("authorizationTtl 必须介于 PT30S 和 PT5M 之间");
+        }
+        return resolved;
     }
 
     /**

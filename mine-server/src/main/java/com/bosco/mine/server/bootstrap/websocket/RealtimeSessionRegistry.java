@@ -1,6 +1,7 @@
 package com.bosco.mine.server.bootstrap.websocket;
 
 import com.bosco.mine.messaging.realtime.RealtimeLocationEvent;
+import com.bosco.mine.messaging.realtime.RealtimeOperationEvent;
 import com.bosco.mine.messaging.realtime.RealtimeSpatialEvent;
 import com.bosco.mine.messaging.realtime.RealtimeTelemetryEvent;
 import com.bosco.mine.model.message.UnifiedDeviceMessage.Quality;
@@ -12,6 +13,8 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -35,6 +38,8 @@ public final class RealtimeSessionRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger(RealtimeSessionRegistry.class);
 
     private final JsonMapper jsonMapper;
+    private final Clock clock;
+    private final Duration authorizationTtl;
     private final ConcurrentMap<String, SessionState> sessions = new ConcurrentHashMap<>();
 
     /**
@@ -43,7 +48,37 @@ public final class RealtimeSessionRegistry {
      * @param jsonMapper JSON 编解码器
      */
     public RealtimeSessionRegistry(JsonMapper jsonMapper) {
+        this(jsonMapper, Clock.systemUTC(), Duration.ofSeconds(30));
+    }
+
+    /**
+     * 创建可注入时间源和授权有效期的实时会话注册表。
+     *
+     * @param jsonMapper JSON 编解码器
+     * @param clock 服务端时间源
+     * @param authorizationTtl 推送授权快照有效期
+     */
+    public RealtimeSessionRegistry(
+            JsonMapper jsonMapper,
+            Clock clock,
+            Duration authorizationTtl
+    ) {
         this.jsonMapper = Objects.requireNonNull(jsonMapper, "JSON 编解码器不能为空");
+        this.clock = Objects.requireNonNull(clock, "服务端时钟不能为空");
+        this.authorizationTtl = Objects.requireNonNull(
+                authorizationTtl, "授权快照有效期不能为空");
+        if (authorizationTtl.isZero() || authorizationTtl.isNegative()) {
+            throw new IllegalArgumentException("授权快照有效期必须大于 0");
+        }
+    }
+
+    /**
+     * 返回服务端推送授权快照有效期。
+     *
+     * @return 授权快照有效期
+     */
+    Duration authorizationTtl() {
+        return authorizationTtl;
     }
 
     /**
@@ -80,6 +115,7 @@ public final class RealtimeSessionRegistry {
         synchronized (state) {
             state.principal = Objects.requireNonNull(principal, "用户不能为空");
             state.token = Objects.requireNonNull(token, "令牌不能为空");
+            state.authenticatedAt = clock.instant();
         }
     }
 
@@ -93,6 +129,7 @@ public final class RealtimeSessionRegistry {
         synchronized (state) {
             state.principal = null;
             state.token = null;
+            state.authenticatedAt = null;
         }
     }
 
@@ -129,6 +166,7 @@ public final class RealtimeSessionRegistry {
      * @param deviceAdditions 新设备订阅
      * @param siteAdditions 新矿区位置订阅
      * @param spatialSiteAdditions 新矿区空间事件订阅
+     * @param operationSiteAdditions 新矿区运营事件订阅
      * @param limits 连接限额
      */
     public void subscribe(
@@ -136,6 +174,7 @@ public final class RealtimeSessionRegistry {
             Collection<DeviceLatestSubscription> deviceAdditions,
             Collection<UUID> siteAdditions,
             Collection<UUID> spatialSiteAdditions,
+            Collection<UUID> operationSiteAdditions,
             RealtimeLimits limits
     ) {
         SessionState state = state(sessionId);
@@ -150,8 +189,12 @@ public final class RealtimeSessionRegistry {
             LinkedHashSet<UUID> mergedSpatialSites =
                     new LinkedHashSet<>(state.spatialSiteSubscriptions);
             mergedSpatialSites.addAll(spatialSiteAdditions);
+            LinkedHashSet<UUID> mergedOperationSites =
+                    new LinkedHashSet<>(state.operationSiteSubscriptions);
+            mergedOperationSites.addAll(operationSiteAdditions);
             int propertyCount = merged.values().stream().mapToInt(Set::size).sum();
             if (merged.size() + mergedSites.size() + mergedSpatialSites.size()
+                    + mergedOperationSites.size()
                     > limits.maxSubscriptions()
                     || merged.size() > limits.maxDevices()
                     || propertyCount > limits.maxProperties()) {
@@ -163,7 +206,30 @@ public final class RealtimeSessionRegistry {
             state.siteSubscriptions.addAll(mergedSites);
             state.spatialSiteSubscriptions.clear();
             state.spatialSiteSubscriptions.addAll(mergedSpatialSites);
+            state.operationSiteSubscriptions.clear();
+            state.operationSiteSubscriptions.addAll(mergedOperationSites);
         }
+    }
+
+    /**
+     * 兼容只包含设备、位置和空间事件的订阅调用。
+     *
+     * @param sessionId 会话标识
+     * @param deviceAdditions 新设备订阅
+     * @param siteAdditions 新矿区位置订阅
+     * @param spatialSiteAdditions 新矿区空间事件订阅
+     * @param limits 连接限额
+     */
+    public void subscribe(
+            String sessionId,
+            Collection<DeviceLatestSubscription> deviceAdditions,
+            Collection<UUID> siteAdditions,
+            Collection<UUID> spatialSiteAdditions,
+            RealtimeLimits limits
+    ) {
+        subscribe(
+                sessionId, deviceAdditions, siteAdditions,
+                spatialSiteAdditions, List.of(), limits);
     }
 
     /**
@@ -173,12 +239,14 @@ public final class RealtimeSessionRegistry {
      * @param deviceRemovals 待删除设备订阅
      * @param siteRemovals 待删除矿区位置订阅
      * @param spatialSiteRemovals 待删除矿区空间事件订阅
+     * @param operationSiteRemovals 待删除矿区运营事件订阅
      */
     public void unsubscribe(
             String sessionId,
             Collection<DeviceLatestSubscription> deviceRemovals,
             Collection<UUID> siteRemovals,
-            Collection<UUID> spatialSiteRemovals
+            Collection<UUID> spatialSiteRemovals,
+            Collection<UUID> operationSiteRemovals
     ) {
         SessionState state = state(sessionId);
         synchronized (state) {
@@ -198,7 +266,27 @@ public final class RealtimeSessionRegistry {
             }
             state.siteSubscriptions.removeAll(siteRemovals);
             state.spatialSiteSubscriptions.removeAll(spatialSiteRemovals);
+            state.operationSiteSubscriptions.removeAll(operationSiteRemovals);
         }
+    }
+
+    /**
+     * 兼容只包含设备、位置和空间事件的取消订阅调用。
+     *
+     * @param sessionId 会话标识
+     * @param deviceRemovals 待删除设备订阅
+     * @param siteRemovals 待删除矿区位置订阅
+     * @param spatialSiteRemovals 待删除矿区空间事件订阅
+     */
+    public void unsubscribe(
+            String sessionId,
+            Collection<DeviceLatestSubscription> deviceRemovals,
+            Collection<UUID> siteRemovals,
+            Collection<UUID> spatialSiteRemovals
+    ) {
+        unsubscribe(
+                sessionId, deviceRemovals, siteRemovals,
+                spatialSiteRemovals, List.of());
     }
 
     /**
@@ -245,6 +333,19 @@ public final class RealtimeSessionRegistry {
     }
 
     /**
+     * 获取当前会话的矿区运营事件订阅快照。
+     *
+     * @param sessionId 会话标识
+     * @return 矿区标识集合
+     */
+    public List<UUID> operationSiteSubscriptions(String sessionId) {
+        SessionState state = state(sessionId);
+        synchronized (state) {
+            return List.copyOf(state.operationSiteSubscriptions);
+        }
+    }
+
+    /**
      * 将已持久化的遥测增量推送给订阅了对应设备和属性的本实例连接。
      *
      * @param event 实时遥测事件
@@ -254,7 +355,7 @@ public final class RealtimeSessionRegistry {
         for (SessionState state : sessions.values()) {
             synchronized (state) {
                 List<String> properties = subscribedProperties(state, event.deviceId());
-                if (state.principal == null
+                if (!authorizationFresh(state)
                         || !state.principal.hasPermission("device:telemetry:view")
                         || properties.isEmpty()) {
                     continue;
@@ -305,7 +406,7 @@ public final class RealtimeSessionRegistry {
         for (SessionState state : sessions.values()) {
             synchronized (state) {
                 if (!state.siteSubscriptions.contains(event.siteId())
-                        || state.principal == null
+                        || !authorizationFresh(state)
                         || !state.principal.hasPermission("mine:location:view")) {
                     continue;
                 }
@@ -335,7 +436,7 @@ public final class RealtimeSessionRegistry {
         for (SessionState state : sessions.values()) {
             synchronized (state) {
                 if (!state.spatialSiteSubscriptions.contains(event.siteId())
-                        || state.principal == null
+                        || !authorizationFresh(state)
                         || !state.principal.hasPermission("mine:spatial:event:view")) {
                     continue;
                 }
@@ -348,6 +449,37 @@ public final class RealtimeSessionRegistry {
                     ));
                 } catch (RealtimeTransportException exception) {
                     LOGGER.warn("空间事件实时连接发送失败并移除会话，sessionId={}",
+                            state.session.getId());
+                    remove(state.session.getId());
+                }
+            }
+        }
+    }
+
+    /**
+     * 将已确认发布的运营增量推送给订阅矿区且保有运营查看权限的连接。
+     *
+     * @param event 运营实时事件
+     */
+    public void publishOperation(RealtimeOperationEvent event) {
+        Objects.requireNonNull(event, "运营实时事件不能为空");
+        for (SessionState state : sessions.values()) {
+            synchronized (state) {
+                if (!state.operationSiteSubscriptions.contains(event.siteId())
+                        || !authorizationFresh(state)
+                        || !state.principal.hasPermission("mine:operation:view")) {
+                    continue;
+                }
+                try {
+                    send(state.session.getId(), Map.of(
+                            "type", "DATA",
+                            "topic", "MINE_SITE_OPERATION",
+                            "siteId", event.siteId(),
+                            "businessSequence", event.businessSequence(),
+                            "item", event
+                    ));
+                } catch (RealtimeTransportException exception) {
+                    LOGGER.warn("运营实时连接发送失败并移除会话，sessionId={}",
                             state.session.getId());
                     remove(state.session.getId());
                 }
@@ -378,7 +510,7 @@ public final class RealtimeSessionRegistry {
         SessionState state = state(sessionId);
         Map<String, Object> payload = new LinkedHashMap<>(message);
         payload.putIfAbsent("sequence", state.sequence.incrementAndGet());
-        payload.putIfAbsent("serverTime", Instant.now());
+        payload.putIfAbsent("serverTime", clock.instant());
         synchronized (state.session) {
             if (!state.session.isOpen()) {
                 remove(sessionId);
@@ -398,6 +530,12 @@ public final class RealtimeSessionRegistry {
             throw new IllegalStateException("实时会话不存在");
         }
         return state;
+    }
+
+    private boolean authorizationFresh(SessionState state) {
+        return state.principal != null
+                && state.authenticatedAt != null
+                && !clock.instant().isAfter(state.authenticatedAt.plus(authorizationTtl));
     }
 
     private List<String> subscribedProperties(SessionState state, UUID deviceId) {
@@ -441,8 +579,10 @@ public final class RealtimeSessionRegistry {
         private final Map<UUID, LinkedHashSet<String>> subscriptions = new LinkedHashMap<>();
         private final LinkedHashSet<UUID> siteSubscriptions = new LinkedHashSet<>();
         private final LinkedHashSet<UUID> spatialSiteSubscriptions = new LinkedHashSet<>();
+        private final LinkedHashSet<UUID> operationSiteSubscriptions = new LinkedHashSet<>();
         private volatile RealtimePrincipal principal;
         private volatile String token;
+        private volatile Instant authenticatedAt;
 
         private SessionState(WebSocketSession session) {
             this.session = session;

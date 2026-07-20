@@ -17,6 +17,7 @@
 - `rabbitmq_server_command_password`：mine-server 只写命令交换机的独立密码，不授予队列读取权限。
 - `rabbitmq_server_alarm_password`：mine-server 只读告警事实队列的独立密码，不授予交换机写入权限。
 - `rabbitmq_server_operation_password`：mine-server 只读运营空间事实队列的独立密码，不授予交换机写入权限。
+- `rabbitmq_server_operation_outbox_password`：mine-server 只写运营实时事件交换机的独立密码，不授予队列读取权限。
 - `mine_configuration_distribution_token`：mine-server 与运行节点之间拉取配置快照、回报加载状态的共享服务令牌，至少 32 个随机字符。
 - `mine_super_admin_password`：平台首次启动超级管理员密码，12–72 UTF-8 字节。
 - `mine_person_data_key`：人员手机号和证件号码 AES-256-GCM 加密密钥，仅保存 `openssl rand -base64 32` 生成的一行 Base64 内容；丢失后历史敏感字段无法恢复。

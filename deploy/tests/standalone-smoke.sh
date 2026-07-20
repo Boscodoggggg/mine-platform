@@ -83,6 +83,10 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
   'rabbitmqctl -q authenticate_user mine-server-operation "$(cat /run/secrets/rabbitmq_server_operation_password)"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-operation \
   | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\$[[:space:]]+\^mine\\\.server\\\.operation-spatial\\\.q\$$'
+"${compose[@]}" exec -T rabbitmq sh -ec \
+  'rabbitmqctl -q authenticate_user mine-server-operation-outbox "$(cat /run/secrets/rabbitmq_server_operation_outbox_password)"'
+"${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-operation-outbox \
+  | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^mine\\\.realtime\\\.x\$[[:space:]]+\^\$$'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-device name consumers \
   | awk '$1 == "mine.gateway.command-ack.q" && $2 >= 1 { found = 1 } END { exit !found }'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \

@@ -134,6 +134,12 @@ public final class MineTopology {
     /** 已提交空间事件的实时通知路由模式。 */
     public static final String REALTIME_SPATIAL_ROUTING_PATTERN = "realtime.spatial.#";
 
+    /** 已提交运营变更实时通知路由键前缀。 */
+    public static final String REALTIME_OPERATION_ROUTING_PREFIX = "realtime.operation.";
+
+    /** 已提交运营变更实时通知路由模式。 */
+    public static final String REALTIME_OPERATION_ROUTING_PATTERN = "realtime.operation.#";
+
     /** 告警触发稳定路由键。 */
     public static final String ALARM_RAISED_ROUTING_KEY = "alarm.raised";
 

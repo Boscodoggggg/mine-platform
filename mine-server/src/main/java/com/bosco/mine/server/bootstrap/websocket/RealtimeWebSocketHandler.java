@@ -32,6 +32,7 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
     private static final String TELEMETRY_PERMISSION = "device:telemetry:view";
     private static final String LOCATION_PERMISSION = "mine:location:view";
     private static final String SPATIAL_EVENT_PERMISSION = "mine:spatial:event:view";
+    private static final String OPERATION_PERMISSION = "mine:operation:view";
 
     private final RealtimeAuthenticator authenticator;
     private final RealtimeSnapshotProvider snapshots;
@@ -156,7 +157,7 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         requireRequestedAccess(principal, additions);
         registry.subscribe(
                 sessionId, additions.deviceSubscriptions(), additions.locationSiteIds(),
-                additions.spatialSiteIds(), limits);
+                additions.spatialSiteIds(), additions.operationSiteIds(), limits);
         send(sessionId, "ACK", requestId, Map.of("action", "SUBSCRIBE"));
         additions.deviceSubscriptions().forEach(
                 subscription -> sendSnapshot(sessionId, subscription));
@@ -169,7 +170,7 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         ParsedSubscriptions removals = parseSubscriptions(root, true);
         registry.unsubscribe(
                 sessionId, removals.deviceSubscriptions(), removals.locationSiteIds(),
-                removals.spatialSiteIds());
+                removals.spatialSiteIds(), removals.operationSiteIds());
         send(sessionId, "ACK", requestId, Map.of("action", "UNSUBSCRIBE"));
     }
 
@@ -220,6 +221,7 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
         Map<UUID, LinkedHashSet<String>> devices = new LinkedHashMap<>();
         LinkedHashSet<UUID> locationSites = new LinkedHashSet<>();
         LinkedHashSet<UUID> spatialSites = new LinkedHashSet<>();
+        LinkedHashSet<UUID> operationSites = new LinkedHashSet<>();
         for (JsonNode topic : topics) {
             String type = requiredText(topic, "type");
             List<UUID> ids = uuidArray(topic, "ids", false);
@@ -232,6 +234,8 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
                 locationSites.addAll(ids);
             } else if ("MINE_SITE_SPATIAL_EVENT".equals(type)) {
                 spatialSites.addAll(ids);
+            } else if ("MINE_SITE_OPERATION".equals(type)) {
+                operationSites.addAll(ids);
             } else {
                 throw new IllegalArgumentException("不支持的实时主题: " + type);
             }
@@ -241,7 +245,8 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
                         entry.getKey(), List.copyOf(entry.getValue())))
                 .toList();
         return new ParsedSubscriptions(
-                deviceSubscriptions, List.copyOf(locationSites), List.copyOf(spatialSites));
+                deviceSubscriptions, List.copyOf(locationSites), List.copyOf(spatialSites),
+                List.copyOf(operationSites));
     }
 
     private List<UUID> uuidArray(JsonNode root, String field, boolean optional) {
@@ -308,9 +313,15 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
                 && !principal.hasPermission(SPATIAL_EVENT_PERMISSION)) {
             throw new RealtimeAuthenticationException("空间事件查看权限已撤销");
         }
+        List<UUID> operationSiteIds = registry.operationSiteSubscriptions(sessionId);
+        if (!operationSiteIds.isEmpty()
+                && !principal.hasPermission(OPERATION_PERMISSION)) {
+            throw new RealtimeAuthenticationException("生产运营查看权限已撤销");
+        }
         try {
             LinkedHashSet<UUID> authorizedSites = new LinkedHashSet<>(siteIds);
             authorizedSites.addAll(spatialSiteIds);
+            authorizedSites.addAll(operationSiteIds);
             authorizedSites.forEach(
                     siteId -> siteAuthorizer.requireAccess(principal.userId(), siteId));
         } catch (MineException exception) {
@@ -321,7 +332,8 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
     private void requireRealtimePermission(RealtimePrincipal principal) {
         if (!principal.hasPermission(TELEMETRY_PERMISSION)
                 && !principal.hasPermission(LOCATION_PERMISSION)
-                && !principal.hasPermission(SPATIAL_EVENT_PERMISSION)) {
+                && !principal.hasPermission(SPATIAL_EVENT_PERMISSION)
+                && !principal.hasPermission(OPERATION_PERMISSION)) {
             throw new RealtimeAuthenticationException("缺少实时数据查看权限");
         }
     }
@@ -342,8 +354,13 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
                 && !principal.hasPermission(SPATIAL_EVENT_PERMISSION)) {
             throw new RealtimeAuthenticationException("缺少空间事件查看权限");
         }
+        if (!subscriptions.operationSiteIds().isEmpty()
+                && !principal.hasPermission(OPERATION_PERMISSION)) {
+            throw new RealtimeAuthenticationException("缺少生产运营查看权限");
+        }
         LinkedHashSet<UUID> siteIds = new LinkedHashSet<>(subscriptions.locationSiteIds());
         siteIds.addAll(subscriptions.spatialSiteIds());
+        siteIds.addAll(subscriptions.operationSiteIds());
         siteIds.forEach(siteId -> siteAuthorizer.requireAccess(principal.userId(), siteId));
     }
 
@@ -372,12 +389,14 @@ public final class RealtimeWebSocketHandler extends TextWebSocketHandler {
     private record ParsedSubscriptions(
             List<DeviceLatestSubscription> deviceSubscriptions,
             List<UUID> locationSiteIds,
-            List<UUID> spatialSiteIds
+            List<UUID> spatialSiteIds,
+            List<UUID> operationSiteIds
     ) {
         private ParsedSubscriptions {
             deviceSubscriptions = List.copyOf(deviceSubscriptions);
             locationSiteIds = List.copyOf(locationSiteIds);
             spatialSiteIds = List.copyOf(spatialSiteIds);
+            operationSiteIds = List.copyOf(operationSiteIds);
         }
     }
 }

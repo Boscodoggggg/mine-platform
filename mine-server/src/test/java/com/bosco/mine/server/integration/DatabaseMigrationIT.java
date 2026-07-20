@@ -105,6 +105,7 @@ class DatabaseMigrationIT {
             "mine_operation_correction",
             "mine_operation_effective_record",
             "mine_operation_outbox",
+            "mine_operation_site_sequence",
             "mine_operation_action_idempotency",
             "sys_login_log",
             "sys_operation_log",
@@ -171,6 +172,37 @@ class DatabaseMigrationIT {
         assertThat(constraintColumns("uk_mine_operation_action_idempotency_key"))
                 .containsExactly(
                         "organization_id", "site_id", "operator_id", "idempotency_key");
+    }
+
+    @Test
+    void 运营业务序号必须按矿区持久唯一且计数器具备完整中文注释() {
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT obj_description('mine_operation_site_sequence'::regclass, 'pg_class')
+                """, String.class)).contains("业务序号");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid = 'mine_operation_site_sequence'::regclass
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT col_description(
+                    'mine_operation_outbox'::regclass,
+                    (SELECT attnum FROM pg_attribute
+                     WHERE attrelid = 'mine_operation_outbox'::regclass
+                       AND attname = 'business_sequence')
+                )
+                """, String.class)).contains("连续递增");
+        assertThat(constraintColumns("uk_mine_operation_outbox_site_sequence"))
+                .containsExactly("site_id", "business_sequence");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_trigger
+                WHERE tgname = 'trg_mine_operation_outbox_business_sequence'
+                  AND NOT tgisinternal
+                """, Long.class)).isOne();
     }
 
     @Test

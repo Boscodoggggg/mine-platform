@@ -20,6 +20,7 @@ import com.bosco.mine.server.modules.mine.operation.dto.WorkOrderActionRequest;
 import com.bosco.mine.server.modules.mine.operation.dto.WorkOrderAssignmentRequest;
 import com.bosco.mine.server.modules.mine.operation.dto.WorkOrderRequest;
 import com.bosco.mine.server.modules.mine.operation.dto.WorkOrderResponse;
+import com.bosco.mine.server.modules.mine.operation.outbox.OperationOutboxRepository;
 import com.bosco.mine.server.modules.mine.service.MineRequestIdentity;
 import com.bosco.mine.server.modules.mine.service.MineScopeCommandService;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,6 +41,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -93,6 +95,9 @@ class OperationCorrectionIT {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private OperationOutboxRepository outboxRepository;
 
     private UUID userId;
     private UUID deniedUserId;
@@ -175,6 +180,17 @@ class OperationCorrectionIT {
                 SELECT COUNT(*) FROM mine_operation_outbox
                 WHERE aggregate_id IN (?, ?, ?)
                 """, Integer.class, associatedId, ignoredId, record.id())).isEqualTo(3);
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT business_sequence FROM mine_operation_outbox
+                WHERE aggregate_id IN (?, ?, ?)
+                ORDER BY business_sequence
+                """, Long.class, associatedId, ignoredId, record.id()))
+                .satisfiesExactly(
+                        first -> assertThat(first).isPositive(),
+                        second -> assertThat(second).isPositive(),
+                        third -> assertThat(third).isPositive())
+                .isSorted()
+                .doesNotHaveDuplicates();
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM sys_operation_log
                 WHERE module = 'MINE_OPERATION'
@@ -236,6 +252,45 @@ class OperationCorrectionIT {
         assertThatThrownBy(() -> jdbcTemplate.update(
                 "DELETE FROM mine_operation_record WHERE id = ?", added.id()))
                 .isInstanceOf(Exception.class);
+    }
+
+    @Test
+    void 运营Outbox必须持久认领租约失败退避并在确认后终结() {
+        OperationRecordResponse added = correctionService.addRecord(
+                siteId, "outbox-lifecycle-key", manualAddRequest("Outbox 生命周期"));
+        UUID eventId = jdbcTemplate.queryForObject("""
+                SELECT id FROM mine_operation_outbox WHERE aggregate_id = ?
+                """, UUID.class, added.id());
+        UUID firstLease = UUID.randomUUID();
+        var first = outboxRepository.claimById(
+                eventId, firstLease, Duration.ofSeconds(30));
+
+        assertThat(first).isPresent();
+        assertThat(first.orElseThrow().attemptCount()).isEqualTo(1);
+        assertThat(first.orElseThrow().businessSequence()).isPositive();
+        assertThat(outboxRepository.claimById(
+                eventId, UUID.randomUUID(), Duration.ofSeconds(30))).isEmpty();
+
+        outboxRepository.markFailed(
+                eventId, firstLease, Instant.now().minusSeconds(1), "确认超时");
+        UUID secondLease = UUID.randomUUID();
+        var second = outboxRepository.claimById(
+                eventId, secondLease, Duration.ofSeconds(30));
+        assertThat(second).isPresent();
+        assertThat(second.orElseThrow().attemptCount()).isEqualTo(2);
+
+        outboxRepository.markPublished(eventId, secondLease);
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT status, attempt_count, lease_token, leased_until, published_at
+                FROM mine_operation_outbox WHERE id = ?
+                """, eventId))
+                .containsEntry("status", "PUBLISHED")
+                .containsEntry("attempt_count", 2)
+                .containsEntry("lease_token", null)
+                .containsEntry("leased_until", null);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT published_at IS NOT NULL FROM mine_operation_outbox WHERE id = ?
+                """, Boolean.class, eventId)).isTrue();
     }
 
     @Test

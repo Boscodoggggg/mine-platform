@@ -8,9 +8,11 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -25,7 +27,7 @@ class RealtimeWebSocketConfigurationTest {
         WebSocketHandlerRegistry registry = mock(WebSocketHandlerRegistry.class);
         RealtimeProperties properties = new RealtimeProperties(
                 true, "/ws/realtime", "server-a", null, null, null, null,
-                false, null, null, null, null,
+                Duration.ofSeconds(45), false, null, null, null, null,
                 new RealtimeProperties.Account("unused", Path.of("/tmp/unused"))
         );
 
@@ -34,6 +36,20 @@ class RealtimeWebSocketConfigurationTest {
         configurer.registerWebSocketHandlers(registry);
 
         verify(registry).addHandler(handler, "/ws/realtime");
+    }
+
+    @Test
+    void 会话注册表必须使用配置的授权快照有效期() {
+        RealtimeProperties properties = new RealtimeProperties(
+                true, null, "server-a", null, null, null, null,
+                Duration.ofSeconds(45), false, null, null, null, null,
+                new RealtimeProperties.Account("unused", Path.of("/tmp/unused"))
+        );
+
+        RealtimeSessionRegistry registry = new RealtimeWebSocketConfiguration()
+                .realtimeSessionRegistry(properties);
+
+        assertThat(registry.authorizationTtl()).isEqualTo(Duration.ofSeconds(45));
     }
 
     @Test

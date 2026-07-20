@@ -72,6 +72,7 @@ class RealtimeRabbitConfigurationTest {
                         new RealtimeTelemetryConsumer(registry),
                         new RealtimeLocationConsumer(registry),
                         new RealtimeSpatialConsumer(registry),
+                        new RealtimeOperationConsumer(registry),
                         properties,
                         admin,
                         queue
@@ -85,7 +86,7 @@ class RealtimeRabbitConfigurationTest {
     }
 
     @Test
-    void 临时队列应同时绑定遥测矿区位置和空间事件实时主题() {
+    void 临时队列应同时绑定遥测矿区位置空间和运营事件实时主题() {
         RealtimeRabbitConfiguration configuration = new RealtimeRabbitConfiguration();
         RealtimeProperties properties = properties(tempDir.resolve("password"));
         Queue queue = configuration.realtimeQueue(properties);
@@ -97,12 +98,14 @@ class RealtimeRabbitConfigurationTest {
                 .isEqualTo(MineTopology.REALTIME_LOCATION_ROUTING_PATTERN);
         assertThat(configuration.realtimeSpatialBinding(queue, exchange).getRoutingKey())
                 .isEqualTo(MineTopology.REALTIME_SPATIAL_ROUTING_PATTERN);
+        assertThat(configuration.realtimeOperationBinding(queue, exchange).getRoutingKey())
+                .isEqualTo(MineTopology.REALTIME_OPERATION_ROUTING_PATTERN);
     }
 
     private RealtimeProperties properties(Path passwordFile) {
         return new RealtimeProperties(
                 true, null, "server-a", null, null, null, null,
-                true, "rabbitmq", 5672, false, 500,
+                null, true, "rabbitmq", 5672, false, 500,
                 new RealtimeProperties.Account("mine-server-realtime", passwordFile)
         );
     }

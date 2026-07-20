@@ -12,6 +12,8 @@ import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
+
 /**
  * 装配统一 WebSocket 实时端点及其本实例内存订阅表。
  */
@@ -24,11 +26,14 @@ public class RealtimeWebSocketConfiguration {
     /**
      * 创建本服务实例的实时会话注册表。
      *
+     * @param properties 实时通道配置
      * @return 实时会话注册表
      */
     @Bean
-    public RealtimeSessionRegistry realtimeSessionRegistry() {
-        return new RealtimeSessionRegistry(JsonMapper.builder().findAndAddModules().build());
+    public RealtimeSessionRegistry realtimeSessionRegistry(RealtimeProperties properties) {
+        return new RealtimeSessionRegistry(
+                JsonMapper.builder().findAndAddModules().build(),
+                Clock.systemUTC(), properties.resolvedAuthorizationTtl());
     }
 
     /**
