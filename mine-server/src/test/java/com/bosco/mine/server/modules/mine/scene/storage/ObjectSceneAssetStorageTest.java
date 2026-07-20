@@ -27,6 +27,22 @@ class ObjectSceneAssetStorageTest {
     @TempDir
     private Path temporaryDirectory;
 
+    /** 健康探针应使用专用对象键并在读取后删除。 */
+    @Test
+    void 健康探针应创建读取并删除专用对象() throws Exception {
+        InMemoryObjectStorage objectStorage = new InMemoryObjectStorage();
+        objectStorage.objects.put("scene/business/object.glb", new byte[]{1});
+        objectStorage.contentTypes.put("scene/business/object.glb", "model/gltf-binary");
+        ObjectSceneAssetStorage storage = storage(objectStorage);
+
+        storage.probe();
+
+        assertThat(objectStorage.objects)
+                .containsOnlyKeys("scene/business/object.glb");
+        assertThat(objectStorage.deletedKeys).singleElement()
+                .asString().startsWith("scene/.health/");
+    }
+
     /** 合法 GLB 应上传到稳定对象键并清理本地 staging。 */
     @Test
     void 应发布内容寻址对象并清理暂存目录() throws Exception {
@@ -91,6 +107,7 @@ class ObjectSceneAssetStorageTest {
 
         private final Map<String, byte[]> objects = new HashMap<>();
         private final Map<String, String> contentTypes = new HashMap<>();
+        private final java.util.List<String> deletedKeys = new java.util.ArrayList<>();
 
         @Override
         public void put(String objectKey, InputStream source, long contentLength, String contentType) {
@@ -126,6 +143,7 @@ class ObjectSceneAssetStorageTest {
 
         @Override
         public void delete(String objectKey) {
+            deletedKeys.add(objectKey);
             objects.remove(objectKey);
             contentTypes.remove(objectKey);
         }

@@ -35,6 +35,7 @@ public class SceneRuntimeService {
     private final MineScopeAuthorizer authorizer;
     private final SceneAssetStorage storage;
     private final ObjectMapper objectMapper;
+    private final SceneMetrics metrics;
 
     /**
      * 创建场景运行快照服务。
@@ -43,17 +44,20 @@ public class SceneRuntimeService {
      * @param authorizer 矿区作用域授权器
      * @param storage 三维资源存储端口
      * @param objectMapper JSON 映射器
+     * @param metrics 三维场景运行指标
      */
     public SceneRuntimeService(
             SceneMapper mapper,
             MineScopeAuthorizer authorizer,
             SceneAssetStorage storage,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            SceneMetrics metrics
     ) {
         this.mapper = mapper;
         this.authorizer = authorizer;
         this.storage = storage;
         this.objectMapper = objectMapper;
+        this.metrics = Objects.requireNonNull(metrics, "三维场景指标不能为空");
     }
 
     /**
@@ -67,23 +71,41 @@ public class SceneRuntimeService {
         authorizer.requireSite(siteId);
         List<SceneMapper.SceneRuntimeRow> rows = mapper.findRuntimeRows(siteId);
         if (rows.isEmpty() || rows.getFirst().sceneId() == null) {
-            return degraded(siteId, "NO_DEFAULT_SCENE");
+            return degraded(siteId, "NO_DEFAULT_SCENE", SceneMetrics.Reason.NO_DEFAULT_SCENE);
         }
         SceneMapper.SceneRuntimeRow first = rows.getFirst();
         if (first.versionId() == null) {
-            return degraded(siteId, "DEFAULT_SCENE_UNPUBLISHED");
+            return degraded(
+                    siteId,
+                    "DEFAULT_SCENE_UNPUBLISHED",
+                    SceneMetrics.Reason.DEFAULT_SCENE_UNPUBLISHED);
         }
         if (first.schemaVersion() == null
                 || first.schemaVersion() != SUPPORTED_SCHEMA_VERSION) {
-            return degraded(siteId, "UNSUPPORTED_SCHEMA_VERSION");
+            return degraded(
+                    siteId,
+                    "UNSUPPORTED_SCHEMA_VERSION",
+                    SceneMetrics.Reason.UNSUPPORTED_SCHEMA_VERSION);
         }
         try {
-            return new SceneRuntimeResponse(
+            SceneRuntimeResponse response = new SceneRuntimeResponse(
                     siteId, "READY", "NONE", buildSnapshot(siteId, rows));
+            metrics.operation(
+                    SceneMetrics.Stage.SNAPSHOT,
+                    SceneMetrics.Result.SUCCESS,
+                    SceneMetrics.Reason.NONE,
+                    SceneMetrics.AssetType.NONE);
+            return response;
         } catch (StorageUnavailableException exception) {
-            return degraded(siteId, "SCENE_STORAGE_UNAVAILABLE");
+            return degraded(
+                    siteId,
+                    "SCENE_STORAGE_UNAVAILABLE",
+                    SceneMetrics.Reason.STORAGE_UNAVAILABLE);
         } catch (RuntimeException exception) {
-            return degraded(siteId, "INVALID_PUBLISHED_SNAPSHOT");
+            return degraded(
+                    siteId,
+                    "INVALID_PUBLISHED_SNAPSHOT",
+                    SceneMetrics.Reason.INVALID_PUBLISHED_SNAPSHOT);
         }
     }
 
@@ -266,7 +288,16 @@ public class SceneRuntimeService {
         return builder.buildAndExpand(siteId, row.assetId()).encode().toUriString();
     }
 
-    private SceneRuntimeResponse degraded(UUID siteId, String reason) {
+    private SceneRuntimeResponse degraded(
+            UUID siteId,
+            String reason,
+            SceneMetrics.Reason metricReason
+    ) {
+        metrics.operation(
+                SceneMetrics.Stage.SNAPSHOT,
+                SceneMetrics.Result.DEGRADED,
+                metricReason,
+                SceneMetrics.AssetType.NONE);
         return new SceneRuntimeResponse(siteId, "DEGRADED", reason, null);
     }
 

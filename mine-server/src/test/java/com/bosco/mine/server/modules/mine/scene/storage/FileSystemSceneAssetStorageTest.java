@@ -30,6 +30,20 @@ class FileSystemSceneAssetStorageTest {
     private Path temporaryDirectory;
 
     @Test
+    void 健康探针只应创建读取删除专用文件且不扫描业务对象() throws Exception {
+        SceneAssetStorage storage = storage(properties(100000));
+        Path businessObject = temporaryDirectory.resolve("objects").resolve("keep-me");
+        Files.createDirectory(businessObject);
+
+        storage.probe();
+
+        assertThat(businessObject).exists();
+        try (var probes = Files.list(temporaryDirectory.resolve(".health"))) {
+            assertThat(probes).isEmpty();
+        }
+    }
+
+    @Test
     void 应按上传内容摘要原子保存Glb并安全解析清单文件() throws Exception {
         SceneAssetStorage storage = storage(properties(100000));
 

@@ -48,6 +48,18 @@ operation_metrics=(
   mine_server_operation_shift_close_leftovers
 )
 
+scene_alerts=(
+  MineSceneStorageUnavailable
+  MineSceneReadFailureRateHigh
+  MineSceneQuarantinedAssetsHigh
+  MineSceneSnapshotFailuresPersistent
+)
+scene_metrics=(
+  mine_server_scene_storage_available
+  mine_server_scene_operations_total
+  mine_server_scene_assets_quarantined
+)
+
 for alert in "${required_alerts[@]}"; do
   grep -Fq "alert: ${alert}" "${RULES_FILE}" \
     || { echo "FAIL: 缺少定位告警 ${alert}" >&2; exit 1; }
@@ -60,6 +72,14 @@ done
 for metric in "${operation_metrics[@]}"; do
   grep -Fq "${metric}" "${RULES_FILE}" \
     || { echo "FAIL: 生产运营告警未引用指标 ${metric}" >&2; exit 1; }
+done
+for alert in "${scene_alerts[@]}"; do
+  grep -Fq "alert: ${alert}" "${RULES_FILE}" \
+    || { echo "FAIL: 缺少三维场景告警 ${alert}" >&2; exit 1; }
+done
+for metric in "${scene_metrics[@]}"; do
+  grep -Fq "${metric}" "${RULES_FILE}" \
+    || { echo "FAIL: 三维场景告警未引用指标 ${metric}" >&2; exit 1; }
 done
 for metric in "${required_metrics[@]}"; do
   grep -Fq "${metric}" "${RULES_FILE}" \
@@ -88,6 +108,17 @@ if grep -Eq '(^|[,{[:space:]])(organization|site|workOrder|vehicle|driver|person
   exit 1
 fi
 
+scene_rules="$(awk '
+  /^  - name: mine-scene-runtime$/ { capture=1 }
+  capture && /^  - name:/ && $0 !~ /mine-scene-runtime/ { capture=0 }
+  capture { print }
+' "${RULES_FILE}")"
+if grep -Eq '(^|[,{[:space:]])(organization|site|scene|asset|path|file|user|exception|error_text)=' \
+    <<<"${scene_rules}"; then
+  echo "FAIL: 三维场景告警规则不得使用业务身份、路径或异常文本标签" >&2
+  exit 1
+fi
+
 if command -v promtool >/dev/null 2>&1; then
   promtool check rules "${RULES_FILE}"
   (cd "${PROMETHEUS_DIR}/tests" && promtool test rules "$(basename "${TEST_FILE}")")
@@ -104,4 +135,4 @@ else
     test rules platform.test.yml
 fi
 
-echo "PASS: 定位、空间与生产运营低基数告警规则和 PromQL 行为测试通过"
+echo "PASS: 定位、空间、生产运营与三维场景低基数告警规则和 PromQL 行为测试通过"

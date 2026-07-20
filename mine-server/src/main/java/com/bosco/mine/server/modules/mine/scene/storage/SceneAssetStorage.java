@@ -13,6 +13,15 @@ import java.util.Objects;
 public interface SceneAssetStorage {
 
     /**
+     * 创建、读取并删除一个专用小型探针对象，验证当前存储完整读写链路。
+     *
+     * <p>实现不得扫描业务对象树，也不得修改或删除任何内容寻址资源。</p>
+     *
+     * @throws IOException 探针创建、读取、校验或删除失败
+     */
+    void probe() throws IOException;
+
+    /**
      * 流式校验并原子保存一个三维资源。
      *
      * @param source 上传内容流

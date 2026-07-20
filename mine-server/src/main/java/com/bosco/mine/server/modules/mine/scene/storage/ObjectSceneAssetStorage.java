@@ -6,8 +6,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -26,11 +28,14 @@ import java.util.regex.Pattern;
 public final class ObjectSceneAssetStorage implements SceneAssetStorage {
 
     private static final Pattern DIGEST = Pattern.compile("sha256:[0-9a-f]{64}");
+    private static final byte[] PROBE_CONTENT =
+            "mine-scene-storage-probe-v1".getBytes(StandardCharsets.UTF_8);
 
     private final SceneAssetStorageProperties properties;
     private final SceneAssetPackageValidator validator;
     private final ObjectStorage objectStorage;
     private final Path stagingRoot;
+    private final String probeKey = "scene/.health/" + UUID.randomUUID() + ".probe";
 
     /**
      * 创建基于标准对象存储的场景资源适配器。
@@ -56,6 +61,37 @@ public final class ObjectSceneAssetStorage implements SceneAssetStorage {
             }
         } catch (IOException exception) {
             throw new IllegalStateException("三维资源暂存目录不可用", exception);
+        }
+    }
+
+    /**
+     * 使用对象存储专用键创建、读取并删除一个小型探针对象。
+     *
+     * @throws IOException 任一存储操作失败
+     */
+    @Override
+    public synchronized void probe() throws IOException {
+        try {
+            objectStorage.put(
+                    probeKey,
+                    new ByteArrayInputStream(PROBE_CONTENT),
+                    PROBE_CONTENT.length,
+                    "application/octet-stream");
+            try (ObjectStorage.ObjectContent content = objectStorage.get(probeKey)) {
+                byte[] actual = content.inputStream().readNBytes(PROBE_CONTENT.length + 1);
+                if (content.metadata().contentLength() != PROBE_CONTENT.length
+                        || !java.util.Arrays.equals(PROBE_CONTENT, actual)) {
+                    throw new IOException("三维资源对象存储探针内容不一致");
+                }
+            }
+        } catch (RuntimeException exception) {
+            throw new IOException("三维资源对象存储探针失败", exception);
+        } finally {
+            try {
+                objectStorage.delete(probeKey);
+            } catch (RuntimeException exception) {
+                throw new IOException("三维资源对象存储探针清理失败", exception);
+            }
         }
     }
 

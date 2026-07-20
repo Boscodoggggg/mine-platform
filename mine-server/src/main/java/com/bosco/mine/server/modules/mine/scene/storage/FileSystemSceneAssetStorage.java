@@ -1,8 +1,8 @@
 package com.bosco.mine.server.modules.mine.scene.storage;
 
 import com.bosco.mine.server.modules.mine.scene.domain.SceneAssetPolicy;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedInputStream;
@@ -10,6 +10,7 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -41,12 +42,16 @@ public final class FileSystemSceneAssetStorage implements SceneAssetStorage {
 
     private static final Pattern DIGEST = Pattern.compile("sha256:[0-9a-f]{64}");
     private static final int BUFFER_SIZE = 16 * 1024;
+    private static final byte[] PROBE_CONTENT =
+            "mine-scene-storage-probe-v1".getBytes(StandardCharsets.UTF_8);
 
     private final SceneAssetStorageProperties properties;
     private final SceneAssetPackageValidator validator;
     private final Path root;
     private final Path stagingRoot;
     private final Path objectsRoot;
+    private final Path probeRoot;
+    private final Path probeFile;
 
     /**
      * 创建并校验三维资源文件系统目录。
@@ -63,12 +68,34 @@ public final class FileSystemSceneAssetStorage implements SceneAssetStorage {
         this.root = properties.root();
         this.stagingRoot = root.resolve(".staging");
         this.objectsRoot = root.resolve("objects");
+        this.probeRoot = root.resolve(".health");
+        this.probeFile = probeRoot.resolve(UUID.randomUUID() + ".probe");
         try {
             createOwnedDirectory(root);
             createOwnedDirectory(stagingRoot);
             createOwnedDirectory(objectsRoot);
         } catch (IOException exception) {
             throw new IllegalStateException("三维资源存储目录不可用", exception);
+        }
+    }
+
+    /**
+     * 使用独立健康目录创建、读取和删除一个小型普通文件。
+     *
+     * @throws IOException 任一存储操作失败
+     */
+    @Override
+    public synchronized void probe() throws IOException {
+        createOwnedDirectory(probeRoot);
+        try {
+            Files.write(probeFile, PROBE_CONTENT,
+                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            if (!Files.isRegularFile(probeFile, LinkOption.NOFOLLOW_LINKS)
+                    || !java.util.Arrays.equals(PROBE_CONTENT, Files.readAllBytes(probeFile))) {
+                throw new IOException("三维资源存储探针内容不一致");
+            }
+        } finally {
+            Files.deleteIfExists(probeFile);
         }
     }
 

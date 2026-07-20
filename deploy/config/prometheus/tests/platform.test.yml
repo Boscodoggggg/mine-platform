@@ -427,3 +427,123 @@ tests:
             exp_annotations:
               summary: 到期班次存在关账遗留状态
               description: 已超过计划结束时间的开放班次仍有未终结作业或运输循环，请在生产运营工作台完成处置后关账。
+
+  - name: 三维场景存储持续不可用应先降级二维
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_storage_available{job="mine-server"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: MineSceneStorageUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: MineSceneStorageUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: warning
+            exp_annotations:
+              summary: 三维场景资源存储不可用
+              description: 三维资源专用创建、读取和删除探针已连续失败；平台应先降级二维，禁止清理资源卷或修改已发布场景事实。
+
+  - name: 三维场景读取失败率足量且超过阈值应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="success",reason="none",assetType="glb"}'
+        values: '0+9x25'
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="failure",reason="storage_unavailable",assetType="glb"}'
+        values: '0+1x25'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: MineSceneReadFailureRateHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MineSceneReadFailureRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 三维场景资源读取失败率升高
+              description: 最近 10 分钟场景读取样本不少于 100 次且失败率持续超过 5%；先保持二维运行，检查存储和网络，禁止替换摘要内容。
+
+  - name: 三维场景读取失败率样本不足不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="success",reason="none",assetType="tiles_3d"}'
+        values: '0+8x9'
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="failure",reason="storage_unavailable",assetType="tiles_3d"}'
+        values: '0+2x9'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MineSceneReadFailureRateHigh
+        exp_alerts: []
+
+  - name: 三维场景读取失败率等于阈值不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="success",reason="none",assetType="glb"}'
+        values: '0+95x20'
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="failure",reason="storage_unavailable",assetType="glb"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: MineSceneReadFailureRateHigh
+        exp_alerts: []
+
+  - name: 三维场景隔离资源超过阈值并持续应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_assets_quarantined{job="mine-server"}'
+        values: '51+0x15'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MineSceneQuarantinedAssetsHigh
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: MineSceneQuarantinedAssetsHigh
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: warning
+            exp_annotations:
+              summary: 三维场景隔离资源持续积压
+              description: 隔离资源已连续 10 分钟超过 50 个；请核对上传事务和孤儿对账，禁止直接清资源卷或绕过清单修改发布事实。
+
+  - name: 三维场景隔离资源等于阈值不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_assets_quarantined{job="mine-server"}'
+        values: '50+0x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: MineSceneQuarantinedAssetsHigh
+        exp_alerts: []
+
+  - name: 默认三维场景快照持续降级应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="snapshot",result="degraded",reason="invalid_published_snapshot",assetType="none"}'
+        values: '0+1x15'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineSceneSnapshotFailuresPersistent
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: MineSceneSnapshotFailuresPersistent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 默认三维场景快照持续降级
+              description: 最近 10 分钟默认场景快照至少 3 次降级；客户端应继续使用二维视口，请检查发布摘要和资源可读性，禁止修改不可变发布版本。
+
+  - name: 默认三维场景快照降级样本不足不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="snapshot",result="degraded",reason="storage_unavailable",assetType="none"}'
+        values: '0+0x4 1+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineSceneSnapshotFailuresPersistent
+        exp_alerts: []

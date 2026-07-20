@@ -63,6 +63,7 @@ public class SceneCommandService {
     private final MineScopeAuthorizer authorizer;
     private final OperationAuditService auditService;
     private final ObjectMapper objectMapper;
+    private final SceneMetrics metrics;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -74,6 +75,7 @@ public class SceneCommandService {
      * @param authorizer 矿区作用域授权器
      * @param auditService 操作审计服务
      * @param objectMapper JSON 映射器
+     * @param metrics 三维场景运行指标
      */
     public SceneCommandService(
             SceneMapper mapper,
@@ -81,7 +83,8 @@ public class SceneCommandService {
             SceneActionIdempotencyService idempotencyService,
             MineScopeAuthorizer authorizer,
             OperationAuditService auditService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            SceneMetrics metrics
     ) {
         this.mapper = mapper;
         this.queryService = queryService;
@@ -89,6 +92,7 @@ public class SceneCommandService {
         this.authorizer = authorizer;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.metrics = Objects.requireNonNull(metrics, "三维场景指标不能为空");
     }
 
     /** 创建一个矿区内编码稳定的场景。 */
@@ -294,11 +298,16 @@ public class SceneCommandService {
             long version,
             String idempotencyKey
     ) {
-        return idempotencyService.execute(
-                siteId, idempotencyKey, "PUBLISH_SCENE", "SCENE_VERSION", versionId,
-                Map.of("sceneId", sceneId, "versionId", versionId, "version", version),
-                SceneVersionResponse.class,
-                () -> publishOnce(siteId, sceneId, versionId, version));
+        try {
+            return idempotencyService.execute(
+                    siteId, idempotencyKey, "PUBLISH_SCENE", "SCENE_VERSION", versionId,
+                    Map.of("sceneId", sceneId, "versionId", versionId, "version", version),
+                    SceneVersionResponse.class,
+                    () -> publishOnce(siteId, sceneId, versionId, version));
+        } catch (MineException exception) {
+            recordPublishFailure(exception);
+            throw exception;
+        }
     }
 
     private SceneResponse setDefaultOnce(UUID siteId, UUID sceneId, long version) {
@@ -394,7 +403,32 @@ public class SceneCommandService {
                 Map.of("status", draft.status(), "version", draft.version()),
                 Map.of("status", response.status(), "contentHash", response.contentHash(),
                         "revisionNumber", response.revisionNumber()));
+        metrics.operation(
+                SceneMetrics.Stage.PUBLISH,
+                SceneMetrics.Result.SUCCESS,
+                SceneMetrics.Reason.NONE,
+                SceneMetrics.AssetType.NONE);
         return response;
+    }
+
+    private void recordPublishFailure(MineException exception) {
+        String code = exception.errorCode().code();
+        SceneMetrics.Result result;
+        SceneMetrics.Reason reason;
+        if (code.startsWith("MINE-SCENE-") && code.contains("-409-")) {
+            result = SceneMetrics.Result.FAILURE;
+            reason = SceneMetrics.Reason.CONFLICT;
+        } else if (code.startsWith("MINE-SCENE-") && code.contains("-422-")) {
+            result = SceneMetrics.Result.REJECTED;
+            reason = SceneMetrics.Reason.INVALID_DEFINITION;
+        } else {
+            return;
+        }
+        metrics.failure(
+                SceneMetrics.Stage.PUBLISH,
+                result,
+                reason,
+                SceneMetrics.AssetType.NONE);
     }
 
     private List<NormalizedLayer> normalizeLayers(

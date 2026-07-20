@@ -527,3 +527,49 @@ groups:
         annotations:
           summary: "到期班次存在关账遗留状态"
           description: "已超过计划结束时间的开放班次仍有未终结作业或运输循环，请在生产运营工作台完成处置后关账。"
+
+  - name: mine-scene-runtime
+    rules:
+      - alert: MineSceneStorageUnavailable
+        expr: mine_server_scene_storage_available == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "三维场景资源存储不可用"
+          description: "三维资源专用创建、读取和删除探针已连续失败；平台应先降级二维，禁止清理资源卷或修改已发布场景事实。"
+
+      - alert: MineSceneReadFailureRateHigh
+        expr: >-
+          (sum(rate(mine_server_scene_operations_total
+          {stage="read",result="failure"}[10m]))
+          / clamp_min(sum(rate(mine_server_scene_operations_total
+          {stage="read"}[10m])), 0.001) > 0.05)
+          and (sum(increase(mine_server_scene_operations_total
+          {stage="read"}[10m])) >= 100)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "三维场景资源读取失败率升高"
+          description: "最近 10 分钟场景读取样本不少于 100 次且失败率持续超过 5%；先保持二维运行，检查存储和网络，禁止替换摘要内容。"
+
+      - alert: MineSceneQuarantinedAssetsHigh
+        expr: mine_server_scene_assets_quarantined > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "三维场景隔离资源持续积压"
+          description: "隔离资源已连续 10 分钟超过 50 个；请核对上传事务和孤儿对账，禁止直接清资源卷或绕过清单修改发布事实。"
+
+      - alert: MineSceneSnapshotFailuresPersistent
+        expr: >-
+          sum(increase(mine_server_scene_operations_total
+          {stage="snapshot",result="degraded"}[10m])) >= 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "默认三维场景快照持续降级"
+          description: "最近 10 分钟默认场景快照至少 3 次降级；客户端应继续使用二维视口，请检查发布摘要和资源可读性，禁止修改不可变发布版本。"

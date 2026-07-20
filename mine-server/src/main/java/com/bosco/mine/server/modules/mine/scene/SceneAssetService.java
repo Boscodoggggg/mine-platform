@@ -5,6 +5,7 @@ import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.mine.model.MineSite;
+import com.bosco.mine.server.modules.mine.scene.domain.SceneAssetPolicy;
 import com.bosco.mine.server.modules.mine.scene.dto.SceneAssetFileResponse;
 import com.bosco.mine.server.modules.mine.scene.dto.SceneAssetResponse;
 import com.bosco.mine.server.modules.mine.scene.storage.SceneAssetPackageValidator;
@@ -14,6 +15,7 @@ import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Locale;
@@ -45,6 +47,7 @@ public class SceneAssetService {
     private final MineScopeAuthorizer authorizer;
     private final OperationAuditService auditService;
     private final SceneActionIdempotencyService idempotencyService;
+    private final SceneMetrics metrics;
     private final IdGenerator idGenerator = IdGenerator.timeOrdered();
 
     /**
@@ -55,13 +58,15 @@ public class SceneAssetService {
      * @param authorizer 矿区作用域授权器
      * @param auditService 操作审计服务
      * @param idempotencyService 场景动作幂等服务
+     * @param metrics 三维场景运行指标
      */
     public SceneAssetService(
             SceneMapper mapper,
             SceneAssetStorage storage,
             MineScopeAuthorizer authorizer,
             OperationAuditService auditService,
-            SceneActionIdempotencyService idempotencyService
+            SceneActionIdempotencyService idempotencyService,
+            SceneMetrics metrics
     ) {
         this.mapper = Objects.requireNonNull(mapper, "场景数据访问接口不能为空");
         this.storage = Objects.requireNonNull(storage, "三维资源存储不能为空");
@@ -69,6 +74,7 @@ public class SceneAssetService {
         this.auditService = Objects.requireNonNull(auditService, "操作审计服务不能为空");
         this.idempotencyService = Objects.requireNonNull(
                 idempotencyService, "场景动作幂等服务不能为空");
+        this.metrics = Objects.requireNonNull(metrics, "三维场景指标不能为空");
     }
 
     /**
@@ -88,17 +94,38 @@ public class SceneAssetService {
             String contentType
     ) {
         MineSite site = authorizer.requireSite(siteId);
-        String safeFilename = safeFilename(originalFilename);
+        String safeFilename;
+        try {
+            safeFilename = safeFilename(originalFilename);
+        } catch (MineException exception) {
+            metrics.failure(
+                    SceneMetrics.Stage.VALIDATION,
+                    SceneMetrics.Result.REJECTED,
+                    SceneMetrics.Reason.INVALID_PACKAGE,
+                    SceneMetrics.AssetType.NONE);
+            throw exception;
+        }
         SceneAssetStorage.StoredAsset stored;
         try {
             stored = storage.store(source, safeFilename, contentType);
         } catch (SceneAssetPackageValidator.ValidationException | IllegalArgumentException exception) {
+            metrics.failure(
+                    SceneMetrics.Stage.VALIDATION,
+                    SceneMetrics.Result.REJECTED,
+                    SceneMetrics.Reason.INVALID_PACKAGE,
+                    metricAssetType(safeFilename, contentType));
             throw new MineException(INVALID_REQUEST, Map.of());
         } catch (IOException exception) {
+            metrics.failure(
+                    SceneMetrics.Stage.UPLOAD,
+                    SceneMetrics.Result.FAILURE,
+                    SceneMetrics.Reason.STORAGE_UNAVAILABLE,
+                    metricAssetType(safeFilename, contentType));
             throw new MineException(STORAGE_UNAVAILABLE, Map.of());
         }
         var existing = mapper.findAssetByDigest(siteId, stored.contentDigest());
         if (existing.isPresent()) {
+            recordUploadSuccess(stored.assetType());
             return responseWithFiles(existing.get(), 1, 100);
         }
 
@@ -112,6 +139,7 @@ public class SceneAssetService {
                 stored.sourceSizeBytes(), stored.expandedSizeBytes(), stored.fileCount(),
                 stored.entryPath(), userId);
         if (inserted == 0) {
+            recordUploadSuccess(stored.assetType());
             return responseWithFiles(mapper.findAssetByDigest(siteId, stored.contentDigest())
                     .orElseThrow(() -> new MineException(STORAGE_UNAVAILABLE, Map.of())), 1, 100);
         }
@@ -129,6 +157,7 @@ public class SceneAssetService {
                 "SCENE_ASSET", assetId, Map.of(),
                 Map.of("siteId", siteId, "assetType", created.assetType(),
                         "contentDigest", created.contentDigest(), "fileCount", created.fileCount()));
+        recordUploadSuccess(stored.assetType());
         return responseWithFiles(created, 1, 100);
     }
 
@@ -235,10 +264,152 @@ public class SceneAssetService {
         SceneMapper.SceneAssetRecord asset = requiredAsset(siteId, assetId);
         SceneMapper.SceneAssetFileRecord file = mapper.findAssetFile(siteId, assetId, relativePath)
                 .orElseThrow(() -> new MineException(FILE_NOT_FOUND, Map.of()));
+        SceneMetrics.AssetType assetType = SceneMetrics.AssetType.from(
+                SceneAssetPolicy.SceneAssetType.valueOf(asset.assetType()));
         return new SceneAssetFileContent(
                 file.contentType(), file.contentDigest(), file.sizeBytes(),
-                range -> storage.open(
-                        asset.contentDigest(), file.relativePath(), range));
+                range -> {
+                    try {
+                        SceneAssetStorage.StoredContent content = storage.open(
+                                asset.contentDigest(), file.relativePath(), range);
+                        return new SceneAssetStorage.StoredContent(
+                                new SceneReadInputStream(
+                                        content.inputStream(),
+                                        content.contentLength(),
+                                        metrics,
+                                        assetType),
+                                content.contentLength(),
+                                content.contentRange());
+                    } catch (IOException | IllegalArgumentException exception) {
+                        metrics.failure(
+                                SceneMetrics.Stage.READ,
+                                SceneMetrics.Result.FAILURE,
+                                SceneMetrics.Reason.STORAGE_UNAVAILABLE,
+                                assetType);
+                        throw exception;
+                    }
+                });
+    }
+
+    private void recordUploadSuccess(SceneAssetPolicy.SceneAssetType assetType) {
+        SceneMetrics.AssetType metricType = SceneMetrics.AssetType.from(assetType);
+        metrics.operation(
+                SceneMetrics.Stage.VALIDATION,
+                SceneMetrics.Result.SUCCESS,
+                SceneMetrics.Reason.NONE,
+                metricType);
+        metrics.operation(
+                SceneMetrics.Stage.UPLOAD,
+                SceneMetrics.Result.SUCCESS,
+                SceneMetrics.Reason.NONE,
+                metricType);
+    }
+
+    private SceneMetrics.AssetType metricAssetType(String filename, String contentType) {
+        try {
+            return SceneMetrics.AssetType.from(SceneAssetPolicy.typeFor(filename, contentType));
+        } catch (IllegalArgumentException exception) {
+            return SceneMetrics.AssetType.NONE;
+        }
+    }
+
+    /** 在完整流式响应结束后记录读取结果，覆盖对象存储中途断流。 */
+    static final class SceneReadInputStream extends FilterInputStream {
+
+        private final long expectedBytes;
+        private final SceneMetrics metrics;
+        private final SceneMetrics.AssetType assetType;
+        private long bytesRead;
+        private boolean recorded;
+
+        /**
+         * 创建一个不缓存内容的场景读取计量流。
+         *
+         * @param input 底层对象内容流
+         * @param expectedBytes 期望完整响应字节数
+         * @param metrics 三维场景指标
+         * @param assetType 固定资源类型
+         */
+        SceneReadInputStream(
+                InputStream input,
+                long expectedBytes,
+                SceneMetrics metrics,
+                SceneMetrics.AssetType assetType
+        ) {
+            super(Objects.requireNonNull(input, "场景读取流不能为空"));
+            if (expectedBytes < 0) {
+                throw new IllegalArgumentException("场景读取期望字节数不能小于零");
+            }
+            this.expectedBytes = expectedBytes;
+            this.metrics = Objects.requireNonNull(metrics, "三维场景指标不能为空");
+            this.assetType = Objects.requireNonNull(assetType, "场景资源类型不能为空");
+        }
+
+        /** 读取单字节并在结束或异常时提交固定结果。 */
+        @Override
+        public int read() throws IOException {
+            try {
+                int value = super.read();
+                if (value < 0) {
+                    finish(bytesRead == expectedBytes);
+                } else {
+                    bytesRead++;
+                }
+                return value;
+            } catch (IOException exception) {
+                finish(false);
+                throw exception;
+            }
+        }
+
+        /** 读取字节块并在结束或异常时提交固定结果。 */
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            try {
+                int count = super.read(buffer, offset, length);
+                if (count < 0) {
+                    finish(bytesRead == expectedBytes);
+                } else {
+                    bytesRead += count;
+                }
+                return count;
+            } catch (IOException exception) {
+                finish(false);
+                throw exception;
+            }
+        }
+
+        /** 关闭底层响应，并将未完整消费的响应记为读取失败。 */
+        @Override
+        public void close() throws IOException {
+            try {
+                super.close();
+                finish(bytesRead == expectedBytes);
+            } catch (IOException exception) {
+                finish(false);
+                throw exception;
+            }
+        }
+
+        private void finish(boolean success) {
+            if (recorded) {
+                return;
+            }
+            recorded = true;
+            if (success) {
+                metrics.operation(
+                        SceneMetrics.Stage.READ,
+                        SceneMetrics.Result.SUCCESS,
+                        SceneMetrics.Reason.NONE,
+                        assetType);
+            } else {
+                metrics.failure(
+                        SceneMetrics.Stage.READ,
+                        SceneMetrics.Result.FAILURE,
+                        SceneMetrics.Reason.STORAGE_UNAVAILABLE,
+                        assetType);
+            }
+        }
     }
 
     private SceneMapper.SceneAssetRecord requiredAsset(UUID siteId, UUID assetId) {
