@@ -87,6 +87,26 @@ class DeviceRepositoryIT {
     }
 
     @Test
+    void 产品和设备动态查询应支持筛选分页与批量标识() {
+        UUID productId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        mapper.insertProduct(productId, "haul-terminal", "矿卡终端", "VEHICLE", "ACTIVE", null);
+        mapper.insertDevice(deviceId, productId, "haul-001", "一号矿卡", "ENABLED", null);
+
+        assertThat(mapper.countProducts("矿卡", "ACTIVE")).isOne();
+        assertThat(mapper.findProducts(null, null, 0, 20))
+                .extracting(product -> product.id())
+                .containsExactly(productId);
+        assertThat(mapper.countDevices(productId, "矿卡", "ENABLED")).isOne();
+        assertThat(mapper.findDevices(null, null, null, 0, 20))
+                .extracting(device -> device.id())
+                .containsExactly(deviceId);
+        assertThat(mapper.findDevicesByIds(List.of(deviceId)))
+                .extracting(device -> device.id())
+                .containsExactly(deviceId);
+    }
+
+    @Test
     void 设备凭据表只能保存不可逆散列和安全摘要() {
         List<String> columns = jdbcTemplate.queryForList("""
                 SELECT column_name

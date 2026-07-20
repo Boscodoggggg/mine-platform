@@ -63,20 +63,6 @@ public interface AccessManagementMapper {
      * @param status  用户状态
      * @return 用户数量
      */
-    @Select("""
-            <script>
-            SELECT COUNT(*)
-            FROM sys_user
-            WHERE 1 = 1
-            <if test="keyword != null and keyword != ''">
-              AND (username ILIKE CONCAT('%', #{keyword}, '%')
-                   OR display_name ILIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="status != null and status != ''">
-              AND status = #{status}
-            </if>
-            </script>
-            """)
     long countUsers(
             @Param("keyword") String keyword,
             @Param("status") String status
@@ -91,25 +77,6 @@ public interface AccessManagementMapper {
      * @param limit   最大返回数量
      * @return 用户列表
      */
-    @Select("""
-            <script>
-            SELECT id, username, display_name AS displayName, status,
-                   password_change_required AS passwordChangeRequired,
-                   last_login_at AS lastLoginAt, created_at AS createdAt,
-                   updated_at AS updatedAt, version
-            FROM sys_user
-            WHERE 1 = 1
-            <if test="keyword != null and keyword != ''">
-              AND (username ILIKE CONCAT('%', #{keyword}, '%')
-                   OR display_name ILIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="status != null and status != ''">
-              AND status = #{status}
-            </if>
-            ORDER BY created_at DESC, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<ManagedUserRecord> findUsers(
             @Param("keyword") String keyword,
             @Param("status") String status,
@@ -227,20 +194,6 @@ public interface AccessManagementMapper {
      * @param status  角色状态
      * @return 角色数量
      */
-    @Select("""
-            <script>
-            SELECT COUNT(*)
-            FROM sys_role
-            WHERE 1 = 1
-            <if test="keyword != null and keyword != ''">
-              AND (code ILIKE CONCAT('%', #{keyword}, '%')
-                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="status != null and status != ''">
-              AND status = #{status}
-            </if>
-            </script>
-            """)
     long countRoles(
             @Param("keyword") String keyword,
             @Param("status") String status
@@ -255,23 +208,6 @@ public interface AccessManagementMapper {
      * @param limit   最大返回数量
      * @return 角色列表
      */
-    @Select("""
-            <script>
-            SELECT id, code, name, status, description,
-                   created_at AS createdAt, updated_at AS updatedAt, version
-            FROM sys_role
-            WHERE 1 = 1
-            <if test="keyword != null and keyword != ''">
-              AND (code ILIKE CONCAT('%', #{keyword}, '%')
-                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="status != null and status != ''">
-              AND status = #{status}
-            </if>
-            ORDER BY created_at DESC, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<ManagedRoleRecord> findRoles(
             @Param("keyword") String keyword,
             @Param("status") String status,
@@ -393,17 +329,6 @@ public interface AccessManagementMapper {
      * @param roleIds 角色标识集合
      * @return 启用角色数量
      */
-    @Select("""
-            <script>
-            SELECT COUNT(*)
-            FROM sys_role
-            WHERE status = 'ENABLED'
-              AND id IN
-            <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
-                #{roleId,typeHandler=com.bosco.mine.server.modules.system.repository.PostgreSqlUuidTypeHandler}
-            </foreach>
-            </script>
-            """)
     long countEnabledRoleIds(@Param("roleIds") List<UUID> roleIds);
 
     /**
@@ -435,16 +360,6 @@ public interface AccessManagementMapper {
      * @param menuIds 菜单标识集合
      * @return 存在的菜单数量
      */
-    @Select("""
-            <script>
-            SELECT COUNT(*)
-            FROM sys_menu
-            WHERE id IN
-            <foreach collection="menuIds" item="menuId" open="(" separator="," close=")">
-                #{menuId,typeHandler=com.bosco.mine.server.modules.system.repository.PostgreSqlUuidTypeHandler}
-            </foreach>
-            </script>
-            """)
     long countExistingMenuIds(@Param("menuIds") List<UUID> menuIds);
 
     /**
@@ -453,17 +368,6 @@ public interface AccessManagementMapper {
      * @param menuIds 菜单标识集合
      * @return 启用菜单数量
      */
-    @Select("""
-            <script>
-            SELECT COUNT(*)
-            FROM sys_menu
-            WHERE status = 'ENABLED'
-              AND id IN
-            <foreach collection="menuIds" item="menuId" open="(" separator="," close=")">
-                #{menuId,typeHandler=com.bosco.mine.server.modules.system.repository.PostgreSqlUuidTypeHandler}
-            </foreach>
-            </script>
-            """)
     long countEnabledMenuIds(@Param("menuIds") List<UUID> menuIds);
 
     /**

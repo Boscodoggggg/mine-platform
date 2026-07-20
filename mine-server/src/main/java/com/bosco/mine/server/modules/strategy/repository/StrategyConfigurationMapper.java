@@ -140,23 +140,6 @@ public interface StrategyConfigurationMapper {
      * @param limit        最大返回数量
      * @return 策略版本列表
      */
-    @Select("""
-            <script>
-            SELECT id, product_id AS productId, strategy_type AS strategyType,
-                   version_number AS versionNumber, status, values_json::TEXT AS valuesJson,
-                   content_hash AS contentHash, description,
-                   published_at AS publishedAt, created_at AS createdAt,
-                   updated_at AS updatedAt, version
-              FROM dev_strategy_version
-             WHERE product_id = #{productId}
-               AND strategy_type = #{strategyType}
-            <if test="status != null and status != ''">
-               AND status = #{status}
-            </if>
-             ORDER BY version_number DESC
-             LIMIT #{limit}
-            </script>
-            """)
     List<StrategyVersionRecord> findVersions(
             @Param("productId") UUID productId,
             @Param("strategyType") String strategyType,
@@ -410,17 +393,6 @@ public interface StrategyConfigurationMapper {
      * @param deviceIds 设备标识集合
      * @return 已存在设备上下文
      */
-    @Select("""
-            <script>
-            SELECT id, product_id AS productId, status
-              FROM dev_device
-             WHERE id IN
-             <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
-               #{deviceId}
-             </foreach>
-             ORDER BY id
-            </script>
-            """)
     List<DeviceContextRecord> findDeviceContexts(@Param("deviceIds") List<UUID> deviceIds);
 
     /**
@@ -460,73 +432,6 @@ public interface StrategyConfigurationMapper {
      * @param deviceIds    目标设备标识
      * @return 按设备组织前的当前发布片段
      */
-    @Select("""
-            <script>
-            WITH target_device AS (
-                SELECT id
-                  FROM dev_device
-                 WHERE product_id = #{productId}
-                   AND status &lt;&gt; 'ARCHIVED'
-                   AND id IN
-                   <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
-                     #{deviceId}
-                   </foreach>
-            ), eligible_release AS (
-                SELECT target.id AS device_id, release.*
-                  FROM target_device target
-                  JOIN dev_strategy_release release
-                    ON release.product_id = #{productId}
-                   AND release.strategy_type = #{strategyType}
-                   AND release.scope_type = 'PRODUCT'
-                   AND release.scope_id = #{productId}
-                UNION ALL
-                SELECT target.id AS device_id, release.*
-                  FROM target_device target
-                  JOIN dev_strategy_release release
-                    ON release.product_id = #{productId}
-                   AND release.strategy_type = #{strategyType}
-                   AND release.scope_type = 'DEVICE'
-                   AND release.scope_id = target.id
-                UNION ALL
-                SELECT target.id AS device_id, release.*
-                  FROM target_device target
-                  JOIN dev_device_group_membership membership
-                    ON membership.device_id = target.id
-                   AND membership.effective_to IS NULL
-                  JOIN dev_device_group device_group
-                    ON device_group.id = membership.group_id
-                   AND device_group.status = 'ACTIVE'
-                  JOIN dev_strategy_release release
-                    ON release.product_id = #{productId}
-                   AND release.strategy_type = #{strategyType}
-                   AND release.scope_type = 'GROUP'
-                   AND release.scope_id = device_group.id
-            ), ranked_release AS (
-                SELECT eligible_release.*,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY device_id, scope_type, scope_id
-                           ORDER BY release_sequence DESC, id DESC
-                       ) AS current_rank
-                  FROM eligible_release
-            )
-            SELECT ranked.device_id AS deviceId,
-                   ranked.id AS releaseId,
-                   ranked.scope_type AS scopeType,
-                   ranked.scope_id AS scopeId,
-                   CASE WHEN ranked.scope_type = 'GROUP'
-                        THEN current_group.priority
-                        ELSE ranked.group_priority
-                   END AS groupPriority,
-                   version.values_json::TEXT AS valuesJson
-              FROM ranked_release ranked
-              JOIN dev_strategy_version version ON version.id = ranked.strategy_version_id
-              LEFT JOIN dev_device_group current_group
-                ON ranked.scope_type = 'GROUP'
-               AND current_group.id = ranked.scope_id
-             WHERE ranked.current_rank = 1
-             ORDER BY ranked.device_id, ranked.scope_type, ranked.scope_id
-            </script>
-            """)
     List<StrategyFragmentRecord> findCurrentFragmentsForDevices(
             @Param("productId") UUID productId,
             @Param("strategyType") String strategyType,

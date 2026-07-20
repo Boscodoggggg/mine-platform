@@ -12,6 +12,7 @@ server:
   shutdown: graceful
 
 mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
   type-handlers-package: com.bosco.mine.server.modules.system.repository
 
 management:

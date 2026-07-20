@@ -39,26 +39,6 @@ public interface MineAssetMapper {
             @Param("id") UUID id);
 
     /** 分页查询矿区车辆。 */
-    @Select("""
-            <script>
-            SELECT id, organization_id AS organizationId, site_id AS siteId,
-                   vehicle_code AS vehicleCode, name, vehicle_type AS vehicleType,
-                   mine_number AS mineNumber, license_plate AS licensePlate,
-                   brand, model, rated_load_tons AS ratedLoadTons, status,
-                   created_at AS createdAt, updated_at AS updatedAt,
-                   archived_at AS archivedAt, version
-            FROM mine_vehicle
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND (vehicle_code ILIKE CONCAT('%', #{keyword}, '%')
-                     OR name ILIKE CONCAT('%', #{keyword}, '%')
-                     OR mine_number ILIKE CONCAT('%', #{keyword}, '%'))
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            ORDER BY name, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<MineVehicle> findVehicles(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -68,18 +48,6 @@ public interface MineAssetMapper {
             @Param("limit") int limit);
 
     /** 统计矿区车辆。 */
-    @Select("""
-            <script>
-            SELECT COUNT(*) FROM mine_vehicle
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND (vehicle_code ILIKE CONCAT('%', #{keyword}, '%')
-                     OR name ILIKE CONCAT('%', #{keyword}, '%')
-                     OR mine_number ILIKE CONCAT('%', #{keyword}, '%'))
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            </script>
-            """)
     long countVehicles(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -168,25 +136,6 @@ public interface MineAssetMapper {
             @Param("id") UUID id);
 
     /** 分页查询定位标签。 */
-    @Select("""
-            <script>
-            SELECT id, organization_id AS organizationId, site_id AS siteId,
-                   tag_code AS tagCode, vendor, model, battery_percent AS batteryPercent,
-                   battery_observed_at AS batteryObservedAt, status,
-                   created_at AS createdAt, updated_at AS updatedAt,
-                   archived_at AS archivedAt, version
-            FROM mine_location_tag
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND (tag_code ILIKE CONCAT('%', #{keyword}, '%')
-                     OR vendor ILIKE CONCAT('%', #{keyword}, '%')
-                     OR model ILIKE CONCAT('%', #{keyword}, '%'))
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            ORDER BY tag_code, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<MineLocationTag> findLocationTags(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -196,18 +145,6 @@ public interface MineAssetMapper {
             @Param("limit") int limit);
 
     /** 统计定位标签。 */
-    @Select("""
-            <script>
-            SELECT COUNT(*) FROM mine_location_tag
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND (tag_code ILIKE CONCAT('%', #{keyword}, '%')
-                     OR vendor ILIKE CONCAT('%', #{keyword}, '%')
-                     OR model ILIKE CONCAT('%', #{keyword}, '%'))
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            </script>
-            """)
     long countLocationTags(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -289,26 +226,6 @@ public interface MineAssetMapper {
             @Param("id") UUID id);
 
     /** 分页查询坐标系。 */
-    @Select("""
-            <script>
-            SELECT id, organization_id AS organizationId, site_id AS siteId,
-                   system_code AS systemCode, name, coordinate_type AS coordinateType,
-                   unit, epsg_code AS epsgCode, unified,
-                   min_x AS minX, max_x AS maxX, min_y AS minY, max_y AS maxY,
-                   min_z AS minZ, max_z AS maxZ, status,
-                   created_at AS createdAt, updated_at AS updatedAt,
-                   archived_at AS archivedAt, version
-            FROM mine_coordinate_system
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND (system_code ILIKE CONCAT('%', #{keyword}, '%')
-                     OR name ILIKE CONCAT('%', #{keyword}, '%'))
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            ORDER BY unified DESC, name, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<MineCoordinateSystem> findCoordinateSystems(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -318,17 +235,6 @@ public interface MineAssetMapper {
             @Param("limit") int limit);
 
     /** 统计坐标系。 */
-    @Select("""
-            <script>
-            SELECT COUNT(*) FROM mine_coordinate_system
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND (system_code ILIKE CONCAT('%', #{keyword}, '%')
-                     OR name ILIKE CONCAT('%', #{keyword}, '%'))
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            </script>
-            """)
     long countCoordinateSystems(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -428,22 +334,6 @@ public interface MineAssetMapper {
             @Param("id") UUID id);
 
     /** 分页查询坐标转换版本。 */
-    @Select("""
-            <script>
-            SELECT id, organization_id AS organizationId, site_id AS siteId,
-                   source_coordinate_system_id AS sourceCoordinateSystemId,
-                   target_coordinate_system_id AS targetCoordinateSystemId,
-                   version_number AS versionNumber, algorithm, parameters::text AS parametersJson,
-                   valid_from AS validFrom, valid_to AS validTo, status,
-                   content_hash AS contentHash, published_at AS publishedAt,
-                   created_at AS createdAt, updated_at AS updatedAt, version
-            FROM mine_coordinate_transform_version
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            ORDER BY source_coordinate_system_id, target_coordinate_system_id, version_number DESC, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<MineCoordinateTransform> findCoordinateTransforms(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -452,13 +342,6 @@ public interface MineAssetMapper {
             @Param("limit") int limit);
 
     /** 统计坐标转换版本。 */
-    @Select("""
-            <script>
-            SELECT COUNT(*) FROM mine_coordinate_transform_version
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            </script>
-            """)
     long countCoordinateTransforms(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,

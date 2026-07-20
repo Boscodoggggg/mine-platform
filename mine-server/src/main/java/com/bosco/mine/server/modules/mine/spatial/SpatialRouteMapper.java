@@ -87,21 +87,6 @@ public interface SpatialRouteMapper {
             @Param("id") UUID id);
 
     /** 分页查询稳定途径点。 */
-    @Select("""
-            <script>
-            SELECT id, organization_id AS organizationId, site_id AS siteId,
-                   waypoint_code AS code, status, created_at AS createdAt,
-                   updated_at AS updatedAt, archived_at AS archivedAt, version
-            FROM mine_waypoint
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND waypoint_code ILIKE CONCAT('%', #{keyword}, '%')
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            ORDER BY waypoint_code, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<SpatialObjectRecord> findWaypoints(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -111,16 +96,6 @@ public interface SpatialRouteMapper {
             @Param("limit") int limit);
 
     /** 统计稳定途径点。 */
-    @Select("""
-            <script>
-            SELECT COUNT(*) FROM mine_waypoint
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND waypoint_code ILIKE CONCAT('%', #{keyword}, '%')
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            </script>
-            """)
     long countWaypoints(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -252,35 +227,6 @@ public interface SpatialRouteMapper {
             @Param("parentId") UUID parentId);
 
     /** 统计可被路线有效引用的已发布途径点版本。 */
-    @Select("""
-            <script>
-            SELECT COUNT(*)
-            FROM mine_waypoint_version waypoint_version
-            JOIN mine_waypoint waypoint
-              ON waypoint.id = waypoint_version.waypoint_id
-             AND waypoint.organization_id = waypoint_version.organization_id
-             AND waypoint.site_id = waypoint_version.site_id
-            WHERE waypoint_version.organization_id = #{organizationId}
-              AND waypoint_version.site_id = #{siteId}
-              AND waypoint_version.coordinate_system_id = #{coordinateSystemId}
-              AND waypoint_version.status = 'PUBLISHED'
-              AND waypoint.status = 'ACTIVE'
-              AND waypoint_version.valid_from &lt;= #{validFrom}
-              <choose>
-                <when test="validTo != null">
-                  AND (waypoint_version.valid_to IS NULL
-                       OR waypoint_version.valid_to &gt;= #{validTo})
-                </when>
-                <otherwise>
-                  AND waypoint_version.valid_to IS NULL
-                </otherwise>
-              </choose>
-              AND waypoint_version.id IN
-              <foreach collection="versionIds" item="versionId" open="(" separator="," close=")">
-                #{versionId}
-              </foreach>
-            </script>
-            """)
     long countCompatibleWaypointVersions(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -342,21 +288,6 @@ public interface SpatialRouteMapper {
             @Param("id") UUID id);
 
     /** 分页查询稳定路线。 */
-    @Select("""
-            <script>
-            SELECT id, organization_id AS organizationId, site_id AS siteId,
-                   route_code AS code, status, created_at AS createdAt,
-                   updated_at AS updatedAt, archived_at AS archivedAt, version
-            FROM mine_route
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND route_code ILIKE CONCAT('%', #{keyword}, '%')
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            ORDER BY route_code, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<SpatialObjectRecord> findRoutes(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -366,16 +297,6 @@ public interface SpatialRouteMapper {
             @Param("limit") int limit);
 
     /** 统计稳定路线。 */
-    @Select("""
-            <script>
-            SELECT COUNT(*) FROM mine_route
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND route_code ILIKE CONCAT('%', #{keyword}, '%')
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            </script>
-            """)
     long countRoutes(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -450,18 +371,6 @@ public interface SpatialRouteMapper {
     int deleteRouteWaypoints(@Param("versionId") UUID versionId);
 
     /** 批量写入路线途径点顺序。 */
-    @Insert("""
-            <script>
-            INSERT INTO mine_route_version_waypoint (
-                route_version_id, waypoint_version_id, organization_id, site_id,
-                sequence_number, stop_required, expected_dwell_seconds
-            ) VALUES
-            <foreach collection="items" item="item" separator=",">
-                (#{item.versionId}, #{item.referenceId}, #{item.organizationId}, #{item.siteId},
-                 #{item.sequenceNumber}, #{item.stopRequired}, #{item.expectedDwellSeconds})
-            </foreach>
-            </script>
-            """)
     int insertRouteWaypoints(@Param("items") List<RouteWaypointWrite> items);
 
     /** 查询路线版本途径点顺序。 */
@@ -546,21 +455,6 @@ public interface SpatialRouteMapper {
             @Param("id") UUID id);
 
     /** 分页查询稳定电子围栏。 */
-    @Select("""
-            <script>
-            SELECT id, organization_id AS organizationId, site_id AS siteId,
-                   geofence_code AS code, status, created_at AS createdAt,
-                   updated_at AS updatedAt, archived_at AS archivedAt, version
-            FROM mine_geofence
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND geofence_code ILIKE CONCAT('%', #{keyword}, '%')
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            ORDER BY geofence_code, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<SpatialObjectRecord> findGeofences(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -570,16 +464,6 @@ public interface SpatialRouteMapper {
             @Param("limit") int limit);
 
     /** 统计稳定电子围栏。 */
-    @Select("""
-            <script>
-            SELECT COUNT(*) FROM mine_geofence
-            WHERE organization_id = #{organizationId} AND site_id = #{siteId}
-              <if test="keyword != null and keyword != ''">
-                AND geofence_code ILIKE CONCAT('%', #{keyword}, '%')
-              </if>
-              <if test="status != null and status != ''">AND status = #{status}</if>
-            </script>
-            """)
     long countGeofences(
             @Param("organizationId") UUID organizationId,
             @Param("siteId") UUID siteId,
@@ -662,17 +546,6 @@ public interface SpatialRouteMapper {
     int deleteGeofenceVertices(@Param("versionId") UUID versionId);
 
     /** 批量写入电子围栏顶点。 */
-    @Insert("""
-            <script>
-            INSERT INTO mine_geofence_vertex (
-                geofence_version_id, organization_id, site_id, sequence_number, x, y
-            ) VALUES
-            <foreach collection="items" item="item" separator=",">
-                (#{item.versionId}, #{item.organizationId}, #{item.siteId},
-                 #{item.sequenceNumber}, #{item.x}, #{item.y})
-            </foreach>
-            </script>
-            """)
     int insertGeofenceVertices(@Param("items") List<GeofenceVertexWrite> items);
 
     /** 查询电子围栏版本顶点。 */

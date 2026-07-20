@@ -71,20 +71,6 @@ public interface DeviceMapper {
      * @param status  产品状态
      * @return 产品数量
      */
-    @Select("""
-            <script>
-            SELECT COUNT(*)
-            FROM dev_product
-            WHERE 1 = 1
-            <if test="keyword != null and keyword != ''">
-              AND (product_key ILIKE CONCAT('%', #{keyword}, '%')
-                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="status != null and status != ''">
-              AND status = #{status}
-            </if>
-            </script>
-            """)
     long countProducts(@Param("keyword") String keyword, @Param("status") String status);
 
     /**
@@ -96,24 +82,6 @@ public interface DeviceMapper {
      * @param limit   最大返回数量
      * @return 产品列表
      */
-    @Select("""
-            <script>
-            SELECT id, product_key AS productKey, name, device_type AS deviceType, status,
-                   archived_at AS archivedAt, created_at AS createdAt,
-                   updated_at AS updatedAt, version
-            FROM dev_product
-            WHERE 1 = 1
-            <if test="keyword != null and keyword != ''">
-              AND (product_key ILIKE CONCAT('%', #{keyword}, '%')
-                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="status != null and status != ''">
-              AND status = #{status}
-            </if>
-            ORDER BY created_at DESC, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<Product> findProducts(
             @Param("keyword") String keyword,
             @Param("status") String status,
@@ -237,23 +205,6 @@ public interface DeviceMapper {
      * @param status    设备状态
      * @return 设备数量
      */
-    @Select("""
-            <script>
-            SELECT COUNT(*)
-            FROM dev_device
-            WHERE 1 = 1
-            <if test="productId != null">
-              AND product_id = #{productId}
-            </if>
-            <if test="keyword != null and keyword != ''">
-              AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
-                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="status != null and status != ''">
-              AND status = #{status}
-            </if>
-            </script>
-            """)
     long countDevices(
             @Param("productId") UUID productId,
             @Param("keyword") String keyword,
@@ -270,27 +221,6 @@ public interface DeviceMapper {
      * @param limit     最大返回数量
      * @return 设备列表
      */
-    @Select("""
-            <script>
-            SELECT id, product_id AS productId, device_code AS deviceCode, name, status,
-                   archived_at AS archivedAt, created_at AS createdAt,
-                   updated_at AS updatedAt, version
-            FROM dev_device
-            WHERE 1 = 1
-            <if test="productId != null">
-              AND product_id = #{productId}
-            </if>
-            <if test="keyword != null and keyword != ''">
-              AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
-                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            <if test="status != null and status != ''">
-              AND status = #{status}
-            </if>
-            ORDER BY created_at DESC, id
-            OFFSET #{offset} LIMIT #{limit}
-            </script>
-            """)
     List<Device> findDevices(
             @Param("productId") UUID productId,
             @Param("keyword") String keyword,
@@ -320,19 +250,6 @@ public interface DeviceMapper {
      * @param deviceIds 设备标识集合
      * @return 已存在设备台账
      */
-    @Select("""
-            <script>
-            SELECT id, product_id AS productId, device_code AS deviceCode, name, status,
-                   archived_at AS archivedAt, created_at AS createdAt,
-                   updated_at AS updatedAt, version
-              FROM dev_device
-             WHERE id IN
-             <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
-               #{deviceId}
-             </foreach>
-             ORDER BY id
-            </script>
-            """)
     List<Device> findDevicesByIds(@Param("deviceIds") List<UUID> deviceIds);
 
     /**

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bosco.mine.server.modules.system.repository.AccessManagementMapper">
+
+    <select id="countUsers" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_user
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+          AND (username ILIKE CONCAT('%', #{keyword}, '%')
+               OR display_name ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+
+    </select>
+
+    <select id="findUsers" resultType="com.bosco.mine.server.modules.system.repository.AccessManagementMapper$ManagedUserRecord">
+        SELECT id, username, display_name AS displayName, status,
+               password_change_required AS passwordChangeRequired,
+               last_login_at AS lastLoginAt, created_at AS createdAt,
+               updated_at AS updatedAt, version
+        FROM sys_user
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+          AND (username ILIKE CONCAT('%', #{keyword}, '%')
+               OR display_name ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+        ORDER BY created_at DESC, id
+        OFFSET #{offset} LIMIT #{limit}
+
+    </select>
+
+    <select id="countRoles" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_role
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+          AND (code ILIKE CONCAT('%', #{keyword}, '%')
+               OR name ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+
+    </select>
+
+    <select id="findRoles" resultType="com.bosco.mine.server.modules.system.repository.AccessManagementMapper$ManagedRoleRecord">
+        SELECT id, code, name, status, description,
+               created_at AS createdAt, updated_at AS updatedAt, version
+        FROM sys_role
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+          AND (code ILIKE CONCAT('%', #{keyword}, '%')
+               OR name ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+        ORDER BY created_at DESC, id
+        OFFSET #{offset} LIMIT #{limit}
+
+    </select>
+
+    <select id="countEnabledRoleIds" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_role
+        WHERE status = 'ENABLED'
+          AND id IN
+        <foreach collection="roleIds" item="roleId" open="(" separator="," close=")">
+            #{roleId,typeHandler=com.bosco.mine.server.modules.system.repository.PostgreSqlUuidTypeHandler}
+        </foreach>
+
+    </select>
+
+    <select id="countExistingMenuIds" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_menu
+        WHERE id IN
+        <foreach collection="menuIds" item="menuId" open="(" separator="," close=")">
+            #{menuId,typeHandler=com.bosco.mine.server.modules.system.repository.PostgreSqlUuidTypeHandler}
+        </foreach>
+
+    </select>
+
+    <select id="countEnabledMenuIds" resultType="long">
+        SELECT COUNT(*)
+        FROM sys_menu
+        WHERE status = 'ENABLED'
+          AND id IN
+        <foreach collection="menuIds" item="menuId" open="(" separator="," close=")">
+            #{menuId,typeHandler=com.bosco.mine.server.modules.system.repository.PostgreSqlUuidTypeHandler}
+        </foreach>
+
+    </select>
+
+</mapper>

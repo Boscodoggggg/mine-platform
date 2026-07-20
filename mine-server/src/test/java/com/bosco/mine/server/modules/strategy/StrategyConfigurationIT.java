@@ -111,6 +111,10 @@ class StrategyConfigurationIT {
         assertThat(effective.valid()).isTrue();
         assertThat(effective.values()).containsEntry("offlineThresholdSeconds", 120);
         assertThat(effective.contentHash()).startsWith("sha256:");
+        assertThat(strategyService.findVersions(
+                fixture.productId(), "ONLINE_STATUS", null, 20)).hasSize(2);
+        assertThat(strategyService.findVersions(
+                fixture.productId(), "ONLINE_STATUS", "PUBLISHED", 20)).hasSize(2);
         assertThat(releaseCount(fixture.productId())).isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)

@@ -324,6 +324,10 @@ class MineAssetManagementIT {
                 firstSiteId, draft.id(), updated.version());
         assertThat(published.status()).isEqualTo("PUBLISHED");
         assertThat(published.contentHash()).startsWith("sha256:").hasSize(71);
+        assertThat(queryService.findCoordinateTransforms(
+                firstSiteId, "PUBLISHED", 1, 20).items())
+                .extracting(CoordinateTransformResponse::id)
+                .containsExactly(published.id());
 
         assertThatThrownBy(() -> commandService.updateCoordinateTransform(
                 firstSiteId,

@@ -10,6 +10,7 @@ import com.bosco.mine.server.modules.mine.service.MineAssetCommandService;
 import com.bosco.mine.server.modules.mine.service.MineRequestIdentity;
 import com.bosco.mine.server.modules.mine.service.MineScopeCommandService;
 import com.bosco.mine.server.modules.mine.spatial.SpatialRouteCommandService;
+import com.bosco.mine.server.modules.mine.spatial.SpatialRouteMapper;
 import com.bosco.mine.server.modules.mine.spatial.SpatialRouteQueryService;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionRequest;
 import com.bosco.mine.server.modules.mine.spatial.dto.GeofenceVersionResponse;
@@ -59,6 +60,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SpatialRouteManagementIT {
 
     private static final Instant VALID_FROM = Instant.parse("2026-01-01T00:00:00Z");
+    private static final Instant VALID_TO = Instant.parse("2026-12-31T23:59:59Z");
     private static final SpatialDetectionPolicy DEFAULT_POLICY =
             new SpatialDetectionPolicy(0.5D, 2, 2, 30, 10, 60);
 
@@ -76,6 +78,9 @@ class SpatialRouteManagementIT {
     private SpatialRouteQueryService queryService;
 
     @Autowired
+    private SpatialRouteMapper mapper;
+
+    @Autowired
     private MineScopeCommandService scopeCommandService;
 
     @Autowired
@@ -89,6 +94,7 @@ class SpatialRouteManagementIT {
 
     private UUID firstUserId;
     private UUID secondUserId;
+    private UUID firstOrganizationId;
     private UUID firstSiteId;
     private UUID secondSiteId;
     private CoordinateSystemResponse unifiedCoordinate;
@@ -121,6 +127,7 @@ class SpatialRouteManagementIT {
         identity.use(firstUserId);
         MineOrganizationResponse firstOrganization = scopeCommandService.createOrganization(
                 "spatial-north", "空间北方集团");
+        firstOrganizationId = firstOrganization.id();
         firstSiteId = scopeCommandService.createSite(
                 firstOrganization.id(), "spatial-north-pit", "空间北矿", "Asia/Shanghai", null).id();
         unifiedCoordinate = assetCommandService.createCoordinateSystem(
@@ -216,6 +223,9 @@ class SpatialRouteManagementIT {
     void 路线和围栏发布必须规范化子项并锁定有效引用() {
         WaypointVersionResponse firstWaypoint = publishedWaypoint("route-start", "路线起点", 100D, 100D);
         WaypointVersionResponse secondWaypoint = publishedWaypoint("route-end", "路线终点", 900D, 700D);
+        assertThat(mapper.countCompatibleWaypointVersions(
+                firstOrganizationId, firstSiteId, unifiedCoordinate.id(),
+                VALID_FROM, null, List.of(firstWaypoint.id(), secondWaypoint.id()))).isEqualTo(2);
 
         SpatialObjectResponse route = commandService.createRoute(firstSiteId, "haul-route-01");
         RouteVersionResponse routeDraft = commandService.createRouteVersion(
@@ -223,7 +233,7 @@ class SpatialRouteManagementIT {
                 route.id(),
                 new RouteVersionRequest(
                         unifiedCoordinate.id(), 1, "北区运输路线", "BIDIRECTIONAL",
-                        List.of("HAUL_TRUCK", "LIGHT_VEHICLE"), VALID_FROM, null,
+                        List.of("HAUL_TRUCK", "LIGHT_VEHICLE"), VALID_FROM, VALID_TO,
                         List.of(
                                 new SpatialRouteWaypointRequest(2, secondWaypoint.id(), false, null),
                                 new SpatialRouteWaypointRequest(1, firstWaypoint.id(), true, 20))));
@@ -235,6 +245,9 @@ class SpatialRouteManagementIT {
         assertThat(publishedRoute.waypoints())
                 .extracting(item -> item.sequenceNumber())
                 .containsExactly(1, 2);
+        assertThat(queryService.findRoutes(firstSiteId, "haul-route", null, 1, 20).items())
+                .extracting(SpatialObjectResponse::id)
+                .containsExactly(route.id());
         assertThatThrownBy(() -> assetCommandService.archiveCoordinateSystem(
                 firstSiteId, unifiedCoordinate.id(), unifiedCoordinate.version()))
                 .isInstanceOfSatisfying(MineException.class, exception ->
@@ -278,6 +291,9 @@ class SpatialRouteManagementIT {
                 .extracting(item -> item.sequenceNumber())
                 .containsExactly(1, 2, 3, 4);
         assertThat(publishedGeofence.contentHash()).matches("sha256:[0-9a-f]{64}");
+        assertThat(queryService.findGeofences(firstSiteId, null, null, 1, 20).items())
+                .extracting(SpatialObjectResponse::id)
+                .containsExactly(geofence.id());
         assertThat(queryService.findRouteVersion(firstSiteId, route.id(), routeDraft.id()))
                 .isEqualTo(publishedRoute);
         assertThat(queryService.findGeofenceVersion(firstSiteId, geofence.id(), geofenceDraft.id()))

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bosco.mine.server.modules.mine.spatial.SpatialRouteMapper">
+
+    <select id="findWaypoints"
+            resultType="com.bosco.mine.server.modules.mine.spatial.model.SpatialObjectRecord">
+        SELECT id, organization_id AS organizationId, site_id AS siteId,
+               waypoint_code AS code, status, created_at AS createdAt,
+               updated_at AS updatedAt, archived_at AS archivedAt, version
+        FROM mine_waypoint
+        WHERE organization_id = #{organizationId} AND site_id = #{siteId}
+        <if test="keyword != null and keyword != ''">
+            AND waypoint_code ILIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY waypoint_code, id
+        OFFSET #{offset} LIMIT #{limit}
+    </select>
+
+    <select id="countWaypoints" resultType="long">
+        SELECT COUNT(*)
+        FROM mine_waypoint
+        WHERE organization_id = #{organizationId} AND site_id = #{siteId}
+        <if test="keyword != null and keyword != ''">
+            AND waypoint_code ILIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <select id="countCompatibleWaypointVersions" resultType="long">
+        SELECT COUNT(*)
+        FROM mine_waypoint_version waypoint_version
+        JOIN mine_waypoint waypoint
+          ON waypoint.id = waypoint_version.waypoint_id
+         AND waypoint.organization_id = waypoint_version.organization_id
+         AND waypoint.site_id = waypoint_version.site_id
+        WHERE waypoint_version.organization_id = #{organizationId}
+          AND waypoint_version.site_id = #{siteId}
+          AND waypoint_version.coordinate_system_id = #{coordinateSystemId}
+          AND waypoint_version.status = 'PUBLISHED'
+          AND waypoint.status = 'ACTIVE'
+          AND waypoint_version.valid_from &lt;= #{validFrom}
+        <choose>
+            <when test="validTo != null">
+                AND (waypoint_version.valid_to IS NULL
+                     OR waypoint_version.valid_to &gt;= #{validTo})
+            </when>
+            <otherwise>
+                AND waypoint_version.valid_to IS NULL
+            </otherwise>
+        </choose>
+          AND waypoint_version.id IN
+        <foreach collection="versionIds" item="versionId" open="(" separator="," close=")">
+            #{versionId}
+        </foreach>
+    </select>
+
+    <select id="findRoutes"
+            resultType="com.bosco.mine.server.modules.mine.spatial.model.SpatialObjectRecord">
+        SELECT id, organization_id AS organizationId, site_id AS siteId,
+               route_code AS code, status, created_at AS createdAt,
+               updated_at AS updatedAt, archived_at AS archivedAt, version
+        FROM mine_route
+        WHERE organization_id = #{organizationId} AND site_id = #{siteId}
+        <if test="keyword != null and keyword != ''">
+            AND route_code ILIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY route_code, id
+        OFFSET #{offset} LIMIT #{limit}
+    </select>
+
+    <select id="countRoutes" resultType="long">
+        SELECT COUNT(*)
+        FROM mine_route
+        WHERE organization_id = #{organizationId} AND site_id = #{siteId}
+        <if test="keyword != null and keyword != ''">
+            AND route_code ILIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <insert id="insertRouteWaypoints">
+        INSERT INTO mine_route_version_waypoint (
+            route_version_id, waypoint_version_id, organization_id, site_id,
+            sequence_number, stop_required, expected_dwell_seconds
+        ) VALUES
+        <foreach collection="items" item="item" separator=",">
+            (#{item.versionId}, #{item.referenceId}, #{item.organizationId}, #{item.siteId},
+             #{item.sequenceNumber}, #{item.stopRequired}, #{item.expectedDwellSeconds})
+        </foreach>
+    </insert>
+
+    <select id="findGeofences"
+            resultType="com.bosco.mine.server.modules.mine.spatial.model.SpatialObjectRecord">
+        SELECT id, organization_id AS organizationId, site_id AS siteId,
+               geofence_code AS code, status, created_at AS createdAt,
+               updated_at AS updatedAt, archived_at AS archivedAt, version
+        FROM mine_geofence
+        WHERE organization_id = #{organizationId} AND site_id = #{siteId}
+        <if test="keyword != null and keyword != ''">
+            AND geofence_code ILIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+        ORDER BY geofence_code, id
+        OFFSET #{offset} LIMIT #{limit}
+    </select>
+
+    <select id="countGeofences" resultType="long">
+        SELECT COUNT(*)
+        FROM mine_geofence
+        WHERE organization_id = #{organizationId} AND site_id = #{siteId}
+        <if test="keyword != null and keyword != ''">
+            AND geofence_code ILIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        <if test="status != null and status != ''">
+            AND status = #{status}
+        </if>
+    </select>
+
+    <insert id="insertGeofenceVertices">
+        INSERT INTO mine_geofence_vertex (
+            geofence_version_id, organization_id, site_id, sequence_number, x, y
+        ) VALUES
+        <foreach collection="items" item="item" separator=",">
+            (#{item.versionId}, #{item.organizationId}, #{item.siteId},
+             #{item.sequenceNumber}, #{item.x}, #{item.y})
+        </foreach>
+    </insert>
+
+</mapper>

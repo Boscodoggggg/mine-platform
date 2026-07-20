@@ -8,6 +8,15 @@
 - 所有新增数据库表必须提供中文表注释，并为表中的每一个字段提供中文字段注释，禁止遗漏表注释或任意字段注释。
 - PostgreSQL/TimescaleDB 迁移统一使用 `COMMENT ON TABLE` 和 `COMMENT ON COLUMN` 编写注释；对应数据库集成测试必须校验表和字段注释完整。
 
+## MyBatis Mapper 规范
+
+- Mapper 采用注解与 XML 混合模式，禁止为了形式统一而批量迁移稳定的历史 SQL。
+- 简单单表 CRUD、存在性判断和短小稳定 SQL 优先使用 `@Select`、`@Insert`、`@Update`、`@Delete` 注解。
+- 多表关联、CTE、窗口函数、复杂动态条件，或需要大量 `<if>`、`<choose>`、`<foreach>` 的 SQL 必须优先放入 `mine-server/src/main/resources/mapper/**/*.xml`。
+- 单个 Mapper 接口超过 500 行或 SQL 超过 40 行时，修改相关功能必须评估职责拆分和 XML 迁移；只迁移本次触及且有测试覆盖的复杂 SQL，不进行无收益的全量搬迁。
+- Mapper XML 的 `namespace` 必须与接口全限定名一致，语句 `id` 必须与接口方法名一致；迁移后必须删除对应 SQL 注解，禁止同一语句同时在注解和 XML 中定义。
+- Mapper XML 必须补充或复用覆盖动态分支、参数绑定和结果映射的集成测试，并保证相关数据库集成测试通过。
+
 ## 前端主题、样式与国际化规范
 
 - `mine-web/src/theme/settings.ts` 是前端颜色、圆角、阴影和主题模式默认值的唯一配置入口。

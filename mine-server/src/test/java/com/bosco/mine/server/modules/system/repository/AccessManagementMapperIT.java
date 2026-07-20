@@ -90,6 +90,7 @@ class AccessManagementMapperIT {
         mapper.insertRole(roleId, "DISPATCHER", "调度员", "ENABLED", "负责车辆调度", null);
 
         assertThat(mapper.countRoles(null, "ENABLED")).isOne();
+        assertThat(mapper.countEnabledRoleIds(List.of(roleId))).isOne();
         assertThat(mapper.findRoles("DISPATCH", "ENABLED", 0, 20))
                 .extracting(AccessManagementMapper.ManagedRoleRecord::code)
                 .containsExactly("DISPATCHER");
@@ -121,6 +122,7 @@ class AccessManagementMapperIT {
                 .id();
 
         assertThat(mapper.countExistingMenuIds(List.of(userViewMenuId))).isOne();
+        assertThat(mapper.countEnabledMenuIds(List.of(userViewMenuId))).isOne();
         assertThat(mapper.insertRoleMenu(UUID.randomUUID(), roleId, userViewMenuId, null)).isOne();
         assertThat(mapper.findMenuIdsByRoleId(roleId)).containsExactly(userViewMenuId);
         assertThat(mapper.deleteRoleMenus(roleId)).isOne();
