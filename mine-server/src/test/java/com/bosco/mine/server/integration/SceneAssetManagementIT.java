@@ -167,9 +167,10 @@ class SceneAssetManagementIT {
         assertThat(archived.status()).isEqualTo("ARCHIVED");
         assertThat(archived.version()).isEqualTo(asset.version() + 1);
         assertThat(replayed).isEqualTo(archived);
-        assertThat(Files.readAllBytes(
-                service.openFile(firstSiteId, asset.id(), "model.glb").path()))
-                .isEqualTo(minimalGlb());
+        try (var content = service.openFile(
+                firstSiteId, asset.id(), "model.glb").open(null)) {
+            assertThat(content.inputStream().readAllBytes()).isEqualTo(minimalGlb());
+        }
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT status FROM mine_scene_version WHERE id = ?",
                 String.class, publishedVersionId)).isEqualTo("PUBLISHED");

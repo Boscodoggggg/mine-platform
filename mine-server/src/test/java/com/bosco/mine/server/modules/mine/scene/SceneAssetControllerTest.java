@@ -4,6 +4,7 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.common.error.ErrorCode;
 import com.bosco.mine.common.error.MineException;
 import com.bosco.mine.server.bootstrap.web.GlobalExceptionHandler;
+import com.bosco.mine.server.modules.mine.scene.storage.SceneAssetStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -13,8 +14,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
+import java.io.ByteArrayInputStream;
 import java.util.Map;
 import java.util.UUID;
 
@@ -42,7 +43,7 @@ class SceneAssetControllerTest {
     private MockMvc mockMvc;
     private UUID siteId;
     private UUID assetId;
-    private Path file;
+    private byte[] file;
 
     @BeforeEach
     void 创建资源接口测试环境() throws Exception {
@@ -52,11 +53,19 @@ class SceneAssetControllerTest {
                 .build();
         siteId = UUID.randomUUID();
         assetId = UUID.randomUUID();
-        file = temporaryDirectory.resolve("model.glb");
-        Files.writeString(file, "0123456789", StandardCharsets.UTF_8);
+        file = "0123456789".getBytes(StandardCharsets.UTF_8);
         when(service.openFile(siteId, assetId, "model.glb"))
                 .thenReturn(new SceneAssetService.SceneAssetFileContent(
-                        file, "model/gltf-binary", "sha256:file", 10));
+                        "model/gltf-binary", "sha256:file", 10,
+                        range -> {
+                            int start = range == null ? 0 : Math.toIntExact(range.startInclusive());
+                            int end = range == null ? file.length - 1
+                                    : Math.toIntExact(range.endInclusive());
+                            byte[] selected = java.util.Arrays.copyOfRange(file, start, end + 1);
+                            return new SceneAssetStorage.StoredContent(
+                                    new ByteArrayInputStream(selected), selected.length,
+                                    range == null ? null : "bytes " + start + "-" + end + "/10");
+                        }));
     }
 
     @Test

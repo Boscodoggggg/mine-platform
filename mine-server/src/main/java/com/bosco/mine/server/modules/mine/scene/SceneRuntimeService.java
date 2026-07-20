@@ -249,8 +249,9 @@ public class SceneRuntimeService {
     }
 
     private void verifyStorage(String contentDigest, String entryPath) {
-        try {
-            storage.resolve(contentDigest, entryPath);
+        try (SceneAssetStorage.StoredContent ignored = storage.open(
+                contentDigest, entryPath, new SceneAssetStorage.ByteRange(0, 0))) {
+            // 成功打开首字节即可证明入口对象当前可读。
         } catch (IOException | IllegalArgumentException exception) {
             throw new StorageUnavailableException(exception);
         }

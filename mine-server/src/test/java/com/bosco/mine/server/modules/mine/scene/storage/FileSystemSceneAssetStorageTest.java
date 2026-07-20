@@ -39,8 +39,10 @@ class FileSystemSceneAssetStorageTest {
         assertThat(result.contentDigest()).matches("sha256:[0-9a-f]{64}");
         assertThat(result.sourceSizeBytes()).isEqualTo(minimalGlb().length);
         assertThat(result.entryPath()).isEqualTo("model.glb");
-        Path storedFile = storage.resolve(result.contentDigest(), "model.glb");
-        assertThat(Files.readAllBytes(storedFile)).isEqualTo(minimalGlb());
+        try (SceneAssetStorage.StoredContent storedFile = storage.open(
+                result.contentDigest(), "model.glb", null)) {
+            assertThat(storedFile.inputStream().readAllBytes()).isEqualTo(minimalGlb());
+        }
         assertThat(stagingEntries()).isZero();
     }
 
@@ -99,18 +101,34 @@ class FileSystemSceneAssetStorageTest {
         SceneAssetStorage.StoredAsset result = storage.store(
                 new ByteArrayInputStream(minimalGlb()), "truck.glb", "model/gltf-binary");
 
-        assertThatThrownBy(() -> storage.resolve("sha256:bad", "model.glb"))
+        assertThatThrownBy(() -> storage.open("sha256:bad", "model.glb", null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> storage.resolve(result.contentDigest(), "../model.glb"))
+        assertThatThrownBy(() -> storage.open(result.contentDigest(), "../model.glb", null))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        Path stored = storage.resolve(result.contentDigest(), "model.glb");
+        Path stored = temporaryDirectory.resolve("objects")
+                .resolve(result.contentDigest().substring("sha256:".length()))
+                .resolve("model.glb");
         Path outside = temporaryDirectory.resolve("outside.glb");
         Files.write(outside, minimalGlb());
         Files.delete(stored);
         Files.createSymbolicLink(stored, outside);
-        assertThatThrownBy(() -> storage.resolve(result.contentDigest(), "model.glb"))
+        assertThatThrownBy(() -> storage.open(result.contentDigest(), "model.glb", null))
                 .isInstanceOf(IOException.class);
+    }
+
+    @Test
+    void 应返回受限的单范围内容流() throws Exception {
+        SceneAssetStorage storage = storage(properties(100000));
+        SceneAssetStorage.StoredAsset result = storage.store(
+                new ByteArrayInputStream(minimalGlb()), "truck.glb", "model/gltf-binary");
+
+        try (SceneAssetStorage.StoredContent content = storage.open(
+                result.contentDigest(), "model.glb", new SceneAssetStorage.ByteRange(0, 3))) {
+            assertThat(content.inputStream().readAllBytes())
+                    .containsExactly(java.util.Arrays.copyOfRange(minimalGlb(), 0, 4));
+            assertThat(content.contentLength()).isEqualTo(4);
+        }
     }
 
     private SceneAssetStorage storage(SceneAssetStorageProperties properties) {

@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -236,13 +235,10 @@ public class SceneAssetService {
         SceneMapper.SceneAssetRecord asset = requiredAsset(siteId, assetId);
         SceneMapper.SceneAssetFileRecord file = mapper.findAssetFile(siteId, assetId, relativePath)
                 .orElseThrow(() -> new MineException(FILE_NOT_FOUND, Map.of()));
-        try {
-            Path path = storage.resolve(asset.contentDigest(), file.relativePath());
-            return new SceneAssetFileContent(
-                    path, file.contentType(), file.contentDigest(), file.sizeBytes());
-        } catch (IOException | IllegalArgumentException exception) {
-            throw new MineException(STORAGE_UNAVAILABLE, Map.of());
-        }
+        return new SceneAssetFileContent(
+                file.contentType(), file.contentDigest(), file.sizeBytes(),
+                range -> storage.open(
+                        asset.contentDigest(), file.relativePath(), range));
     }
 
     private SceneMapper.SceneAssetRecord requiredAsset(UUID siteId, UUID assetId) {
@@ -319,25 +315,56 @@ public class SceneAssetService {
     /**
      * 经过授权和清单校验的内部文件读取描述。
      *
-     * @param path 内容寻址存储返回的普通文件路径
      * @param contentType 白名单媒体类型
      * @param contentDigest 文件内容摘要
      * @param sizeBytes 文件字节数
+     * @param reader 通过授权元数据延迟打开内容的读取器
      */
     public record SceneAssetFileContent(
-            Path path,
             String contentType,
             String contentDigest,
-            long sizeBytes
+            long sizeBytes,
+            ContentReader reader
     ) {
         /** 校验内部文件描述的必要字段。 */
         public SceneAssetFileContent {
-            Objects.requireNonNull(path, "三维资源内部文件路径不能为空");
             Objects.requireNonNull(contentType, "三维资源文件媒体类型不能为空");
             Objects.requireNonNull(contentDigest, "三维资源文件摘要不能为空");
+            Objects.requireNonNull(reader, "三维资源内容读取器不能为空");
             if (sizeBytes < 1) {
                 throw new IllegalArgumentException("三维资源文件大小必须大于零");
             }
         }
+
+        /**
+         * 延迟打开完整或范围内容，并统一转换存储故障。
+         *
+         * @param range 可为空的单一范围
+         * @return 需要响应写出方关闭的内容流
+         */
+        public SceneAssetStorage.StoredContent open(SceneAssetStorage.ByteRange range) {
+            try {
+                return reader.open(range);
+            } catch (IOException | IllegalArgumentException exception) {
+                throw new MineException(STORAGE_UNAVAILABLE, Map.of());
+            }
+        }
+    }
+
+    /**
+     * 已授权场景文件的延迟内容读取器。
+     */
+    @FunctionalInterface
+    public interface ContentReader {
+
+        /**
+         * 打开完整或范围内容。
+         *
+         * @param range 可为空的单一范围
+         * @return 需要调用方关闭的内容流
+         * @throws IOException 对象存储读取失败
+         */
+        SceneAssetStorage.StoredContent open(SceneAssetStorage.ByteRange range)
+                throws IOException;
     }
 }

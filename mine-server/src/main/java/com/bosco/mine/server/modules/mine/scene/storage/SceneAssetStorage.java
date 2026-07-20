@@ -4,7 +4,6 @@ import com.bosco.mine.server.modules.mine.scene.domain.SceneAssetPolicy;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -29,10 +28,54 @@ public interface SceneAssetStorage {
      *
      * @param contentDigest 上传内容摘要
      * @param relativePath 数据库文件清单中的安全相对路径
-     * @return 不经过符号链接的普通文件路径
+     * @param range 可为空的单一字节闭区间
+     * @return 需要调用方关闭的内容流
      * @throws IOException 对象缺失、被篡改或路径不是普通文件
      */
-    Path resolve(String contentDigest, String relativePath) throws IOException;
+    StoredContent open(String contentDigest, String relativePath, ByteRange range)
+            throws IOException;
+
+    /**
+     * 三维资源单一字节闭区间。
+     *
+     * @param startInclusive 起始字节位置
+     * @param endInclusive 结束字节位置
+     */
+    record ByteRange(long startInclusive, long endInclusive) {
+        /** 校验范围非负且起点不大于终点。 */
+        public ByteRange {
+            if (startInclusive < 0 || endInclusive < startInclusive) {
+                throw new IllegalArgumentException("三维资源读取范围无效");
+            }
+        }
+    }
+
+    /**
+     * 三维资源读取结果。
+     *
+     * @param inputStream 内容流
+     * @param contentLength 当前响应字节数
+     * @param contentRange 范围响应描述；完整读取时为空
+     */
+    record StoredContent(
+            InputStream inputStream,
+            long contentLength,
+            String contentRange
+    ) implements AutoCloseable {
+        /** 校验读取内容和长度。 */
+        public StoredContent {
+            Objects.requireNonNull(inputStream, "三维资源内容流不能为空");
+            if (contentLength < 0) {
+                throw new IllegalArgumentException("三维资源内容长度不能小于零");
+            }
+        }
+
+        /** 关闭底层内容流。 */
+        @Override
+        public void close() throws IOException {
+            inputStream.close();
+        }
+    }
 
     /**
      * 已校验并发布的三维资源清单。

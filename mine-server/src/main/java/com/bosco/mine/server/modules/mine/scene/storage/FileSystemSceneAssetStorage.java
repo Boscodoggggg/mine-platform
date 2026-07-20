@@ -2,6 +2,7 @@ package com.bosco.mine.server.modules.mine.scene.storage;
 
 import com.bosco.mine.server.modules.mine.scene.domain.SceneAssetPolicy;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedInputStream;
@@ -31,6 +32,11 @@ import java.util.regex.Pattern;
  */
 @Component
 @EnableConfigurationProperties(SceneAssetStorageProperties.class)
+@ConditionalOnProperty(
+        prefix = "mine.scene-storage",
+        name = "type",
+        havingValue = "filesystem",
+        matchIfMissing = true)
 public final class FileSystemSceneAssetStorage implements SceneAssetStorage {
 
     private static final Pattern DIGEST = Pattern.compile("sha256:[0-9a-f]{64}");
@@ -89,7 +95,11 @@ public final class FileSystemSceneAssetStorage implements SceneAssetStorage {
     }
 
     @Override
-    public Path resolve(String contentDigest, String relativePath) throws IOException {
+    public StoredContent open(
+            String contentDigest,
+            String relativePath,
+            ByteRange range
+    ) throws IOException {
         String digest = requireDigest(contentDigest);
         String safePath = SceneAssetPolicy.safeRelativePath(relativePath);
         Path objectDirectory = objectsRoot.resolve(digest.substring("sha256:".length()));
@@ -102,7 +112,26 @@ public final class FileSystemSceneAssetStorage implements SceneAssetStorage {
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("三维资源文件不存在或不是普通文件");
         }
-        return target;
+        long size = Files.size(target);
+        InputStream input = Files.newInputStream(target);
+        if (range == null) {
+            return new StoredContent(input, size, null);
+        }
+        if (range.endInclusive() >= size) {
+            input.close();
+            throw new IOException("三维资源读取范围超出文件大小");
+        }
+        try {
+            input.skipNBytes(range.startInclusive());
+            long length = range.endInclusive() - range.startInclusive() + 1;
+            return new StoredContent(
+                    new BoundedInputStream(input, length),
+                    length,
+                    "bytes " + range.startInclusive() + "-" + range.endInclusive() + "/" + size);
+        } catch (IOException exception) {
+            input.close();
+            throw exception;
+        }
     }
 
     private UploadResult writeUpload(InputStream source, Path target) throws IOException {
@@ -272,5 +301,43 @@ public final class FileSystemSceneAssetStorage implements SceneAssetStorage {
     }
 
     private static final class UnsafeObjectException extends RuntimeException {
+    }
+
+    /** 限制本地文件流最多读取授权范围内的字节数。 */
+    private static final class BoundedInputStream extends java.io.FilterInputStream {
+
+        private long remaining;
+
+        private BoundedInputStream(InputStream input, long remaining) {
+            super(input);
+            this.remaining = remaining;
+        }
+
+        /** 读取单个字节且不越过范围。 */
+        @Override
+        public int read() throws IOException {
+            if (remaining == 0) {
+                return -1;
+            }
+            int value = super.read();
+            if (value >= 0) {
+                remaining--;
+            }
+            return value;
+        }
+
+        /** 批量读取且不越过范围。 */
+        @Override
+        public int read(byte[] bytes, int offset, int length) throws IOException {
+            if (remaining == 0) {
+                return -1;
+            }
+            int bounded = Math.toIntExact(Math.min(length, remaining));
+            int read = super.read(bytes, offset, bounded);
+            if (read > 0) {
+                remaining -= read;
+            }
+            return read;
+        }
     }
 }

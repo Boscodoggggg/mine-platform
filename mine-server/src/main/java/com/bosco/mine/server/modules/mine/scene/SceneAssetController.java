@@ -4,13 +4,13 @@ import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.server.bootstrap.web.PageResponse;
 import com.bosco.mine.server.modules.mine.dto.MineArchiveRequest;
 import com.bosco.mine.server.modules.mine.scene.dto.SceneAssetResponse;
+import com.bosco.mine.server.modules.mine.scene.storage.SceneAssetStorage;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import org.springframework.core.io.AbstractResource;
-import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
@@ -30,11 +30,7 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.FilterInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -140,10 +136,11 @@ public class SceneAssetController {
             return new ResponseEntity<>(null, headers, HttpStatus.NOT_MODIFIED);
         }
 
-        Resource resource = new FileSystemResource(file.path());
         if (rangeHeader == null || rangeHeader.isBlank()) {
+            SceneAssetStorage.StoredContent content = file.open(null);
             headers.setContentLength(file.sizeBytes());
-            return new ResponseEntity<>(resource, headers, HttpStatus.OK);
+            return new ResponseEntity<>(
+                    new InputStreamResource(content.inputStream()), headers, HttpStatus.OK);
         }
         try {
             List<HttpRange> ranges = HttpRange.parseRanges(rangeHeader);
@@ -159,8 +156,10 @@ public class SceneAssetController {
             headers.set(HttpHeaders.CONTENT_RANGE,
                     "bytes " + start + "-" + end + "/" + file.sizeBytes());
             headers.setContentLength(count);
+            SceneAssetStorage.StoredContent content = file.open(
+                    new SceneAssetStorage.ByteRange(start, end));
             return new ResponseEntity<>(
-                    new RangeFileResource(file.path(), start, count),
+                    new InputStreamResource(content.inputStream()),
                     headers,
                     HttpStatus.PARTIAL_CONTENT);
         } catch (IllegalArgumentException exception) {
@@ -204,104 +203,4 @@ public class SceneAssetController {
         return false;
     }
 
-    /**
-     * 只暴露受权普通文件中一个连续字节区间的资源视图。
-     */
-    private static final class RangeFileResource extends AbstractResource {
-
-        private final Path path;
-        private final long position;
-        private final long count;
-
-        private RangeFileResource(Path path, long position, long count) {
-            this.path = path;
-            this.position = position;
-            this.count = count;
-        }
-
-        /** 返回不包含宿主机绝对路径的固定资源说明。 */
-        @Override
-        public String getDescription() {
-            return "authorized-scene-asset-range";
-        }
-
-        /** 打开文件、跳至范围起点并限制最多读取指定字节数。 */
-        @Override
-        public InputStream getInputStream() throws IOException {
-            InputStream input = Files.newInputStream(path);
-            try {
-                input.skipNBytes(position);
-                return new BoundedInputStream(input, count);
-            } catch (IOException exception) {
-                input.close();
-                throw exception;
-            }
-        }
-
-        /** 返回范围内容长度，避免消息转换器遍历文件。 */
-        @Override
-        public long contentLength() {
-            return count;
-        }
-
-        /** 返回不含路径的文件名，仅用于框架资源描述。 */
-        @Override
-        public String getFilename() {
-            return path.getFileName().toString();
-        }
-    }
-
-    /**
-     * 在底层流之上强制限制最大可读字节数。
-     */
-    private static final class BoundedInputStream extends FilterInputStream {
-
-        private long remaining;
-
-        private BoundedInputStream(InputStream input, long count) {
-            super(input);
-            this.remaining = count;
-        }
-
-        /** 读取单个字节且不越过授权范围。 */
-        @Override
-        public int read() throws IOException {
-            if (remaining == 0) {
-                return -1;
-            }
-            int value = super.read();
-            if (value >= 0) {
-                remaining--;
-            }
-            return value;
-        }
-
-        /** 批量读取且不越过授权范围。 */
-        @Override
-        public int read(byte[] bytes, int offset, int length) throws IOException {
-            if (remaining == 0) {
-                return -1;
-            }
-            int boundedLength = Math.toIntExact(Math.min(length, remaining));
-            int read = super.read(bytes, offset, boundedLength);
-            if (read > 0) {
-                remaining -= read;
-            }
-            return read;
-        }
-
-        /** 跳过字节时同步扣减剩余授权范围。 */
-        @Override
-        public long skip(long count) throws IOException {
-            long skipped = super.skip(Math.min(count, remaining));
-            remaining -= skipped;
-            return skipped;
-        }
-
-        /** 返回当前范围内可立即读取的估算字节数。 */
-        @Override
-        public int available() throws IOException {
-            return Math.toIntExact(Math.min(super.available(), remaining));
-        }
-    }
 }
