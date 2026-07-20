@@ -15,6 +15,7 @@ const props = withDefaults(
     regions?: MineSpatialRegion[];
     events?: MineSpatialEvent[];
     selectedTagId?: string | null;
+    locationStaleAfterSeconds?: number;
     loading?: boolean;
   }>(),
   {
@@ -24,6 +25,7 @@ const props = withDefaults(
     regions: () => [],
     events: () => [],
     selectedTagId: null,
+    locationStaleAfterSeconds: 120,
     loading: false
   }
 );
@@ -70,6 +72,7 @@ const alertType = computed(() => (props.degradationReason === 'FORCED_2D' ? 'inf
       :regions="regions"
       :events="events"
       :selected-tag-id="selectedTagId"
+      :stale-after-seconds="locationStaleAfterSeconds"
       :loading="loading"
     />
   </div>

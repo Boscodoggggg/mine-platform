@@ -113,6 +113,77 @@ describe('useMineLocationRealtime', () => {
     expect(state.status.value).toBe('LIVE');
     scope.stop();
   });
+
+  it('同矿区刷新失败应保留最后正确位置与更新时间', async () => {
+    const loadCurrent = vi
+      .fn()
+      .mockResolvedValueOnce(currentSnapshot('site-1', [currentItem()]))
+      .mockRejectedValueOnce(new Error('location unavailable'));
+    const state = effectScope().run(() =>
+      useMineLocationRealtime({
+        loadCurrent,
+        subscribe: () => vi.fn(),
+        subscribeConnectionState: () => vi.fn(),
+        now: () => new Date('2026-07-18T00:10:00Z')
+      })
+    )!;
+
+    await state.selectSite('site-1');
+    expect(state.locations.value).toHaveLength(1);
+    expect(state.updatedAt.value).toBe('2026-07-18T00:00:01Z');
+
+    await state.selectSite('site-1');
+
+    expect(state.status.value).toBe('ERROR');
+    expect(state.locations.value).toHaveLength(1);
+    expect(state.updatedAt.value).toBe('2026-07-18T00:00:01Z');
+  });
+
+  it('快照矿区不匹配时不得建立实时订阅', async () => {
+    const subscribe = vi.fn();
+    const state = effectScope().run(() =>
+      useMineLocationRealtime({
+        loadCurrent: async () => currentSnapshot('site-2', [currentItem({ siteId: 'site-2' })]),
+        subscribe,
+        subscribeConnectionState: () => vi.fn()
+      })
+    )!;
+
+    await state.selectSite('site-1');
+
+    expect(state.status.value).toBe('ERROR');
+    expect(state.locations.value).toEqual([]);
+    expect(subscribe).not.toHaveBeenCalled();
+  });
+
+  it('重复序号与非法增量未改变坐标时不得伪推进更新时间', async () => {
+    let listener!: (batch: RealtimeLocationBatch) => void;
+    const state = effectScope().run(() =>
+      useMineLocationRealtime({
+        loadCurrent: async () => currentSnapshot('site-1', [currentItem()]),
+        subscribe: (_siteId, callback) => {
+          listener = callback;
+          return vi.fn();
+        },
+        subscribeConnectionState: () => vi.fn()
+      })
+    )!;
+    await state.selectSite('site-1');
+
+    listener({
+      siteId: 'site-1',
+      mode: 'UPDATE',
+      items: [realtimeItem({ sourceSequence: 10, receivedAt: '2026-07-18T00:10:00Z' })]
+    });
+    listener({
+      siteId: 'site-1',
+      mode: 'UPDATE',
+      items: [realtimeItem({ sourceSequence: 11, localX: Number.NaN, receivedAt: '2026-07-18T00:11:00Z' })]
+    });
+
+    expect(state.locations.value[0]?.localX).toBe(120);
+    expect(state.updatedAt.value).toBe('2026-07-18T00:00:01Z');
+  });
 });
 
 function currentSnapshot(siteId: string, items: CurrentLocation['items']): CurrentLocation {

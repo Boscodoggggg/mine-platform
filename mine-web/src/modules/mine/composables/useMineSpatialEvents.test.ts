@@ -232,6 +232,33 @@ describe('useMineSpatialEvents', () => {
     expect(loadRegions).toHaveBeenCalledTimes(2);
     state.stop();
   });
+
+  it('同矿区刷新失败应分层保留最后正确空间数据与更新时间', async () => {
+    const loadRegions = vi
+      .fn()
+      .mockResolvedValueOnce(regionSnapshot([geofenceRegion()]))
+      .mockRejectedValueOnce(new Error('region unavailable'));
+    const loadEvents = vi
+      .fn()
+      .mockResolvedValueOnce(eventPage([eventItem()]))
+      .mockRejectedValueOnce(new Error('event unavailable'));
+    const state = effectScope().run(() =>
+      useMineSpatialEvents({ loadRegions, loadEvents, subscribe: () => vi.fn() })
+    )!;
+
+    await state.selectSite('site-1');
+    expect(state.regionUpdatedAt.value).toBe('2026-07-18T00:00:00Z');
+    expect(state.eventUpdatedAt.value).toBe('2026-07-18T00:00:00Z');
+
+    await state.selectSite('site-1');
+
+    expect(state.regionStatus.value).toBe('DEGRADED');
+    expect(state.eventStatus.value).toBe('DEGRADED');
+    expect(state.regions.value).toHaveLength(1);
+    expect(state.events.value).toHaveLength(1);
+    expect(state.regionUpdatedAt.value).toBe('2026-07-18T00:00:00Z');
+    expect(state.eventUpdatedAt.value).toBe('2026-07-18T00:00:00Z');
+  });
 });
 
 function eventPage(items: SpatialEventPage['items'], watermark = 40): SpatialEventPage {

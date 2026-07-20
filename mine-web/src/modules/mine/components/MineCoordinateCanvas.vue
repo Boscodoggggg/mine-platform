@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { NEmpty, NSpin, useThemeVars } from 'naive-ui';
 import type { LineSeriesOption, ScatterSeriesOption } from 'echarts/charts';
 import { useI18n } from 'vue-i18n';
@@ -18,17 +18,23 @@ const props = withDefaults(
     showEvents?: boolean;
     selectedTagId: string | null;
     loading: boolean;
+    staleAfterSeconds?: number;
+    nowMillis?: number;
   }>(),
   {
     regions: () => [],
     events: () => [],
     showRegions: true,
-    showEvents: true
+    showEvents: true,
+    staleAfterSeconds: 120,
+    nowMillis: undefined
   }
 );
 
 const { t, locale } = useI18n();
 const themeVars = useThemeVars();
+const renderedNowMillis = ref(props.nowMillis ?? Date.now());
+let staleTimer: ReturnType<typeof setTimeout> | null = null;
 const hasData = computed(
   () =>
     props.items.length > 0 ||
@@ -71,6 +77,7 @@ watch(
     () => props.showRegions,
     () => props.showEvents,
     () => props.selectedTagId,
+    renderedNowMillis,
     locale,
     themeVars
   ],
@@ -92,6 +99,14 @@ watch(
   },
   { immediate: true, deep: true }
 );
+
+watch(
+  [() => props.items, () => props.staleAfterSeconds, () => props.nowMillis],
+  scheduleStaleRefresh,
+  { immediate: true }
+);
+
+onBeforeUnmount(clearStaleTimer);
 
 function buildSeries(): CanvasSeries[] {
   const series: CanvasSeries[] = [
@@ -169,22 +184,52 @@ function buildSeries(): CanvasSeries[] {
     z: 5,
     data: props.items.map(item => {
       const selected = item.tagId === props.selectedTagId;
+      const stale = renderedNowMillis.value - Date.parse(item.occurredAt) > props.staleAfterSeconds * 1000;
       return {
         name: item.tagCode,
         value: [item.localX, item.localY] as [number, number],
         itemStyle: {
-          color: selected
+          color: stale
+            ? themeVars.value.textColor3
+            : selected
             ? themeVars.value.primaryColor
             : item.qualityStatus === 'GOOD'
               ? themeVars.value.successColor
               : themeVars.value.warningColor,
-          borderColor: selected ? themeVars.value.primaryColor : themeVars.value.dividerColor,
-          borderWidth: selected ? 3 : 1
+          borderColor: stale
+            ? themeVars.value.warningColor
+            : selected
+              ? themeVars.value.primaryColor
+              : themeVars.value.dividerColor,
+          borderWidth: selected || stale ? 3 : 1
         }
       };
     })
   });
   return series;
+}
+
+function scheduleStaleRefresh() {
+  clearStaleTimer();
+  if (props.nowMillis !== undefined) {
+    renderedNowMillis.value = props.nowMillis;
+    return;
+  }
+  const nowMillis = Date.now();
+  renderedNowMillis.value = nowMillis;
+  const staleMillis = props.staleAfterSeconds * 1000;
+  const nextDeadline = props.items.reduce((earliest, item) => {
+    const deadline = Date.parse(item.occurredAt) + staleMillis;
+    return Number.isFinite(deadline) && deadline > nowMillis ? Math.min(earliest, deadline) : earliest;
+  }, Number.POSITIVE_INFINITY);
+  if (!Number.isFinite(nextDeadline)) return;
+  staleTimer = setTimeout(scheduleStaleRefresh, Math.max(16, nextDeadline - nowMillis + 1));
+}
+
+function clearStaleTimer() {
+  if (staleTimer === null) return;
+  clearTimeout(staleTimer);
+  staleTimer = null;
 }
 
 function regionCoordinates(region: MineSpatialRegion) {

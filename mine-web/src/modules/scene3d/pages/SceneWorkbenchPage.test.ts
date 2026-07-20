@@ -1,3 +1,4 @@
+import { ref, shallowRef } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/client';
@@ -33,6 +34,7 @@ const contextState = vi.hoisted(() => ({
   selectSite: vi.fn()
 }));
 const routeGuard = vi.hoisted(() => ({ callback: undefined as undefined | ((...args: never[]) => unknown) }));
+const sceneRealtimeState = vi.hoisted(() => ({ runtime: null as Record<string, unknown> | null }));
 
 vi.mock('../api/scene', () => api);
 vi.mock('@/modules/mine/api/mine-api', () => mineApi);
@@ -45,9 +47,12 @@ vi.mock('vue-router', () => ({
 }));
 vi.mock('../components/CesiumSceneViewport.vue', () => ({
   default: {
-    props: ['snapshot', 'degradationReason', 'mode'],
-    template: '<div data-testid="scene-runtime" :data-ready="Boolean(snapshot)" :data-reason="degradationReason" :data-mode="mode"></div>'
+    props: ['snapshot', 'degradationReason', 'mode', 'locations', 'regions', 'events', 'trajectory', 'selectedTagId', 'locationStaleAfterSeconds'],
+    template: '<div data-testid="scene-runtime" :data-ready="Boolean(snapshot)" :data-reason="degradationReason" :data-mode="mode" :data-locations="locations.length" :data-regions="regions.length" :data-events="events.length" :data-trajectory="trajectory.length" :data-selected="selectedTagId"></div>'
   }
+}));
+vi.mock('../composables/useSceneRealtime', () => ({
+  useSceneRealtime: () => sceneRealtimeState.runtime
 }));
 vi.mock('../components/SceneAssetPanel.vue', () => ({
   default: {
@@ -92,6 +97,7 @@ describe('SceneWorkbenchPage', () => {
       reason: 'NO_DEFAULT_SCENE',
       snapshot: null
     });
+    sceneRealtimeState.runtime = sceneRealtimeRuntime();
     mineApi.getMineCoordinateSystems.mockResolvedValue({ items: [], page: 1, size: 100, total: 0 });
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
     window.$dialog = { warning: vi.fn() } as never;
@@ -121,6 +127,48 @@ describe('SceneWorkbenchPage', () => {
     await wrapper.get('[data-testid="scene-mode-3d"]').trigger('click');
     expect(wrapper.get('[data-testid="scene-runtime"]').attributes('data-mode')).toBe('3D');
     expect(wrapper.get('[data-testid="scene-mode-3d"]').attributes('aria-pressed')).toBe('true');
+  });
+
+  it('把同一份位置、区域、事件和按需轨迹传给二维与三维视口', async () => {
+    authState.userInfo.buttons = ['mine:scene:view'];
+    const realtime = sceneRealtimeState.runtime!;
+    (realtime.locations as ReturnType<typeof shallowRef>).value = [location()];
+    (realtime.regions as ReturnType<typeof shallowRef>).value = [{ zoneId: 'zone-1' }];
+    (realtime.events as ReturnType<typeof shallowRef>).value = [{ eventId: 'event-1' }];
+    (realtime.trajectory as ReturnType<typeof shallowRef>).value = [{ eventId: 'trajectory-1' }];
+    const readyRuntime = { siteId: 'site-1', status: 'READY', reason: 'NONE', snapshot: runtimeSnapshot() };
+    api.getSceneRuntime.mockResolvedValue(readyRuntime);
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(realtime.selectSite).toHaveBeenLastCalledWith('site-1', readyRuntime.snapshot);
+    expect(wrapper.get('[data-testid="scene-realtime-summary"]').text()).toContain('1 个位置');
+    expect(wrapper.get('[data-testid="scene-realtime-updated-at"]').text()).toContain('位置更新');
+    expect(wrapper.get('[data-testid="scene-runtime"]').attributes()).toMatchObject({
+      'data-locations': '1',
+      'data-regions': '1',
+      'data-events': '1',
+      'data-trajectory': '1'
+    });
+
+    (wrapper.vm as unknown as { selectRuntimeTag: (tagId: string) => void }).selectRuntimeTag('tag-1');
+    expect(realtime.selectTag).toHaveBeenCalledWith('tag-1');
+  });
+
+  it('同矿区刷新失败保留最后正确场景且不清空实时作用域', async () => {
+    authState.userInfo.buttons = ['mine:scene:view'];
+    const readyRuntime = { siteId: 'site-1', status: 'READY', reason: 'NONE', snapshot: runtimeSnapshot() };
+    api.getSceneRuntime.mockResolvedValueOnce(readyRuntime).mockRejectedValueOnce(new Error('runtime unavailable'));
+    const wrapper = mountPage();
+    await flushPromises();
+    const realtime = sceneRealtimeState.runtime!;
+    vi.mocked(realtime.selectSite as ReturnType<typeof vi.fn>).mockClear();
+
+    await (wrapper.vm as unknown as { refreshCurrentSite: () => Promise<void> }).refreshCurrentSite();
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="scene-runtime"]').attributes('data-ready')).toBe('true');
+    expect(realtime.selectSite).not.toHaveBeenCalledWith(null, null);
   });
 
   it('切换矿区会主动取消旧作用域请求并只接受新矿区结果', async () => {
@@ -215,6 +263,80 @@ async function openGovernance(wrapper: ReturnType<typeof mountPage>) {
 
 function grantAllPermissions() {
   authState.userInfo.buttons = ['mine:scene:view', 'mine:scene:edit', 'mine:scene:asset:upload', 'mine:scene:publish'];
+}
+
+function sceneRealtimeRuntime() {
+  return {
+    selectedTagId: ref<string | null>(null),
+    selectableLocations: shallowRef<unknown[]>([]),
+    locationStaleAfterSeconds: ref(120),
+    locations: shallowRef<unknown[]>([]),
+    regions: shallowRef<unknown[]>([]),
+    events: shallowRef<unknown[]>([]),
+    trajectory: shallowRef<unknown[]>([]),
+    locationStatus: ref('IDLE'),
+    regionStatus: ref('DISABLED'),
+    eventStatus: ref('DISABLED'),
+    trajectoryStatus: ref('DISABLED'),
+    locationUpdatedAt: ref<string | null>('2026-07-20T08:00:00Z'),
+    regionUpdatedAt: ref<string | null>('2026-07-20T08:00:00Z'),
+    eventUpdatedAt: ref<string | null>('2026-07-20T08:00:00Z'),
+    trajectoryUpdatedAt: ref<string | null>(null),
+    loading: ref(false),
+    selectSite: vi.fn().mockResolvedValue(undefined),
+    selectTag: vi.fn().mockResolvedValue(undefined)
+  };
+}
+
+function location() {
+  return { tagId: 'tag-1', tagCode: 'TAG-001' };
+}
+
+function runtimeSnapshot() {
+  return {
+    sceneId: crypto.randomUUID(),
+    sceneCode: 'north-pit',
+    sceneName: '北采区',
+    versionId: crypto.randomUUID(),
+    revisionNumber: 1,
+    schemaVersion: 1,
+    contentHash: `sha256:${'a'.repeat(64)}`,
+    coordinateSystemId: crypto.randomUUID(),
+    coordinateMode: 'LOCAL_ENU',
+    originX: 0,
+    originY: 0,
+    originZ: 0,
+    headingDegrees: 0,
+    pitchDegrees: 0,
+    rollDegrees: 0,
+    scale: 1,
+    defaultCamera: {},
+    fallbackViewport: {},
+    publishedAt: '2026-07-20T08:00:00Z',
+    layerCount: 1,
+    layers: [
+      {
+        id: crypto.randomUUID(),
+        layerCode: 'locations',
+        orderNumber: 1,
+        layerType: 'DYNAMIC_LOCATIONS',
+        visible: true,
+        opacity: 1,
+        minimumDistance: 0,
+        maximumDistance: 100000,
+        offsetX: 0,
+        offsetY: 0,
+        offsetZ: 0,
+        headingDegrees: 0,
+        pitchDegrees: 0,
+        rollDegrees: 0,
+        scale: 1,
+        maxItems: 5000,
+        options: {},
+        asset: null
+      }
+    ]
+  };
 }
 
 function scene() {

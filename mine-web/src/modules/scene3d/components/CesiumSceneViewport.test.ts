@@ -20,19 +20,20 @@ describe('CesiumSceneViewport', () => {
 
   it('只负责连接生产适配器并展示去重后的图层降级状态', async () => {
     const wrapper = mount(CesiumSceneViewport, {
-      props: { snapshot: snapshot() },
+      props: { snapshot: snapshot(), locationStaleAfterSeconds: 45 },
       global: {
         plugins: [i18n],
         stubs: {
           SceneViewport: {
             name: 'SceneViewport',
-            props: ['snapshot', 'createAdapter'],
+            props: ['snapshot', 'createAdapter', 'locationStaleAfterSeconds'],
             template: '<div data-testid="scene-viewport-host"></div>'
           }
         }
       }
     });
     const host = wrapper.findComponent({ name: 'SceneViewport' });
+    expect(host.props('locationStaleAfterSeconds')).toBe(45);
     expect(wrapper.get('[data-testid="scene-coordinate-mode"]').text()).toContain('局部 ENU');
     const runtimeFailure = vi.fn();
     const createAdapter = host.props('createAdapter') as (

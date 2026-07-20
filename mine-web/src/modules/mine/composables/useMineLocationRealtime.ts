@@ -16,6 +16,7 @@ interface MineLocationRealtimeDependencies {
   loadCurrent: (siteId: string, limit?: number) => Promise<CurrentLocation>;
   subscribe: (siteId: string, listener: RealtimeLocationListener) => () => void;
   subscribeConnectionState: (listener: (state: RealtimeConnectionState) => void) => () => void;
+  now: () => Date;
 }
 
 /**
@@ -29,7 +30,8 @@ export function useMineLocationRealtime(
     loadCurrent: dependencies.loadCurrent ?? getMineCurrentLocations,
     subscribe: dependencies.subscribe ?? ((siteId, listener) => realtimeHub.subscribeMineLocation(siteId, listener)),
     subscribeConnectionState:
-      dependencies.subscribeConnectionState ?? (listener => realtimeHub.subscribeConnectionState(listener))
+      dependencies.subscribeConnectionState ?? (listener => realtimeHub.subscribeConnectionState(listener)),
+    now: dependencies.now ?? (() => new Date())
   };
   const selectedSiteId = ref<string | null>(null);
   const locations = shallowRef<MineLocationItem[]>([]);
@@ -38,6 +40,7 @@ export function useMineLocationRealtime(
   const watermark = ref<number | null>(null);
   const source = ref<CurrentLocation['source'] | null>(null);
   const truncated = ref(false);
+  const updatedAt = ref<string | null>(null);
   const connectionState = ref<RealtimeConnectionState>('DISCONNECTED');
   let selectionGeneration = 0;
   let releaseLocation: (() => void) | null = null;
@@ -50,15 +53,20 @@ export function useMineLocationRealtime(
 
   const hasLocations = computed(() => locations.value.length > 0);
 
-  async function selectSite(siteId: string | null) {
+  async function selectSite(siteId: string | null, limit = 5000) {
+    const normalizedSiteId = siteId?.trim() || null;
+    const sameSite = normalizedSiteId !== null && normalizedSiteId === selectedSiteId.value;
     selectionGeneration += 1;
     const generation = selectionGeneration;
     clearLocationSubscription();
-    selectedSiteId.value = siteId?.trim() || null;
-    locations.value = [];
-    watermark.value = null;
-    source.value = null;
-    truncated.value = false;
+    selectedSiteId.value = normalizedSiteId;
+    if (!sameSite) {
+      locations.value = [];
+      watermark.value = null;
+      source.value = null;
+      truncated.value = false;
+      updatedAt.value = null;
+    }
     error.value = null;
     if (!selectedSiteId.value) {
       status.value = 'IDLE';
@@ -68,8 +76,9 @@ export function useMineLocationRealtime(
     const requestedSiteId = selectedSiteId.value;
     status.value = 'LOADING';
     try {
-      const snapshot = await runtime.loadCurrent(requestedSiteId, 5000);
+      const snapshot = await runtime.loadCurrent(requestedSiteId, boundedLimit(limit));
       if (generation !== selectionGeneration || selectedSiteId.value !== requestedSiteId) return;
+      if (snapshot.siteId !== requestedSiteId) throw new Error('当前位置快照矿区不匹配');
       applySnapshot(snapshot);
       releaseLocation = runtime.subscribe(requestedSiteId, applyRealtimeBatch);
       status.value = runtimeStatus(connectionState.value);
@@ -81,29 +90,35 @@ export function useMineLocationRealtime(
   }
 
   function applySnapshot(snapshot: CurrentLocation) {
-    if (snapshot.siteId !== selectedSiteId.value) return;
     const latest = new Map<string, MineLocationItem>();
     snapshot.items.forEach(item => upsertLatest(latest, item));
     locations.value = [...latest.values()];
     watermark.value = snapshot.watermark;
     source.value = snapshot.source;
     truncated.value = snapshot.truncated;
+    updatedAt.value = latestTimestamp(snapshot.items.map(item => item.receivedAt)) ?? runtime.now().toISOString();
   }
 
   function applyRealtimeBatch(batch: RealtimeLocationBatch) {
     if (batch.siteId !== selectedSiteId.value) return;
+    const appliedTimestamps: string[] = [];
     const latest =
       batch.mode === 'SNAPSHOT'
         ? new Map<string, MineLocationItem>()
         : new Map(locations.value.map(item => [item.tagId, item]));
     batch.items.forEach(item => {
       const normalized = normalizeRealtimeItem(item);
-      if (normalized) upsertLatest(latest, normalized);
+      if (normalized && upsertLatest(latest, normalized)) appliedTimestamps.push(normalized.receivedAt);
     });
     locations.value = [...latest.values()];
     if (batch.watermark !== undefined) watermark.value = batch.watermark;
     if (batch.source !== undefined) source.value = batch.source;
     if (batch.truncated !== undefined) truncated.value = batch.truncated;
+    if (batch.mode === 'SNAPSHOT') {
+      updatedAt.value = latestTimestamp(appliedTimestamps) ?? runtime.now().toISOString();
+    } else if (appliedTimestamps.length > 0) {
+      updatedAt.value = latestTimestamp([updatedAt.value, ...appliedTimestamps].filter(isTimestamp));
+    }
   }
 
   function clearLocationSubscription() {
@@ -128,10 +143,19 @@ export function useMineLocationRealtime(
     watermark,
     source,
     truncated,
+    updatedAt,
     connectionState,
     selectSite,
     stop
   };
+}
+
+function latestTimestamp(values: string[]) {
+  return values.reduce<string | null>((latest, value) => {
+    const timestamp = Date.parse(value);
+    if (!Number.isFinite(timestamp)) return latest;
+    return !latest || timestamp > Date.parse(latest) ? value : latest;
+  }, null);
 }
 
 function runtimeStatus(state: RealtimeConnectionState): MineLocationRuntimeStatus {
@@ -140,9 +164,19 @@ function runtimeStatus(state: RealtimeConnectionState): MineLocationRuntimeStatu
   return 'CONNECTING';
 }
 
+function boundedLimit(value: number) {
+  return Number.isInteger(value) && value >= 1 && value <= 5000 ? value : 5000;
+}
+
 function upsertLatest(latest: Map<string, MineLocationItem>, item: MineLocationItem) {
   const existing = latest.get(item.tagId);
-  if (!existing || item.ingestSequence > existing.ingestSequence) latest.set(item.tagId, item);
+  if (existing && item.ingestSequence <= existing.ingestSequence) return false;
+  latest.set(item.tagId, item);
+  return true;
+}
+
+function isTimestamp(value: string | null): value is string {
+  return value !== null && Number.isFinite(Date.parse(value));
 }
 
 function normalizeRealtimeItem(item: RealtimeLocationItem): MineLocationItem | null {

@@ -376,8 +376,13 @@ export function getMineCurrentLocations(siteId: string, limit = 5000) {
 }
 
 /** 查询标签、车辆或人员的有界历史轨迹。 */
-export function getMineLocationTrajectory(siteId: string, query: LocationTrajectoryQuery) {
-  return request<LocationTrajectory>(withQuery(`${sitePath(siteId, 'locations')}/trajectory`, query));
+export function getMineLocationTrajectory(
+  siteId: string,
+  query: LocationTrajectoryQuery,
+  signal?: AbortSignal
+) {
+  const path = withQuery(`${sitePath(siteId, 'locations')}/trajectory`, query);
+  return signal ? request<LocationTrajectory>(path, { signal }) : request<LocationTrajectory>(path);
 }
 
 /** 分页查询矿区途径点稳定对象。 */

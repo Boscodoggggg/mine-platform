@@ -56,10 +56,12 @@ import type { SceneViewportMode } from '../runtime/types';
 import SceneAssetPanel from '../components/SceneAssetPanel.vue';
 import SceneVersionEditor from '../components/SceneVersionEditor.vue';
 import CesiumSceneViewport from '../components/CesiumSceneViewport.vue';
+import { useSceneRealtime } from '../composables/useSceneRealtime';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const authStore = useAuthStore();
 const mineContext = useMineContextStore();
+const sceneRealtime = useSceneRealtime();
 const activeTab = ref<'RUNTIME' | 'GOVERNANCE'>('RUNTIME');
 const loading = ref(false);
 const saving = ref(false);
@@ -106,6 +108,38 @@ const coordinateOptions = computed(() =>
 );
 const runtimeReason = computed(() =>
   runtime.value?.status === 'DEGRADED' && runtime.value.reason !== 'NONE' ? runtime.value.reason : null
+);
+const runtimeLocations = sceneRealtime.locations;
+const runtimeRegions = sceneRealtime.regions;
+const runtimeEvents = sceneRealtime.events;
+const runtimeTrajectory = sceneRealtime.trajectory;
+const selectableLocations = sceneRealtime.selectableLocations;
+const locationStaleAfterSeconds = sceneRealtime.locationStaleAfterSeconds;
+const selectedTagId = sceneRealtime.selectedTagId;
+const realtimeLoading = sceneRealtime.loading;
+const runtimeLocationStatus = sceneRealtime.locationStatus;
+const runtimeRegionStatus = sceneRealtime.regionStatus;
+const runtimeEventStatus = sceneRealtime.eventStatus;
+const runtimeTrajectoryStatus = sceneRealtime.trajectoryStatus;
+const runtimeLocationUpdatedAt = sceneRealtime.locationUpdatedAt;
+const runtimeRegionUpdatedAt = sceneRealtime.regionUpdatedAt;
+const runtimeEventUpdatedAt = sceneRealtime.eventUpdatedAt;
+const runtimeTrajectoryUpdatedAt = sceneRealtime.trajectoryUpdatedAt;
+const locationOptions = computed<SelectOption[]>(() =>
+  selectableLocations.value.map(item => ({ label: item.tagCode, value: item.tagId }))
+);
+const hasRuntimeDynamicLayers = computed(() =>
+  Boolean(runtime.value?.snapshot?.layers.some(layer => layer.layerType.startsWith('DYNAMIC_') && layer.visible))
+);
+const hasRuntimeTrackingLayers = computed(() =>
+  Boolean(
+    runtime.value?.snapshot?.layers.some(
+      layer => ['DYNAMIC_LOCATIONS', 'DYNAMIC_TRAJECTORY'].includes(layer.layerType) && layer.visible
+    )
+  )
+);
+const hasRuntimeTrajectoryLayer = computed(() =>
+  Boolean(runtime.value?.snapshot?.layers.some(layer => layer.layerType === 'DYNAMIC_TRAJECTORY' && layer.visible))
 );
 
 onMounted(async () => {
@@ -169,14 +203,14 @@ async function loadSite(siteId: string) {
   const controller = new AbortController();
   scopeController = controller;
   const generation = ++scopeGeneration;
-  clearSiteState();
+  if (loadedSiteId !== siteId) clearSiteState();
   loadedSiteId = siteId;
   loading.value = true;
   try {
     if (!canGovern.value) {
       const nextRuntime = await getSceneRuntime(siteId, controller.signal);
       if (!scopeCurrent(generation, siteId)) return;
-      runtime.value = nextRuntime;
+      applyRuntime(siteId, nextRuntime);
       return;
     }
     const [nextRuntime, scenePage, assetPage, coordinatePage] = await Promise.all([
@@ -186,7 +220,7 @@ async function loadSite(siteId: string) {
       getMineCoordinateSystems(siteId, { status: 'ACTIVE', page: 1, size: 100 }, controller.signal)
     ]);
     if (!scopeCurrent(generation, siteId)) return;
-    runtime.value = nextRuntime;
+    applyRuntime(siteId, nextRuntime);
     scenes.value = scenePage.items;
     assets.value = assetPage.items;
     coordinateSystems.value = coordinatePage.items.filter(item => item.unified);
@@ -247,10 +281,19 @@ async function refreshCurrentSite() {
 async function refreshRuntime() {
   if (!loadedSiteId) return;
   try {
-    runtime.value = await getSceneRuntime(loadedSiteId, scopeController?.signal);
+    applyRuntime(loadedSiteId, await getSceneRuntime(loadedSiteId, scopeController?.signal));
   } catch (error) {
     if (!isCancelled(error)) showError(error, 'mine.sceneWorkbench.runtimeLoadFailed');
   }
+}
+
+function applyRuntime(siteId: string, nextRuntime: SceneRuntime) {
+  runtime.value = nextRuntime;
+  void sceneRealtime.selectSite(siteId, nextRuntime.snapshot);
+}
+
+function selectRuntimeTag(tagId: string | null) {
+  void sceneRealtime.selectTag(tagId);
 }
 
 async function submitScene() {
@@ -457,6 +500,7 @@ async function handleConflict(error: unknown, refresh: () => Promise<void>) {
 }
 
 function clearSiteState() {
+  void sceneRealtime.selectSite(null, null);
   runtime.value = null;
   scenes.value = [];
   assets.value = [];
@@ -488,6 +532,14 @@ function can(permission: string) {
 
 function actionKey(action: string, siteId: string, resourceId: string) {
   return `${action}:${siteId}:${resourceId}:${crypto.randomUUID()}`;
+}
+
+function formatUpdatedAt(value: string | null) {
+  if (!value) return t('mine.sceneWorkbench.updatedAtPending');
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString(locale.value)
+    : t('mine.sceneWorkbench.updatedAtPending');
 }
 
 function versionStatusLabel(status: SceneVersion['status']) {
@@ -545,6 +597,77 @@ function versionStatusType(status: SceneVersion['status']) {
                 </NButton>
               </NButtonGroup>
             </NFlex>
+            <NFlex v-if="hasRuntimeDynamicLayers" vertical class="mb-4">
+              <NFlex data-responsive-stack class="flex-col md:flex-row" align="center">
+                <NSelect
+                  v-if="hasRuntimeTrackingLayers"
+                  :value="selectedTagId"
+                  :options="locationOptions"
+                  clearable
+                  filterable
+                  :placeholder="
+                    t(
+                      hasRuntimeTrajectoryLayer
+                        ? 'mine.sceneWorkbench.trackedObjectPlaceholder'
+                        : 'mine.sceneWorkbench.trackedLocationPlaceholder'
+                    )
+                  "
+                  :aria-label="
+                    t(
+                      hasRuntimeTrajectoryLayer
+                        ? 'mine.sceneWorkbench.trackedObjectPlaceholder'
+                        : 'mine.sceneWorkbench.trackedLocationPlaceholder'
+                    )
+                  "
+                  class="w-full md:w-80"
+                  data-testid="scene-tracked-object"
+                  @update:value="selectRuntimeTag"
+                />
+                <NTag type="info" :bordered="false" data-testid="scene-realtime-summary">
+                  {{
+                    t('mine.sceneWorkbench.realtimeSummary', {
+                      locations: runtimeLocations.length,
+                      regions: runtimeRegions.length,
+                      events: runtimeEvents.length
+                    })
+                  }}
+                </NTag>
+              </NFlex>
+              <NFlex size="small" data-testid="scene-realtime-updated-at">
+                <NText depth="3">
+                  {{ t('mine.sceneWorkbench.locationUpdatedAt', { time: formatUpdatedAt(runtimeLocationUpdatedAt) }) }}
+                </NText>
+                <NText depth="3">
+                  {{ t('mine.sceneWorkbench.regionUpdatedAt', { time: formatUpdatedAt(runtimeRegionUpdatedAt) }) }}
+                </NText>
+                <NText depth="3">
+                  {{ t('mine.sceneWorkbench.eventUpdatedAt', { time: formatUpdatedAt(runtimeEventUpdatedAt) }) }}
+                </NText>
+                <NText depth="3">
+                  {{ t('mine.sceneWorkbench.trajectoryUpdatedAt', { time: formatUpdatedAt(runtimeTrajectoryUpdatedAt) }) }}
+                </NText>
+              </NFlex>
+              <NAlert
+                v-if="runtimeLocationStatus === 'ERROR'"
+                type="warning"
+                :title="t('mine.sceneWorkbench.locationLayerDegraded')"
+              />
+              <NAlert
+                v-if="runtimeRegionStatus === 'DEGRADED'"
+                type="warning"
+                :title="t('mine.sceneWorkbench.regionLayerDegraded')"
+              />
+              <NAlert
+                v-if="runtimeEventStatus === 'DEGRADED'"
+                type="warning"
+                :title="t('mine.sceneWorkbench.eventLayerDegraded')"
+              />
+              <NAlert
+                v-if="runtimeTrajectoryStatus === 'DEGRADED'"
+                type="warning"
+                :title="t('mine.sceneWorkbench.trajectoryLayerDegraded')"
+              />
+            </NFlex>
             <NAlert
               v-if="runtime?.status === 'DEGRADED'"
               type="warning"
@@ -558,6 +681,13 @@ function versionStatusType(status: SceneVersion['status']) {
               :snapshot="runtime?.snapshot ?? null"
               :degradation-reason="runtimeReason"
               :mode="viewportMode"
+              :locations="runtimeLocations"
+              :regions="runtimeRegions"
+              :events="runtimeEvents"
+              :trajectory="runtimeTrajectory"
+              :selected-tag-id="selectedTagId"
+              :location-stale-after-seconds="locationStaleAfterSeconds"
+              :loading="realtimeLoading"
             />
           </NSpin>
         </NTabPane>

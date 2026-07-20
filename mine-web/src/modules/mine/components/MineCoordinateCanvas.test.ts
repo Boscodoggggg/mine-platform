@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n, setLocale } from '@/locales';
 import type { LocationTrajectory } from '../api/mine-api';
 import type { MineLocationItem } from '../composables/useMineLocationRealtime';
@@ -45,6 +45,10 @@ describe('MineCoordinateCanvas', () => {
     chart.updateOptions.mockReset();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('应使用主题令牌绘制区域、实时事件、质量分层点位和轨迹', async () => {
     const wrapper = mount(MineCoordinateCanvas, {
       props: {
@@ -58,7 +62,8 @@ describe('MineCoordinateCanvas', () => {
         showRegions: true,
         showEvents: true,
         selectedTagId: 'tag-1',
-        loading: false
+        loading: false,
+        nowMillis: Date.parse('2026-07-18T00:01:00Z')
       },
       global: { plugins: [i18n] }
     });
@@ -130,6 +135,55 @@ describe('MineCoordinateCanvas', () => {
 
     expect(wrapper.text()).toContain('当前矿区暂无可展示的位置数据');
     expect(wrapper.find('[role="img"]').exists()).toBe(false);
+  });
+
+  it('二维视图应按发布阈值显示陈旧位置', async () => {
+    mount(MineCoordinateCanvas, {
+      props: {
+        items: [location({ occurredAt: '2026-07-18T00:00:00Z' })],
+        trajectory: [],
+        selectedTagId: null,
+        loading: false,
+        staleAfterSeconds: 60,
+        nowMillis: Date.parse('2026-07-18T00:02:00Z')
+      },
+      global: { plugins: [i18n] }
+    });
+    await Promise.resolve();
+
+    const current = (chart.options!.series as Array<{ id: string; data: Array<{ itemStyle: { color: string; borderWidth: number } }> }>).find(
+      item => item.id === 'current-locations'
+    )!;
+    expect(current.data[0]!.itemStyle).toMatchObject({ color: 'token-text', borderWidth: 3 });
+  });
+
+  it('无新消息时二维位置到达阈值会自动陈旧并在卸载时清理定时器', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-18T00:00:30Z'));
+    const wrapper = mount(MineCoordinateCanvas, {
+      props: {
+        items: [location({ occurredAt: '2026-07-18T00:00:00Z' })],
+        trajectory: [],
+        selectedTagId: null,
+        loading: false,
+        staleAfterSeconds: 60
+      },
+      global: { plugins: [i18n] }
+    });
+    await Promise.resolve();
+    let current = (chart.options!.series as Array<{ id: string; data: Array<{ itemStyle: { color: string } }> }>).find(
+      item => item.id === 'current-locations'
+    )!;
+    expect(current.data[0]!.itemStyle.color).toBe('token-success');
+
+    await vi.advanceTimersByTimeAsync(30_001);
+    current = (chart.options!.series as Array<{ id: string; data: Array<{ itemStyle: { color: string } }> }>).find(
+      item => item.id === 'current-locations'
+    )!;
+    expect(current.data[0]!.itemStyle.color).toBe('token-text');
+
+    wrapper.unmount();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

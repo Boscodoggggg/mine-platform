@@ -84,6 +84,8 @@ export function useMineSpatialEvents(dependencies: Partial<MineSpatialDependenci
   const regionError = shallowRef<unknown | null>(null);
   const eventError = shallowRef<unknown | null>(null);
   const eventWatermark = ref<number | null>(null);
+  const regionUpdatedAt = ref<string | null>(null);
+  const eventUpdatedAt = ref<string | null>(null);
   let selectionGeneration = 0;
   let eventSnapshotGeneration = 0;
   let releaseEvents: (() => void) | null = null;
@@ -97,16 +99,24 @@ export function useMineSpatialEvents(dependencies: Partial<MineSpatialDependenci
     siteId: string | null,
     capabilities: MineSpatialCapabilities = { regions: true, events: true }
   ) {
+    const normalizedSiteId = siteId?.trim() || null;
+    const sameSite = normalizedSiteId !== null && normalizedSiteId === selectedSiteId.value;
     selectionGeneration += 1;
     eventSnapshotGeneration += 1;
     const generation = selectionGeneration;
     clearRegionRefreshTimer();
     releaseSubscription();
-    selectedSiteId.value = siteId?.trim() || null;
-    regions.value = [];
-    events.value = [];
-    lastEvent.value = null;
-    eventWatermark.value = null;
+    selectedSiteId.value = normalizedSiteId;
+    if (!sameSite || !capabilities.regions) {
+      regions.value = [];
+      regionUpdatedAt.value = null;
+    }
+    if (!sameSite || !capabilities.events) {
+      events.value = [];
+      lastEvent.value = null;
+      eventWatermark.value = null;
+      eventUpdatedAt.value = null;
+    }
     regionError.value = null;
     eventError.value = null;
     regionStatus.value = capabilities.regions ? 'IDLE' : 'DISABLED';
@@ -145,6 +155,7 @@ export function useMineSpatialEvents(dependencies: Partial<MineSpatialDependenci
       regions.value = snapshot.regions;
       regionError.value = null;
       regionStatus.value = 'READY';
+      regionUpdatedAt.value = snapshot.evaluatedAt;
       scheduleRegionRefresh(siteId, generation, snapshot.evaluatedAt, snapshot.nextChangeAt);
     } catch (cause) {
       if (generation !== selectionGeneration || selectedSiteId.value !== siteId) return;
@@ -171,6 +182,7 @@ export function useMineSpatialEvents(dependencies: Partial<MineSpatialDependenci
       );
       events.value = mergeEvents(snapshotEvents, retainedEvidence);
       eventWatermark.value = snapshot.watermark;
+      eventUpdatedAt.value = snapshot.to;
       if (!eventSubscriptionFailureCode) {
         eventError.value = null;
         eventStatus.value = eventSubscriptionReady ? 'LIVE' : 'READY';
@@ -212,6 +224,7 @@ export function useMineSpatialEvents(dependencies: Partial<MineSpatialDependenci
     const event = normalizeRealtimeEvent(notification.item);
     events.value = mergeEvents([event], events.value).slice(0, 100);
     lastEvent.value = event;
+    eventUpdatedAt.value = latestTimestamp(eventUpdatedAt.value, event.occurredAt);
     if (eventSubscriptionReady && eventStatus.value !== 'RESYNCING' && !eventError.value) {
       eventStatus.value = 'LIVE';
     }
@@ -281,10 +294,19 @@ export function useMineSpatialEvents(dependencies: Partial<MineSpatialDependenci
     regionError,
     eventError,
     eventWatermark,
+    regionUpdatedAt,
+    eventUpdatedAt,
     selectSite,
     resyncEvents,
     stop
   };
+}
+
+function latestTimestamp(current: string | null, candidate: string) {
+  const candidateMillis = Date.parse(candidate);
+  if (!Number.isFinite(candidateMillis)) return current;
+  if (!current || candidateMillis > Date.parse(current)) return candidate;
+  return current;
 }
 
 function normalizeSnapshotEvent(event: SpatialEvent): MineSpatialEvent {

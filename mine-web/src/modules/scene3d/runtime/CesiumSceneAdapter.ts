@@ -11,6 +11,8 @@ import {
 } from './scene-transform';
 import type { SceneMatrix } from './scene-transform';
 import type { SceneViewportAdapter } from './types';
+import { CesiumDynamicLayerAdapter } from './CesiumDynamicLayerAdapter';
+import type { SceneDynamicData } from './CesiumDynamicLayerAdapter';
 
 export interface SceneLayerFailure {
   layerCode: string;
@@ -29,6 +31,8 @@ type Destroyable = { destroy: () => void; isDestroyed?: () => boolean };
 /** 本地离线 Cesium 场景适配器；静态图层失败与宿主级初始化失败严格隔离。 */
 export class CesiumSceneAdapter implements SceneViewportAdapter {
   private viewer: ViewerInstance | null = null;
+  private dynamicLayers: CesiumDynamicLayerAdapter | null = null;
+  private pendingDynamicData: SceneDynamicData | null = null;
   private disposed = false;
   private readonly removeListeners: Array<() => void> = [];
   private readonly failedLayers = new Set<string>();
@@ -48,6 +52,10 @@ export class CesiumSceneAdapter implements SceneViewportAdapter {
       this.observeRuntimeFailures(viewer);
       viewer.scene.globe.show = snapshot.coordinateMode === 'WGS84_ANCHOR';
       const sceneRoot = createSceneRootTransform(this.runtime, snapshot);
+      this.dynamicLayers = new CesiumDynamicLayerAdapter(this.runtime, viewer, sceneRoot, snapshot, {
+        onLayerFailure: (layer, error) => this.reportLayerFailure(layer, error)
+      });
+      if (this.pendingDynamicData) this.dynamicLayers.update(this.pendingDynamicData);
       const layers = [...snapshot.layers].sort((left, right) => left.orderNumber - right.orderNumber);
       for (const layer of layers) {
         if (this.disposed) return;
@@ -66,9 +74,16 @@ export class CesiumSceneAdapter implements SceneViewportAdapter {
     if (this.disposed) return;
     this.disposed = true;
     this.removeListeners.splice(0).forEach(remove => remove());
+    this.dynamicLayers?.destroy();
+    this.dynamicLayers = null;
     const viewer = this.viewer;
     this.viewer = null;
     if (viewer && !isDestroyed(viewer)) viewer.destroy();
+  }
+
+  updateDynamicData(data: SceneDynamicData): void {
+    this.pendingDynamicData = data;
+    this.dynamicLayers?.update(data);
   }
 
   private async loadLayer(viewer: ViewerInstance, sceneRoot: SceneMatrix, layer: SceneRuntimeLayer) {

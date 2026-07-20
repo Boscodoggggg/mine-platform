@@ -19,13 +19,26 @@ const transforms = vi.hoisted(() => ({
   transformCameraOrientation: vi.fn(() => ({ direction: 'camera-direction', up: 'camera-up' })),
   transformScenePosition: vi.fn(() => 'camera-destination')
 }));
+const dynamicLayers = vi.hoisted(() => ({
+  constructor: vi.fn(),
+  update: vi.fn(),
+  destroy: vi.fn()
+}));
 
 vi.mock('./scene-transform', () => transforms);
+vi.mock('./CesiumDynamicLayerAdapter', () => ({
+  CesiumDynamicLayerAdapter: dynamicLayers.constructor
+}));
 
 describe('CesiumSceneAdapter', () => {
   beforeEach(() => {
     localStg.set('tokenName', 'X-Mine-Token');
     localStg.set('token', 'scene-token');
+    dynamicLayers.update.mockReset();
+    dynamicLayers.destroy.mockReset();
+    dynamicLayers.constructor.mockReset().mockImplementation(function DynamicLayerMock() {
+      return { update: dynamicLayers.update, destroy: dynamicLayers.destroy };
+    });
   });
 
   it('使用离线 Viewer 配置并按发布顺序加载 GRID、GLB 和 3D Tiles', async () => {
@@ -190,6 +203,21 @@ describe('CesiumSceneAdapter', () => {
     adapter.destroy();
     expect(harness.removeRenderError).toHaveBeenCalledOnce();
     expect(harness.removeContextLost).toHaveBeenCalledOnce();
+  });
+
+  it('缓存挂载前动态快照并在销毁 Viewer 前释放动态对象池', async () => {
+    const harness = createCesiumHarness();
+    const adapter = new CesiumSceneAdapter(harness.runtime);
+    const data = { locations: [], regions: [], events: [], trajectory: [], selectedTagId: null };
+
+    adapter.updateDynamicData(data);
+    await adapter.mount(document.createElement('div'), sceneSnapshot([gridLayer()]));
+    adapter.destroy();
+
+    expect(dynamicLayers.constructor).toHaveBeenCalledOnce();
+    expect(dynamicLayers.update).toHaveBeenCalledWith(data);
+    expect(dynamicLayers.destroy).toHaveBeenCalledOnce();
+    expect(dynamicLayers.destroy.mock.invocationCallOrder[0]).toBeLessThan(harness.viewerDestroy.mock.invocationCallOrder[0]!);
   });
 
   it('关键相机初始化失败会释放 Viewer 并通知宿主执行二维降级', async () => {

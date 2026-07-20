@@ -26,6 +26,7 @@ const props = withDefaults(
     regions?: MineSpatialRegion[];
     events?: MineSpatialEvent[];
     selectedTagId?: string | null;
+    locationStaleAfterSeconds?: number;
     loading?: boolean;
     supportsWebGl?: WebGlCapabilityProbe;
     createAdapter?: SceneViewportAdapterFactory;
@@ -38,6 +39,7 @@ const props = withDefaults(
     regions: () => [],
     events: () => [],
     selectedTagId: null,
+    locationStaleAfterSeconds: 120,
     loading: false,
     supportsWebGl: detectWebGlAvailability,
     createAdapter: createLifecycleAdapter
@@ -71,6 +73,18 @@ watch(
     void activate();
   },
   { immediate: true, flush: 'post' }
+);
+
+watch(
+  [
+    () => props.locations,
+    () => props.trajectory,
+    () => props.regions,
+    () => props.events,
+    () => props.selectedTagId
+  ],
+  pushDynamicData,
+  { flush: 'post' }
 );
 
 onBeforeUnmount(() => {
@@ -126,6 +140,7 @@ async function activate() {
     const container = containerRef.value;
     if (!container) throw new Error('Scene viewport container is unavailable');
     activeAdapter = { adapter: candidate, release: releaseCandidate };
+    pushDynamicData();
     await candidate.mount(container, snapshot);
     if (currentGeneration !== generation) releaseCandidate();
   } catch {
@@ -149,6 +164,17 @@ function releaseAdapter() {
   activeAdapter = null;
   current?.release();
 }
+
+function pushDynamicData() {
+  activeAdapter?.adapter.updateDynamicData?.({
+    locations: props.locations,
+    trajectory: props.trajectory,
+    regions: props.regions,
+    events: props.events,
+    selectedTagId: props.selectedTagId,
+    nowMillis: Date.now()
+  });
+}
 </script>
 
 <template>
@@ -170,6 +196,7 @@ function releaseAdapter() {
     :regions="regions"
     :events="events"
     :selected-tag-id="selectedTagId"
+    :location-stale-after-seconds="locationStaleAfterSeconds"
     :loading="loading"
     @retry="activate"
   />

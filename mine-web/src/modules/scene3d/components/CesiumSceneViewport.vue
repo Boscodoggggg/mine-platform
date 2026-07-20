@@ -24,6 +24,7 @@ const props = withDefaults(
     regions?: MineSpatialRegion[];
     events?: MineSpatialEvent[];
     selectedTagId?: string | null;
+    locationStaleAfterSeconds?: number;
     loading?: boolean;
     supportsWebGl?: WebGlCapabilityProbe;
   }>(),
@@ -35,6 +36,7 @@ const props = withDefaults(
     regions: () => [],
     events: () => [],
     selectedTagId: null,
+    locationStaleAfterSeconds: 120,
     loading: false,
     supportsWebGl: undefined
   }
@@ -87,6 +89,7 @@ function recordLayerFailure(failure: SceneLayerFailure) {
     :regions="regions"
     :events="events"
     :selected-tag-id="selectedTagId"
+    :location-stale-after-seconds="locationStaleAfterSeconds"
     :loading="loading"
     :supports-web-gl="supportsWebGl"
     :create-adapter="createAdapter"

@@ -1,5 +1,6 @@
 import type { SceneRuntimeReason, SceneRuntimeSnapshot } from '../api/scene';
 import type { CesiumModule } from './load-cesium';
+import type { SceneDynamicData } from './CesiumDynamicLayerAdapter';
 
 export type SceneViewportMode = 'AUTO' | '3D' | '2D';
 export type SceneViewportRenderMode = '3D' | '2D';
@@ -13,6 +14,7 @@ export type SceneViewportFallbackReason =
 
 export interface SceneViewportAdapter {
   mount(container: HTMLElement, snapshot: SceneRuntimeSnapshot): void | Promise<void>;
+  updateDynamicData?(data: SceneDynamicData): void;
   destroy(): void;
 }
 
