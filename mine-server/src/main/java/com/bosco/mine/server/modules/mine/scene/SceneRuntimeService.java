@@ -14,7 +14,9 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -112,15 +114,19 @@ public class SceneRuntimeService {
 
         List<SceneRuntimeResponse.RuntimeLayer> layers = new ArrayList<>(rows.size());
         List<SceneVersionPolicy.LayerDefinition> definitions = new ArrayList<>(rows.size());
+        Map<String, String> layerOptions = new HashMap<>();
         for (SceneMapper.SceneRuntimeRow row : rows) {
             validateSameSnapshot(first, row);
             LayerBuildResult layer = buildLayer(siteId, row);
             layers.add(layer.response());
             definitions.add(layer.definition());
+            layerOptions.put(row.layerCode(), row.optionsJson());
         }
         List<SceneVersionPolicy.LayerDefinition> normalized =
                 SceneVersionPolicy.normalizeLayers(definitions);
-        String actualHash = SceneVersionPolicy.contentHash(sceneDefinition, normalized);
+        String actualHash = SceneVersionPolicy.contentHash(
+                sceneDefinition, normalized, first.defaultCameraJson(),
+                first.fallbackViewportJson(), layerOptions);
         if (!actualHash.equals(first.contentHash())) {
             throw new IllegalArgumentException("场景运行摘要与发布摘要不一致");
         }

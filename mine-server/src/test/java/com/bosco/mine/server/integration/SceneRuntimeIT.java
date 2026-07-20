@@ -241,10 +241,41 @@ class SceneRuntimeIT {
             jdbcTemplate.update(
                     "UPDATE mine_scene_version SET content_hash = ? WHERE id = ?",
                     published.contentHash(), published.id());
+            jdbcTemplate.update(
+                    "UPDATE mine_scene_version SET default_camera = CAST(? AS JSONB) WHERE id = ?",
+                    "{\"position\":[999,999,999]}", published.id());
+            SceneRuntimeResponse cameraCorrupt = runtimeService.load(firstSiteId);
+            assertThat(cameraCorrupt.status()).isEqualTo("DEGRADED");
+            assertThat(cameraCorrupt.reason()).isEqualTo("INVALID_PUBLISHED_SNAPSHOT");
+            assertThat(cameraCorrupt.snapshot()).isNull();
+            jdbcTemplate.update(
+                    "UPDATE mine_scene_version SET default_camera = CAST(? AS JSONB) WHERE id = ?",
+                    "{\"position\":[100,200,300]}", published.id());
         } finally {
             jdbcTemplate.execute("""
                     ALTER TABLE mine_scene_version
                     ENABLE TRIGGER trg_mine_guard_scene_version_mutation
+                    """);
+        }
+        jdbcTemplate.execute("""
+                ALTER TABLE mine_scene_layer
+                DISABLE TRIGGER trg_mine_validate_scene_layer_resource
+                """);
+        try {
+            jdbcTemplate.update(
+                    "UPDATE mine_scene_layer SET options = CAST(? AS JSONB) WHERE scene_version_id = ?",
+                    "{\"unexpected\":true}", published.id());
+            SceneRuntimeResponse optionsCorrupt = runtimeService.load(firstSiteId);
+            assertThat(optionsCorrupt.status()).isEqualTo("DEGRADED");
+            assertThat(optionsCorrupt.reason()).isEqualTo("INVALID_PUBLISHED_SNAPSHOT");
+            assertThat(optionsCorrupt.snapshot()).isNull();
+            jdbcTemplate.update(
+                    "UPDATE mine_scene_layer SET options = CAST(? AS JSONB) WHERE scene_version_id = ?",
+                    "{}", published.id());
+        } finally {
+            jdbcTemplate.execute("""
+                    ALTER TABLE mine_scene_layer
+                    ENABLE TRIGGER trg_mine_validate_scene_layer_resource
                     """);
         }
         Path entry = STORAGE_ROOT.resolve("objects")

@@ -3,6 +3,7 @@ package com.bosco.mine.server.modules.mine.scene.domain;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static com.bosco.mine.server.modules.mine.scene.domain.SceneAssetPolicy.SceneAssetType.GLB;
@@ -100,16 +101,48 @@ class SceneVersionPolicyTest {
         SceneVersionPolicy.LayerDefinition locations = dynamicLayer(
                 "locations", 20, DYNAMIC_LOCATIONS);
 
+        Map<String, String> options = Map.of(
+                "terrain", "{\"maximumScreenSpaceError\":16}",
+                "locations", "{\"billboard\":true}");
         String first = SceneVersionPolicy.contentHash(
-                scene, List.of(terrain, locations));
+                scene, List.of(terrain, locations),
+                "{\"x\":10}", "{\"minX\":0}", options);
         String reordered = SceneVersionPolicy.contentHash(
-                scene, List.of(locations, terrain));
+                scene, List.of(locations, terrain),
+                "{\"x\":10}", "{\"minX\":0}", options);
         String changed = SceneVersionPolicy.contentHash(
-                scene, List.of(terrain, locations.withMaxItems(500)));
+                scene, List.of(terrain, locations.withMaxItems(500)),
+                "{\"x\":10}", "{\"minX\":0}", options);
 
         assertThat(first).matches("sha256:[0-9a-f]{64}");
         assertThat(reordered).isEqualTo(first);
         assertThat(changed).isNotEqualTo(first);
+    }
+
+    @Test
+    void 发布摘要必须覆盖相机二维视口和每个图层选项() {
+        SceneVersionPolicy.LayerDefinition terrain = staticLayer(
+                "terrain", 10, STATIC_3D_TILES, TILES_3D);
+        List<SceneVersionPolicy.LayerDefinition> layers = List.of(terrain);
+        Map<String, String> options = Map.of(
+                "terrain", "{\"maximumScreenSpaceError\":16}");
+        String baseline = SceneVersionPolicy.contentHash(
+                scene(), layers, "{\"x\":10}", "{\"minX\":0}", options);
+
+        assertThat(SceneVersionPolicy.contentHash(
+                scene(), layers, "{\"x\":11}", "{\"minX\":0}", options))
+                .isNotEqualTo(baseline);
+        assertThat(SceneVersionPolicy.contentHash(
+                scene(), layers, "{\"x\":10}", "{\"minX\":1}", options))
+                .isNotEqualTo(baseline);
+        assertThat(SceneVersionPolicy.contentHash(
+                scene(), layers, "{\"x\":10}", "{\"minX\":0}",
+                Map.of("terrain", "{\"maximumScreenSpaceError\":8}")))
+                .isNotEqualTo(baseline);
+        assertThatThrownBy(() -> SceneVersionPolicy.contentHash(
+                scene(), layers, "{\"x\":10}", "{\"minX\":0}", Map.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("选项");
     }
 
     private SceneVersionPolicy.SceneDefinition scene() {

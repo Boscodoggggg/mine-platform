@@ -372,7 +372,11 @@ public class SceneCommandService {
                 draft.scale());
         String contentHash;
         try {
-            contentHash = SceneVersionPolicy.contentHash(definition, layers);
+            Map<String, String> layerOptions = new HashMap<>();
+            rows.forEach(row -> layerOptions.put(row.layerCode(), row.optionsJson()));
+            contentHash = SceneVersionPolicy.contentHash(
+                    definition, layers, draft.defaultCameraJson(),
+                    draft.fallbackViewportJson(), layerOptions);
         } catch (IllegalArgumentException exception) {
             throw invalid();
         }

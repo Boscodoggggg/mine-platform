@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -82,14 +83,30 @@ public final class SceneVersionPolicy {
      *
      * @param scene 场景坐标定义
      * @param layers 场景图层
+     * @param defaultCameraJson 数据库规范化后的默认相机 JSON
+     * @param fallbackViewportJson 数据库规范化后的二维降级视口 JSON
+     * @param layerOptionsJsonByCode 按图层编码绑定的数据库规范化选项 JSON
      * @return 带 `sha256:` 前缀的内容摘要
      */
-    public static String contentHash(SceneDefinition scene, List<LayerDefinition> layers) {
+    public static String contentHash(
+            SceneDefinition scene,
+            List<LayerDefinition> layers,
+            String defaultCameraJson,
+            String fallbackViewportJson,
+            Map<String, String> layerOptionsJsonByCode
+    ) {
         SceneDefinition checkedScene = Objects.requireNonNull(scene, "场景定义不能为空");
         Objects.requireNonNull(checkedScene.coordinateSystemId(), "场景坐标系不能为空");
         Objects.requireNonNull(checkedScene.coordinateMode(), "场景坐标模式不能为空");
         validateTransform(checkedScene.origin(), checkedScene.rotation(), checkedScene.scale());
         List<LayerDefinition> normalized = normalizeLayers(layers);
+        String checkedCameraJson = requireJsonText(defaultCameraJson, "默认相机 JSON");
+        String checkedViewportJson = requireJsonText(fallbackViewportJson, "二维视口 JSON");
+        Map<String, String> checkedOptions = Map.copyOf(
+                Objects.requireNonNull(layerOptionsJsonByCode, "图层选项不能为空"));
+        if (checkedOptions.size() != normalized.size()) {
+            throw new IllegalArgumentException("图层选项与图层定义不完整");
+        }
 
         StringBuilder canonical = new StringBuilder(512);
         append(canonical, checkedScene.coordinateSystemId());
@@ -97,6 +114,8 @@ public final class SceneVersionPolicy {
         append(canonical, checkedScene.origin());
         append(canonical, checkedScene.rotation());
         append(canonical, checkedScene.scale());
+        append(canonical, checkedCameraJson);
+        append(canonical, checkedViewportJson);
         for (LayerDefinition layer : normalized) {
             append(canonical, layer.code());
             append(canonical, layer.orderNumber());
@@ -111,8 +130,17 @@ public final class SceneVersionPolicy {
             append(canonical, layer.rotation());
             append(canonical, layer.scale());
             append(canonical, layer.maxItems());
+            append(canonical, requireJsonText(
+                    checkedOptions.get(layer.code()), "图层选项 JSON"));
         }
         return "sha256:" + HexFormat.of().formatHex(sha256(canonical.toString()));
+    }
+
+    private static String requireJsonText(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(label + "不能为空");
+        }
+        return value;
     }
 
     private static void validateLayer(LayerDefinition layer) {
