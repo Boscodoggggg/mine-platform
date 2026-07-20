@@ -722,6 +722,28 @@ declare namespace App {
           | 'regionLayerDegraded'
           | 'eventLayerDegraded'
           | 'trajectoryLayerDegraded'
+          | 'alarmMarkers'
+          | 'operationMarkers'
+          | 'alarmLayerDegraded'
+          | 'operationLayerDegraded'
+          | 'businessLayersTitle'
+          | 'alarmLayerTitle'
+          | 'operationLayerTitle'
+          | 'alarmStatus'
+          | 'operationStatus'
+          | 'alarmSummary'
+          | 'operationSummary'
+          | 'alarmUpdatedAt'
+          | 'operationUpdatedAt'
+          | 'currentShiftsTitle'
+          | 'runningOrdersTitle'
+          | 'unlocatedAlarmsTitle'
+          | 'unresolvedAlarmLocationsTitle'
+          | 'noCurrentShift'
+          | 'noRunningOrders'
+          | 'allAlarmsLocated'
+          | 'noUnresolvedAlarmLocations'
+          | 'assignmentSummary'
           | 'governanceTab'
           | 'loadFailed'
           | 'versionsLoadFailed'
@@ -832,6 +854,8 @@ declare namespace App {
           assetType: Record<'glb' | 'tiles3d', string>;
           assetStatus: Record<'quarantined' | 'available' | 'archived', string>;
           coordinateMode: Record<'localEnu' | 'wgs84Anchor', string>;
+          locationMapping: Record<'idle' | 'unauthorized' | 'loading' | 'ready' | 'degraded' | 'truncated', string>;
+          businessStatus: Record<'disabled' | 'idle' | 'loading' | 'ready' | 'live' | 'resyncing' | 'degraded', string>;
           versionStatus: Record<'draft' | 'published' | 'superseded', string>;
           layerType: Record<
             | 'grid'

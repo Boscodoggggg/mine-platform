@@ -27,7 +27,8 @@ class AlarmEventOpenApiTest {
         Map<String, Object> paths = map(root.get("paths"));
         assertThat(paths).containsKeys(
                 "/alarms", "/alarms/{alarmId}",
-                "/alarms/{alarmId}/acknowledgements", "/alarms/{alarmId}/close");
+                "/alarms/{alarmId}/acknowledgements", "/alarms/{alarmId}/close",
+                "/mine/sites/{siteId}/alarms");
         Map<String, Object> acknowledgement = map(map(
                 paths.get("/alarms/{alarmId}/acknowledgements")).get("post"));
         assertThat(list(acknowledgement.get("parameters")))
@@ -36,7 +37,8 @@ class AlarmEventOpenApiTest {
         Map<String, Object> listAlarms = map(map(paths.get("/alarms")).get("get"));
         assertThat(list(listAlarms.get("parameters")))
                 .extracting(parameter -> map(parameter).get("name"))
-                .contains("closed", "deviceKeyword");
+                .contains("closed", "deviceKeyword")
+                .doesNotContain("siteId");
         Map<String, Object> schemas = map(map(root.get("components")).get("schemas"));
         assertThat(list(map(schemas.get("AlarmStatus")).get("enum")))
                 .containsExactly(

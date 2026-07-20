@@ -7,6 +7,7 @@ import { useEcharts } from '@/hooks/common/echarts';
 import type { LocationTrajectory } from '../api/mine-api';
 import type { MineLocationItem } from '../composables/useMineLocationRealtime';
 import type { MineSpatialEvent, MineSpatialRegion } from '../composables/useMineSpatialEvents';
+import type { SceneAlarmMarker, SceneOperationMarker } from '@/modules/scene3d/composables/useSceneBusinessLayers';
 
 const props = withDefaults(
   defineProps<{
@@ -14,6 +15,8 @@ const props = withDefaults(
     trajectory: LocationTrajectory['items'];
     regions?: MineSpatialRegion[];
     events?: MineSpatialEvent[];
+    alarms?: SceneAlarmMarker[];
+    operations?: SceneOperationMarker[];
     showRegions?: boolean;
     showEvents?: boolean;
     selectedTagId: string | null;
@@ -24,6 +27,8 @@ const props = withDefaults(
   {
     regions: () => [],
     events: () => [],
+    alarms: () => [],
+    operations: () => [],
     showRegions: true,
     showEvents: true,
     staleAfterSeconds: 120,
@@ -40,7 +45,9 @@ const hasData = computed(
     props.items.length > 0 ||
     props.trajectory.length > 0 ||
     (props.showRegions && props.regions.length > 0) ||
-    (props.showEvents && props.events.some(event => event.evidence))
+    (props.showEvents && props.events.some(event => event.evidence)) ||
+    props.alarms.length > 0 ||
+    props.operations.length > 0
 );
 type CanvasSeries = LineSeriesOption | ScatterSeriesOption;
 
@@ -74,6 +81,8 @@ watch(
     () => props.trajectory,
     () => props.regions,
     () => props.events,
+    () => props.alarms,
+    () => props.operations,
     () => props.showRegions,
     () => props.showEvents,
     () => props.selectedTagId,
@@ -176,6 +185,46 @@ function buildSeries(): CanvasSeries[] {
     });
   }
 
+  if (props.operations.length > 0) {
+    series.push({
+      id: 'scene-operations',
+      name: t('mine.sceneWorkbench.operationMarkers'),
+      type: 'scatter',
+      symbol: 'roundRect',
+      symbolSize: 18,
+      z: 6,
+      data: props.operations.map(marker => ({
+        name: `${marker.workOrder.orderNumber} · ${marker.assignment.vehicleName}`,
+        value: [marker.location.localX, marker.location.localY],
+        itemStyle: {
+          color: themeVars.value.infoColor,
+          borderColor: themeVars.value.primaryColor,
+          borderWidth: 3
+        }
+      }))
+    });
+  }
+
+  if (props.alarms.length > 0) {
+    series.push({
+      id: 'scene-alarms',
+      name: t('mine.sceneWorkbench.alarmMarkers'),
+      type: 'scatter',
+      symbol: 'triangle',
+      symbolSize: 22,
+      z: 7,
+      data: props.alarms.map(marker => ({
+        name: `${marker.alarm.deviceName} · ${marker.alarm.ruleName}`,
+        value: [marker.location.localX, marker.location.localY],
+        itemStyle: {
+          color: alarmColor(marker.alarm.severity),
+          borderColor: themeVars.value.dividerColor,
+          borderWidth: 3
+        }
+      }))
+    });
+  }
+
   series.push({
     id: 'current-locations',
     name: t('mine.location.canvas.current'),
@@ -257,6 +306,12 @@ function eventColor(eventType: MineSpatialEvent['eventType']) {
   if (eventType === 'ENTER') return themeVars.value.successColor;
   if (eventType === 'EXIT') return themeVars.value.infoColor;
   return themeVars.value.warningColor;
+}
+
+function alarmColor(severity: SceneAlarmMarker['alarm']['severity']) {
+  if (severity === 'CRITICAL') return themeVars.value.errorColor;
+  if (severity === 'WARNING') return themeVars.value.warningColor;
+  return themeVars.value.infoColor;
 }
 </script>
 

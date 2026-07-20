@@ -13,6 +13,8 @@ import {
   NForm,
   NFormItem,
   NInput,
+  NList,
+  NListItem,
   NModal,
   NSelect,
   NSpin,
@@ -57,11 +59,15 @@ import SceneAssetPanel from '../components/SceneAssetPanel.vue';
 import SceneVersionEditor from '../components/SceneVersionEditor.vue';
 import CesiumSceneViewport from '../components/CesiumSceneViewport.vue';
 import { useSceneRealtime } from '../composables/useSceneRealtime';
+import { useSceneBusinessLayers } from '../composables/useSceneBusinessLayers';
 
 const { t, locale } = useI18n();
 const authStore = useAuthStore();
 const mineContext = useMineContextStore();
 const sceneRealtime = useSceneRealtime();
+const sceneBusiness = useSceneBusinessLayers(sceneRealtime.selectableLocations, {
+  locationMappingStatus: sceneRealtime.locationMappingStatus
+});
 const activeTab = ref<'RUNTIME' | 'GOVERNANCE'>('RUNTIME');
 const loading = ref(false);
 const saving = ref(false);
@@ -116,7 +122,7 @@ const runtimeTrajectory = sceneRealtime.trajectory;
 const selectableLocations = sceneRealtime.selectableLocations;
 const locationStaleAfterSeconds = sceneRealtime.locationStaleAfterSeconds;
 const selectedTagId = sceneRealtime.selectedTagId;
-const realtimeLoading = sceneRealtime.loading;
+const realtimeLoading = computed(() => sceneRealtime.loading.value || sceneBusiness.loading.value);
 const runtimeLocationStatus = sceneRealtime.locationStatus;
 const runtimeRegionStatus = sceneRealtime.regionStatus;
 const runtimeEventStatus = sceneRealtime.eventStatus;
@@ -125,6 +131,28 @@ const runtimeLocationUpdatedAt = sceneRealtime.locationUpdatedAt;
 const runtimeRegionUpdatedAt = sceneRealtime.regionUpdatedAt;
 const runtimeEventUpdatedAt = sceneRealtime.eventUpdatedAt;
 const runtimeTrajectoryUpdatedAt = sceneRealtime.trajectoryUpdatedAt;
+const runtimeAlarms = sceneBusiness.activeAlarms;
+const runtimeAlarmMarkers = sceneBusiness.alarmMarkers;
+const runtimeUnlocatedAlarms = sceneBusiness.unlocatedAlarms;
+const runtimeUnresolvedAlarmLocations = sceneBusiness.unresolvedAlarmLocations;
+const runtimeLocationMappingStatus = sceneBusiness.locationMappingStatus;
+const runtimeCurrentShifts = sceneBusiness.currentShifts;
+const runtimeWorkOrders = sceneBusiness.runningWorkOrders;
+const runtimeOperationMarkers = sceneBusiness.operationMarkers;
+const runtimeAlarmStatus = sceneBusiness.alarmStatus;
+const runtimeOperationStatus = sceneBusiness.operationStatus;
+const runtimeAlarmUpdatedAt = sceneBusiness.alarmUpdatedAt;
+const runtimeOperationUpdatedAt = sceneBusiness.operationUpdatedAt;
+const runtimeAlarmLocationList = computed(() =>
+  runtimeLocationMappingStatus.value === 'READY'
+    ? runtimeUnlocatedAlarms.value
+    : runtimeUnresolvedAlarmLocations.value
+);
+const businessLayersTitle = computed(() => {
+  if (runtimeAlarmStatus.value === 'DISABLED') return t('mine.sceneWorkbench.operationLayerTitle');
+  if (runtimeOperationStatus.value === 'DISABLED') return t('mine.sceneWorkbench.alarmLayerTitle');
+  return t('mine.sceneWorkbench.businessLayersTitle');
+});
 const locationOptions = computed<SelectOption[]>(() =>
   selectableLocations.value.map(item => ({ label: item.tagCode, value: item.tagId }))
 );
@@ -289,7 +317,20 @@ async function refreshRuntime() {
 
 function applyRuntime(siteId: string, nextRuntime: SceneRuntime) {
   runtime.value = nextRuntime;
-  void sceneRealtime.selectSite(siteId, nextRuntime.snapshot);
+  const access = {
+    locations: can('mine:location:view'),
+    regions: can('mine:spatial:view'),
+    events: can('mine:spatial:event:view'),
+    alarms: can('mine:alarm:view') || can('alarm:event:view'),
+    operations: can('mine:operation:view')
+  };
+  void sceneRealtime.selectSite(siteId, nextRuntime.snapshot, access);
+  void sceneBusiness.selectSite(
+    siteId,
+    nextRuntime.snapshot,
+    { alarms: access.alarms, operations: access.operations },
+    mineContext.selectedSite?.timezone
+  );
 }
 
 function selectRuntimeTag(tagId: string | null) {
@@ -501,6 +542,7 @@ async function handleConflict(error: unknown, refresh: () => Promise<void>) {
 
 function clearSiteState() {
   void sceneRealtime.selectSite(null, null);
+  void sceneBusiness.selectSite(null, null, { alarms: false, operations: false });
   runtime.value = null;
   scenes.value = [];
   assets.value = [];
@@ -540,6 +582,39 @@ function formatUpdatedAt(value: string | null) {
   return Number.isFinite(timestamp)
     ? new Date(timestamp).toLocaleString(locale.value)
     : t('mine.sceneWorkbench.updatedAtPending');
+}
+
+function businessStatusLabel(status: string) {
+  return t(`mine.sceneWorkbench.businessStatus.${status.toLowerCase()}` as App.I18n.I18nKey);
+}
+
+function businessStatusType(status: string) {
+  if (status === 'LIVE' || status === 'READY') return 'success' as const;
+  if (status === 'DEGRADED') return 'warning' as const;
+  return 'info' as const;
+}
+
+function shiftDisplayName(shift: (typeof runtimeCurrentShifts.value)[number]) {
+  const name = shift.definitionSnapshot.name;
+  return typeof name === 'string' && name.trim() ? name : shift.businessDate;
+}
+
+function alarmLocationListTitle() {
+  return runtimeLocationMappingStatus.value === 'READY'
+    ? t('mine.sceneWorkbench.unlocatedAlarmsTitle')
+    : t('mine.sceneWorkbench.unresolvedAlarmLocationsTitle');
+}
+
+function alarmLocationEmptyText() {
+  return runtimeLocationMappingStatus.value === 'READY'
+    ? t('mine.sceneWorkbench.allAlarmsLocated')
+    : t('mine.sceneWorkbench.noUnresolvedAlarmLocations');
+}
+
+function locationMappingMessage() {
+  return t(
+    `mine.sceneWorkbench.locationMapping.${runtimeLocationMappingStatus.value.toLowerCase()}` as App.I18n.I18nKey
+  );
 }
 
 function versionStatusLabel(status: SceneVersion['status']) {
@@ -667,6 +742,143 @@ function versionStatusType(status: SceneVersion['status']) {
                 type="warning"
                 :title="t('mine.sceneWorkbench.trajectoryLayerDegraded')"
               />
+              <NAlert
+                v-if="runtimeAlarmStatus === 'DEGRADED'"
+                type="warning"
+                :title="t('mine.sceneWorkbench.alarmLayerDegraded')"
+              />
+              <NAlert
+                v-if="runtimeOperationStatus === 'DEGRADED'"
+                type="warning"
+                :title="t('mine.sceneWorkbench.operationLayerDegraded')"
+              />
+              <NCard
+                v-if="runtimeAlarmStatus !== 'DISABLED' || runtimeOperationStatus !== 'DISABLED'"
+                size="small"
+                :title="businessLayersTitle"
+                data-testid="scene-business-layers"
+              >
+                <NFlex vertical>
+                  <NFlex>
+                    <NTag
+                      v-if="runtimeAlarmStatus !== 'DISABLED'"
+                      :type="businessStatusType(runtimeAlarmStatus)"
+                      :bordered="false"
+                    >
+                      {{ t('mine.sceneWorkbench.alarmStatus', { status: businessStatusLabel(runtimeAlarmStatus) }) }}
+                    </NTag>
+                    <NTag
+                      v-if="runtimeOperationStatus !== 'DISABLED'"
+                      :type="businessStatusType(runtimeOperationStatus)"
+                      :bordered="false"
+                    >
+                      {{ t('mine.sceneWorkbench.operationStatus', { status: businessStatusLabel(runtimeOperationStatus) }) }}
+                    </NTag>
+                    <NText v-if="runtimeAlarmStatus !== 'DISABLED'" depth="3">
+                      {{
+                        t('mine.sceneWorkbench.alarmSummary', {
+                          alarms: runtimeAlarms.length,
+                          located: runtimeAlarmMarkers.length
+                        })
+                      }}
+                    </NText>
+                    <NText v-if="runtimeOperationStatus !== 'DISABLED'" depth="3">
+                      {{
+                        t('mine.sceneWorkbench.operationSummary', {
+                          shifts: runtimeCurrentShifts.length,
+                          orders: runtimeWorkOrders.length
+                        })
+                      }}
+                    </NText>
+                  </NFlex>
+                  <NFlex size="small">
+                    <NText v-if="runtimeAlarmStatus !== 'DISABLED'" depth="3">
+                      {{ t('mine.sceneWorkbench.alarmUpdatedAt', { time: formatUpdatedAt(runtimeAlarmUpdatedAt) }) }}
+                    </NText>
+                    <NText v-if="runtimeOperationStatus !== 'DISABLED'" depth="3">
+                      {{
+                        t('mine.sceneWorkbench.operationUpdatedAt', {
+                          time: formatUpdatedAt(runtimeOperationUpdatedAt)
+                        })
+                      }}
+                    </NText>
+                  </NFlex>
+                  <div class="grid grid-cols-1 gap-3 lg:grid-cols-3">
+                    <NCard
+                      v-if="runtimeOperationStatus !== 'DISABLED'"
+                      size="small"
+                      :title="t('mine.sceneWorkbench.currentShiftsTitle')"
+                    >
+                      <NEmpty
+                        v-if="runtimeCurrentShifts.length === 0"
+                        :description="t('mine.sceneWorkbench.noCurrentShift')"
+                      />
+                      <NList v-else>
+                        <NListItem v-for="shift in runtimeCurrentShifts" :key="shift.id">
+                          <NFlex vertical size="small">
+                            <NText strong>{{ shiftDisplayName(shift) }}</NText>
+                            <NText depth="3">{{ shift.businessDate }}</NText>
+                          </NFlex>
+                        </NListItem>
+                      </NList>
+                    </NCard>
+                    <NCard
+                      v-if="runtimeOperationStatus !== 'DISABLED'"
+                      size="small"
+                      :title="t('mine.sceneWorkbench.runningOrdersTitle')"
+                    >
+                      <NEmpty
+                        v-if="runtimeWorkOrders.length === 0"
+                        :description="t('mine.sceneWorkbench.noRunningOrders')"
+                      />
+                      <NList v-else>
+                        <NListItem v-for="order in runtimeWorkOrders" :key="order.id">
+                          <NFlex vertical size="small">
+                            <NText strong>{{ order.orderNumber }} · {{ order.title }}</NText>
+                            <NText depth="3">
+                              {{
+                                t('mine.sceneWorkbench.assignmentSummary', {
+                                  count: order.assignments.length
+                                })
+                              }}
+                            </NText>
+                          </NFlex>
+                        </NListItem>
+                      </NList>
+                    </NCard>
+                    <NCard
+                      v-if="runtimeAlarmStatus !== 'DISABLED'"
+                      size="small"
+                      :title="alarmLocationListTitle()"
+                    >
+                      <NAlert
+                        v-if="runtimeLocationMappingStatus !== 'READY'"
+                        :type="
+                          runtimeLocationMappingStatus === 'DEGRADED' ||
+                            runtimeLocationMappingStatus === 'TRUNCATED'
+                            ? 'warning'
+                            : 'info'
+                        "
+                        :title="locationMappingMessage()"
+                      />
+                      <NEmpty
+                        v-if="runtimeAlarmLocationList.length === 0"
+                        :description="alarmLocationEmptyText()"
+                      />
+                      <div v-else class="max-h-80 overflow-y-auto">
+                        <NList>
+                          <NListItem v-for="alarm in runtimeAlarmLocationList" :key="alarm.id">
+                            <NFlex vertical size="small">
+                              <NText strong>{{ alarm.deviceName }} · {{ alarm.ruleName }}</NText>
+                              <NText depth="3">{{ alarm.deviceCode }}</NText>
+                            </NFlex>
+                          </NListItem>
+                        </NList>
+                      </div>
+                    </NCard>
+                  </div>
+                </NFlex>
+              </NCard>
             </NFlex>
             <NAlert
               v-if="runtime?.status === 'DEGRADED'"
@@ -684,6 +896,8 @@ function versionStatusType(status: SceneVersion['status']) {
               :locations="runtimeLocations"
               :regions="runtimeRegions"
               :events="runtimeEvents"
+              :alarms="runtimeAlarmMarkers"
+              :operations="runtimeOperationMarkers"
               :trajectory="runtimeTrajectory"
               :selected-tag-id="selectedTagId"
               :location-stale-after-seconds="locationStaleAfterSeconds"

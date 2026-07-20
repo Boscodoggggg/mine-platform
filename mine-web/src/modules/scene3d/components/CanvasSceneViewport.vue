@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { MineCoordinateCanvas } from '@/modules/mine';
 import type { LocationTrajectory, MineLocationItem, MineSpatialEvent, MineSpatialRegion } from '@/modules/mine';
 import type { SceneViewportFallbackReason } from '../runtime/types';
+import type { SceneAlarmMarker, SceneOperationMarker } from '../composables/useSceneBusinessLayers';
 
 const props = withDefaults(
   defineProps<{
@@ -14,6 +15,8 @@ const props = withDefaults(
     trajectory?: LocationTrajectory['items'];
     regions?: MineSpatialRegion[];
     events?: MineSpatialEvent[];
+    alarms?: SceneAlarmMarker[];
+    operations?: SceneOperationMarker[];
     selectedTagId?: string | null;
     locationStaleAfterSeconds?: number;
     loading?: boolean;
@@ -24,6 +27,8 @@ const props = withDefaults(
     trajectory: () => [],
     regions: () => [],
     events: () => [],
+    alarms: () => [],
+    operations: () => [],
     selectedTagId: null,
     locationStaleAfterSeconds: 120,
     loading: false
@@ -71,6 +76,8 @@ const alertType = computed(() => (props.degradationReason === 'FORCED_2D' ? 'inf
       :trajectory="trajectory"
       :regions="regions"
       :events="events"
+      :alarms="alarms"
+      :operations="operations"
       :selected-tag-id="selectedTagId"
       :stale-after-seconds="locationStaleAfterSeconds"
       :loading="loading"

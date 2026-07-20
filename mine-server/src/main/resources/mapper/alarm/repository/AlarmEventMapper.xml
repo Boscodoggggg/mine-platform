@@ -24,6 +24,15 @@
     </sql>
 
     <sql id="queryFilters">
+        <if test="query.siteId != null">
+            AND EXISTS (
+                SELECT 1
+                FROM mine_vehicle_device_binding site_binding
+                WHERE site_binding.device_id = alarm.device_id
+                  AND site_binding.site_id = #{query.siteId}
+                  AND site_binding.valid_period @&gt; alarm.raised_at
+            )
+        </if>
         <if test="query.active != null">
             <choose>
                 <when test="query.active">

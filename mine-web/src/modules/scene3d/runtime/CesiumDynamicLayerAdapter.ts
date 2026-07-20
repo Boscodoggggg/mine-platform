@@ -1,5 +1,6 @@
 import type { LocationTrajectory, MineLocationItem, MineSpatialEvent, MineSpatialRegion } from '@/modules/mine';
 import type { SceneRuntimeLayer, SceneRuntimeSnapshot } from '../api/scene';
+import type { SceneAlarmMarker, SceneOperationMarker } from '../composables/useSceneBusinessLayers';
 import type { CesiumModule } from './load-cesium';
 import { createLayerTransform, transformScenePosition } from './scene-transform';
 import type { SceneMatrix } from './scene-transform';
@@ -9,6 +10,8 @@ export interface SceneDynamicData {
   regions: MineSpatialRegion[];
   events: MineSpatialEvent[];
   trajectory: LocationTrajectory['items'];
+  alarms: SceneAlarmMarker[];
+  operations: SceneOperationMarker[];
   selectedTagId: string | null;
   nowMillis?: number;
 }
@@ -61,6 +64,8 @@ const EMPTY_DATA: SceneDynamicData = Object.freeze({
   regions: [],
   events: [],
   trajectory: [],
+  alarms: [],
+  operations: [],
   selectedTagId: null
 });
 
@@ -77,17 +82,25 @@ export class CesiumDynamicLayerAdapter {
   private readonly locationLayer: SceneRuntimeLayer | null;
   private readonly regionLayer: SceneRuntimeLayer | null;
   private readonly trajectoryLayer: SceneRuntimeLayer | null;
+  private readonly alarmLayer: SceneRuntimeLayer | null;
+  private readonly operationLayer: SceneRuntimeLayer | null;
   private readonly locationTransform: SceneMatrix | null;
   private readonly regionTransform: SceneMatrix | null;
   private readonly trajectoryTransform: SceneMatrix | null;
+  private readonly alarmTransform: SceneMatrix | null;
+  private readonly operationTransform: SceneMatrix | null;
   private locationPoints: PointCollectionInstance | null = null;
   private eventPoints: PointCollectionInstance | null = null;
   private regionLines: PolylineCollectionInstance | null = null;
   private trajectoryLines: PolylineCollectionInstance | null = null;
+  private alarmPoints: PointCollectionInstance | null = null;
+  private operationPoints: PointCollectionInstance | null = null;
   private readonly ownedCollections: OwnedCollection[] = [];
   private readonly locationPool = new Map<string, LocationPrimitive>();
   private readonly eventPool = new Map<string, DynamicPoint>();
   private readonly regionPool = new Map<string, RegionPrimitive>();
+  private readonly alarmPool = new Map<string, DynamicPoint>();
+  private readonly operationPool = new Map<string, DynamicPoint>();
   private trajectoryPrimitive: DynamicPolyline | null = null;
   private pendingData: SceneDynamicData = EMPTY_DATA;
   private frameHandle: number | null = null;
@@ -109,9 +122,13 @@ export class CesiumDynamicLayerAdapter {
     this.locationLayer = dynamicLayer(snapshot, 'DYNAMIC_LOCATIONS');
     this.regionLayer = dynamicLayer(snapshot, 'DYNAMIC_REGIONS');
     this.trajectoryLayer = dynamicLayer(snapshot, 'DYNAMIC_TRAJECTORY');
+    this.alarmLayer = dynamicLayer(snapshot, 'DYNAMIC_ALARMS');
+    this.operationLayer = dynamicLayer(snapshot, 'DYNAMIC_OPERATIONS');
     this.locationTransform = transformFor(this.runtime, sceneRoot, this.locationLayer);
     this.regionTransform = transformFor(this.runtime, sceneRoot, this.regionLayer);
     this.trajectoryTransform = transformFor(this.runtime, sceneRoot, this.trajectoryLayer);
+    this.alarmTransform = transformFor(this.runtime, sceneRoot, this.alarmLayer);
+    this.operationTransform = transformFor(this.runtime, sceneRoot, this.operationLayer);
     this.createCollections();
   }
 
@@ -142,6 +159,8 @@ export class CesiumDynamicLayerAdapter {
     this.locationPool.clear();
     this.eventPool.clear();
     this.regionPool.clear();
+    this.alarmPool.clear();
+    this.operationPool.clear();
     this.trajectoryPrimitive = null;
   }
 
@@ -157,6 +176,12 @@ export class CesiumDynamicLayerAdapter {
     }
     if (this.trajectoryLayer) {
       this.trajectoryLines = this.addCollection(this.trajectoryLayer, () => new this.runtime.PolylineCollection());
+    }
+    if (this.alarmLayer) {
+      this.alarmPoints = this.addCollection(this.alarmLayer, () => new this.runtime.PointPrimitiveCollection());
+    }
+    if (this.operationLayer) {
+      this.operationPoints = this.addCollection(this.operationLayer, () => new this.runtime.PointPrimitiveCollection());
     }
   }
 
@@ -182,6 +207,8 @@ export class CesiumDynamicLayerAdapter {
       this.applyEvents(data.events);
     });
     this.applyLayer(this.trajectoryLayer, () => this.applyTrajectory(data));
+    this.applyLayer(this.alarmLayer, () => this.applyAlarms(data.alarms));
+    this.applyLayer(this.operationLayer, () => this.applyOperations(data.operations));
     this.viewer.scene.requestRender();
   }
 
@@ -388,6 +415,80 @@ export class CesiumDynamicLayerAdapter {
     }
     else this.trajectoryPrimitive = collection.add({ ...values, id: { type: 'TRAJECTORY', tagId: data.selectedTagId } }) as DynamicPolyline;
   }
+
+  private applyAlarms(markers: SceneAlarmMarker[]) {
+    const layer = this.alarmLayer;
+    const collection = this.alarmPoints;
+    const transform = this.alarmTransform;
+    if (!layer || !collection || !transform) return;
+    const distance = displayDistance(this.runtime, layer);
+    const visibleIds = new Set<string>();
+    markers.slice(0, boundedItems(layer.maxItems)).forEach(marker => {
+      visibleIds.add(marker.alarm.id);
+      const color =
+        marker.alarm.severity === 'CRITICAL'
+          ? this.runtime.Color.RED
+          : marker.alarm.severity === 'WARNING'
+            ? this.runtime.Color.ORANGE
+            : this.runtime.Color.YELLOW;
+      const values = {
+        position: transformScenePosition(this.runtime, transform, [
+          marker.location.localX,
+          marker.location.localY,
+          marker.location.localZ ?? 0
+        ]),
+        show: distance.renderable,
+        pixelSize: optionNumber(layer.options.pointSize, 6, 40, 18),
+        color: color.withAlpha(layer.opacity),
+        outlineColor: this.runtime.Color.WHITE.withAlpha(layer.opacity),
+        outlineWidth: 3,
+        distanceDisplayCondition: distance.condition
+      };
+      const existing = this.alarmPool.get(marker.alarm.id);
+      if (existing) Object.assign(existing, values);
+      else {
+        this.alarmPool.set(
+          marker.alarm.id,
+          collection.add({ ...values, id: { type: 'ALARM', alarmId: marker.alarm.id } }) as DynamicPoint
+        );
+      }
+    });
+    removeMissingPoints(collection, this.alarmPool, visibleIds);
+  }
+
+  private applyOperations(markers: SceneOperationMarker[]) {
+    const layer = this.operationLayer;
+    const collection = this.operationPoints;
+    const transform = this.operationTransform;
+    if (!layer || !collection || !transform) return;
+    const distance = displayDistance(this.runtime, layer);
+    const visibleIds = new Set<string>();
+    markers.slice(0, boundedItems(layer.maxItems)).forEach(marker => {
+      visibleIds.add(marker.markerId);
+      const values = {
+        position: transformScenePosition(this.runtime, transform, [
+          marker.location.localX,
+          marker.location.localY,
+          marker.location.localZ ?? 0
+        ]),
+        show: distance.renderable,
+        pixelSize: optionNumber(layer.options.pointSize, 6, 40, 16),
+        color: this.runtime.Color.LIME.withAlpha(layer.opacity),
+        outlineColor: this.runtime.Color.CYAN.withAlpha(layer.opacity),
+        outlineWidth: 3,
+        distanceDisplayCondition: distance.condition
+      };
+      const existing = this.operationPool.get(marker.markerId);
+      if (existing) Object.assign(existing, values);
+      else {
+        this.operationPool.set(
+          marker.markerId,
+          collection.add({ ...values, id: { type: 'OPERATION', workOrderId: marker.workOrder.id } }) as DynamicPoint
+        );
+      }
+    });
+    removeMissingPoints(collection, this.operationPool, visibleIds);
+  }
 }
 
 function dynamicLayer(snapshot: SceneRuntimeSnapshot, type: SceneRuntimeLayer['layerType']) {
@@ -447,5 +548,17 @@ function circleCoordinates(centerX: number, centerY: number, radius: number, seg
   return Array.from({ length: segments + 1 }, (_, index) => {
     const radians = (index / segments) * Math.PI * 2;
     return [centerX + Math.cos(radians) * radius, centerY + Math.sin(radians) * radius] as const;
+  });
+}
+
+function removeMissingPoints(
+  collection: PointCollectionInstance,
+  pool: Map<string, DynamicPoint>,
+  visibleIds: Set<string>
+) {
+  pool.forEach((point, id) => {
+    if (visibleIds.has(id)) return;
+    collection.remove(point as never);
+    pool.delete(id);
   });
 }

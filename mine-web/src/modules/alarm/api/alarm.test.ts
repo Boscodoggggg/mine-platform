@@ -3,7 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const client = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock('@/api/client', () => client);
 
-import { acknowledgeAlarm, closeAlarm, getAlarm, getAlarms } from './alarm';
+import {
+  acknowledgeAlarm,
+  closeAlarm,
+  getAlarm,
+  getAlarms,
+  getMineSiteAlarms,
+  getMineSiteAlarmsUpTo
+} from './alarm';
 
 describe('alarm api', () => {
   beforeEach(() => client.request.mockReset());
@@ -44,5 +51,36 @@ describe('alarm api', () => {
       body: JSON.stringify({ note: '现场复核已恢复', version: 4 })
     });
     expect(client.request).toHaveBeenNthCalledWith(3, '/alarms/alarm%2F1');
+  });
+
+  it('场景作用域切换时车载设备告警查询可取消', () => {
+    const controller = new AbortController();
+    getMineSiteAlarms(
+      'site/1',
+      {
+        closed: false,
+        size: 100
+      },
+      controller.signal
+    );
+
+    expect(client.request).toHaveBeenCalledWith(
+      '/mine/sites/site%2F1/alarms?closed=false&size=100',
+      { signal: controller.signal }
+    );
+  });
+
+  it('场景告警超过单页上限时应继续分页至图层上限', async () => {
+    const firstPage = Array.from({ length: 200 }, (_, index) => ({ id: `alarm-${index}` }));
+    client.request
+      .mockResolvedValueOnce({ items: firstPage, page: 1, size: 200, total: 250 })
+      .mockResolvedValueOnce({ items: [{ id: 'alarm-200' }], page: 2, size: 1, total: 250 });
+
+    const result = await getMineSiteAlarmsUpTo('site-1', { closed: false }, 201);
+
+    expect(client.request).toHaveBeenNthCalledWith(1, '/mine/sites/site-1/alarms?closed=false&page=1&size=200');
+    expect(client.request).toHaveBeenNthCalledWith(2, '/mine/sites/site-1/alarms?closed=false&page=2&size=200');
+    expect(result.items).toHaveLength(201);
+    expect(result.total).toBe(250);
   });
 });

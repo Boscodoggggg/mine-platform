@@ -964,6 +964,7 @@ class DatabaseMigrationIT {
                 WHERE permission LIKE 'mine:%'
                 ORDER BY permission
                 """, String.class)).containsExactly(
+                "mine:alarm:view",
                 "mine:binding:switch",
                 "mine:coordinate:edit",
                 "mine:coordinate:publish",
@@ -1060,7 +1061,7 @@ class DatabaseMigrationIT {
                 )
                 ORDER BY sort_order
                 """, String.class)).containsExactly(
-                "mine:scene:edit", "mine:scene:asset:upload", "mine:scene:publish");
+                "mine:scene:edit", "mine:scene:asset:upload", "mine:scene:publish", "mine:alarm:view");
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)
                 FROM sys_menu

@@ -204,6 +204,71 @@ describe('CesiumDynamicLayerAdapter', () => {
     expect(harness.polylineAdd).toHaveBeenCalledOnce();
     expect(harness.polylineAdd.mock.calls[0]![0].id).toEqual({ type: 'TRAJECTORY', tagId: 'tag-1' });
   });
+
+  it('告警与运营投影使用独立有界对象池并复用实时坐标', () => {
+    const harness = createHarness();
+    const adapter = createAdapter(harness, [
+      dynamicLayer('DYNAMIC_ALARMS', { maxItems: 1 }),
+      dynamicLayer('DYNAMIC_OPERATIONS', { maxItems: 1 })
+    ]);
+    const currentLocation = location();
+
+    adapter.update({
+      ...emptyData(),
+      alarms: [
+        {
+          alarm: { id: 'alarm-1', severity: 'CRITICAL' },
+          location: currentLocation
+        } as never
+      ],
+      operations: [
+        {
+          markerId: 'work-order-1:assignment-1',
+          workOrder: { id: 'work-order-1' },
+          assignment: { id: 'assignment-1' },
+          location: currentLocation
+        } as never
+      ]
+    });
+    harness.flushFrame();
+
+    expect(harness.pointAdd).toHaveBeenCalledTimes(2);
+    expect(harness.pointAdd.mock.calls.map(call => call[0].id)).toEqual([
+      { type: 'ALARM', alarmId: 'alarm-1' },
+      { type: 'OPERATION', workOrderId: 'work-order-1' }
+    ]);
+  });
+
+  it('告警集合初始化失败不影响运营投影并正确归因', () => {
+    const harness = createHarness();
+    const onLayerFailure = vi.fn();
+    harness.primitiveAdd
+      .mockImplementationOnce(() => {
+        throw new Error('alarm collection unavailable');
+      })
+      .mockImplementation(value => value);
+    const alarmLayer = dynamicLayer('DYNAMIC_ALARMS');
+    const operationLayer = dynamicLayer('DYNAMIC_OPERATIONS');
+    const adapter = createAdapter(harness, [alarmLayer, operationLayer], onLayerFailure);
+
+    adapter.update({
+      ...emptyData(),
+      operations: [
+        {
+          markerId: 'work-order-1:assignment-1',
+          workOrder: { id: 'work-order-1' },
+          assignment: { id: 'assignment-1' },
+          location: location()
+        } as never
+      ]
+    });
+    harness.flushFrame();
+
+    expect(onLayerFailure).toHaveBeenCalledWith(alarmLayer, expect.any(Error));
+    expect(onLayerFailure).not.toHaveBeenCalledWith(operationLayer, expect.anything());
+    expect(harness.pointAdd).toHaveBeenCalledOnce();
+    expect(harness.pointAdd.mock.calls[0]![0].id).toEqual({ type: 'OPERATION', workOrderId: 'work-order-1' });
+  });
 });
 
 function createAdapter(
@@ -313,6 +378,8 @@ function emptyData() {
     regions: [] as MineSpatialRegion[],
     events: [] as MineSpatialEvent[],
     trajectory: [] as LocationTrajectory['items'],
+    alarms: [],
+    operations: [],
     selectedTagId: null as string | null,
     nowMillis: Date.parse('2026-07-20T08:00:00Z')
   };

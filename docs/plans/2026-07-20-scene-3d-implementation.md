@@ -488,6 +488,10 @@ git commit -m "feat(frontend): 叠加矿区实时位置与空间事实"
 **Files:**
 - Create: `mine-web/src/modules/scene3d/composables/useSceneBusinessLayers.ts`
 - Test: `mine-web/src/modules/scene3d/composables/useSceneBusinessLayers.test.ts`
+- Create: `mine-server/src/main/java/com/bosco/mine/server/modules/alarm/controller/MineAlarmQueryController.java`
+- Create: `mine-server/src/main/resources/db/migration/V52__publish_mine_alarm_access.sql`
+- Modify: `mine-server/src/main/java/com/bosco/mine/server/modules/alarm/service/AlarmEventService.java`
+- Modify: `docs/openapi/mine-api.yaml`
 - Modify: `mine-web/src/modules/scene3d/runtime/CesiumDynamicLayerAdapter.ts`
 - Modify: `mine-web/src/modules/scene3d/pages/SceneWorkbenchPage.vue`
 - Modify: `mine-web/src/locales/langs/zh-cn.ts`
@@ -495,7 +499,7 @@ git commit -m "feat(frontend): 叠加矿区实时位置与空间事实"
 
 **Step 1: Write failing business layer tests**
 
-覆盖未关闭告警按 `sourceDeviceId` 映射当前位置、无位置告警留在侧栏而不伪造坐标、运营 `businessSequence` 去重/缺口回查、当前班次/运行作业摘要、告警 API 失败不影响位置、运营实时失败不影响三维资源、三维资源失败二维仍显示业务层。
+覆盖未关闭车载设备告警按 `sourceDeviceId` 映射当前位置、无位置告警留在侧栏而不伪造坐标、矿区作用域在分页前强制隔离、运营 `businessSequence` 去重/缺口回查及回查期间竞态、当前班次/运行作业摘要、告警 API 失败不影响位置、运营实时失败不影响三维资源、三维资源失败二维仍显示业务层。
 
 **Step 2: Verify RED**
 
@@ -505,7 +509,7 @@ Expected: FAIL，业务层 composable 不存在。
 
 **Step 3: Implement alarm and operation projections**
 
-只使用现有受权告警、运营 API 和 RealtimeHub；不要为页面新增无权限的设备全集调用。告警、运营、位置、空间和资源分别显示 `READY/RESYNCING/DEGRADED`，任一失败不能把其他层判死。
+只使用受权告警、运营 API 和 RealtimeHub；不要为页面新增无权限的设备全集调用。全局告警中心 `/alarms` 与场景矿区告警 `/mine/sites/{siteId}/alarms` 保持独立权限边界，场景接口必须强制校验矿区作用域。当前可信资产真相只覆盖历史有效期车辆设备绑定，因此场景告警明确限定为车载设备；固定设备必须等待统一资产-矿区归属域，禁止为了显示标记而建第二套临时映射真相。告警、运营、位置、空间和资源分别显示 `READY/RESYNCING/DEGRADED`，任一失败不能把其他层判死。
 
 **Step 4: Run frontend gates**
 
@@ -517,7 +521,7 @@ Expected: PASS。
 
 ```bash
 git add mine-web/src/modules/scene3d mine-web/src/locales/langs
-git commit -m "feat(frontend): 联动三维告警与生产运营"
+git commit -m "feat(scene): 联动矿区告警与生产运营"
 ```
 
 ### Task 14：增加确定性演示资源和真实浏览器降级回归

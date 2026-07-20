@@ -65,7 +65,7 @@ GLB 校验至少覆盖 `glTF` magic、版本 2、声明长度等于文件长度�
 - `DYNAMIC_LOCATIONS`：车辆、人员和标签当前位置。
 - `DYNAMIC_REGIONS`：途径点和围栏。
 - `DYNAMIC_TRAJECTORY`：选中对象的有界轨迹。
-- `DYNAMIC_ALARMS`：可映射到当前位置的未关闭告警。
+- `DYNAMIC_ALARMS`：可通过历史有效期车辆设备绑定归属矿区，且可映射到当前位置的未关闭车载设备告警。
 - `DYNAMIC_OPERATIONS`：当前班次/作业和最新运营变化。
 
 每层保存稳定层编码、名称、顺序、默认可见性、透明度、最小/最大显示距离和局部偏移/旋转/缩放。动态层保存固定的最大对象数和刷新/轨迹窗口上限；服务端和值班页面都不得接受任意脚本、着色器或远程 URL。
@@ -171,7 +171,7 @@ Cesium 固定 1.141，Worker/Assets/Widgets/ThirdParty 静态资源复制进离�
 - `MINE_SITE_LOCATION`：当前位置批量增量，序号缺口回查位置快照。
 - `MINE_SITE_SPATIAL_EVENT`：区域事件提示，独立失败不影响位置。
 - `MINE_SITE_OPERATION`：班次/作业/记录变更，只触发有界运营回查。
-- 告警通过分页 REST 首次加载和现有告警实时/刷新边界映射到具有当前位置的设备。
+- 告警通过强矿区作用域的分页 REST 首次加载，再按 `sourceDeviceId` 映射到具有当前位置的车载设备。全局告警中心不作为场景作用域接口；固定设备告警要等待统一资产-矿区归属域后接入，不在场景内建临时映射表。
 
 高频位置不进入 Pinia，也不为每帧重建 Entity。Cesium 适配器维护按对象 ID 的 `PointPrimitive/Model` 池，在动画帧内合并更新，启用 `requestRenderMode`，限制一次可见对象和轨迹点，视距外隐藏或降级为点。选择对象后才加载有界轨迹；区域几何版本变化才重建 Primitive。页面销毁时释放订阅、Primitive、Tileset、Model 和 Viewer。
 

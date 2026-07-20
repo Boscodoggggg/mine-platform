@@ -10,6 +10,7 @@ import com.bosco.mine.server.MineServerApplication;
 import com.bosco.mine.server.modules.alarm.domain.AlarmStatus;
 import com.bosco.mine.server.modules.alarm.messaging.AlarmEventConsumer;
 import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository;
+import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository.AlarmQuery;
 import com.bosco.mine.server.modules.alarm.service.AlarmEventService;
 import com.rabbitmq.client.Channel;
 import org.junit.jupiter.api.AfterEach;
@@ -49,6 +50,14 @@ class AlarmEventConsumerIT {
     private static final UUID OPERATOR_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000437");
     private static final UUID RECOVERED_EVENT_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000435");
     private static final UUID RAISED_EVENT_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000436");
+    private static final UUID ORGANIZATION_A_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000451");
+    private static final UUID ORGANIZATION_B_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000452");
+    private static final UUID SITE_A_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000453");
+    private static final UUID SITE_B_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000454");
+    private static final UUID VEHICLE_A_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000455");
+    private static final UUID VEHICLE_B_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000456");
+    private static final UUID DEVICE_B_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000457");
+    private static final UUID ALARM_B_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000458");
     private static final Instant RAISED_AT = Instant.parse("2026-07-17T01:00:00Z");
     private static final Instant RECOVERED_AT = Instant.parse("2026-07-17T01:05:00Z");
     private static final String HASH = "sha256:" + "a".repeat(64);
@@ -183,10 +192,10 @@ class AlarmEventConsumerIT {
         new AlarmEventConsumer(service).onMessage(
                 message(86L, raisedEnvelope()), mock(Channel.class));
 
-        var page = service.find(
+        var page = service.findGlobal(
                 null, false, AlarmStatus.ACTIVE_UNACKNOWLEDGED, "CRITICAL", DEVICE_ID,
                 "集成测试矿卡", "engine-hot", RAISED_AT.minusSeconds(1), RAISED_AT.plusSeconds(1), 1, 20);
-        var excluded = service.find(
+        var excluded = service.findGlobal(
                 null, false, AlarmStatus.ACTIVE_UNACKNOWLEDGED, "WARNING", DEVICE_ID,
                 "不存在设备", "engine-hot", RAISED_AT, RAISED_AT.plusSeconds(1), 1, 20);
 
@@ -206,13 +215,47 @@ class AlarmEventConsumerIT {
         new AlarmEventConsumer(service).onMessage(
                 message(89L, recoveredEnvelope()), mock(Channel.class));
 
-        var page = service.find(
+        var page = service.findGlobal(
                 null, false, null, null, null, "truck-alarm", null,
                 null, null, 1, 20);
 
         assertThat(page.items()).singleElement()
                 .satisfies(alarm -> assertThat(alarm.status())
                         .isEqualTo(AlarmStatus.RECOVERED_UNACKNOWLEDGED));
+    }
+
+    @Test
+    void 矿区查询应在分页前按触发时设备绑定隔离两个组织的告警() throws Exception {
+        try {
+            创建双组织矿区绑定();
+            new AlarmEventConsumer(service).onMessage(
+                    message(90L, raisedEnvelope()), mock(Channel.class));
+            jdbcTemplate.update("""
+                    INSERT INTO alarm_event (
+                        id, device_id, product_key, rule_key, rule_name, source_type, severity,
+                        property_id, policy_runtime_revision, policy_snapshot_id, policy_content_hash,
+                        raised_at, raised_evidence, raised_event_id
+                    ) VALUES (?, ?, 'haul-truck', 'engine-hot', '发动机过热', 'NUMERIC', 'CRITICAL',
+                              'engineTemp', 7, ?, ?, ?, '{}'::jsonb, ?)
+                    """, ALARM_B_ID, DEVICE_B_ID, SNAPSHOT_ID, HASH,
+                    java.sql.Timestamp.from(RAISED_AT.plusSeconds(10)), UUID.randomUUID());
+
+            AlarmQuery siteA = new AlarmQuery(
+                    SITE_A_ID, null, false, null, null, null, null, null, null, null);
+            AlarmQuery siteB = new AlarmQuery(
+                    SITE_B_ID, null, false, null, null, null, null, null, null, null);
+
+            assertThat(repository.find(siteA, 1, 1))
+                    .singleElement()
+                    .satisfies(alarm -> assertThat(alarm.id()).isEqualTo(ALARM_ID));
+            assertThat(repository.count(siteA)).isEqualTo(1L);
+            assertThat(repository.find(siteB, 1, 1))
+                    .singleElement()
+                    .satisfies(alarm -> assertThat(alarm.id()).isEqualTo(ALARM_B_ID));
+            assertThat(repository.count(siteB)).isEqualTo(1L);
+        } finally {
+            清理双组织矿区绑定();
+        }
     }
 
     @Test
@@ -234,6 +277,50 @@ class AlarmEventConsumerIT {
                 .containsEntry("property_id", "signalQuality")
                 .containsEntry("raised_event_id", RAISED_EVENT_ID)
                 .containsEntry("recovered_event_id", RECOVERED_EVENT_ID);
+    }
+
+    private void 创建双组织矿区绑定() {
+        jdbcTemplate.update("""
+                INSERT INTO mine_organization (id, organization_code, name)
+                VALUES (?, 'alarm-org-a', '告警组织甲'), (?, 'alarm-org-b', '告警组织乙')
+                """, ORGANIZATION_A_ID, ORGANIZATION_B_ID);
+        jdbcTemplate.update("""
+                INSERT INTO mine_site (id, organization_id, site_code, name, timezone)
+                VALUES (?, ?, 'alarm-site-a', '告警矿区甲', 'Asia/Shanghai'),
+                       (?, ?, 'alarm-site-b', '告警矿区乙', 'Asia/Shanghai')
+                """, SITE_A_ID, ORGANIZATION_A_ID, SITE_B_ID, ORGANIZATION_B_ID);
+        jdbcTemplate.update("""
+                INSERT INTO dev_device (id, product_id, device_code, name)
+                VALUES (?, ?, 'truck-alarm-it-b', '告警集成测试矿卡乙')
+                """, DEVICE_B_ID, PRODUCT_ID);
+        jdbcTemplate.update("""
+                INSERT INTO mine_vehicle (
+                    id, organization_id, site_id, vehicle_code, name, vehicle_type
+                ) VALUES (?, ?, ?, 'alarm-truck-a', '告警矿卡甲', 'HAUL_TRUCK'),
+                         (?, ?, ?, 'alarm-truck-b', '告警矿卡乙', 'HAUL_TRUCK')
+                """, VEHICLE_A_ID, ORGANIZATION_A_ID, SITE_A_ID,
+                VEHICLE_B_ID, ORGANIZATION_B_ID, SITE_B_ID);
+        jdbcTemplate.update("""
+                INSERT INTO mine_vehicle_device_binding (
+                    id, organization_id, site_id, vehicle_id, device_id,
+                    binding_role, valid_from, reason
+                ) VALUES (?, ?, ?, ?, ?, 'PRIMARY', ?, '告警矿区隔离测试'),
+                         (?, ?, ?, ?, ?, 'PRIMARY', ?, '告警矿区隔离测试')
+                """, UUID.randomUUID(), ORGANIZATION_A_ID, SITE_A_ID, VEHICLE_A_ID, DEVICE_ID,
+                java.sql.Timestamp.from(RAISED_AT.minusSeconds(3600)), UUID.randomUUID(), ORGANIZATION_B_ID,
+                SITE_B_ID, VEHICLE_B_ID, DEVICE_B_ID,
+                java.sql.Timestamp.from(RAISED_AT.minusSeconds(3600)));
+    }
+
+    private void 清理双组织矿区绑定() {
+        jdbcTemplate.update("DELETE FROM alarm_event WHERE id = ?", ALARM_B_ID);
+        jdbcTemplate.update(
+                "DELETE FROM mine_vehicle_device_binding WHERE site_id IN (?, ?)", SITE_A_ID, SITE_B_ID);
+        jdbcTemplate.update("DELETE FROM mine_vehicle WHERE site_id IN (?, ?)", SITE_A_ID, SITE_B_ID);
+        jdbcTemplate.update("DELETE FROM mine_site WHERE id IN (?, ?)", SITE_A_ID, SITE_B_ID);
+        jdbcTemplate.update(
+                "DELETE FROM mine_organization WHERE id IN (?, ?)", ORGANIZATION_A_ID, ORGANIZATION_B_ID);
+        jdbcTemplate.update("DELETE FROM dev_device WHERE id = ?", DEVICE_B_ID);
     }
 
     private byte[] raisedEnvelope() throws Exception {

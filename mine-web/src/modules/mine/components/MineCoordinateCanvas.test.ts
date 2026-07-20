@@ -33,6 +33,7 @@ vi.mock('naive-ui', async importOriginal => {
         primaryColor: 'token-primary',
         successColor: 'token-success',
         warningColor: 'token-warning',
+        errorColor: 'token-error',
         infoColor: 'token-info'
       })
   };
@@ -184,6 +185,49 @@ describe('MineCoordinateCanvas', () => {
 
     wrapper.unmount();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('二维降级视图继续显示告警和运营投影', async () => {
+    const currentLocation = location();
+    mount(MineCoordinateCanvas, {
+      props: {
+        items: [],
+        trajectory: [],
+        alarms: [
+          {
+            alarm: { id: 'alarm-1', deviceName: '矿卡 1', ruleName: '超速', severity: 'CRITICAL' },
+            location: currentLocation
+          } as never
+        ],
+        operations: [
+          {
+            markerId: 'operation-1',
+            workOrder: { orderNumber: 'WO-001' },
+            assignment: { vehicleName: '矿卡 1' },
+            location: currentLocation
+          } as never
+        ],
+        selectedTagId: null,
+        loading: false,
+        nowMillis: Date.parse('2026-07-18T00:01:00Z')
+      },
+      global: { plugins: [i18n] }
+    });
+    await Promise.resolve();
+
+    const series = chart.options!.series as Array<{
+      id: string;
+      data: Array<{ itemStyle: { color: string } }>;
+    }>;
+    expect(series.map(item => item.id)).toEqual([
+      'trajectory',
+      'spatial-events',
+      'scene-operations',
+      'scene-alarms',
+      'current-locations'
+    ]);
+    expect(series.find(item => item.id === 'scene-alarms')!.data[0]!.itemStyle.color).toBe('token-error');
+    expect(series.find(item => item.id === 'scene-operations')!.data[0]!.itemStyle.color).toBe('token-info');
   });
 });
 

@@ -11,6 +11,7 @@ import {
   getOperationRecords,
   getOperationSummary,
   getShiftInstances,
+  getWorkOrders,
   releaseWorkOrder
 } from './operation';
 
@@ -111,5 +112,26 @@ describe('production operation api', () => {
         unloadGeofenceVersionId: 'unload-1'
       })
     });
+  });
+
+  it('场景作用域切换时班次和作业查询可取消', () => {
+    const controller = new AbortController();
+    getShiftInstances(
+      'site-1',
+      { fromDate: '2026-07-20', toDate: '2026-07-20', status: 'OPEN' },
+      controller.signal
+    );
+    getWorkOrders('site-1', { status: 'RUNNING', limit: 20 }, controller.signal);
+
+    expect(client.request).toHaveBeenNthCalledWith(
+      1,
+      '/mine/sites/site-1/shift-instances?fromDate=2026-07-20&toDate=2026-07-20&status=OPEN',
+      { signal: controller.signal }
+    );
+    expect(client.request).toHaveBeenNthCalledWith(
+      2,
+      '/mine/sites/site-1/work-orders?status=RUNNING&limit=20',
+      { signal: controller.signal }
+    );
   });
 });

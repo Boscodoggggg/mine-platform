@@ -208,7 +208,7 @@ describe('CesiumSceneAdapter', () => {
   it('缓存挂载前动态快照并在销毁 Viewer 前释放动态对象池', async () => {
     const harness = createCesiumHarness();
     const adapter = new CesiumSceneAdapter(harness.runtime);
-    const data = { locations: [], regions: [], events: [], trajectory: [], selectedTagId: null };
+    const data = { locations: [], regions: [], events: [], trajectory: [], alarms: [], operations: [], selectedTagId: null };
 
     adapter.updateDynamicData(data);
     await adapter.mount(document.createElement('div'), sceneSnapshot([gridLayer()]));

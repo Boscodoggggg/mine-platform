@@ -60,7 +60,7 @@ public class AlarmEventController {
             @RequestParam(defaultValue = "1") @Min(1) @Max(1_000_000) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size
     ) {
-        return service.find(
+        return service.findGlobal(
                 active, closed, status, severity, deviceId, deviceKeyword,
                 ruleKey, from, to, page, size);
     }

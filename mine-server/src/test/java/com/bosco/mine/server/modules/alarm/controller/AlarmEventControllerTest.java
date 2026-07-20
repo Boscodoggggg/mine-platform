@@ -49,7 +49,7 @@ class AlarmEventControllerTest {
     @Test
     void 告警列表应透传组合过滤并返回推导状态() throws Exception {
         AlarmEventResponse alarm = alarm(AlarmStatus.ACTIVE_UNACKNOWLEDGED, 2);
-        when(service.find(
+        when(service.findGlobal(
                 null, false, null, "CRITICAL", alarm.deviceId(), "运输车",
                 "engine-hot", null, null, 1, 20))
                 .thenReturn(new PageResponse<>(List.of(alarm), 1, 20, 1));

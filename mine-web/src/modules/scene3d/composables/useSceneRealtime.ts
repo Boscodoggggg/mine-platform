@@ -15,6 +15,29 @@ interface SceneRealtimeDependencies {
 }
 
 export type SceneTrajectoryStatus = 'DISABLED' | 'IDLE' | 'LOADING' | 'READY' | 'DEGRADED';
+export type SceneLocationMappingStatus =
+  | 'IDLE'
+  | 'UNAUTHORIZED'
+  | 'LOADING'
+  | 'READY'
+  | 'DEGRADED'
+  | 'TRUNCATED';
+
+export interface SceneRealtimeAccess {
+  locations: boolean;
+  regions: boolean;
+  events: boolean;
+  alarms: boolean;
+  operations: boolean;
+}
+
+const FULL_REALTIME_ACCESS: SceneRealtimeAccess = {
+  locations: true,
+  regions: true,
+  events: true,
+  alarms: true,
+  operations: true
+};
 
 /**
  * 组合矿区现有位置与空间实时能力，为二维和三维视口提供同一份不可变数据。
@@ -31,6 +54,7 @@ export function useSceneRealtime(dependencies: SceneRealtimeDependencies = {}) {
   const trajectoryUpdatedAt = ref<string | null>(null);
   const trajectoryStatus = ref<SceneTrajectoryStatus>('DISABLED');
   const trajectoryError = shallowRef<unknown | null>(null);
+  const locationAccess = ref(false);
   const locationLayer = shallowRef<SceneRuntimeLayer | null>(null);
   const regionLayer = shallowRef<SceneRuntimeLayer | null>(null);
   const trajectoryLayer = shallowRef<SceneRuntimeLayer | null>(null);
@@ -45,6 +69,15 @@ export function useSceneRealtime(dependencies: SceneRealtimeDependencies = {}) {
       spatial.eventStatus.value === 'LOADING' ||
       trajectoryStatus.value === 'LOADING'
   );
+  const locationMappingStatus = computed<SceneLocationMappingStatus>(() => {
+    if (!selectedSiteId.value) return 'IDLE';
+    if (!locationAccess.value) return 'UNAUTHORIZED';
+    if (location.status.value === 'LOADING') return 'LOADING';
+    if (location.status.value === 'ERROR') return 'DEGRADED';
+    if (location.truncated.value) return 'TRUNCATED';
+    if (location.status.value === 'IDLE') return 'IDLE';
+    return 'READY';
+  });
   const locations = computed(() => {
     const layer = locationLayer.value;
     if (!layer) return [];
@@ -74,13 +107,18 @@ export function useSceneRealtime(dependencies: SceneRealtimeDependencies = {}) {
     optionNumber(locationLayer.value?.options.staleAfterSeconds, 10, 86_400, 120)
   );
 
-  async function selectSite(siteId: string | null, snapshot: SceneRuntimeSnapshot | null) {
+  async function selectSite(
+    siteId: string | null,
+    snapshot: SceneRuntimeSnapshot | null,
+    access: SceneRealtimeAccess = FULL_REALTIME_ACCESS
+  ) {
     const normalizedSiteId = siteId?.trim() || null;
     const sameSite = normalizedSiteId !== null && normalizedSiteId === selectedSiteId.value;
     const retainedTagId = sameSite ? selectedTagId.value : null;
     const currentGeneration = ++generation;
     cancelTrajectory();
     selectedSiteId.value = normalizedSiteId;
+    locationAccess.value = Boolean(normalizedSiteId && access.locations);
     if (!sameSite) {
       selectedTagId.value = null;
       trajectory.value = [];
@@ -109,14 +147,20 @@ export function useSceneRealtime(dependencies: SceneRealtimeDependencies = {}) {
     }
 
     const requestedSiteId = selectedSiteId.value;
-    const needsLocations = Boolean(locationLayer.value || trajectoryLayer.value);
+    const alarmLayer = access.alarms ? visibleLayer(snapshot, 'DYNAMIC_ALARMS') : null;
+    const operationLayer = access.operations ? visibleLayer(snapshot, 'DYNAMIC_OPERATIONS') : null;
+    const needsLocations =
+      access.locations && Boolean(locationLayer.value || trajectoryLayer.value || alarmLayer || operationLayer);
     await Promise.all([
       needsLocations
-        ? location.selectSite(requestedSiteId, locationLimit(locationLayer.value, trajectoryLayer.value))
+        ? location.selectSite(
+            requestedSiteId,
+            alarmLayer || operationLayer ? 10_000 : locationLimit(locationLayer.value, trajectoryLayer.value)
+          )
         : location.selectSite(null),
       spatial.selectSite(requestedSiteId, {
-        regions: Boolean(regionLayer.value),
-        events: Boolean(regionLayer.value)
+        regions: access.regions && Boolean(regionLayer.value),
+        events: access.events && Boolean(regionLayer.value)
       })
     ]);
     if (currentGeneration !== generation || requestedSiteId !== selectedSiteId.value) return;
@@ -205,6 +249,8 @@ export function useSceneRealtime(dependencies: SceneRealtimeDependencies = {}) {
     selectableLocations,
     locationStaleAfterSeconds,
     locationStatus: location.status,
+    locationMappingStatus,
+    locationTruncated: location.truncated,
     locationError: location.error,
     locationUpdatedAt: location.updatedAt,
     regions,
@@ -231,7 +277,7 @@ function visibleLayer(snapshot: SceneRuntimeSnapshot | null, layerType: SceneRun
 
 function locationLimit(...layers: Array<SceneRuntimeLayer | null>) {
   const configured = layers.reduce((maximum, layer) => Math.max(maximum, layer?.maxItems ?? 0), 0);
-  return Math.min(5000, Math.max(1, configured || 5000));
+  return Math.min(10_000, Math.max(1, configured || 5000));
 }
 
 function trajectoryWindowMinutes(layer: SceneRuntimeLayer) {

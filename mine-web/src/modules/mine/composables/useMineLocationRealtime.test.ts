@@ -184,6 +184,21 @@ describe('useMineLocationRealtime', () => {
     expect(state.locations.value[0]?.localX).toBe(120);
     expect(state.updatedAt.value).toBe('2026-07-18T00:00:01Z');
   });
+
+  it('业务映射允许使用当前位置接口的一万条上限', async () => {
+    const loadCurrent = vi.fn(async siteId => currentSnapshot(siteId, []));
+    const state = effectScope().run(() =>
+      useMineLocationRealtime({
+        loadCurrent,
+        subscribe: () => vi.fn(),
+        subscribeConnectionState: () => vi.fn()
+      })
+    )!;
+
+    await state.selectSite('site-1', 10_000);
+
+    expect(loadCurrent).toHaveBeenCalledWith('site-1', 10_000);
+  });
 });
 
 function currentSnapshot(siteId: string, items: CurrentLocation['items']): CurrentLocation {

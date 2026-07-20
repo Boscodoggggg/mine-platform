@@ -181,16 +181,18 @@ describe('SceneViewport', () => {
   it('三维适配器挂载前接收当前动态快照，后续属性变化只推送最新数据', async () => {
     const adapter = { ...mockAdapter(), updateDynamicData: vi.fn() };
     const firstLocation = locationItem('tag-1');
+    const alarmMarker = { alarm: { id: 'alarm-1' }, location: firstLocation } as never;
     const wrapper = mountViewport({
       mode: '3D',
       supportsWebGl: () => true,
       locations: [firstLocation],
+      alarms: [alarmMarker],
       createAdapter: () => adapter
     });
     await flushPromises();
 
     expect(adapter.updateDynamicData).toHaveBeenCalledWith(
-      expect.objectContaining({ locations: [firstLocation], selectedTagId: null })
+      expect.objectContaining({ locations: [firstLocation], alarms: [alarmMarker], selectedTagId: null })
     );
     const secondLocation = locationItem('tag-2');
     await wrapper.setProps({ locations: [secondLocation], selectedTagId: 'tag-2' });
@@ -212,6 +214,8 @@ describe('CanvasSceneViewport', () => {
         trajectory: [],
         regions: [],
         events: [],
+        alarms: [{ alarm: { id: 'alarm-1' } } as never],
+        operations: [{ markerId: 'operation-1' } as never],
         selectedTagId: null,
         locationStaleAfterSeconds: 45,
         loading: false
@@ -221,7 +225,7 @@ describe('CanvasSceneViewport', () => {
         stubs: {
           MineCoordinateCanvas: {
             name: 'MineCoordinateCanvas',
-            props: ['items', 'trajectory', 'regions', 'events', 'selectedTagId', 'staleAfterSeconds', 'loading'],
+            props: ['items', 'trajectory', 'regions', 'events', 'alarms', 'operations', 'selectedTagId', 'staleAfterSeconds', 'loading'],
             template: '<div data-testid="mine-coordinate-canvas"></div>'
           }
         }
@@ -231,6 +235,8 @@ describe('CanvasSceneViewport', () => {
     expect(wrapper.text()).toContain('场景资源存储暂不可读取');
     expect(wrapper.get('[data-testid="mine-coordinate-canvas"]').element).toBeInstanceOf(Element);
     expect(wrapper.findComponent({ name: 'MineCoordinateCanvas' }).props('staleAfterSeconds')).toBe(45);
+    expect(wrapper.findComponent({ name: 'MineCoordinateCanvas' }).props('alarms')).toHaveLength(1);
+    expect(wrapper.findComponent({ name: 'MineCoordinateCanvas' }).props('operations')).toHaveLength(1);
     const retry = wrapper.get('[data-testid="scene-retry"]');
     expect(retry.text()).toContain('重试三维视图');
     await retry.trigger('click');

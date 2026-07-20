@@ -4,6 +4,7 @@ import { NSpin } from 'naive-ui';
 import { useI18n } from 'vue-i18n';
 import type { LocationTrajectory, MineLocationItem, MineSpatialEvent, MineSpatialRegion } from '@/modules/mine';
 import type { SceneRuntimeSnapshot } from '../api/scene';
+import type { SceneAlarmMarker, SceneOperationMarker } from '../composables/useSceneBusinessLayers';
 import { loadCesium } from '../runtime/load-cesium';
 import { createLifecycleAdapter, detectWebGlAvailability } from '../runtime/types';
 import type {
@@ -25,6 +26,8 @@ const props = withDefaults(
     trajectory?: LocationTrajectory['items'];
     regions?: MineSpatialRegion[];
     events?: MineSpatialEvent[];
+    alarms?: SceneAlarmMarker[];
+    operations?: SceneOperationMarker[];
     selectedTagId?: string | null;
     locationStaleAfterSeconds?: number;
     loading?: boolean;
@@ -38,6 +41,8 @@ const props = withDefaults(
     trajectory: () => [],
     regions: () => [],
     events: () => [],
+    alarms: () => [],
+    operations: () => [],
     selectedTagId: null,
     locationStaleAfterSeconds: 120,
     loading: false,
@@ -81,6 +86,8 @@ watch(
     () => props.trajectory,
     () => props.regions,
     () => props.events,
+    () => props.alarms,
+    () => props.operations,
     () => props.selectedTagId
   ],
   pushDynamicData,
@@ -171,6 +178,8 @@ function pushDynamicData() {
     trajectory: props.trajectory,
     regions: props.regions,
     events: props.events,
+    alarms: props.alarms,
+    operations: props.operations,
     selectedTagId: props.selectedTagId,
     nowMillis: Date.now()
   });
@@ -195,6 +204,8 @@ function pushDynamicData() {
     :trajectory="trajectory"
     :regions="regions"
     :events="events"
+    :alarms="alarms"
+    :operations="operations"
     :selected-tag-id="selectedTagId"
     :location-stale-after-seconds="locationStaleAfterSeconds"
     :loading="loading"

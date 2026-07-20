@@ -949,6 +949,59 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /mine/sites/{siteId}/alarms:
+    get:
+      tags: [MineScene]
+      operationId: listMineSiteAlarms
+      summary: 查询矿区车载设备告警
+      description: |
+        只返回告警触发时通过有效车辆设备绑定归属当前矿区的告警，
+        并在查询前校验当前用户的矿区作用域。全局告警中心仍使用 /alarms。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+        - name: active
+          in: query
+          schema: { type: boolean }
+        - name: closed
+          in: query
+          schema: { type: boolean }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/AlarmStatus' }
+        - name: severity
+          in: query
+          schema: { $ref: '#/components/schemas/AlarmSeverity' }
+        - name: deviceId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: deviceKeyword
+          in: query
+          description: 按设备编码或设备名称模糊匹配。
+          schema: { type: string, maxLength: 128 }
+        - name: ruleKey
+          in: query
+          schema: { type: string, maxLength: 64 }
+        - name: from
+          in: query
+          description: 触发时间范围起点，包含。
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: 触发时间范围终点，不包含。
+          schema: { type: string, format: date-time }
+        - $ref: '#/components/parameters/Page'
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+      responses:
+        '200':
+          description: 矿区车载设备告警分页。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlarmPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
   /alarms/{alarmId}:
     get:
       tags: [AlarmCenter]

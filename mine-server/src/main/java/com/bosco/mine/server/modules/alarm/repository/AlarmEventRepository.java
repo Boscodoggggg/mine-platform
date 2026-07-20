@@ -166,6 +166,7 @@ public class AlarmEventRepository {
 
     /** 告警查询条件。 */
     public record AlarmQuery(
+            UUID siteId,
             Boolean active,
             Boolean closed,
             AlarmStatus status,

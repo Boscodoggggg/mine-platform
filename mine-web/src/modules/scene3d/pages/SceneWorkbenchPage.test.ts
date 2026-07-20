@@ -35,6 +35,7 @@ const contextState = vi.hoisted(() => ({
 }));
 const routeGuard = vi.hoisted(() => ({ callback: undefined as undefined | ((...args: never[]) => unknown) }));
 const sceneRealtimeState = vi.hoisted(() => ({ runtime: null as Record<string, unknown> | null }));
+const sceneBusinessState = vi.hoisted(() => ({ runtime: null as Record<string, unknown> | null }));
 
 vi.mock('../api/scene', () => api);
 vi.mock('@/modules/mine/api/mine-api', () => mineApi);
@@ -47,12 +48,15 @@ vi.mock('vue-router', () => ({
 }));
 vi.mock('../components/CesiumSceneViewport.vue', () => ({
   default: {
-    props: ['snapshot', 'degradationReason', 'mode', 'locations', 'regions', 'events', 'trajectory', 'selectedTagId', 'locationStaleAfterSeconds'],
-    template: '<div data-testid="scene-runtime" :data-ready="Boolean(snapshot)" :data-reason="degradationReason" :data-mode="mode" :data-locations="locations.length" :data-regions="regions.length" :data-events="events.length" :data-trajectory="trajectory.length" :data-selected="selectedTagId"></div>'
+    props: ['snapshot', 'degradationReason', 'mode', 'locations', 'regions', 'events', 'trajectory', 'alarms', 'operations', 'selectedTagId', 'locationStaleAfterSeconds'],
+    template: '<div data-testid="scene-runtime" :data-ready="Boolean(snapshot)" :data-reason="degradationReason" :data-mode="mode" :data-locations="locations.length" :data-regions="regions.length" :data-events="events.length" :data-trajectory="trajectory.length" :data-alarms="alarms.length" :data-operations="operations.length" :data-selected="selectedTagId"></div>'
   }
 }));
 vi.mock('../composables/useSceneRealtime', () => ({
   useSceneRealtime: () => sceneRealtimeState.runtime
+}));
+vi.mock('../composables/useSceneBusinessLayers', () => ({
+  useSceneBusinessLayers: () => sceneBusinessState.runtime
 }));
 vi.mock('../components/SceneAssetPanel.vue', () => ({
   default: {
@@ -98,6 +102,7 @@ describe('SceneWorkbenchPage', () => {
       snapshot: null
     });
     sceneRealtimeState.runtime = sceneRealtimeRuntime();
+    sceneBusinessState.runtime = sceneBusinessRuntime();
     mineApi.getMineCoordinateSystems.mockResolvedValue({ items: [], page: 1, size: 100, total: 0 });
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
     window.$dialog = { warning: vi.fn() } as never;
@@ -129,6 +134,25 @@ describe('SceneWorkbenchPage', () => {
     expect(wrapper.get('[data-testid="scene-mode-3d"]').attributes('aria-pressed')).toBe('true');
   });
 
+  it('仅区域等非跟踪动态层不显示无意义的标签选择器', async () => {
+    authState.userInfo.buttons = ['mine:scene:view', 'mine:spatial:view'];
+    const nextSnapshot = runtimeSnapshot();
+    nextSnapshot.layers = [
+      { ...nextSnapshot.layers[0]!, layerType: 'DYNAMIC_REGIONS', layerCode: 'regions' }
+    ];
+    api.getSceneRuntime.mockResolvedValue({
+      siteId: 'site-1',
+      status: 'READY',
+      reason: 'NONE',
+      snapshot: nextSnapshot
+    });
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="scene-tracked-object"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="scene-realtime-summary"]').exists()).toBe(true);
+  });
+
   it('把同一份位置、区域、事件和按需轨迹传给二维与三维视口', async () => {
     authState.userInfo.buttons = ['mine:scene:view'];
     const realtime = sceneRealtimeState.runtime!;
@@ -136,19 +160,34 @@ describe('SceneWorkbenchPage', () => {
     (realtime.regions as ReturnType<typeof shallowRef>).value = [{ zoneId: 'zone-1' }];
     (realtime.events as ReturnType<typeof shallowRef>).value = [{ eventId: 'event-1' }];
     (realtime.trajectory as ReturnType<typeof shallowRef>).value = [{ eventId: 'trajectory-1' }];
+    const business = sceneBusinessState.runtime!;
+    (business.alarmMarkers as ReturnType<typeof shallowRef>).value = [{ alarm: { id: 'alarm-1' } }];
+    (business.operationMarkers as ReturnType<typeof shallowRef>).value = [{ markerId: 'operation-1' }];
     const readyRuntime = { siteId: 'site-1', status: 'READY', reason: 'NONE', snapshot: runtimeSnapshot() };
     api.getSceneRuntime.mockResolvedValue(readyRuntime);
     const wrapper = mountPage();
     await flushPromises();
 
-    expect(realtime.selectSite).toHaveBeenLastCalledWith('site-1', readyRuntime.snapshot);
+    expect(realtime.selectSite).toHaveBeenLastCalledWith(
+      'site-1',
+      readyRuntime.snapshot,
+      expect.objectContaining({ locations: false, alarms: false, operations: false })
+    );
+    expect(business.selectSite).toHaveBeenLastCalledWith(
+      'site-1',
+      readyRuntime.snapshot,
+      { alarms: false, operations: false },
+      undefined
+    );
     expect(wrapper.get('[data-testid="scene-realtime-summary"]').text()).toContain('1 个位置');
     expect(wrapper.get('[data-testid="scene-realtime-updated-at"]').text()).toContain('位置更新');
     expect(wrapper.get('[data-testid="scene-runtime"]').attributes()).toMatchObject({
       'data-locations': '1',
       'data-regions': '1',
       'data-events': '1',
-      'data-trajectory': '1'
+      'data-trajectory': '1',
+      'data-alarms': '1',
+      'data-operations': '1'
     });
 
     (wrapper.vm as unknown as { selectRuntimeTag: (tagId: string) => void }).selectRuntimeTag('tag-1');
@@ -169,6 +208,101 @@ describe('SceneWorkbenchPage', () => {
 
     expect(wrapper.get('[data-testid="scene-runtime"]').attributes('data-ready')).toBe('true');
     expect(realtime.selectSite).not.toHaveBeenCalledWith(null, null);
+  });
+
+  it('按发布图层和权限启用告警运营侧栏，无位置告警不伪造坐标', async () => {
+    authState.userInfo.buttons = [
+      'mine:scene:view',
+      'mine:location:view',
+      'mine:alarm:view',
+      'mine:operation:view'
+    ];
+    const nextSnapshot = runtimeSnapshot();
+    nextSnapshot.layers.push(
+      { ...nextSnapshot.layers[0]!, id: crypto.randomUUID(), layerType: 'DYNAMIC_ALARMS', layerCode: 'alarms' },
+      { ...nextSnapshot.layers[0]!, id: crypto.randomUUID(), layerType: 'DYNAMIC_OPERATIONS', layerCode: 'operations' }
+    );
+    nextSnapshot.layerCount = nextSnapshot.layers.length;
+    api.getSceneRuntime.mockResolvedValue({
+      siteId: 'site-1',
+      status: 'READY',
+      reason: 'NONE',
+      snapshot: nextSnapshot
+    });
+    const business = sceneBusinessState.runtime!;
+    (business.alarmStatus as ReturnType<typeof ref>).value = 'READY';
+    (business.operationStatus as ReturnType<typeof ref>).value = 'LIVE';
+    const unlocated = { id: 'alarm-1', deviceName: '矿卡', deviceCode: 'TRUCK-01', ruleName: '轴温过高' };
+    (business.activeAlarms as ReturnType<typeof shallowRef>).value = [unlocated];
+    (business.unlocatedAlarms as ReturnType<typeof shallowRef>).value = [unlocated];
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    expect(business.selectSite).toHaveBeenLastCalledWith(
+      'site-1',
+      nextSnapshot,
+      { alarms: true, operations: true },
+      undefined
+    );
+    expect(wrapper.get('[data-testid="scene-business-layers"]').text()).toContain('矿卡 · 轴温过高');
+    expect(wrapper.get('[data-testid="scene-runtime"]').attributes('data-alarms')).toBe('0');
+  });
+
+  it('只启用运营图层时不展示告警零值和告警卡片', async () => {
+    authState.userInfo.buttons = ['mine:scene:view', 'mine:operation:view'];
+    const nextSnapshot = runtimeSnapshot();
+    nextSnapshot.layers = [{
+      ...nextSnapshot.layers[0]!,
+      layerType: 'DYNAMIC_OPERATIONS',
+      layerCode: 'operations'
+    }];
+    api.getSceneRuntime.mockResolvedValue({
+      siteId: 'site-1',
+      status: 'READY',
+      reason: 'NONE',
+      snapshot: nextSnapshot
+    });
+    const business = sceneBusinessState.runtime!;
+    (business.operationStatus as ReturnType<typeof ref>).value = 'READY';
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const card = wrapper.get('[data-testid="scene-business-layers"]');
+    expect(card.text()).toContain('生产运营');
+    expect(card.text()).not.toContain('告警');
+  });
+
+  it('位置快照截断时把未匹配告警标为待判定而不是无位置', async () => {
+    authState.userInfo.buttons = ['mine:scene:view', 'mine:location:view', 'alarm:event:view'];
+    const nextSnapshot = runtimeSnapshot();
+    nextSnapshot.layers.push({
+      ...nextSnapshot.layers[0]!,
+      id: crypto.randomUUID(),
+      layerType: 'DYNAMIC_ALARMS',
+      layerCode: 'alarms'
+    });
+    nextSnapshot.layerCount = nextSnapshot.layers.length;
+    api.getSceneRuntime.mockResolvedValue({
+      siteId: 'site-1',
+      status: 'READY',
+      reason: 'NONE',
+      snapshot: nextSnapshot
+    });
+    const business = sceneBusinessState.runtime!;
+    const alarm = { id: 'alarm-1', deviceName: '矿卡', deviceCode: 'TRUCK-01', ruleName: '超速' };
+    (business.alarmStatus as ReturnType<typeof ref>).value = 'READY';
+    (business.locationMappingStatus as ReturnType<typeof ref>).value = 'TRUNCATED';
+    (business.unresolvedAlarmLocations as ReturnType<typeof shallowRef>).value = [alarm];
+
+    const wrapper = mountPage();
+    await flushPromises();
+
+    const card = wrapper.get('[data-testid="scene-business-layers"]');
+    expect(card.text()).toContain('位置待判定的车载告警');
+    expect(card.text()).toContain('位置快照已达到查询上限');
+    expect(card.text()).not.toContain('无当前位置的车载告警');
   });
 
   it('切换矿区会主动取消旧作用域请求并只接受新矿区结果', async () => {
@@ -275,6 +409,7 @@ function sceneRealtimeRuntime() {
     events: shallowRef<unknown[]>([]),
     trajectory: shallowRef<unknown[]>([]),
     locationStatus: ref('IDLE'),
+    locationMappingStatus: ref('READY'),
     regionStatus: ref('DISABLED'),
     eventStatus: ref('DISABLED'),
     trajectoryStatus: ref('DISABLED'),
@@ -285,6 +420,25 @@ function sceneRealtimeRuntime() {
     loading: ref(false),
     selectSite: vi.fn().mockResolvedValue(undefined),
     selectTag: vi.fn().mockResolvedValue(undefined)
+  };
+}
+
+function sceneBusinessRuntime() {
+  return {
+    activeAlarms: shallowRef<unknown[]>([]),
+    alarmMarkers: shallowRef<unknown[]>([]),
+    unlocatedAlarms: shallowRef<unknown[]>([]),
+    unresolvedAlarmLocations: shallowRef<unknown[]>([]),
+    locationMappingStatus: ref('READY'),
+    currentShifts: shallowRef<unknown[]>([]),
+    runningWorkOrders: shallowRef<unknown[]>([]),
+    operationMarkers: shallowRef<unknown[]>([]),
+    alarmStatus: ref('DISABLED'),
+    operationStatus: ref('DISABLED'),
+    alarmUpdatedAt: ref<string | null>(null),
+    operationUpdatedAt: ref<string | null>(null),
+    loading: ref(false),
+    selectSite: vi.fn().mockResolvedValue(undefined)
   };
 }
 

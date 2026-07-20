@@ -11,6 +11,7 @@ import com.bosco.mine.server.modules.alarm.domain.AlarmStatus;
 import com.bosco.mine.server.modules.alarm.messaging.InvalidAlarmEventMessageException;
 import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository;
 import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository.AlarmEventRecord;
+import com.bosco.mine.server.modules.mine.service.MineScopeAuthorizer;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +44,7 @@ class AlarmEventServiceTest {
     private static final UUID SNAPSHOT_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000403");
     private static final UUID EVENT_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000404");
     private static final UUID OPERATOR_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000405");
+    private static final UUID SITE_ID = UUID.fromString("019f64e5-a000-7000-8000-000000000406");
     private static final Instant RAISED_AT = Instant.parse("2026-07-17T01:00:00Z");
     private static final Instant RECOVERED_AT = Instant.parse("2026-07-17T01:05:00Z");
     private static final Instant NOW = Instant.parse("2026-07-17T02:00:00Z");
@@ -54,6 +56,7 @@ class AlarmEventServiceTest {
     private AlarmEventRepository repository;
     private OperationAuditService auditService;
     private AlarmMetrics metrics;
+    private MineScopeAuthorizer mineScopeAuthorizer;
     private AlarmEventService service;
 
     @BeforeEach
@@ -61,12 +64,14 @@ class AlarmEventServiceTest {
         repository = mock(AlarmEventRepository.class);
         auditService = mock(OperationAuditService.class);
         metrics = mock(AlarmMetrics.class);
+        mineScopeAuthorizer = mock(MineScopeAuthorizer.class);
         service = new AlarmEventService(
                 repository,
                 auditService,
                 MineClock.fixed(NOW, ZoneOffset.UTC),
                 IdGenerator.timeOrdered(),
-                metrics
+                metrics,
+                mineScopeAuthorizer
         );
         when(repository.recordInbox(any(UUID.class))).thenReturn(true);
         when(repository.findDeviceProductKey(DEVICE_ID)).thenReturn(Optional.of("haul-truck"));
@@ -128,11 +133,37 @@ class AlarmEventServiceTest {
 
     @Test
     void 超大页码应在进入数据库前拒绝() {
-        assertThatThrownBy(() -> service.find(
+        assertThatThrownBy(() -> service.findGlobal(
                 null, null, null, null, null, null, null, null, null, 1_000_001, 20))
                 .isInstanceOfSatisfying(MineException.class,
                         exception -> assertThat(exception.errorCode().code()).isEqualTo("ALARM-400-001"));
         verify(repository, never()).find(any(), anyInt(), anyInt());
+    }
+
+    @Test
+    void 矿区告警查询应先校验作用域并把矿区写入仓储条件() {
+        service.findForSite(
+                SITE_ID, null, false, null, null, null, null,
+                null, null, null, 1, 20);
+
+        verify(mineScopeAuthorizer).requireSite(SITE_ID);
+        verify(repository).find(
+                org.mockito.ArgumentMatchers.argThat(query -> SITE_ID.equals(query.siteId())),
+                org.mockito.ArgumentMatchers.eq(1),
+                org.mockito.ArgumentMatchers.eq(20));
+    }
+
+    @Test
+    void 全局告警中心查询不应伪装成矿区作用域查询() {
+        service.findGlobal(
+                null, false, null, null, null, null, null,
+                null, null, 1, 20);
+
+        verify(mineScopeAuthorizer, never()).requireSite(any());
+        verify(repository).find(
+                org.mockito.ArgumentMatchers.argThat(query -> query.siteId() == null),
+                org.mockito.ArgumentMatchers.eq(1),
+                org.mockito.ArgumentMatchers.eq(20));
     }
 
     @Test

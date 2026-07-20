@@ -627,6 +627,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mine/sites/{siteId}/alarms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询矿区车载设备告警
+         * @description 只返回告警触发时通过有效车辆设备绑定归属当前矿区的告警，
+         *     并在查询前校验当前用户的矿区作用域。全局告警中心仍使用 /alarms。
+         */
+        get: operations["listMineSiteAlarms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alarms/{alarmId}": {
         parameters: {
             query?: never;
@@ -7535,6 +7556,47 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description 告警周期分页。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlarmPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listMineSiteAlarms: {
+        parameters: {
+            query?: {
+                active?: boolean;
+                closed?: boolean;
+                status?: components["schemas"]["AlarmStatus"];
+                severity?: components["schemas"]["AlarmSeverity"];
+                deviceId?: string;
+                /** @description 按设备编码或设备名称模糊匹配。 */
+                deviceKeyword?: string;
+                ruleKey?: string;
+                /** @description 触发时间范围起点，包含。 */
+                from?: string;
+                /** @description 触发时间范围终点，不包含。 */
+                to?: string;
+                page?: components["parameters"]["Page"];
+                size?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 矿区车载设备告警分页。 */
             200: {
                 headers: {
                     [name: string]: unknown;

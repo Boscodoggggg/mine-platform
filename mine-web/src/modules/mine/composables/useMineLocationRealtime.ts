@@ -165,7 +165,7 @@ function runtimeStatus(state: RealtimeConnectionState): MineLocationRuntimeStatu
 }
 
 function boundedLimit(value: number) {
-  return Number.isInteger(value) && value >= 1 && value <= 5000 ? value : 5000;
+  return Number.isInteger(value) && value >= 1 && value <= 10_000 ? value : 5000;
 }
 
 function upsertLatest(latest: Map<string, MineLocationItem>, item: MineLocationItem) {

@@ -141,6 +141,73 @@ describe('useSceneRealtime', () => {
     expect(state.regionStatus.value).toBe('DISABLED');
   });
 
+  it('业务图层只在具备定位和对应业务权限时读取映射位置', async () => {
+    const loadCurrent = vi.fn(async siteId => currentSnapshot(siteId, 10));
+    const state = effectScope().run(() =>
+      useSceneRealtime({
+        location: { loadCurrent, subscribe: () => vi.fn(), subscribeConnectionState: () => vi.fn() },
+        spatial: {
+          loadRegions: vi.fn(async siteId => regionSnapshot(siteId)),
+          loadEvents: vi.fn(async siteId => eventPage(siteId)),
+          subscribe: () => vi.fn()
+        }
+      })
+    )!;
+    const alarmScene = snapshot([dynamicLayer('DYNAMIC_ALARMS', { maxItems: 20 })]);
+
+    await state.selectSite('site-1', alarmScene, {
+      locations: true,
+      regions: false,
+      events: false,
+      alarms: true,
+      operations: false
+    });
+    expect(loadCurrent).toHaveBeenCalledOnce();
+    expect(loadCurrent).toHaveBeenCalledWith('site-1', 10_000);
+    expect(state.locations.value).toEqual([]);
+    expect(state.selectableLocations.value).toHaveLength(1);
+    expect(state.locationMappingStatus.value).toBe('READY');
+
+    await state.selectSite('site-2', alarmScene, {
+      locations: false,
+      regions: false,
+      events: false,
+      alarms: true,
+      operations: false
+    });
+    expect(loadCurrent).toHaveBeenCalledOnce();
+    expect(state.selectableLocations.value).toEqual([]);
+    expect(state.locationMappingStatus.value).toBe('UNAUTHORIZED');
+  });
+
+  it('业务位置快照截断时显式暴露不完整状态', async () => {
+    const state = effectScope().run(() =>
+      useSceneRealtime({
+        location: {
+          loadCurrent: vi.fn(async siteId => ({ ...currentSnapshot(siteId, 10), truncated: true })),
+          subscribe: () => vi.fn(),
+          subscribeConnectionState: () => vi.fn()
+        },
+        spatial: {
+          loadRegions: vi.fn(async siteId => regionSnapshot(siteId)),
+          loadEvents: vi.fn(async siteId => eventPage(siteId)),
+          subscribe: () => vi.fn()
+        }
+      })
+    )!;
+
+    await state.selectSite('site-1', snapshot([dynamicLayer('DYNAMIC_ALARMS')]), {
+      locations: true,
+      regions: false,
+      events: false,
+      alarms: true,
+      operations: false
+    });
+
+    expect(state.locationTruncated.value).toBe(true);
+    expect(state.locationMappingStatus.value).toBe('TRUNCATED');
+  });
+
   it('二维与三维共用发布可见性和上限规则，选择数据不冒充位置图层', async () => {
     let spatialListener!: (notification: RealtimeSpatialNotification) => void;
     const loadCurrent = vi.fn(async (siteId: string) => {

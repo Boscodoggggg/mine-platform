@@ -17,6 +17,7 @@ import com.bosco.mine.server.modules.alarm.messaging.InvalidAlarmEventMessageExc
 import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository;
 import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository.AlarmEventRecord;
 import com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository.AlarmQuery;
+import com.bosco.mine.server.modules.mine.service.MineScopeAuthorizer;
 import com.bosco.mine.server.modules.system.service.OperationAuditService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -51,6 +52,7 @@ public class AlarmEventService {
     private final MineClock clock;
     private final IdGenerator idGenerator;
     private final AlarmMetrics metrics;
+    private final MineScopeAuthorizer mineScopeAuthorizer;
     private final JsonMapper jsonMapper = JsonMapper.builder().findAndAddModules().build();
 
     /**
@@ -59,31 +61,17 @@ public class AlarmEventService {
      * @param repository 告警仓储
      * @param auditService 操作审计服务
      * @param metrics 告警运行指标
+     * @param mineScopeAuthorizer 矿区作用域授权器
      */
     @Autowired
     public AlarmEventService(
             AlarmEventRepository repository,
             OperationAuditService auditService,
-            AlarmMetrics metrics
+            AlarmMetrics metrics,
+            MineScopeAuthorizer mineScopeAuthorizer
     ) {
-        this(repository, auditService, MineClock.systemUtc(), IdGenerator.timeOrdered(), metrics);
-    }
-
-    /**
-     * 创建可注入时间源的告警服务测试实例。
-     *
-     * @param repository 告警仓储
-     * @param auditService 操作审计服务
-     * @param clock 业务时钟
-     * @param idGenerator 标识生成器
-     */
-    AlarmEventService(
-            AlarmEventRepository repository,
-            OperationAuditService auditService,
-            MineClock clock,
-            IdGenerator idGenerator
-    ) {
-        this(repository, auditService, clock, idGenerator, AlarmMetrics.noOp());
+        this(repository, auditService, MineClock.systemUtc(), IdGenerator.timeOrdered(), metrics,
+                mineScopeAuthorizer);
     }
 
     /**
@@ -94,19 +82,22 @@ public class AlarmEventService {
      * @param clock 业务时钟
      * @param idGenerator 标识生成器
      * @param metrics 告警运行指标
+     * @param mineScopeAuthorizer 矿区作用域授权器
      */
     AlarmEventService(
             AlarmEventRepository repository,
             OperationAuditService auditService,
             MineClock clock,
             IdGenerator idGenerator,
-            AlarmMetrics metrics
+            AlarmMetrics metrics,
+            MineScopeAuthorizer mineScopeAuthorizer
     ) {
         this.repository = Objects.requireNonNull(repository, "告警仓储不能为空");
         this.auditService = Objects.requireNonNull(auditService, "操作审计服务不能为空");
         this.clock = Objects.requireNonNull(clock, "告警业务时钟不能为空");
         this.idGenerator = Objects.requireNonNull(idGenerator, "告警标识生成器不能为空");
         this.metrics = Objects.requireNonNull(metrics, "告警运行指标不能为空");
+        this.mineScopeAuthorizer = Objects.requireNonNull(mineScopeAuthorizer, "矿区作用域授权器不能为空");
     }
 
     /**
@@ -183,10 +174,54 @@ public class AlarmEventService {
     }
 
     /**
-     * 分页查询告警中心。
+     * 分页查询全局告警中心。
      */
     @Transactional(readOnly = true)
-    public PageResponse<AlarmEventResponse> find(
+    public PageResponse<AlarmEventResponse> findGlobal(
+            Boolean active,
+            Boolean closed,
+            AlarmStatus status,
+            String severity,
+            UUID deviceId,
+            String deviceKeyword,
+            String ruleKey,
+            Instant from,
+            Instant to,
+            int page,
+            int size
+    ) {
+        return find(null, active, closed, status, severity, deviceId, deviceKeyword,
+                ruleKey, from, to, page, size);
+    }
+
+    /**
+     * 分页查询告警触发时归属指定矿区的车载设备告警。
+     *
+     * @param siteId 矿区标识
+     * @return 矿区车载设备告警分页
+     */
+    @Transactional(readOnly = true)
+    public PageResponse<AlarmEventResponse> findForSite(
+            UUID siteId,
+            Boolean active,
+            Boolean closed,
+            AlarmStatus status,
+            String severity,
+            UUID deviceId,
+            String deviceKeyword,
+            String ruleKey,
+            Instant from,
+            Instant to,
+            int page,
+            int size
+    ) {
+        mineScopeAuthorizer.requireSite(Objects.requireNonNull(siteId, "矿区标识不能为空"));
+        return find(siteId, active, closed, status, severity, deviceId, deviceKeyword,
+                ruleKey, from, to, page, size);
+    }
+
+    private PageResponse<AlarmEventResponse> find(
+            UUID siteId,
             Boolean active,
             Boolean closed,
             AlarmStatus status,
@@ -209,7 +244,7 @@ public class AlarmEventService {
             throw error("ALARM-400-002", "告警查询开始时间必须早于结束时间");
         }
         AlarmQuery query = new AlarmQuery(
-                active, closed, status, normalizedSeverity, deviceId,
+                siteId, active, closed, status, normalizedSeverity, deviceId,
                 normalizedDeviceKeyword, normalizedRuleKey, from, to);
         return new PageResponse<>(repository.find(query, page, size).stream()
                 .map(this::toResponse)

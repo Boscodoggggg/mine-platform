@@ -62,8 +62,9 @@ export function getShiftDefinitions(siteId: string) {
 }
 
 /** 查询营业日期窗口内的班次实例。 */
-export function getShiftInstances(siteId: string, query: ShiftInstanceQuery) {
-  return request<ShiftInstance[]>(withQuery(sitePath(siteId, 'shift-instances'), query));
+export function getShiftInstances(siteId: string, query: ShiftInstanceQuery, signal?: AbortSignal) {
+  const path = withQuery(sitePath(siteId, 'shift-instances'), query);
+  return signal ? request<ShiftInstance[]>(path, { signal }) : request<ShiftInstance[]>(path);
 }
 
 /** 根据有效模板创建计划班次实例。 */
@@ -85,8 +86,9 @@ export function closeShiftInstance(siteId: string, shiftId: string, version: num
 }
 
 /** 查询运输作业单和关系化调度分配。 */
-export function getWorkOrders(siteId: string, query: WorkOrderQuery = {}) {
-  return request<WorkOrder[]>(withQuery(sitePath(siteId, 'work-orders'), { ...query, limit: query.limit ?? 100 }));
+export function getWorkOrders(siteId: string, query: WorkOrderQuery = {}, signal?: AbortSignal) {
+  const path = withQuery(sitePath(siteId, 'work-orders'), { ...query, limit: query.limit ?? 100 });
+  return signal ? request<WorkOrder[]>(path, { signal }) : request<WorkOrder[]>(path);
 }
 
 /** 创建一张可编辑的运输作业单草稿。 */
