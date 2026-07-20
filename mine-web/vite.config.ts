@@ -2,6 +2,7 @@ import process from 'node:process';
 import { URL, fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import { setupVitePlugins } from './build/plugins';
+import { cesiumManualChunk } from './build/plugins/cesium';
 import { createViteProxy, getBuildTime } from './build/config';
 
 export default defineConfig(configEnv => {
@@ -52,6 +53,11 @@ export default defineConfig(configEnv => {
       sourcemap: viteEnv.VITE_SOURCE_MAP === 'Y',
       commonjsOptions: {
         ignoreTryCatch: false
+      },
+      rollupOptions: {
+        output: {
+          manualChunks: cesiumManualChunk
+        }
       }
     }
   };

@@ -120,3 +120,6 @@ declare namespace Env {
 interface ImportMeta {
   readonly env: Env.ImportMeta;
 }
+
+/** Cesium 同源 Worker、Assets、Widgets 和 ThirdParty 静态资源根。 */
+declare var CESIUM_BASE_URL: string | undefined;
