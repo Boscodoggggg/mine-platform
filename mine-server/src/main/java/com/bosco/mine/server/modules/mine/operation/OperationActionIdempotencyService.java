@@ -20,6 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -123,6 +124,70 @@ public class OperationActionIdempotencyService {
         return response;
     }
 
+    /**
+     * 执行一次创建新聚合的持久幂等动作，并为首次请求分配 UUIDv7 聚合标识。
+     *
+     * <p>重放请求没有尚未创建的聚合标识可供比较，因此仅校验动作、聚合类型和
+     * 规范化请求摘要；首次分配的聚合标识随冻结响应稳定返回。</p>
+     *
+     * @param siteId 矿区标识
+     * @param idempotencyKey 调用方幂等键
+     * @param actionType 动作类型
+     * @param aggregateType 聚合类型
+     * @param request 参与摘要的规范化请求
+     * @param responseType 响应类型
+     * @param action 使用首次分配聚合标识执行的创建动作
+     * @param <T> 响应类型
+     * @return 首次动作响应或其冻结重放
+     */
+    @Transactional
+    public <T> T executeCreate(
+            UUID siteId,
+            String idempotencyKey,
+            String actionType,
+            String aggregateType,
+            Object request,
+            Class<T> responseType,
+            Function<UUID, T> action
+    ) {
+        MineSite site = authorizer.requireSite(siteId);
+        UUID operatorId = authorizer.currentUserId();
+        String key = required(idempotencyKey, 128, null);
+        String normalizedAction = required(actionType, 64, ACTION_NAME);
+        String normalizedAggregate = required(aggregateType, 32, AGGREGATE_NAME);
+        if (request == null || responseType == null || action == null) {
+            throw invalid();
+        }
+        String requestHash = sha256(canonicalJson(request));
+        UUID aggregateId = idGenerator.next();
+        UUID recordId = idGenerator.next();
+        int claimed = mapper.claimOperationAction(
+                recordId, site.organizationId(), site.id(), operatorId, key,
+                normalizedAction, normalizedAggregate, aggregateId, requestHash);
+        if (claimed == 0) {
+            OperationMapper.OperationActionIdempotencyRow existing =
+                    mapper.findOperationAction(
+                                    site.organizationId(), site.id(), operatorId, key)
+                            .orElseThrow(this::conflict);
+            verifyCreateReplay(
+                    existing, normalizedAction, normalizedAggregate, requestHash);
+            if (existing.responseSnapshotJson() == null || existing.completedAt() == null) {
+                throw conflict();
+            }
+            return read(existing.responseSnapshotJson(), responseType);
+        }
+
+        T response = action.apply(aggregateId);
+        if (response == null) {
+            throw invalid();
+        }
+        String responseJson = write(response);
+        if (mapper.completeOperationAction(recordId, responseJson) != 1) {
+            throw new IllegalStateException("生产运营创建动作幂等响应冻结失败");
+        }
+        return response;
+    }
+
     private void verifyReplay(
             OperationMapper.OperationActionIdempotencyRow existing,
             String actionType,
@@ -133,6 +198,19 @@ public class OperationActionIdempotencyService {
         if (!actionType.equals(existing.actionType())
                 || !aggregateType.equals(existing.aggregateType())
                 || !aggregateId.equals(existing.aggregateId())
+                || !requestHash.equals(existing.requestHash())) {
+            throw conflict();
+        }
+    }
+
+    private void verifyCreateReplay(
+            OperationMapper.OperationActionIdempotencyRow existing,
+            String actionType,
+            String aggregateType,
+            String requestHash
+    ) {
+        if (!actionType.equals(existing.actionType())
+                || !aggregateType.equals(existing.aggregateType())
                 || !requestHash.equals(existing.requestHash())) {
             throw conflict();
         }
