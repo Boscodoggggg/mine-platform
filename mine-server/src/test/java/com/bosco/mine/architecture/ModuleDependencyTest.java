@@ -32,6 +32,19 @@ class ModuleDependencyTest {
                     "com.bosco.mine.telemetry..")
             .because("共享契约必须独立于具体运行时服务");
 
+    private static final ArchRule BUSINESS_REPOSITORIES_MUST_USE_MYBATIS = noClasses()
+            .that()
+            .haveFullyQualifiedName(
+                    "com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository")
+            .or()
+            .haveFullyQualifiedName(
+                    "com.bosco.mine.server.modules.command.status.CommandStatusRepository")
+            .should()
+            .dependOnClassesThat()
+            .resideInAnyPackage("org.springframework.jdbc..")
+            .because("普通业务库仓储应通过 MyBatis Mapper 访问数据库")
+            .allowEmptyShould(true);
+
     @Test
     void 应扫描每个共享模块的生产类() {
         assertThat(PROJECT_CLASSES).anyMatch(javaClass ->
@@ -45,5 +58,14 @@ class ModuleDependencyTest {
     @Test
     void 共享模块不得依赖运行时服务() {
         SHARED_MODULES_MUST_NOT_DEPEND_ON_RUNTIME_SERVICES.check(PROJECT_CLASSES);
+    }
+
+    @Test
+    void 告警与命令状态仓储必须使用MyBatis() {
+        assertThat(PROJECT_CLASSES).anyMatch(javaClass -> javaClass.getFullName().equals(
+                "com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository"));
+        assertThat(PROJECT_CLASSES).anyMatch(javaClass -> javaClass.getFullName().equals(
+                "com.bosco.mine.server.modules.command.status.CommandStatusRepository"));
+        BUSINESS_REPOSITORIES_MUST_USE_MYBATIS.check(PROJECT_CLASSES);
     }
 }
