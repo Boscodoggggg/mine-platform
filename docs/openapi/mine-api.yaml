@@ -4231,6 +4231,21 @@ paths:
         '404': { $ref: '#/components/responses/SceneResourceNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /mine/sites/{siteId}/scene-runtime:
+    get:
+      tags: [MineScene]
+      operationId: getMineSceneRuntime
+      summary: 查询默认场景最后正确运行快照
+      description: |
+        需要 mine:scene:view 权限。接口只返回已发布且通过内容摘要、图层数量和资源入口完整性校验的快照；
+        不存在可用快照时返回固定降级原因，不泄露草稿、存储路径或外部资源地址。
+      parameters:
+        - { $ref: '#/components/parameters/SiteId' }
+      responses:
+        '200': { description: 完整运行快照或结构化降级结果。, content: { application/json: { schema: { $ref: '#/components/schemas/SceneRuntimeResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/SceneResourceNotFound' }
 
 components:
   securitySchemes:
@@ -7904,6 +7919,85 @@ components:
         page: { type: integer, minimum: 1 }
         size: { type: integer, minimum: 1, maximum: 100 }
         total: { type: integer, format: int64, minimum: 0 }
+    SceneRuntimeResponse:
+      type: object
+      additionalProperties: false
+      required: [siteId, status, reason, snapshot]
+      properties:
+        siteId: { type: string, format: uuid }
+        status: { type: string, enum: [READY, DEGRADED] }
+        reason:
+          type: string
+          enum: [NONE, NO_DEFAULT_SCENE, DEFAULT_SCENE_UNPUBLISHED, UNSUPPORTED_SCHEMA_VERSION, INVALID_PUBLISHED_SNAPSHOT, SCENE_STORAGE_UNAVAILABLE]
+        snapshot:
+          oneOf:
+            - { $ref: '#/components/schemas/SceneRuntimeSnapshot' }
+            - { type: 'null' }
+    SceneRuntimeSnapshot:
+      type: object
+      additionalProperties: false
+      required: [sceneId, sceneCode, sceneName, versionId, revisionNumber, schemaVersion, contentHash, coordinateSystemId, coordinateMode, originX, originY, originZ, headingDegrees, pitchDegrees, rollDegrees, scale, defaultCamera, fallbackViewport, publishedAt, layerCount, layers]
+      properties:
+        sceneId: { type: string, format: uuid }
+        sceneCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        sceneName: { type: string, minLength: 1, maxLength: 128 }
+        versionId: { type: string, format: uuid }
+        revisionNumber: { type: integer, minimum: 1 }
+        schemaVersion: { type: integer, minimum: 1 }
+        contentHash: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        coordinateSystemId: { type: string, format: uuid }
+        coordinateMode: { type: string, enum: [LOCAL_ENU, WGS84_ANCHOR] }
+        originX: { type: number, format: double }
+        originY: { type: number, format: double }
+        originZ: { type: number, format: double }
+        headingDegrees: { type: number, format: double }
+        pitchDegrees: { type: number, format: double }
+        rollDegrees: { type: number, format: double }
+        scale: { type: number, format: double, exclusiveMinimum: 0 }
+        defaultCamera: { type: object, additionalProperties: true }
+        fallbackViewport: { type: object, additionalProperties: true }
+        publishedAt: { type: string, format: date-time }
+        layerCount: { type: integer, minimum: 0, maximum: 256 }
+        layers:
+          type: array
+          maxItems: 256
+          items: { $ref: '#/components/schemas/SceneRuntimeLayer' }
+    SceneRuntimeLayer:
+      type: object
+      additionalProperties: false
+      required: [id, layerCode, orderNumber, layerType, visible, opacity, minimumDistance, maximumDistance, offsetX, offsetY, offsetZ, headingDegrees, pitchDegrees, rollDegrees, scale, maxItems, options, asset]
+      properties:
+        id: { type: string, format: uuid }
+        layerCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        orderNumber: { type: integer, minimum: 1, maximum: 10000 }
+        layerType: { type: string, enum: [GRID, STATIC_GLB, STATIC_3D_TILES, DYNAMIC_LOCATIONS, DYNAMIC_REGIONS, DYNAMIC_TRAJECTORY, DYNAMIC_ALARMS, DYNAMIC_OPERATIONS] }
+        visible: { type: boolean }
+        opacity: { type: number, format: double, minimum: 0, maximum: 1 }
+        minimumDistance: { type: number, format: double, minimum: 0 }
+        maximumDistance: { type: number, format: double, minimum: 0 }
+        offsetX: { type: number, format: double }
+        offsetY: { type: number, format: double }
+        offsetZ: { type: number, format: double }
+        headingDegrees: { type: number, format: double }
+        pitchDegrees: { type: number, format: double }
+        rollDegrees: { type: number, format: double }
+        scale: { type: number, format: double, exclusiveMinimum: 0 }
+        maxItems: { type: integer, minimum: 0, maximum: 100000 }
+        options: { type: object, additionalProperties: true }
+        asset:
+          oneOf:
+            - { $ref: '#/components/schemas/SceneRuntimeAsset' }
+            - { type: 'null' }
+    SceneRuntimeAsset:
+      type: object
+      additionalProperties: false
+      required: [assetId, assetType, contentDigest, fileCount, entryUrl]
+      properties:
+        assetId: { type: string, format: uuid }
+        assetType: { type: string, enum: [GLB, TILES_3D] }
+        contentDigest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+        fileCount: { type: integer, minimum: 1, maximum: 10000 }
+        entryUrl: { type: string, pattern: '^/api/v1/' }
     ApiError:
       type: object
       required: [code, message, traceId, timestamp, details]

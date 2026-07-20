@@ -14,6 +14,7 @@ import com.bosco.mine.server.modules.mine.spatial.SpatialReplayController;
 import com.bosco.mine.server.modules.mine.spatial.SpatialRouteController;
 import com.bosco.mine.server.modules.mine.scene.SceneAssetController;
 import com.bosco.mine.server.modules.mine.scene.SceneController;
+import com.bosco.mine.server.modules.mine.scene.SceneRuntimeController;
 import jakarta.validation.constraints.NotNull;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -110,6 +111,7 @@ class MineManagementOpenApiTest {
                 "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}",
                 "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/layers",
                 "/mine/sites/{siteId}/scenes/{sceneId}/versions/{versionId}/publish",
+                "/mine/sites/{siteId}/scene-runtime",
                 "/mine/sites/{siteId}/people",
                 "/mine/sites/{siteId}/people/{personId}/sensitive",
                 "/mine/sites/{siteId}/bindings/preview",
@@ -162,7 +164,8 @@ class MineManagementOpenApiTest {
                 "OperationDriverWorkload", "SceneAssetPage", "SceneAssetResponse",
                 "SceneAssetFilePage", "SceneResponse", "ScenePage",
                 "SceneVersionRequest", "SceneVersionResponse", "SceneVersionPage",
-                "SceneLayerRequest");
+                "SceneLayerRequest", "SceneRuntimeResponse", "SceneRuntimeSnapshot",
+                "SceneRuntimeLayer", "SceneRuntimeAsset");
         assertThat(list(map(schemas.get("LocationSubjectType")).get("enum")))
                 .containsExactly("TAG", "VEHICLE", "PERSON");
         assertThat(map(map(schemas.get("LocationTrajectoryResponse")).get("properties")))
@@ -319,6 +322,17 @@ class MineManagementOpenApiTest {
                 .doesNotContainKey("allOf");
         assertThat(map(map(schemas.get("SceneLayerResponse")).get("properties")))
                 .containsKeys("id", "layerCode", "layerType", "options");
+        Map<String, Object> runtimeResponse = map(schemas.get("SceneRuntimeResponse"));
+        assertThat(list(map(map(runtimeResponse.get("properties")).get("reason")).get("enum")))
+                .containsExactly(
+                        "NONE", "NO_DEFAULT_SCENE", "DEFAULT_SCENE_UNPUBLISHED",
+                        "UNSUPPORTED_SCHEMA_VERSION", "INVALID_PUBLISHED_SNAPSHOT",
+                        "SCENE_STORAGE_UNAVAILABLE");
+        assertThat(list(map(map(runtimeResponse.get("properties")).get("snapshot")).get("oneOf")))
+                .satisfiesExactly(
+                        schema -> assertThat(map(schema).get("$ref"))
+                                .isEqualTo("#/components/schemas/SceneRuntimeSnapshot"),
+                        schema -> assertThat(map(schema).get("type")).isEqualTo("null"));
 
         for (String actionPath : List.of(
                 "/mine/sites/{siteId}/scene-assets/{assetId}/archive",
@@ -452,6 +466,7 @@ class MineManagementOpenApiTest {
 
     @Test
     void 三维场景控制器必须使用精确权限和固定动作路径() {
+        assertPermission(SceneRuntimeController.class, "load", "mine:scene:view");
         for (String methodName : List.of(
                 "findAssets", "findAsset", "readFile")) {
             assertPermission(SceneAssetController.class, methodName, "mine:scene:view");

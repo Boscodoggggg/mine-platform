@@ -2863,6 +2863,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mine/sites/{siteId}/scene-runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询默认场景最后正确运行快照
+         * @description 需要 mine:scene:view 权限。接口只返回已发布且通过内容摘要、图层数量和资源入口完整性校验的快照；
+         *     不存在可用快照时返回固定降级原因，不泄露草稿、存储路径或外部资源地址。
+         */
+        get: operations["getMineSceneRuntime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6011,6 +6032,97 @@ export interface components {
             size: number;
             /** Format: int64 */
             total: number;
+        };
+        SceneRuntimeResponse: {
+            /** Format: uuid */
+            siteId: string;
+            /** @enum {string} */
+            status: "READY" | "DEGRADED";
+            /** @enum {string} */
+            reason: "NONE" | "NO_DEFAULT_SCENE" | "DEFAULT_SCENE_UNPUBLISHED" | "UNSUPPORTED_SCHEMA_VERSION" | "INVALID_PUBLISHED_SNAPSHOT" | "SCENE_STORAGE_UNAVAILABLE";
+            snapshot: components["schemas"]["SceneRuntimeSnapshot"] | null;
+        };
+        SceneRuntimeSnapshot: {
+            /** Format: uuid */
+            sceneId: string;
+            sceneCode: string;
+            sceneName: string;
+            /** Format: uuid */
+            versionId: string;
+            revisionNumber: number;
+            schemaVersion: number;
+            contentHash: string;
+            /** Format: uuid */
+            coordinateSystemId: string;
+            /** @enum {string} */
+            coordinateMode: "LOCAL_ENU" | "WGS84_ANCHOR";
+            /** Format: double */
+            originX: number;
+            /** Format: double */
+            originY: number;
+            /** Format: double */
+            originZ: number;
+            /** Format: double */
+            headingDegrees: number;
+            /** Format: double */
+            pitchDegrees: number;
+            /** Format: double */
+            rollDegrees: number;
+            /** Format: double */
+            scale: number;
+            defaultCamera: {
+                [key: string]: unknown;
+            };
+            fallbackViewport: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            publishedAt: string;
+            layerCount: number;
+            layers: components["schemas"]["SceneRuntimeLayer"][];
+        };
+        SceneRuntimeLayer: {
+            /** Format: uuid */
+            id: string;
+            layerCode: string;
+            orderNumber: number;
+            /** @enum {string} */
+            layerType: "GRID" | "STATIC_GLB" | "STATIC_3D_TILES" | "DYNAMIC_LOCATIONS" | "DYNAMIC_REGIONS" | "DYNAMIC_TRAJECTORY" | "DYNAMIC_ALARMS" | "DYNAMIC_OPERATIONS";
+            visible: boolean;
+            /** Format: double */
+            opacity: number;
+            /** Format: double */
+            minimumDistance: number;
+            /** Format: double */
+            maximumDistance: number;
+            /** Format: double */
+            offsetX: number;
+            /** Format: double */
+            offsetY: number;
+            /** Format: double */
+            offsetZ: number;
+            /** Format: double */
+            headingDegrees: number;
+            /** Format: double */
+            pitchDegrees: number;
+            /** Format: double */
+            rollDegrees: number;
+            /** Format: double */
+            scale: number;
+            maxItems: number;
+            options: {
+                [key: string]: unknown;
+            };
+            asset: components["schemas"]["SceneRuntimeAsset"] | null;
+        };
+        SceneRuntimeAsset: {
+            /** Format: uuid */
+            assetId: string;
+            /** @enum {string} */
+            assetType: "GLB" | "TILES_3D";
+            contentDigest: string;
+            fileCount: number;
+            entryUrl: string;
         };
         ApiError: {
             code: string;
@@ -12541,6 +12653,32 @@ export interface operations {
             404: components["responses"]["SceneResourceNotFound"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    getMineSceneRuntime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 矿区 UUID。 */
+                siteId: components["parameters"]["SiteId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 完整运行快照或结构化降级结果。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SceneRuntimeResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["SceneResourceNotFound"];
         };
     };
 }

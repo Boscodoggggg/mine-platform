@@ -672,6 +672,14 @@ public interface SceneMapper {
             @Param("siteId") UUID siteId,
             @Param("versionId") UUID versionId);
 
+    /**
+     * 使用单次多表查询读取默认场景、当前发布版本、有序图层和资源入口。
+     *
+     * @param siteId 矿区标识
+     * @return 至少包含一个锚点行的运行快照查询结果
+     */
+    List<SceneRuntimeRow> findRuntimeRows(@Param("siteId") UUID siteId);
+
     /** 查询同矿区可用于场景的统一活动坐标系。 */
     @Select("""
             SELECT id, organization_id AS organizationId, site_id AS siteId,
@@ -826,6 +834,56 @@ public interface SceneMapper {
             int maxItems,
             String optionsJson,
             Instant createdAt
+    ) {
+    }
+
+    /**
+     * 默认场景运行快照单次关联查询行；没有默认场景或发布版本时对应字段为空。
+     */
+    record SceneRuntimeRow(
+            UUID sceneId,
+            String sceneCode,
+            String sceneName,
+            UUID versionId,
+            UUID coordinateSystemId,
+            Integer revisionNumber,
+            Integer schemaVersion,
+            String coordinateMode,
+            Double originX,
+            Double originY,
+            Double originZ,
+            Double headingDegrees,
+            Double pitchDegrees,
+            Double rollDegrees,
+            Double sceneScale,
+            String defaultCameraJson,
+            String fallbackViewportJson,
+            String contentHash,
+            Instant publishedAt,
+            Integer layerCount,
+            UUID layerId,
+            String layerCode,
+            Integer orderNumber,
+            String layerType,
+            Boolean visible,
+            Double opacity,
+            Double minimumDistance,
+            Double maximumDistance,
+            Double offsetX,
+            Double offsetY,
+            Double offsetZ,
+            Double layerHeadingDegrees,
+            Double layerPitchDegrees,
+            Double layerRollDegrees,
+            Double layerScale,
+            Integer maxItems,
+            String optionsJson,
+            UUID assetId,
+            String assetType,
+            String assetStatus,
+            String assetContentDigest,
+            String assetEntryPath,
+            Integer assetFileCount
     ) {
     }
 
