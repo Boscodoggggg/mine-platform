@@ -31,6 +31,7 @@
         <module>mine-common</module>
         <module>mine-device-model</module>
         <module>mine-messaging</module>
+        <module>mine-notification-sdk</module>
         <module>mine-protocol-sdk</module>
         <module>mine-protocol-engine</module>
         <module>examples/protocol-plugins/haul-truck</module>
