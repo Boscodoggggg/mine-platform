@@ -186,6 +186,8 @@ const local: App.I18n.Schema = {
         action: {
           createGroup: '新建接收组',
           createRecipient: '添加接收对象',
+          saveGroup: '保存接收组',
+          saveRecipient: '保存接收对象',
           members: '查看成员',
           reveal: '查看真实目标',
           revealed: '真实目标已回显'
@@ -198,6 +200,7 @@ const local: App.I18n.Schema = {
         },
         form: {
           groupCode: '接收组编码',
+          groupName: '接收组名称',
           description: '职责说明',
           type: '对象类型',
           channel: '触达渠道',
@@ -208,6 +211,8 @@ const local: App.I18n.Schema = {
           targetPlaceholder: '邮箱、手机号、机器人接收标识或 Webhook 地址'
         },
         message: {
+          groupRequired: '请填写接收组编码和接收组名称',
+          recipientRequired: '请填写接收对象名称和真实触达目标',
           groupSaved: '接收组已保存',
           recipientSaved: '接收对象已保存',
           targetVersionChanged: '接收对象已被其他管理员更新，请刷新后重试',
@@ -221,7 +226,7 @@ const local: App.I18n.Schema = {
         variableHint: '模板仅支持双花括号占位符；先选择允许变量，再在标题或正文中引用。',
         empty: '还没有通知模板，先创建一个禁用模板并完成内容审核。',
         noVariables: '不使用变量',
-        action: { create: '新建模板' },
+        action: { create: '新建模板', save: '保存模板' },
         column: {
           template: '模板',
           route: '渠道与事件',
@@ -232,6 +237,7 @@ const local: App.I18n.Schema = {
         drawer: { create: '新建安全通知模板', edit: '编辑安全通知模板' },
         form: {
           code: '模板编码',
+          name: '模板名称',
           channel: '适用渠道',
           event: '业务事件',
           locale: '语言区域',
@@ -240,7 +246,7 @@ const local: App.I18n.Schema = {
           subject: '标题模板',
           body: '正文模板'
         },
-        message: { saved: '通知模板已保存' }
+        message: { required: '请填写模板编码、模板名称和正文模板', saved: '通知模板已保存' }
       },
       policy: {
         title: '通知升级策略',
@@ -250,6 +256,7 @@ const local: App.I18n.Schema = {
         empty: '还没有升级策略，先创建第一版草稿。',
         action: {
           create: '新建策略',
+          saveDraft: '保存草稿',
           editDraft: '编辑草稿',
           deriveDraft: '派生新草稿',
           publish: '发布',
@@ -276,6 +283,7 @@ const local: App.I18n.Schema = {
         drawer: { create: '新建通知升级策略', edit: '编辑通知升级策略草稿' },
         form: {
           code: '策略编码',
+          name: '策略名称',
           priority: '匹配优先级',
           severity: '告警等级',
           description: '策略说明',

@@ -176,7 +176,7 @@ function openEdit(template: NotificationTemplate) {
 async function saveTemplate() {
   if (!canEdit.value || saving.value || !form.templateCode.trim()
       || !form.name.trim() || !form.bodyTemplate.trim()) {
-    window.$message?.warning(t('mine.notification.message.required'));
+    window.$message?.warning(t('mine.notification.template.message.required'));
     return;
   }
   const body: NotificationTemplateRequest = {
@@ -296,7 +296,7 @@ function emptyForm(): TemplateForm {
               </NFormItem>
             </NGi>
             <NGi>
-              <NFormItem :label="t('mine.notification.form.name')" required>
+              <NFormItem :label="t('mine.notification.template.form.name')" required>
                 <NInput v-model:value="form.name" :maxlength="128" />
               </NFormItem>
             </NGi>
@@ -337,7 +337,7 @@ function emptyForm(): TemplateForm {
         <template #footer>
           <NSpace justify="end">
             <NButton @click="drawerVisible = false">{{ t('mine.notification.action.cancel') }}</NButton>
-            <NButton type="primary" :loading="saving" @click="saveTemplate">{{ t('mine.notification.action.save') }}</NButton>
+            <NButton type="primary" :loading="saving" @click="saveTemplate">{{ t('mine.notification.template.action.save') }}</NButton>
           </NSpace>
         </template>
       </NDrawerContent>

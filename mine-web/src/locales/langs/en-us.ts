@@ -186,6 +186,8 @@ const local: App.I18n.Schema = {
         action: {
           createGroup: 'New group',
           createRecipient: 'Add recipient',
+          saveGroup: 'Save group',
+          saveRecipient: 'Save recipient',
           members: 'View members',
           reveal: 'Reveal destination',
           revealed: 'Destination revealed'
@@ -198,6 +200,7 @@ const local: App.I18n.Schema = {
         },
         form: {
           groupCode: 'Group code',
+          groupName: 'Group name',
           description: 'Responsibility description',
           type: 'Recipient type',
           channel: 'Delivery channel',
@@ -208,6 +211,8 @@ const local: App.I18n.Schema = {
           targetPlaceholder: 'Email, phone, robot identifier, or webhook URL'
         },
         message: {
+          groupRequired: 'Enter a group code and group name',
+          recipientRequired: 'Enter a recipient name and real destination',
           groupSaved: 'Recipient group saved',
           recipientSaved: 'Recipient saved',
           targetVersionChanged: 'Another administrator updated this recipient. Refresh and try again.',
@@ -221,7 +226,7 @@ const local: App.I18n.Schema = {
         variableHint: 'Templates accept double-brace placeholders only. Select allowed variables before referencing them.',
         empty: 'No notification template yet. Start with a disabled template and review its content.',
         noVariables: 'No variables',
-        action: { create: 'New template' },
+        action: { create: 'New template', save: 'Save template' },
         column: {
           template: 'Template',
           route: 'Channel & event',
@@ -232,6 +237,7 @@ const local: App.I18n.Schema = {
         drawer: { create: 'New Safe Notification Template', edit: 'Edit Safe Notification Template' },
         form: {
           code: 'Template code',
+          name: 'Template name',
           channel: 'Channel',
           event: 'Business event',
           locale: 'Locale',
@@ -240,7 +246,7 @@ const local: App.I18n.Schema = {
           subject: 'Subject template',
           body: 'Body template'
         },
-        message: { saved: 'Notification template saved' }
+        message: { required: 'Enter a template code, template name, and body template', saved: 'Notification template saved' }
       },
       policy: {
         title: 'Notification Escalation Policies',
@@ -250,6 +256,7 @@ const local: App.I18n.Schema = {
         empty: 'No escalation policy yet. Create the first draft.',
         action: {
           create: 'New policy',
+          saveDraft: 'Save draft',
           editDraft: 'Edit draft',
           deriveDraft: 'Derive new draft',
           publish: 'Publish',
@@ -276,6 +283,7 @@ const local: App.I18n.Schema = {
         drawer: { create: 'New Notification Escalation Policy', edit: 'Edit Notification Policy Draft' },
         form: {
           code: 'Policy code',
+          name: 'Policy name',
           priority: 'Match priority',
           severity: 'Alarm severity',
           description: 'Policy description',

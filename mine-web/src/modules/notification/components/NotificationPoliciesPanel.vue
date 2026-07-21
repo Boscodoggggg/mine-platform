@@ -483,7 +483,7 @@ function emptyForm(): PolicyForm {
               </NFormItem>
             </NGi>
             <NGi>
-              <NFormItem :label="t('mine.notification.form.name')" required>
+              <NFormItem :label="t('mine.notification.policy.form.name')" required>
                 <NInput v-model:value="form.name" :maxlength="128" />
               </NFormItem>
             </NGi>
@@ -583,7 +583,7 @@ function emptyForm(): PolicyForm {
         <template #footer>
           <NSpace justify="end">
             <NButton @click="drawerVisible = false">{{ t('mine.notification.action.cancel') }}</NButton>
-            <NButton type="primary" :loading="saving" @click="savePolicy">{{ t('mine.notification.action.save') }}</NButton>
+            <NButton type="primary" :loading="saving" @click="savePolicy">{{ t('mine.notification.policy.action.saveDraft') }}</NButton>
           </NSpace>
         </template>
       </NDrawerContent>

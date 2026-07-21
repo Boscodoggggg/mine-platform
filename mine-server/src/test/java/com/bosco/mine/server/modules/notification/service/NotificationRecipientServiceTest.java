@@ -63,7 +63,7 @@ class NotificationRecipientServiceTest {
 
         NotificationRecipientResponse response = service.createRecipient(
                 groupId,
-                recipientRequest(NotificationRecipientType.EXTERNAL, null,
+                recipientRequest(NotificationRecipientType.EXTERNAL_CONTACT, null,
                         NotificationChannelType.EMAIL, " Operator@Example.COM ", 0));
 
         ArgumentCaptor<NotificationRecipient> recipient =
@@ -98,7 +98,7 @@ class NotificationRecipientServiceTest {
 
         NotificationRecipientResponse response = service.updateRecipient(
                 groupId, recipientId,
-                recipientRequest(NotificationRecipientType.EXTERNAL, null,
+                recipientRequest(NotificationRecipientType.EXTERNAL_CONTACT, null,
                         NotificationChannelType.SMS, null, 4));
 
         ArgumentCaptor<NotificationRecipient> recipient =
@@ -125,7 +125,7 @@ class NotificationRecipientServiceTest {
                         .containsEntry("reason", "SYSTEM_USER_NOT_ENABLED"));
         assertThatThrownBy(() -> service.createRecipient(
                 groupId,
-                recipientRequest(NotificationRecipientType.EXTERNAL, userId,
+                recipientRequest(NotificationRecipientType.EXTERNAL_CONTACT, userId,
                         NotificationChannelType.SMS, "13800138000", 0)))
                 .isInstanceOf(MineException.class)
                 .satisfies(exception -> assertThat(((MineException) exception).details())
@@ -145,7 +145,7 @@ class NotificationRecipientServiceTest {
 
         assertThatThrownBy(() -> service.createRecipient(
                 groupId,
-                recipientRequest(NotificationRecipientType.EXTERNAL, null,
+                recipientRequest(NotificationRecipientType.EXTERNAL_CONTACT, null,
                         NotificationChannelType.SMS, "138 0013 8000", 0)))
                 .isInstanceOf(MineException.class)
                 .hasMessageContaining("已经存在");
@@ -225,7 +225,7 @@ class NotificationRecipientServiceTest {
     ) {
         Instant now = Instant.parse("2026-07-21T00:00:00Z");
         return new NotificationRecipient(
-                id, groupId, NotificationRecipientType.EXTERNAL, null,
+                id, groupId, NotificationRecipientType.EXTERNAL_CONTACT, null,
                 "值班负责人", NotificationChannelType.SMS, ciphertext,
                 "sha256:" + "d".repeat(64), "***8000", "ENABLED",
                 now, now, version);

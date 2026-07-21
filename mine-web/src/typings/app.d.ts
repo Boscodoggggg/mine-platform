@@ -464,12 +464,13 @@ declare namespace App {
             preserveTarget: string;
             type: Record<'system' | 'external', string>;
             action: Record<
-              'createGroup' | 'createRecipient' | 'members' | 'reveal' | 'revealed',
+              'createGroup' | 'createRecipient' | 'saveGroup' | 'saveRecipient' | 'members' | 'reveal' | 'revealed',
               string
             >;
             drawer: Record<'createGroup' | 'editGroup' | 'createRecipient' | 'editRecipient', string>;
             form: Record<
               | 'groupCode'
+              | 'groupName'
               | 'description'
               | 'type'
               | 'channel'
@@ -480,7 +481,7 @@ declare namespace App {
               | 'targetPlaceholder',
               string
             >;
-            message: Record<'groupSaved' | 'recipientSaved' | 'targetVersionChanged' | 'targetRevealed', string>;
+            message: Record<'groupRequired' | 'recipientRequired' | 'groupSaved' | 'recipientSaved' | 'targetVersionChanged' | 'targetRevealed', string>;
           };
           template: {
             title: string;
@@ -489,15 +490,15 @@ declare namespace App {
             variableHint: string;
             empty: string;
             noVariables: string;
-            action: Record<'create', string>;
+            action: Record<'create' | 'save', string>;
             column: Record<'template' | 'route' | 'locale' | 'variables', string>;
             locale: Record<'zhCn' | 'enUs', string>;
             drawer: Record<'create' | 'edit', string>;
             form: Record<
-              'code' | 'channel' | 'event' | 'locale' | 'providerCode' | 'variables' | 'subject' | 'body',
+              'code' | 'name' | 'channel' | 'event' | 'locale' | 'providerCode' | 'variables' | 'subject' | 'body',
               string
             >;
-            message: Record<'saved', string>;
+            message: Record<'required' | 'saved', string>;
           };
           policy: {
             title: string;
@@ -507,6 +508,7 @@ declare namespace App {
             empty: string;
             action: Record<
               | 'create'
+              | 'saveDraft'
               | 'editDraft'
               | 'deriveDraft'
               | 'publish'
@@ -525,6 +527,7 @@ declare namespace App {
             drawer: Record<'create' | 'edit', string>;
             form: Record<
               | 'code'
+              | 'name'
               | 'priority'
               | 'severity'
               | 'description'

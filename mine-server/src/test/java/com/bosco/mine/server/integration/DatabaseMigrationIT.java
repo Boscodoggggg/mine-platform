@@ -913,6 +913,14 @@ class DatabaseMigrationIT {
                 .containsExactly("channel_code");
         assertThat(constraintColumns("uk_notification_recipient_target"))
                 .containsExactly("group_id", "channel_type", "target_digest");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_notification_recipient_type'
+                  AND conrelid = 'notification_recipient'::regclass
+                """, String.class))
+                .contains("EXTERNAL_CONTACT")
+                .doesNotContain("'EXTERNAL'::character varying");
         assertThat(constraintColumns("uk_notification_policy_version"))
                 .containsExactly("policy_id", "version_number");
         assertThat(constraintColumns("uk_notification_policy_step_order"))
@@ -2224,6 +2232,71 @@ class DatabaseMigrationIT {
                             "notification:template:view"
                     );
                     assertThat(permissions).doesNotContain("notification:policy:publish");
+                }
+            }
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        }
+    }
+
+    @Test
+    void 从六十一版升级时必须把外部联系人类型迁移为公开契约值() throws Exception {
+        String schema = "notif_recipient_upgrade_"
+                + UUID.randomUUID().toString().replace("-", "");
+        UUID groupId = UUID.randomUUID();
+        UUID recipientId = UUID.randomUUID();
+        try {
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .target("61")
+                    .load()
+                    .migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                statement.execute("""
+                        INSERT INTO notification_recipient_group (
+                            id, group_code, name, status
+                        ) VALUES (
+                            '%s', 'recipient-upgrade-test', '接收对象升级测试组', 'ENABLED'
+                        )
+                        """.formatted(groupId));
+                statement.execute("""
+                        INSERT INTO notification_recipient (
+                            id, group_id, recipient_type, display_name, channel_type,
+                            target_ciphertext, target_digest, target_masked, status
+                        ) VALUES (
+                            '%s', '%s', 'EXTERNAL', '旧版外部联系人', 'EMAIL',
+                            'v1:test-ciphertext', 'sha256:%s', 'o***@example.com', 'ENABLED'
+                        )
+                        """.formatted(recipientId, groupId, "a".repeat(64)));
+            }
+
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate();
+
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                try (ResultSet result = statement.executeQuery("""
+                        SELECT recipient_type
+                        FROM notification_recipient
+                        WHERE id = '%s'
+                        """.formatted(recipientId))) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getString("recipient_type"))
+                            .isEqualTo("EXTERNAL_CONTACT");
+                    assertThat(result.next()).isFalse();
                 }
             }
         } finally {

@@ -130,6 +130,20 @@ describe('Notification control panels', () => {
     expect(wrapper.text()).toContain('+8613800000000');
   });
 
+  it('接收组创建抽屉应使用接收组领域文案', async () => {
+    const wrapper = mount(NotificationRecipientsPanel, {
+      global: { plugins: [i18n], stubs: { teleport: true } }
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-action="create-recipient-group"]').trigger('click');
+
+    expect(wrapper.text()).toContain('接收组名称');
+    expect(wrapper.text()).toContain('保存接收组');
+    expect(wrapper.text()).not.toContain('渠道名称');
+    expect(wrapper.text()).not.toContain('保存渠道');
+  });
+
   it('模板面板应加载变量目录并展示模板事件和状态', async () => {
     const wrapper = mount(NotificationTemplatesPanel, {
       global: { plugins: [i18n], stubs: { teleport: true } }
@@ -139,6 +153,20 @@ describe('Notification control panels', () => {
     expect(api.getNotificationTemplateVariables).toHaveBeenCalledOnce();
     expect(wrapper.text()).toContain('告警短信');
     expect(wrapper.text()).toContain('告警触发');
+  });
+
+  it('模板创建抽屉应使用模板领域文案', async () => {
+    const wrapper = mount(NotificationTemplatesPanel, {
+      global: { plugins: [i18n], stubs: { teleport: true } }
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-action="create-template"]').trigger('click');
+
+    expect(wrapper.text()).toContain('模板名称');
+    expect(wrapper.text()).toContain('保存模板');
+    expect(wrapper.text()).not.toContain('渠道名称');
+    expect(wrapper.text()).not.toContain('保存渠道');
   });
 
   it('策略面板应区分不可变发布版本并允许派生新草稿', async () => {
@@ -153,5 +181,19 @@ describe('Notification control panels', () => {
     await wrapper.get('[data-action="derive-policy-draft"]').trigger('click');
     await flushPromises();
     expect(api.createNotificationPolicyDraft).toHaveBeenCalledWith('policy-1', { version: 2 });
+  });
+
+  it('策略创建抽屉应使用策略领域文案', async () => {
+    const wrapper = mount(NotificationPoliciesPanel, {
+      global: { plugins: [i18n], stubs: { teleport: true } }
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-action="create-policy"]').trigger('click');
+
+    expect(wrapper.text()).toContain('策略名称');
+    expect(wrapper.text()).toContain('保存草稿');
+    expect(wrapper.text()).not.toContain('渠道名称');
+    expect(wrapper.text()).not.toContain('保存渠道');
   });
 });

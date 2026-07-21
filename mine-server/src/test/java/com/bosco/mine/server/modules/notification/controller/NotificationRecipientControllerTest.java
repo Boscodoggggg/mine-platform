@@ -7,6 +7,9 @@ import com.bosco.mine.server.modules.notification.dto.NotificationRecipientTarge
 import com.bosco.mine.server.modules.notification.service.NotificationRecipientService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.lang.reflect.Method;
 import java.time.Instant;
@@ -14,9 +17,13 @@ import java.util.Arrays;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * 校验通知接收对象接口的权限和敏感响应缓存边界。
@@ -57,6 +64,34 @@ class NotificationRecipientControllerTest {
         assertThat(response.getHeaders().getCacheControl())
                 .isEqualTo(CacheControl.noStore().getHeaderValue());
         verify(service).readTarget(groupId, recipientId);
+    }
+
+    @Test
+    void 外部联系人必须按公开契约接受ExternalContact枚举值() throws Exception {
+        NotificationRecipientService service = mock(NotificationRecipientService.class);
+        MockMvc mockMvc = MockMvcBuilders.standaloneSetup(
+                new NotificationRecipientController(service)).build();
+        UUID groupId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/v1/notifications/recipient-groups/{groupId}/recipients", groupId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "recipientType": "EXTERNAL_CONTACT",
+                                  "userId": null,
+                                  "displayName": "验收值班邮箱",
+                                  "channelType": "EMAIL",
+                                  "target": "acceptance@example.invalid",
+                                  "status": "ENABLED",
+                                  "version": 0
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        verify(service).createRecipient(eq(groupId), argThat(request ->
+                "EXTERNAL_CONTACT".equals(request.recipientType().name())
+                        && request.userId() == null
+                        && "acceptance@example.invalid".equals(request.target())));
     }
 
     private void assertPermission(

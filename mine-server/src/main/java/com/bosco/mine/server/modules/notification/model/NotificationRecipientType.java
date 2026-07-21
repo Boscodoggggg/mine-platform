@@ -7,5 +7,5 @@ public enum NotificationRecipientType {
     /** 平台已启用用户。 */
     SYSTEM_USER,
     /** 不需要平台账号的外部联系人。 */
-    EXTERNAL
+    EXTERNAL_CONTACT
 }

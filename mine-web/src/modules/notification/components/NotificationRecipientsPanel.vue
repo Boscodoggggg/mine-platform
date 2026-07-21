@@ -252,7 +252,7 @@ function openRecipientEdit(recipient: NotificationRecipient) {
 
 async function saveGroup() {
   if (!canEdit.value || saving.value || !groupForm.groupCode.trim() || !groupForm.name.trim()) {
-    window.$message?.warning(t('mine.notification.message.required'));
+    window.$message?.warning(t('mine.notification.recipient.message.groupRequired'));
     return;
   }
   const body: NotificationRecipientGroupRequest = {
@@ -282,7 +282,7 @@ async function saveRecipient() {
   const group = selectedGroup.value;
   if (!canEdit.value || saving.value || !group || !recipientForm.displayName.trim()
       || (!recipientForm.id && !recipientForm.target.trim())) {
-    window.$message?.warning(t('mine.notification.message.required'));
+    window.$message?.warning(t('mine.notification.recipient.message.recipientRequired'));
     return;
   }
   const body: NotificationRecipientRequest = {
@@ -427,7 +427,7 @@ function emptyRecipientForm(): RecipientForm {
           <NFormItem :label="t('mine.notification.recipient.form.groupCode')" required>
             <NInput v-model:value="groupForm.groupCode" :disabled="Boolean(groupForm.id)" :maxlength="64" />
           </NFormItem>
-          <NFormItem :label="t('mine.notification.form.name')" required>
+          <NFormItem :label="t('mine.notification.recipient.form.groupName')" required>
             <NInput v-model:value="groupForm.name" :maxlength="128" />
           </NFormItem>
           <NFormItem :label="t('mine.notification.recipient.form.description')">
@@ -440,7 +440,7 @@ function emptyRecipientForm(): RecipientForm {
         <template #footer>
           <NSpace justify="end">
             <NButton @click="groupDrawerVisible = false">{{ t('mine.notification.action.cancel') }}</NButton>
-            <NButton type="primary" :loading="saving" @click="saveGroup">{{ t('mine.notification.action.save') }}</NButton>
+            <NButton type="primary" :loading="saving" @click="saveGroup">{{ t('mine.notification.recipient.action.saveGroup') }}</NButton>
           </NSpace>
         </template>
       </NDrawerContent>
@@ -480,7 +480,7 @@ function emptyRecipientForm(): RecipientForm {
         <template #footer>
           <NSpace justify="end">
             <NButton @click="recipientDrawerVisible = false">{{ t('mine.notification.action.cancel') }}</NButton>
-            <NButton type="primary" :loading="saving" @click="saveRecipient">{{ t('mine.notification.action.save') }}</NButton>
+            <NButton type="primary" :loading="saving" @click="saveRecipient">{{ t('mine.notification.recipient.action.saveRecipient') }}</NButton>
           </NSpace>
         </template>
       </NDrawerContent>
