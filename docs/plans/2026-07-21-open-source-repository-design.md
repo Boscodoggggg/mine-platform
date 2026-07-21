@@ -16,7 +16,7 @@
 
 采用 GitHub Flow。首发时把当前已验证代码导入为独立开源快照根提交，不公开内部研发分支的个人邮箱历史，也不制造无意义的巨型 merge commit；此后禁止日常直接推送。功能分支使用 `feat/*`、`fix/*`、`docs/*`、`refactor/*`、`test/*` 和 `chore/*`，发布补丁使用 `hotfix/*`，全部通过 PR 合入。默认使用 squash merge，合并后删除分支。
 
-版本发布使用 `vMAJOR.MINOR.PATCH` tag 和 GitHub Release。只有需要并行稳定某个 minor 系列时才创建 `release/x.y`；紧急修复从最近发布 tag 创建 `hotfix/x.y.z`，修复仍需 PR 回到 `main`，验证后打新 tag。当前不创建长期 `develop` 分支。
+版本发布使用 `vMAJOR.MINOR.PATCH` tag 和 GitHub Release。只有需要并行稳定某个 minor 系列时才创建 `release/x.y`；紧急修复从对应发布 tag 创建 `hotfix/x.y.z`。若 `main` 尚未前进，修复经 PR 合入 `main` 后发布；若 `main` 已含下一版本变更，则经 PR 合入 `release/x.y` 并从该分支发布，再用独立 cherry-pick PR 回补 `main`。当前不创建长期 `develop` 分支。
 
 ## 3. 主分支保护
 

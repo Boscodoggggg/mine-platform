@@ -77,8 +77,9 @@
 **Steps:**
 
 1. 检查工作树、敏感文件、大文件、Git 历史和最终差异。
-2. 从当前已验证提交创建本地 `main`，保留原功能分支引用。
-3. 使用 GitHub CLI 创建公开 `Boscodoggggg/mine-platform`，设置描述、Topics、Issues、squash merge 和自动删除分支。
-4. 推送 `main`，设置默认分支，等待首次 CI。
-5. CI 通过后启用 `main` 保护：PR、对话解决、四类 CI、线性历史、禁 force push/删除。
-6. 验证公开 README、社区健康、安全入口、规则和 clone URL。
+2. 从当前已验证工作树创建独立 orphan `main` 快照，使用 GitHub noreply 邮箱提交；保留原功能分支仅用于本地研发，不把它的历史推送到公开仓库。
+3. 验证公开 `main` 只有一个根提交、提交邮箱为 noreply，且树对象与已验证快照一致。
+4. 使用 GitHub CLI 创建不含代码的公开 `Boscodoggggg/mine-platform`，立即启用 Private Vulnerability Reporting，并通过 API 与匿名 HTTP 状态验证入口不是 404。
+5. 推送 `main`，设置描述、Topics、Issues、squash merge、自动删除分支和默认分支，等待首次 CI。
+6. CI 通过后启用 `main` 保护：PR、对话解决、四类 CI、线性历史、禁 force push/删除。
+7. 验证公开 README、社区健康、安全入口、规则和 clone URL。

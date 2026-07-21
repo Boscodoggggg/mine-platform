@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT_DIR}/deploy/compose/compose-standalone.yml"
 ENV_FILE="${ROOT_DIR}/deploy/env/standalone.env.example"
 
-for command in java node pnpm docker jq; do
+for command in java node pnpm docker jq ruby; do
   command -v "${command}" >/dev/null || { echo "FAIL: 缺少命令 ${command}" >&2; exit 1; }
 done
 

@@ -87,6 +87,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - name: 检查社区配置校验运行时
+        run: ruby --version
       - name: 校验开源社区健康文件
         run: bash build-tests/community-health.sh
       - name: 校验 Shell 与 Compose
