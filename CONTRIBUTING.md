@@ -29,7 +29,7 @@ mine-platform follows GitHub Flow. `main` is the protected, releasable branch; n
 5. Run the relevant local tests and the complete gate before requesting review.
 6. Open a Pull Request using the repository template; keep it small enough to review and revert safely.
 
-Supported prefixes are `feat/`, `fix/`, `docs/`, `refactor/`, `test/` and `chore/`. Do not create a long-lived personal integration branch or submit unrelated formatting changes with a feature.
+Supported prefixes are `feat/`, `fix/`, `docs/`, `refactor/`, `test/`, `chore/` and release-only `hotfix/`. Do not create a long-lived personal integration branch or submit unrelated formatting changes with a feature.
 
 ## Commit messages
 

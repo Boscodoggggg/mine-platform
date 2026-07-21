@@ -14,7 +14,7 @@
 2. GitHub Flow：`main` 始终可发布，所有变更走短生命周期分支、Pull Request 和 CI；版本通过不可变 tag/Release 表达。适合持续迭代的开源产品。
 3. Trunk-based：允许极短分支甚至直接提交主干，依赖强自动化和 feature flag。吞吐高，但公开仓库早期直接写主干会降低外部贡献审查质量。
 
-采用 GitHub Flow。首发时从当前已验证功能分支创建 `main`，不制造无意义的巨型 merge commit；此后禁止日常直接推送。功能分支使用 `feat/*`、`fix/*`、`docs/*`、`refactor/*`、`test/*` 和 `chore/*`，通过 PR 合入。默认使用 squash merge，合并后删除分支。
+采用 GitHub Flow。首发时把当前已验证代码导入为独立开源快照根提交，不公开内部研发分支的个人邮箱历史，也不制造无意义的巨型 merge commit；此后禁止日常直接推送。功能分支使用 `feat/*`、`fix/*`、`docs/*`、`refactor/*`、`test/*` 和 `chore/*`，发布补丁使用 `hotfix/*`，全部通过 PR 合入。默认使用 squash merge，合并后删除分支。
 
 版本发布使用 `vMAJOR.MINOR.PATCH` tag 和 GitHub Release。只有需要并行稳定某个 minor 系列时才创建 `release/x.y`；紧急修复从最近发布 tag 创建 `hotfix/x.y.z`，修复仍需 PR 回到 `main`，验证后打新 tag。当前不创建长期 `develop` 分支。
 

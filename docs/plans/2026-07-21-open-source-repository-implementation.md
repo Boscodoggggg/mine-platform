@@ -1,10 +1,10 @@
 # Open Source Repository Launch Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> 本文记录首次公开仓库发布的可复现实施步骤与验证证据。
 
 **Goal:** 将当前已验证代码发布为采用 GitHub Flow、具备中英双语首页和完整社区健康基线的公开 GitHub 主仓库。
 
-**Architecture:** 以当前功能分支的验证结果作为首次 `main` 基线，不制造人工 merge 历史；后续所有变更通过短分支、PR、CI 和 squash merge。仓库级静态检查保护 README 互链、社区文件和模板，GitHub 端启用默认分支、Topics、安全披露与主分支保护。
+**Architecture:** 以当前功能分支的验证结果建立独立开源快照根提交，避免公开内部研发邮箱历史，也不制造人工 merge 历史；后续所有变更通过短分支、PR、CI 和 squash merge。仓库级静态检查保护 README 互链、社区文件和模板，GitHub 端启用默认分支、Topics、安全披露与主分支保护。
 
 **Tech Stack:** Git、GitHub CLI/API、GitHub Actions、Bash、Markdown、YAML、现有 Maven/pnpm/Compose 质量门禁。
 

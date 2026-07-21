@@ -22,6 +22,7 @@ required_files=(
   .github/ISSUE_TEMPLATE/feature_request.yml
   .github/ISSUE_TEMPLATE/config.yml
   docs/15-branching-and-release.md
+  build-tests/validate-community-config.rb
 )
 
 for relative_path in "${required_files[@]}"; do
@@ -60,6 +61,13 @@ for issue_form in bug_report.yml feature_request.yml; do
   grep -Eq '^description: .+' "${issue_path}" || fail "${issue_form} 缺少 description"
   grep -Eq '^body:' "${issue_path}" || fail "${issue_form} 缺少 body"
 done
+
+ruby "${ROOT_DIR}/build-tests/validate-community-config.rb"
+
+grep -Fq 'security/advisories/new' "${ROOT_DIR}/CODE_OF_CONDUCT.md" \
+  || fail "行为准则缺少可执行的私密举报入口"
+grep -Fq '`hotfix/`' "${ROOT_DIR}/CONTRIBUTING.md" \
+  || fail "贡献指南缺少 hotfix 分支前缀"
 
 grep -Fq 'build-tests/community-health.sh' "${ROOT_DIR}/scripts/verify.sh" \
   || fail "主验证脚本未执行开源社区健康检查"
