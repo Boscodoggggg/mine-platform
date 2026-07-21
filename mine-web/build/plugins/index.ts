@@ -9,11 +9,13 @@ import { setupUnplugin } from './unplugin';
 import { setupHtmlPlugin } from './html';
 import { setupDevtoolsPlugin } from './devtools';
 import { setupCesiumOfflinePlugin } from './cesium';
+import { setupOfflineIcons } from './offline-icons';
 
 export function setupVitePlugins(viteEnv: Env.ImportMeta, buildTime: string) {
   const plugins: PluginOption = [
     vue(),
     vueJsx(),
+    setupOfflineIcons(),
     setupDevtoolsPlugin(viteEnv),
     setupCesiumOfflinePlugin(),
     setupElegantRouter(),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, useAttrs } from 'vue';
-import { Icon } from '@iconify/vue';
+import { Icon } from '@iconify/vue/offline';
+import { isOfflineIconName, normalizeOfflineIconName } from '@/plugins/offline-icon-names';
 
 defineOptions({ name: 'SvgIcon', inheritAttrs: false });
 
@@ -36,8 +37,12 @@ const symbolId = computed(() => {
   return `#${prefix}-${icon}`;
 });
 
+const normalizedIcon = computed(() => normalizeOfflineIconName(props.icon || ''));
+
 /** If localIcon is passed, render localIcon first */
-const renderLocalIcon = computed(() => props.localIcon || !props.icon);
+const renderLocalIcon = computed(
+  () => props.localIcon || !normalizedIcon.value || !isOfflineIconName(normalizedIcon.value)
+);
 </script>
 
 <template>
@@ -47,7 +52,7 @@ const renderLocalIcon = computed(() => props.localIcon || !props.icon);
     </svg>
   </template>
   <template v-else>
-    <Icon v-if="icon" :icon="icon" v-bind="bindAttrs" />
+    <Icon v-if="normalizedIcon" :icon="normalizedIcon" v-bind="bindAttrs" />
   </template>
 </template>
 
