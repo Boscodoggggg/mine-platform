@@ -23,8 +23,8 @@
     "enquirer": "2.4.1",
     "execa": "9.6.1",
     "kolorist": "1.8.0",
-    "npm-check-updates": "22.2.0",
-    "picomatch": "4.0.4",
+    "npm-check-updates": "22.2.9",
+    "picomatch": "4.0.5",
     "rimraf": "6.1.3"
   }
 }
