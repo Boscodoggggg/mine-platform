@@ -772,7 +772,7 @@ services:
     logging: *default-logging
 
   alloy:
-    image: ${MINE_ALLOY_IMAGE:-grafana/alloy:v1.16.1}
+    image: ${MINE_ALLOY_IMAGE:-grafana/alloy:v1.18.0}
     profiles: ["observability"]
     restart: unless-stopped
     init: true
