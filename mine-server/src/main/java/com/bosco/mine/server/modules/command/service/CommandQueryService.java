@@ -123,7 +123,7 @@ public class CommandQueryService {
                 stored.createdAt(), stored.updatedAt(), stored.queuedAt(), stored.sentAt(),
                 stored.deviceReceivedAt(), stored.completedAt(), stored.expiresAt(),
                 stored.lastErrorCode(), stored.replyJson() == null ? null : readMap(stored.replyJson()),
-                stored.version()
+                stored.cancelable(), stored.version()
         );
     }
 

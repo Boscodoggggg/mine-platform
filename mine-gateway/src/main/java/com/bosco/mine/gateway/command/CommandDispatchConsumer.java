@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 消费平台命令，在设备侧 Broker 确认接收后发布 SENT 状态并确认原消息。
+ * 消费平台命令：过期命令回报 EXPIRED，其余命令在设备侧 Broker 确认后回报发布状态。
  */
 public final class CommandDispatchConsumer implements ChannelAwareMessageListener {
     private static final Logger LOGGER = LoggerFactory.getLogger(CommandDispatchConsumer.class);
@@ -61,6 +61,15 @@ public final class CommandDispatchConsumer implements ChannelAwareMessageListene
         long deliveryTag = message.getMessageProperties().getDeliveryTag();
         try {
             MessageEnvelope<CommandDispatchPayload> envelope = decoder.decode(message.getBody());
+            Instant now = clock.instant();
+            if (!now.isBefore(envelope.payload().expiresAt())) {
+                statusPublisher.publish(new CommandStatusPayload(
+                        envelope.payload().commandId(), envelope.payload().deviceId(), "EXPIRED",
+                        now, null, Map.of(), "COMMAND_TTL_EXPIRED"
+                ), envelope.traceId(), envelope.tenantScope());
+                channel.basicAck(deliveryTag, false);
+                return;
+            }
             downlinkPublisher.publish(envelope);
             Instant sentAt = clock.instant();
             String status = envelope.payload().replyExpected() ? "SENT" : "PUBLISHED";

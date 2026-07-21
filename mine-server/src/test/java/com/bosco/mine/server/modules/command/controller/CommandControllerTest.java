@@ -213,7 +213,7 @@ class CommandControllerTest {
                 "LOW", status, 300, 30,
                 "request-command-001", createdAt, createdAt, createdAt,
                 createdAt.plusSeconds(1), createdAt.plusSeconds(2), createdAt.plusSeconds(3),
-                createdAt.plusSeconds(300), null, Map.of("online", true), 4
+                createdAt.plusSeconds(300), null, Map.of("online", true), false, 4
         );
     }
 

@@ -37,6 +37,7 @@ import java.util.UUID;
  * @param expiresAt 过期时间
  * @param lastErrorCode 最后错误码
  * @param reply 设备回复
+ * @param cancelable 当前是否可取消
  * @param version 状态版本
  */
 public record CommandResponse(
@@ -68,6 +69,7 @@ public record CommandResponse(
         Instant expiresAt,
         String lastErrorCode,
         Map<String, Object> reply,
+        boolean cancelable,
         long version
 ) {
     /**
@@ -85,7 +87,7 @@ public record CommandResponse(
                 command.ttlSeconds(), command.timeoutSeconds(), command.idempotencyKey(),
                 command.createdAt(), command.updatedAt(), command.queuedAt(), command.sentAt(),
                 command.deviceReceivedAt(), command.completedAt(), command.expiresAt(),
-                command.lastErrorCode(), command.reply(), command.version()
+                command.lastErrorCode(), command.reply(), false, command.version()
         );
     }
 }

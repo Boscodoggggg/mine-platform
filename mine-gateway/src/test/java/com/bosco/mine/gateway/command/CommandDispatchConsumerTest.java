@@ -127,6 +127,33 @@ class CommandDispatchConsumerTest {
         verify(channel).basicReject(43L, false);
     }
 
+    @Test
+    void 已过期命令应回报EXPIRED并确认原始消息() throws Exception {
+        CommandDispatchConsumer.Decoder decoder = mock(CommandDispatchConsumer.Decoder.class);
+        CommandDispatchConsumer.DownlinkPublisher downlink = mock(CommandDispatchConsumer.DownlinkPublisher.class);
+        CommandStatusEventPublisher statusPublisher = mock(CommandStatusEventPublisher.class);
+        CommandTimeoutScheduler timeoutScheduler = mock(CommandTimeoutScheduler.class);
+        Channel channel = mock(Channel.class);
+        MessageEnvelope<CommandDispatchPayload> envelope = expiredEnvelope();
+        when(decoder.decode(any())).thenReturn(envelope);
+        CommandDispatchConsumer consumer = new CommandDispatchConsumer(
+                decoder, downlink, statusPublisher, timeoutScheduler, Clock.fixed(NOW, ZoneOffset.UTC)
+        );
+
+        consumer.onMessage(message(45L), channel);
+
+        var status = org.mockito.ArgumentCaptor.forClass(CommandStatusPayload.class);
+        verify(downlink, never()).publish(any());
+        verify(statusPublisher).publish(status.capture(),
+                org.mockito.ArgumentMatchers.eq("trace-command-1"),
+                org.mockito.ArgumentMatchers.eq("mine-site-001"));
+        verify(timeoutScheduler, never()).schedule(any(), any(), any(), any(), any());
+        verify(channel).basicAck(45L, false);
+        assertThat(status.getValue().status()).isEqualTo("EXPIRED");
+        assertThat(status.getValue().occurredAt()).isEqualTo(NOW);
+        assertThat(status.getValue().errorCode()).isEqualTo("COMMAND_TTL_EXPIRED");
+    }
+
     private Message message(long deliveryTag) {
         MessageProperties properties = new MessageProperties();
         properties.setDeliveryTag(deliveryTag);
@@ -160,6 +187,21 @@ class CommandDispatchConsumerTest {
                 new CommandDispatchPayload(
                         commandId, deviceId, "RAW_HEX_AD_HOC", 1, Map.of(), "LOW",
                         300, 30, NOW.plusSeconds(300), "RAW_HEX", "qrsB", false
+                )
+        );
+    }
+
+    private MessageEnvelope<CommandDispatchPayload> expiredEnvelope() {
+        UUID commandId = UUID.fromString("019f64e5-a000-7000-8000-000000000010");
+        UUID deviceId = UUID.fromString("019f64e5-a000-7000-8000-000000000020");
+        return new MessageEnvelope<>(
+                UUID.fromString("019f64e5-a000-7000-8000-000000000001"),
+                MessageType.of("command.dispatch.requested"), 1,
+                NOW.minusSeconds(301), NOW.minusSeconds(300), "mine-server",
+                "trace-command-1", commandId.toString(), deviceId.toString(), "mine-site-001",
+                new CommandDispatchPayload(
+                        commandId, deviceId, "QUERY_STATUS", 1, Map.of(), "LOW",
+                        300, 30, NOW.minusSeconds(1)
                 )
         );
     }

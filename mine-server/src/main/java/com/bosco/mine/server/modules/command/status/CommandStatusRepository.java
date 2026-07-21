@@ -58,6 +58,16 @@ public class CommandStatusRepository {
     }
 
     /**
+     * 将已超过队列 TTL 的历史排队命令修复为过期状态。
+     *
+     * @param occurredAt 本次恢复时刻
+     * @return 修复的命令数量
+     */
+    public int expireQueuedCommands(Instant occurredAt) {
+        return mapper.expireQueuedCommands(occurredAt);
+    }
+
+    /**
      * 命令当前状态快照。
      *
      * @param deviceId 设备标识

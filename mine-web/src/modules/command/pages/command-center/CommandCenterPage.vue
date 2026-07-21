@@ -20,6 +20,8 @@ import {
   NInput,
   NInputNumber,
   NModal,
+  NRadioButton,
+  NRadioGroup,
   NSelect,
   NSpace,
   NSwitch,
@@ -58,7 +60,8 @@ const total = ref(0);
 const modalVisible = ref(false);
 const drawerVisible = ref(false);
 const cancelModalVisible = ref(false);
-const rawModalVisible = ref(false);
+const dispatchMode = ref<'template' | 'rawHex'>('template');
+const targetDeviceId = ref<string | null>(null);
 const cancellingCommand = ref<Command | null>(null);
 const cancelReason = ref('');
 const selectedCommand = ref<Command | null>(null);
@@ -78,7 +81,6 @@ const query = reactive<{
   size: 20
 });
 const commandForm = reactive({
-  deviceId: null as string | null,
   templateKey: null as string | null,
   parameters: {} as Record<string, unknown>,
   reason: '',
@@ -87,7 +89,6 @@ const commandForm = reactive({
   timeoutSeconds: 30
 });
 const rawForm = reactive({
-  deviceId: null as string | null,
   rawPayloadHex: '',
   reason: '',
   ttlSeconds: 300
@@ -105,6 +106,17 @@ const commandStatuses: CommandStatus[] = [
   'TIMEOUT',
   'CANCELLED'
 ];
+
+const dispatchModeOptions = computed(() => {
+  const options: Array<{ label: string; value: 'template' | 'rawHex' }> = [];
+  if (can('command:instance:create') && can('command:template:view')) {
+    options.push({ label: t('mine.commands.mode.template'), value: 'template' });
+  }
+  if (can('command:raw:execute')) {
+    options.push({ label: t('mine.commands.mode.rawHex'), value: 'rawHex' });
+  }
+  return options;
+});
 
 const deviceMap = computed(() => new Map(devices.value.map(device => [device.id, device])));
 const productMap = computed(() => new Map(products.value.map(product => [product.id, product])));
@@ -196,7 +208,7 @@ const columns = computed<DataTableColumns<Command>>(() => [
         h(NButton, { text: true, type: 'primary', onClick: () => showDetails(row) }, () =>
           t('mine.commands.action.detail')
         ),
-        row.status === 'QUEUED' && can('command:instance:cancel')
+        row.cancelable && can('command:instance:cancel')
           ? h(NButton, { text: true, type: 'error', onClick: () => openCancel(row) }, () =>
               t('mine.commands.action.cancel')
             )
@@ -268,8 +280,9 @@ function resetQuery() {
 function openCreate() {
   const deviceId = targets.value[0]?.id || null;
   const template = templates.value[0];
+  dispatchMode.value = dispatchModeOptions.value[0]?.value || 'template';
+  targetDeviceId.value = deviceId;
   Object.assign(commandForm, {
-    deviceId,
     templateKey: template?.key || null,
     parameters: {},
     reason: '',
@@ -277,7 +290,13 @@ function openCreate() {
     ttlSeconds: template?.defaultTtlSeconds || 300,
     timeoutSeconds: template?.defaultTimeoutSeconds || 30
   });
+  Object.assign(rawForm, {
+    rawPayloadHex: '',
+    reason: '',
+    ttlSeconds: 300
+  });
   currentIdempotencyKey.value = createIdempotencyKey();
+  rawIdempotencyKey.value = createIdempotencyKey();
   modalVisible.value = true;
   if (deviceId) void loadTemplates(deviceId);
 }
@@ -299,7 +318,7 @@ function syncTemplateDefaults(templateKey: string) {
 }
 
 function requestSubmit() {
-  if (!commandForm.deviceId || !commandForm.templateKey) {
+  if (!targetDeviceId.value || !commandForm.templateKey) {
     window.$message?.warning(t('mine.commands.validation.required'));
     return;
   }
@@ -315,7 +334,7 @@ function requestSubmit() {
   window.$dialog?.warning({
     title: t('mine.commands.confirm.title'),
     content: t('mine.commands.confirm.content', {
-      device: deviceMap.value.get(commandForm.deviceId)?.name || commandForm.deviceId,
+      device: deviceMap.value.get(targetDeviceId.value)?.name || targetDeviceId.value,
       template: templateLabel(commandForm.templateKey)
     }),
     positiveText: t('mine.commands.action.confirmSend'),
@@ -325,7 +344,8 @@ function requestSubmit() {
 }
 
 async function submitCommand() {
-  const { deviceId, templateKey } = commandForm;
+  const { templateKey } = commandForm;
+  const deviceId = targetDeviceId.value;
   if (!deviceId || !templateKey) return;
   saving.value = true;
   try {
@@ -351,26 +371,15 @@ async function submitCommand() {
   }
 }
 
-function openRawCreate() {
-  Object.assign(rawForm, {
-    deviceId: targets.value[0]?.id || null,
-    rawPayloadHex: '',
-    reason: '',
-    ttlSeconds: 300
-  });
-  rawIdempotencyKey.value = createIdempotencyKey();
-  rawModalVisible.value = true;
-}
-
 function requestRawSubmit() {
-  if (!rawForm.deviceId || !rawForm.reason.trim() || !rawHexValid.value || rawByteLength.value > 4096) {
+  if (!targetDeviceId.value || !rawForm.reason.trim() || !rawHexValid.value || rawByteLength.value > 4096) {
     window.$message?.warning(t('mine.commands.raw.validation'));
     return;
   }
   window.$dialog?.warning({
     title: t('mine.commands.raw.confirmTitle'),
     content: t('mine.commands.raw.confirmContent', {
-      device: deviceMap.value.get(rawForm.deviceId)?.name || rawForm.deviceId,
+      device: deviceMap.value.get(targetDeviceId.value)?.name || targetDeviceId.value,
       count: rawByteLength.value,
       payload: normalizedRawHex.value
     }),
@@ -381,12 +390,13 @@ function requestRawSubmit() {
 }
 
 async function submitRawCommand() {
-  if (!rawForm.deviceId) return;
+  const deviceId = targetDeviceId.value;
+  if (!deviceId) return;
   saving.value = true;
   try {
     await createRawHexCommand(
       {
-        deviceId: rawForm.deviceId,
+        deviceId,
         rawPayloadHex: rawForm.rawPayloadHex,
         reason: rawForm.reason.trim(),
         ttlSeconds: rawForm.ttlSeconds
@@ -394,7 +404,7 @@ async function submitRawCommand() {
       rawIdempotencyKey.value
     );
     window.$message?.success(t('mine.commands.raw.created'));
-    rawModalVisible.value = false;
+    modalVisible.value = false;
     await loadCommands();
   } catch (error) {
     showError(error);
@@ -518,23 +528,28 @@ function createIdempotencyKey() {
 }
 
 function showError(error: unknown) {
-  const message =
-    error instanceof ApiError && error.traceId
-      ? `${t('mine.common.requestFailed')} ${t('mine.common.traceId', { traceId: error.traceId })}`
-      : t('mine.common.requestFailed');
-  window.$message?.error(message);
+  if (error instanceof ApiError) {
+    const message = error.traceId
+      ? `${error.message} ${t('mine.common.traceId', { traceId: error.traceId })}`
+      : error.message;
+    window.$message?.error(message);
+    return;
+  }
+  window.$message?.error(t('mine.common.requestFailed'));
 }
 
 defineExpose({
   commandForm,
   rawForm,
+  dispatchMode,
+  targetDeviceId,
   openCreate,
-  openRawCreate,
   requestSubmit,
   requestRawSubmit,
   submitCommand,
   submitRawCommand,
   showDetails,
+  loadCommands,
   currentIdempotencyKey,
   rawIdempotencyKey
 });
@@ -580,15 +595,12 @@ defineExpose({
         <template #header-extra>
           <NSpace data-list-toolbar>
             <ListActionButton
-              v-if="can('command:instance:create') && can('command:template:view')"
+              v-if="dispatchModeOptions.length"
               kind="create"
               @click="openCreate"
             >
               {{ t('mine.commands.action.create') }}
             </ListActionButton>
-            <NButton v-if="can('command:raw:execute')" type="warning" secondary @click="openRawCreate">
-              {{ t('mine.commands.action.rawHex') }}
-            </NButton>
             <ListActionButton kind="refresh" :loading="loading" @click="loadCommands">
               {{ t('common.refresh') }}
             </ListActionButton>
@@ -615,11 +627,19 @@ defineExpose({
       </NCard>
     </NSpace>
 
-    <NModal v-model:show="modalVisible" preset="card" :title="t('mine.commands.modal.create')" class="max-w-92vw w-150">
-      <NForm label-placement="top">
+    <NModal v-model:show="modalVisible" preset="card" :title="t('mine.commands.modal.create')" class="max-w-92vw w-160">
+      <NSpace vertical :size="16">
+        <NFormItem :label="t('mine.commands.field.dispatchMode')" required>
+          <NRadioGroup v-model:value="dispatchMode">
+            <NRadioButton v-for="option in dispatchModeOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </NRadioButton>
+          </NRadioGroup>
+        </NFormItem>
+
         <NFormItem :label="t('mine.commands.field.device')" required>
           <NSelect
-            v-model:value="commandForm.deviceId"
+            v-model:value="targetDeviceId"
             filterable
             remote
             :options="deviceOptions"
@@ -628,164 +648,151 @@ defineExpose({
             @update:value="value => value && syncDeviceTemplates(value)"
           />
         </NFormItem>
-        <NAlert v-if="selectedTemplate?.payloadFormat === 'RAW_HEX'" type="warning" :show-icon="true">
-          {{ t('mine.commands.raw.fixedTemplateNotice') }}
-        </NAlert>
-        <NFormItem :label="t('mine.commands.field.template')" required>
-          <NSelect
-            v-model:value="commandForm.templateKey"
-            :options="templateOptions"
-            :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.commands.field.template') })"
-            @update:value="syncTemplateDefaults"
-          />
-        </NFormItem>
-        <NFormItem
-          v-for="field in parameterFields"
-          :key="field.key"
-          :label="getParameterLabel(field)"
-          :required="field.required"
-        >
-          <NSelect
-            v-if="field.enumValues.length"
-            :value="getSelectParameter(field.key)"
-            :options="enumOptions(field.enumValues)"
-            clearable
-            :placeholder="t('mine.common.selectPlaceholder', { field: getParameterLabel(field) })"
-            @update:value="value => setParameter(field.key, value)"
-          />
-          <NSwitch
-            v-else-if="field.type === 'boolean'"
-            :value="getBooleanParameter(field.key)"
-            @update:value="value => setParameter(field.key, value)"
-          />
-          <NInputNumber
-            v-else-if="field.type === 'integer' || field.type === 'number'"
-            :value="getNumberParameter(field.key)"
-            :min="field.minimum"
-            :max="field.maximum"
-            :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field) })"
-            @update:value="value => setParameter(field.key, value)"
-          />
-          <NInput
-            v-else
-            :value="getStringParameter(field.key)"
-            :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field) })"
-            @update:value="value => setParameter(field.key, value)"
-          />
-        </NFormItem>
-        <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
-          <NGi>
-            <NFormItem :label="t('mine.commands.field.reason')" :required="selectedTemplate?.requiresReason">
+
+        <NForm v-if="dispatchMode === 'template'" label-placement="top">
+          <NAlert v-if="selectedTemplate?.payloadFormat === 'RAW_HEX'" type="warning" :show-icon="true">
+            {{ t('mine.commands.raw.fixedTemplateNotice') }}
+          </NAlert>
+          <NFormItem :label="t('mine.commands.field.template')" required>
+            <NSelect
+              v-model:value="commandForm.templateKey"
+              :options="templateOptions"
+              :placeholder="t('mine.common.selectPlaceholder', { field: t('mine.commands.field.template') })"
+              @update:value="syncTemplateDefaults"
+            />
+          </NFormItem>
+          <NFormItem
+            v-for="field in parameterFields"
+            :key="field.key"
+            :label="getParameterLabel(field)"
+            :required="field.required"
+          >
+            <NSelect
+              v-if="field.enumValues.length"
+              :value="getSelectParameter(field.key)"
+              :options="enumOptions(field.enumValues)"
+              clearable
+              :placeholder="t('mine.common.selectPlaceholder', { field: getParameterLabel(field) })"
+              @update:value="value => setParameter(field.key, value)"
+            />
+            <NSwitch
+              v-else-if="field.type === 'boolean'"
+              :value="getBooleanParameter(field.key)"
+              @update:value="value => setParameter(field.key, value)"
+            />
+            <NInputNumber
+              v-else-if="field.type === 'integer' || field.type === 'number'"
+              :value="getNumberParameter(field.key)"
+              :min="field.minimum"
+              :max="field.maximum"
+              :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field) })"
+              @update:value="value => setParameter(field.key, value)"
+            />
+            <NInput
+              v-else
+              :value="getStringParameter(field.key)"
+              :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field) })"
+              @update:value="value => setParameter(field.key, value)"
+            />
+          </NFormItem>
+          <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
+            <NGi>
+              <NFormItem :label="t('mine.commands.field.reason')" :required="selectedTemplate?.requiresReason">
+                <NInput
+                  v-model:value="commandForm.reason"
+                  type="textarea"
+                  :maxlength="1000"
+                  show-count
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.reason') })"
+                />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem :label="t('mine.commands.field.workOrderNo')">
+                <NInput
+                  v-model:value="commandForm.workOrderNo"
+                  :maxlength="128"
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.workOrderNo') })"
+                />
+              </NFormItem>
+            </NGi>
+          </NGrid>
+          <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
+            <NGi>
+              <NFormItem :label="t('mine.commands.field.ttl')">
+                <NInputNumber
+                  v-model:value="commandForm.ttlSeconds"
+                  :min="1"
+                  :max="86400"
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.ttl') })"
+                />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem :label="t('mine.commands.field.timeout')">
+                <NInputNumber
+                  v-model:value="commandForm.timeoutSeconds"
+                  :min="1"
+                  :max="86400"
+                  :disabled="selectedTemplate?.replyExpected === false"
+                  :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.timeout') })"
+                />
+              </NFormItem>
+            </NGi>
+          </NGrid>
+        </NForm>
+
+        <template v-else>
+          <NAlert type="warning" :title="t('mine.commands.raw.noticeTitle')">
+            {{ t('mine.commands.raw.noticeContent') }}
+          </NAlert>
+          <NForm label-placement="top">
+            <NFormItem :label="t('mine.commands.raw.payload')" required>
               <NInput
-                v-model:value="commandForm.reason"
+                v-model:value="rawForm.rawPayloadHex"
+                type="textarea"
+                :autosize="{ minRows: 5, maxRows: 12 }"
+                :maxlength="32768"
+                :placeholder="t('mine.commands.raw.payloadPlaceholder')"
+              />
+              <template #feedback>
+                <NSpace vertical :size="0">
+                  <NText>{{ t('mine.commands.raw.byteCount', { count: rawByteLength }) }}</NText>
+                  <NText depth="3">
+                    {{ t('mine.commands.raw.normalizedPayload', { payload: normalizedRawHex || t('mine.common.empty') }) }}
+                  </NText>
+                </NSpace>
+              </template>
+            </NFormItem>
+            <NFormItem :label="t('mine.commands.field.reason')" required>
+              <NInput
+                v-model:value="rawForm.reason"
                 type="textarea"
                 :maxlength="1000"
                 show-count
-                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.reason') })"
+                :placeholder="t('mine.commands.raw.reasonPlaceholder')"
               />
             </NFormItem>
-          </NGi>
-          <NGi>
-            <NFormItem :label="t('mine.commands.field.workOrderNo')">
-              <NInput
-                v-model:value="commandForm.workOrderNo"
-                :maxlength="128"
-                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.workOrderNo') })"
-              />
-            </NFormItem>
-          </NGi>
-        </NGrid>
-        <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
-          <NGi>
             <NFormItem :label="t('mine.commands.field.ttl')">
               <NInputNumber
-                v-model:value="commandForm.ttlSeconds"
+                v-model:value="rawForm.ttlSeconds"
                 :min="1"
                 :max="86400"
                 :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.ttl') })"
               />
             </NFormItem>
-          </NGi>
-          <NGi>
-            <NFormItem :label="t('mine.commands.field.timeout')">
-              <NInputNumber
-                v-model:value="commandForm.timeoutSeconds"
-                :min="1"
-                :max="86400"
-                :disabled="selectedTemplate?.replyExpected === false"
-                :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.timeout') })"
-              />
-            </NFormItem>
-          </NGi>
-        </NGrid>
-      </NForm>
-      <template #footer>
-        <NSpace justify="end">
-          <NButton @click="modalVisible = false">{{ t('mine.common.cancel') }}</NButton>
-          <NButton type="primary" :loading="saving" @click="requestSubmit">
-            {{ t('mine.commands.action.send') }}
-          </NButton>
-        </NSpace>
-      </template>
-    </NModal>
-
-    <NModal v-model:show="rawModalVisible" preset="card" :title="t('mine.commands.raw.title')" class="max-w-92vw w-160">
-      <NSpace vertical :size="16">
-        <NAlert type="warning" :title="t('mine.commands.raw.noticeTitle')">
-          {{ t('mine.commands.raw.noticeContent') }}
-        </NAlert>
-        <NForm label-placement="top">
-          <NFormItem :label="t('mine.commands.field.device')" required>
-            <NSelect
-              v-model:value="rawForm.deviceId"
-              filterable
-              remote
-              :options="deviceOptions"
-              :placeholder="t('mine.commands.placeholder.device')"
-              @search="loadTargets"
-            />
-          </NFormItem>
-          <NFormItem :label="t('mine.commands.raw.payload')" required>
-            <NInput
-              v-model:value="rawForm.rawPayloadHex"
-              type="textarea"
-              :autosize="{ minRows: 5, maxRows: 12 }"
-              :maxlength="32768"
-              :placeholder="t('mine.commands.raw.payloadPlaceholder')"
-            />
-            <template #feedback>
-              <NSpace vertical :size="0">
-                <NText>{{ t('mine.commands.raw.byteCount', { count: rawByteLength }) }}</NText>
-                <NText depth="3">
-                  {{ t('mine.commands.raw.normalizedPayload', { payload: normalizedRawHex || t('mine.common.empty') }) }}
-                </NText>
-              </NSpace>
-            </template>
-          </NFormItem>
-          <NFormItem :label="t('mine.commands.field.reason')" required>
-            <NInput
-              v-model:value="rawForm.reason"
-              type="textarea"
-              :maxlength="1000"
-              show-count
-              :placeholder="t('mine.commands.raw.reasonPlaceholder')"
-            />
-          </NFormItem>
-          <NFormItem :label="t('mine.commands.field.ttl')">
-            <NInputNumber
-              v-model:value="rawForm.ttlSeconds"
-              :min="1"
-              :max="86400"
-              :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.ttl') })"
-            />
-          </NFormItem>
-        </NForm>
+          </NForm>
+        </template>
       </NSpace>
       <template #footer>
         <NSpace justify="end">
-          <NButton @click="rawModalVisible = false">{{ t('mine.common.cancel') }}</NButton>
-          <NButton type="warning" :loading="saving" @click="requestRawSubmit">
-            {{ t('mine.commands.raw.reviewAction') }}
+          <NButton @click="modalVisible = false">{{ t('mine.common.cancel') }}</NButton>
+          <NButton
+            :type="dispatchMode === 'rawHex' ? 'warning' : 'primary'"
+            :loading="saving"
+            @click="dispatchMode === 'rawHex' ? requestRawSubmit() : requestSubmit()"
+          >
+            {{ dispatchMode === 'rawHex' ? t('mine.commands.raw.reviewAction') : t('mine.commands.action.send') }}
           </NButton>
         </NSpace>
       </template>

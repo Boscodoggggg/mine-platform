@@ -37,6 +37,7 @@ import java.util.UUID;
  * @param expiresAt 过期时间
  * @param lastErrorCode 最后错误码
  * @param replyJson 设备回复 JSON
+ * @param cancelable 当前是否仍可在中继领取前取消
  * @param version 乐观锁版本
  */
 public record StoredCommand(
@@ -71,6 +72,7 @@ public record StoredCommand(
         Instant expiresAt,
         String lastErrorCode,
         String replyJson,
+        boolean cancelable,
         long version
 ) {
 }

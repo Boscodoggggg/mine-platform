@@ -2417,11 +2417,13 @@ const local: App.I18n.Schema = {
         cancel: '取消',
         confirmCancel: '确认取消'
       },
+      mode: { template: '命令模板', rawHex: '临时十六进制' },
       modal: { create: '下发设备命令', cancel: '取消待发送命令' },
       field: {
         id: '命令编号',
         product: '所属产品',
         device: '目标设备',
+        dispatchMode: '下发方式',
         template: '命令模板',
         status: '当前状态',
         ttl: '排队存活时间（秒）',

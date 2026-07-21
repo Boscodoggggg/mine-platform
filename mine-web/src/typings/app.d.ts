@@ -2040,11 +2040,13 @@ declare namespace App {
           empty: string;
           column: Record<'product' | 'device' | 'template' | 'status' | 'createdAt', string>;
           action: Record<'create' | 'rawHex' | 'send' | 'confirmSend' | 'detail' | 'cancel' | 'confirmCancel', string>;
+          mode: Record<'template' | 'rawHex', string>;
           modal: Record<'create' | 'cancel', string>;
           field: Record<
             | 'id'
             | 'product'
             | 'device'
+            | 'dispatchMode'
             | 'template'
             | 'status'
             | 'ttl'

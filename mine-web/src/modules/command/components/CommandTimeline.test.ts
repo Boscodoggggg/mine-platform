@@ -31,6 +31,7 @@ describe('CommandTimeline', () => {
           expiresAt: '2026-07-15T08:05:00Z',
           lastErrorCode: null,
           reply: null,
+          cancelable: false,
           version: 2
         }
       },
@@ -73,6 +74,7 @@ describe('CommandTimeline', () => {
           expiresAt: '2026-07-15T08:05:00Z',
           lastErrorCode: status === 'TIMEOUT' ? 'DEVICE_ACK_TIMEOUT' : null,
           reply: status === 'SUCCEEDED' ? { online: true } : null,
+          cancelable: false,
           version: 4
         }
       },

@@ -1,7 +1,9 @@
 package com.bosco.mine.server.modules.command.outbox;
 
 import com.bosco.mine.messaging.topology.MineTopology;
+import com.bosco.mine.server.modules.command.status.CommandExpiryRecovery;
 import com.bosco.mine.server.modules.command.status.CommandStatusConsumer;
+import com.bosco.mine.server.modules.command.status.CommandStatusRepository;
 import com.bosco.mine.server.modules.command.status.CommandStatusService;
 import org.springframework.amqp.core.AcknowledgeMode;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
@@ -17,6 +19,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,6 +31,17 @@ import java.util.concurrent.Executors;
 @EnableConfigurationProperties(CommandOutboxProperties.class)
 @ConditionalOnProperty(prefix = "mine.command-outbox", name = "enabled", havingValue = "true")
 public class CommandOutboxConfiguration {
+
+    /**
+     * 创建启动期命令过期恢复器。
+     *
+     * @param repository 命令状态仓储
+     * @return 命令过期恢复器
+     */
+    @Bean
+    public CommandExpiryRecovery commandExpiryRecovery(CommandStatusRepository repository) {
+        return new CommandExpiryRecovery(repository, Clock.systemUTC());
+    }
 
     /**
      * 创建最小写权限的命令发布连接。

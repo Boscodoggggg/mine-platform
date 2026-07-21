@@ -144,6 +144,13 @@ public interface CommandMapper {
                    device_received_at AS deviceReceivedAt,
                    completed_at AS completedAt, expires_at AS expiresAt,
                    last_error_code AS lastErrorCode, reply::TEXT AS replyJson,
+                   (cmd_instance.status = 'QUEUED' AND EXISTS (
+                       SELECT 1 FROM sys_outbox_event outbox
+                       WHERE outbox.aggregate_type = 'COMMAND'
+                         AND outbox.aggregate_id = cmd_instance.id
+                         AND outbox.event_type = 'command.dispatch.requested'
+                         AND outbox.status IN ('PENDING', 'FAILED')
+                   )) AS cancelable,
                    version
             FROM cmd_instance
             WHERE created_by = #{createdBy}
@@ -175,7 +182,15 @@ public interface CommandMapper {
                    queued_at AS queuedAt, sent_at AS sentAt,
                    device_received_at AS deviceReceivedAt, completed_at AS completedAt,
                    expires_at AS expiresAt, last_error_code AS lastErrorCode,
-                   reply::TEXT AS replyJson, version
+                   reply::TEXT AS replyJson,
+                   (cmd_instance.status = 'QUEUED' AND EXISTS (
+                       SELECT 1 FROM sys_outbox_event outbox
+                       WHERE outbox.aggregate_type = 'COMMAND'
+                         AND outbox.aggregate_id = cmd_instance.id
+                         AND outbox.event_type = 'command.dispatch.requested'
+                         AND outbox.status IN ('PENDING', 'FAILED')
+                   )) AS cancelable,
+                   version
             FROM cmd_instance WHERE id = #{commandId}
             """)
     Optional<StoredCommand> findById(@Param("commandId") UUID commandId);
@@ -201,7 +216,15 @@ public interface CommandMapper {
                    created_at AS createdAt, updated_at AS updatedAt, queued_at AS queuedAt,
                    sent_at AS sentAt, device_received_at AS deviceReceivedAt,
                    completed_at AS completedAt, expires_at AS expiresAt,
-                   last_error_code AS lastErrorCode, reply::TEXT AS replyJson, version
+                   last_error_code AS lastErrorCode, reply::TEXT AS replyJson,
+                   (cmd_instance.status = 'QUEUED' AND EXISTS (
+                       SELECT 1 FROM sys_outbox_event outbox
+                       WHERE outbox.aggregate_type = 'COMMAND'
+                         AND outbox.aggregate_id = cmd_instance.id
+                         AND outbox.event_type = 'command.dispatch.requested'
+                         AND outbox.status IN ('PENDING', 'FAILED')
+                   )) AS cancelable,
+                   version
             FROM cmd_instance WHERE id = #{commandId} FOR UPDATE
             """)
     Optional<StoredCommand> lockById(@Param("commandId") UUID commandId);
@@ -270,7 +293,15 @@ public interface CommandMapper {
                    queued_at AS queuedAt, sent_at AS sentAt,
                    device_received_at AS deviceReceivedAt, completed_at AS completedAt,
                    expires_at AS expiresAt, last_error_code AS lastErrorCode,
-                   reply::TEXT AS replyJson, version
+                   reply::TEXT AS replyJson,
+                   (cmd_instance.status = 'QUEUED' AND EXISTS (
+                       SELECT 1 FROM sys_outbox_event outbox
+                       WHERE outbox.aggregate_type = 'COMMAND'
+                         AND outbox.aggregate_id = cmd_instance.id
+                         AND outbox.event_type = 'command.dispatch.requested'
+                         AND outbox.status IN ('PENDING', 'FAILED')
+                   )) AS cancelable,
+                   version
             FROM cmd_instance
             WHERE 1 = 1
             <if test="deviceId != null">AND device_id = #{deviceId}</if>

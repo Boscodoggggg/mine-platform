@@ -181,7 +181,7 @@ class CommandRawHexServiceTest {
                 "AD_HOC_HEX", "RAW_HEX", "AABB01",
                 "c5f30c9496ad85fbb4c29dec037731a05aeb7d0ce2cde2916005bdd0f7156b1f",
                 false, "LOW", "QUEUED", 300, 1, command.idempotencyKey(), null, null,
-                USER_ID, now, now, now, null, null, null, command.expiresAt(), null, null, 1
+                USER_ID, now, now, now, null, null, null, command.expiresAt(), null, null, false, 1
         );
     }
 }

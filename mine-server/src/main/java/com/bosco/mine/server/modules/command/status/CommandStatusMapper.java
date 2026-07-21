@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -49,4 +50,14 @@ public interface CommandStatusMapper {
     int update(
             @Param("commandId") UUID commandId,
             @Param("update") CommandStatusRepository.CommandStateUpdate update);
+
+    /** 将服务停机期间遗留且已超过 TTL 的排队命令批量修复为过期。 */
+    @Update("""
+            UPDATE cmd_instance
+            SET status = 'EXPIRED', updated_at = #{occurredAt},
+                completed_at = expires_at, reply = COALESCE(reply, '{}'::JSONB),
+                last_error_code = 'COMMAND_TTL_EXPIRED', version = version + 1
+            WHERE status = 'QUEUED' AND expires_at <= #{occurredAt}
+            """)
+    int expireQueuedCommands(@Param("occurredAt") Instant occurredAt);
 }

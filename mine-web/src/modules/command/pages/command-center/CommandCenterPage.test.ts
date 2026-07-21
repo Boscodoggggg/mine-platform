@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NButton } from 'naive-ui';
+import { ApiError } from '@/api/client';
 import { i18n, setLocale } from '@/locales';
 import CommandCenterPage from './CommandCenterPage.vue';
 
@@ -18,7 +19,14 @@ const registryApi = vi.hoisted(() => ({
   getProducts: vi.fn()
 }));
 const authState = vi.hoisted(() => ({
-  userInfo: { buttons: ['command:instance:create', 'command:template:view', 'command:raw:execute'] as string[] }
+  userInfo: {
+    buttons: [
+      'command:instance:create',
+      'command:template:view',
+      'command:raw:execute',
+      'command:instance:cancel'
+    ] as string[]
+  }
 }));
 
 vi.mock('@/modules/command/api/command', () => api);
@@ -106,18 +114,92 @@ describe('CommandCenterPage', () => {
     expect(filterButtons.every(button => button.find('.n-button__icon').exists())).toBe(true);
   });
 
+  it('临时十六进制应合并到统一的下发命令入口', async () => {
+    const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+
+    const toolbar = wrapper.get('[data-list-toolbar]');
+    expect(toolbar.text()).toContain('下发命令');
+    expect(toolbar.text()).not.toContain('临时十六进制');
+
+    const page = wrapper.vm as unknown as { openCreate: () => void };
+    page.openCreate();
+    await flushPromises();
+    expect(document.body.textContent).toContain('下发方式');
+    expect(document.body.textContent).toContain('临时十六进制');
+  });
+
+  it('切换下发方式时应始终使用同一个目标设备', async () => {
+    api.getCommandTargets.mockResolvedValue({
+      items: [target(), { id: 'device-2', deviceCode: 'truck-002', name: '二号运输车' }],
+      page: 1,
+      size: 100,
+      total: 2
+    });
+    const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      targetDeviceId: string | null;
+      rawForm: Record<string, string | number>;
+      dispatchMode: 'template' | 'rawHex';
+      openCreate: () => void;
+      submitRawCommand: () => Promise<void>;
+    };
+
+    page.openCreate();
+    page.targetDeviceId = 'device-2';
+    page.dispatchMode = 'rawHex';
+    Object.assign(page.rawForm, {
+      rawPayloadHex: 'AA BB 01',
+      reason: '现场协议联调',
+      ttlSeconds: 300
+    });
+    await page.submitRawCommand();
+
+    expect(api.createRawHexCommand).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceId: 'device-2' }),
+      expect.any(String)
+    );
+  });
+
+  it('只有后端判定可取消的排队命令才应显示取消入口', async () => {
+    api.getCommands.mockResolvedValue({
+      items: [{ ...command('QUEUED'), cancelable: false }],
+      page: 1,
+      size: 20,
+      total: 1
+    });
+    const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+
+    expect(wrapper.get('[data-list-card]').text()).not.toContain('取消');
+
+    api.getCommands.mockResolvedValue({
+      items: [{ ...command('QUEUED'), cancelable: true }],
+      page: 1,
+      size: 20,
+      total: 1
+    });
+    await (wrapper.vm as unknown as { loadCommands: () => Promise<void> }).loadCommands();
+    await flushPromises();
+
+    expect(wrapper.get('[data-list-card]').text()).toContain('取消');
+  });
+
   it('下发前应显示二次确认且复用同一个幂等键提交', async () => {
     const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
     await flushPromises();
     const page = wrapper.vm as unknown as {
       commandForm: Record<string, string | number>;
+      targetDeviceId: string | null;
       openCreate: () => void;
       requestSubmit: () => void;
       submitCommand: () => Promise<void>;
       currentIdempotencyKey: string;
     };
     page.openCreate();
-    Object.assign(page.commandForm, { deviceId: 'device-1', templateKey: 'QUERY_STATUS' });
+    page.targetDeviceId = 'device-1';
+    Object.assign(page.commandForm, { templateKey: 'QUERY_STATUS' });
     page.requestSubmit();
     expect(window.$dialog?.warning).toHaveBeenCalled();
     const key = page.currentIdempotencyKey;
@@ -161,14 +243,17 @@ describe('CommandCenterPage', () => {
     await flushPromises();
     const page = wrapper.vm as unknown as {
       rawForm: Record<string, string | number>;
-      openRawCreate: () => void;
+      targetDeviceId: string | null;
+      dispatchMode: 'template' | 'rawHex';
+      openCreate: () => void;
       requestRawSubmit: () => void;
       submitRawCommand: () => Promise<void>;
       rawIdempotencyKey: string;
     };
-    page.openRawCreate();
+    page.openCreate();
+    page.dispatchMode = 'rawHex';
+    page.targetDeviceId = 'device-1';
     Object.assign(page.rawForm, {
-      deviceId: 'device-1',
       rawPayloadHex: '0xAA BB 01',
       reason: '现场协议联调',
       ttlSeconds: 300
@@ -188,6 +273,30 @@ describe('CommandCenterPage', () => {
       key
     );
     expect(api.createRawHexCommand).toHaveBeenNthCalledWith(2, expect.any(Object), key);
+  });
+
+  it('接口返回业务错误时应显示真实原因和追踪号', async () => {
+    api.createCommand.mockRejectedValue(
+      new ApiError({ message: '命令已被中继领取，无法取消', traceId: 'trace-command-conflict' }, 409)
+    );
+    const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      targetDeviceId: string | null;
+      commandForm: Record<string, string | number>;
+      openCreate: () => void;
+      submitCommand: () => Promise<void>;
+    };
+    page.openCreate();
+    page.targetDeviceId = 'device-1';
+    page.commandForm.templateKey = 'QUERY_STATUS';
+
+    await page.submitCommand();
+
+    expect(window.$message?.error).toHaveBeenCalledWith(
+      expect.stringContaining('命令已被中继领取，无法取消')
+    );
+    expect(window.$message?.error).toHaveBeenCalledWith(expect.stringContaining('trace-command-conflict'));
   });
 });
 
@@ -247,6 +356,7 @@ function command(status: string) {
     expiresAt: '2026-07-15T08:05:00Z',
     lastErrorCode: null,
     reply: { online: true },
+    cancelable: false,
     version: 4
   };
 }

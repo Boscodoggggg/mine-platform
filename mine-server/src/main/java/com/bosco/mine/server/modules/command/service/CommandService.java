@@ -605,7 +605,7 @@ public class CommandService {
                 command.timeoutSeconds(), command.idempotencyKey(), command.createdAt(),
                 command.updatedAt(), command.queuedAt(), command.sentAt(), command.deviceReceivedAt(),
                 command.completedAt(), command.expiresAt(), command.lastErrorCode(), command.reply(),
-                command.version()
+                stored.cancelable(), command.version()
         );
     }
 

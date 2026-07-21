@@ -12,6 +12,7 @@ import com.bosco.mine.server.modules.command.service.CommandService;
 import com.bosco.mine.server.modules.command.service.CommandQueryService;
 import com.bosco.mine.messaging.command.CommandStatusPayload;
 import com.bosco.mine.server.modules.command.status.CommandStatusService;
+import com.bosco.mine.server.modules.command.status.CommandStatusRepository;
 import com.bosco.mine.server.modules.command.template.CommandTemplateRequest;
 import com.bosco.mine.server.modules.command.template.CommandTemplateService;
 import org.junit.jupiter.api.BeforeEach;
@@ -87,6 +88,9 @@ class CommandOutboxIT {
 
     @Autowired
     private CommandStatusService commandStatusService;
+
+    @Autowired
+    private CommandStatusRepository commandStatusRepository;
 
     @Autowired
     private CommandQueryService commandQueryService;
@@ -316,13 +320,46 @@ class CommandOutboxIT {
 
         assertThat(detail.id()).isEqualTo(command.id());
         assertThat(detail.parameters()).isEmpty();
+        assertThat(detail.cancelable()).isTrue();
         assertThat(page.total()).isOne();
         assertThat(page.items()).extracting(CommandResponse::id).containsExactly(command.id());
+        assertThat(page.items()).extracting(CommandResponse::cancelable).containsExactly(true);
+
+        jdbcTemplate.update(
+                "UPDATE sys_outbox_event SET status = 'PUBLISHED', published_at = CURRENT_TIMESTAMP "
+                        + "WHERE aggregate_id = ?",
+                command.id()
+        );
+        assertThat(commandQueryService.findById(command.id()).cancelable()).isFalse();
+        assertThat(commandQueryService.findCommands(DEVICE_ID, "QUEUED", 1, 20).items())
+                .extracting(CommandResponse::cancelable)
+                .containsExactly(false);
         assertThat(commandQueryService.findCommands(DEVICE_ID, "SUCCEEDED", 1, 20).items()).isEmpty();
         assertThat(targets.items()).singleElement().satisfies(target -> {
             assertThat(target.id()).isEqualTo(DEVICE_ID);
             assertThat(target.deviceCode()).isEqualTo("command-device-001");
         });
+    }
+
+    @Test
+    void 启动恢复应在真实数据库中把超过TTL的排队命令置为过期() {
+        CommandInstance command = createCommand("request-expiry-recovery");
+        Instant expiresAt = command.expiresAt();
+        Instant recoveredAt = expiresAt.plusSeconds(30);
+
+        assertThat(commandStatusRepository.expireQueuedCommands(recoveredAt)).isOne();
+
+        Map<String, Object> row = jdbcTemplate.queryForMap("""
+                SELECT status, updated_at, completed_at, last_error_code, version
+                FROM cmd_instance
+                WHERE id = ?
+                """, command.id());
+        assertThat(row.get("status")).isEqualTo("EXPIRED");
+        assertThat(((java.sql.Timestamp) row.get("updated_at")).toInstant()).isEqualTo(recoveredAt);
+        assertThat(((java.sql.Timestamp) row.get("completed_at")).toInstant()).isEqualTo(expiresAt);
+        assertThat(row.get("last_error_code")).isEqualTo("COMMAND_TTL_EXPIRED");
+        assertThat(((Number) row.get("version")).longValue()).isEqualTo(2L);
+        assertThat(commandQueryService.findById(command.id()).cancelable()).isFalse();
     }
 
     @Test

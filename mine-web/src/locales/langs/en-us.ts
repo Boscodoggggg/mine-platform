@@ -2553,11 +2553,13 @@ const local: App.I18n.Schema = {
         cancel: 'Cancel',
         confirmCancel: 'Confirm Cancel'
       },
+      mode: { template: 'Command Template', rawHex: 'Ad-hoc Hex' },
       modal: { create: 'Send Device Command', cancel: 'Cancel Queued Command' },
       field: {
         id: 'Command ID',
         product: 'Product',
         device: 'Target Device',
+        dispatchMode: 'Dispatch Mode',
         template: 'Command Template',
         status: 'Current Status',
         ttl: 'Queue TTL (seconds)',

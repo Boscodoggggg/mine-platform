@@ -5767,6 +5767,8 @@ export interface components {
             reply?: {
                 [key: string]: unknown;
             } | null;
+            /** @description 是否仍可在命令中继领取前取消。 */
+            cancelable: boolean;
             /** Format: int64 */
             version: number;
         };

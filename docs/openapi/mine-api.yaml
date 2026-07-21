@@ -7877,7 +7877,7 @@ components:
         name: { type: string, maxLength: 128 }
     Command:
       type: object
-      required: [id, deviceId, templateKey, templateVersion, parameters, dispatchSource, payloadFormat, replyExpected, riskLevel, status, ttlSeconds, timeoutSeconds, idempotencyKey, createdAt, updatedAt, queuedAt, expiresAt, version]
+      required: [id, deviceId, templateKey, templateVersion, parameters, dispatchSource, payloadFormat, replyExpected, riskLevel, status, ttlSeconds, timeoutSeconds, idempotencyKey, createdAt, updatedAt, queuedAt, expiresAt, cancelable, version]
       properties:
         id: { type: string, format: uuid }
         deviceId: { type: string, format: uuid }
@@ -7907,6 +7907,9 @@ components:
         expiresAt: { type: string, format: date-time }
         lastErrorCode: { type: [string, 'null'] }
         reply: { type: [object, 'null'], additionalProperties: true }
+        cancelable:
+          type: boolean
+          description: 是否仍可在命令中继领取前取消。
         version: { type: integer, format: int64, minimum: 0 }
     CommandPage:
       allOf:
