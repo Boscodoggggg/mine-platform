@@ -374,6 +374,70 @@ declare namespace App {
             | 'aliyun-voice',
             string
           >;
+          title: string;
+          subtitle: string;
+          noticeTitle: string;
+          noticeContent: string;
+          readOnly: string;
+          empty: string;
+          timeoutSummary: string;
+          action: Record<'refresh' | 'create' | 'createFirst' | 'edit' | 'save' | 'cancel', string>;
+          column: Record<'name' | 'provider' | 'status' | 'credentials' | 'timeout' | 'updatedAt' | 'action', string>;
+          credential: Record<'configured' | 'missing', string>;
+          status: Record<'enabled' | 'disabled', string>;
+          drawer: Record<'create' | 'edit', string>;
+          section: Record<'identity' | 'provider' | 'secrets' | 'timeout', string>;
+          form: Record<
+            | 'channelCode'
+            | 'channelCodePlaceholder'
+            | 'name'
+            | 'provider'
+            | 'enabled'
+            | 'connectTimeout'
+            | 'readTimeout'
+            | 'requiredField'
+            | 'optionalField',
+            string
+          >;
+          secret: Record<
+            | 'loadFailed'
+            | 'noPermission'
+            | 'revealed'
+            | 'loaded'
+            | 'preserved'
+            | 'preservePlaceholder',
+            string
+          >;
+          message: Record<'required' | 'saved' | 'loadFailed' | 'secretVersionChanged' | 'failedWithTrace', string>;
+          field: Record<
+            | 'host'
+            | 'port'
+            | 'securityMode'
+            | 'fromAddress'
+            | 'fromName'
+            | 'replyTo'
+            | 'username'
+            | 'password'
+            | 'webhookUrl'
+            | 'signingSecret'
+            | 'allowedHosts'
+            | 'signatureHeader'
+            | 'endpointUrl'
+            | 'bearerToken'
+            | 'endpoint'
+            | 'regionId'
+            | 'signName'
+            | 'templateCode'
+            | 'accessKeyId'
+            | 'accessKeySecret'
+            | 'calledShowNumber'
+            | 'ttsCode'
+            | 'playTimes'
+            | 'volume'
+            | 'speed'
+            | 'unknown',
+            string
+          >;
         };
         menu: Record<
           | 'system'
@@ -395,6 +459,7 @@ declare namespace App {
           | 'commandCenter'
           | 'alarms'
           | 'alarmCenter'
+          | 'notificationChannels'
           | 'overview'
           | 'mine'
           | 'mineSites'
