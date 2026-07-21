@@ -36,10 +36,12 @@ public final class PublishedCommandTemplates {
     public static List<CommandTemplateResponse> publishedTemplates() {
         return List.of(
                 new CommandTemplateResponse(
-                        QUERY_STATUS, 1, "LOW", 300, 30, emptyObjectSchema(), false
+                        QUERY_STATUS, 1, "查询状态", "Query status", null,
+                        "LOW", "MQTT_JSON", 300, 30, emptyObjectSchema(), false, true
                 ),
                 new CommandTemplateResponse(
-                        SET_REPORT_INTERVAL, 1, "LOW", 600, 60,
+                        SET_REPORT_INTERVAL, 1, "设置上报周期", "Set report interval", null,
+                        "LOW", "MQTT_JSON", 600, 60,
                         Map.of(
                                 "type", "object",
                                 "additionalProperties", false,
@@ -49,10 +51,11 @@ public final class PublishedCommandTemplates {
                                         "titleKey", "mine.commands.parameter.intervalSeconds"
                                 ))
                         ),
-                        true
+                        true, true
                 ),
                 new CommandTemplateResponse(
-                        REQUEST_LOCATION, 1, "LOW", 300, 30, emptyObjectSchema(), false
+                        REQUEST_LOCATION, 1, "立即上报位置", "Request location", null,
+                        "LOW", "MQTT_JSON", 300, 30, emptyObjectSchema(), false, true
                 )
         );
     }

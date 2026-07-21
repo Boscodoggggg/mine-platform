@@ -12,6 +12,8 @@ import com.bosco.mine.server.modules.command.service.CommandService;
 import com.bosco.mine.server.modules.command.service.CommandQueryService;
 import com.bosco.mine.messaging.command.CommandStatusPayload;
 import com.bosco.mine.server.modules.command.status.CommandStatusService;
+import com.bosco.mine.server.modules.command.template.CommandTemplateRequest;
+import com.bosco.mine.server.modules.command.template.CommandTemplateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +64,7 @@ class CommandOutboxIT {
     private static final UUID USER_ID = UUID.fromString("019f64b3-7364-7b6c-a889-618d3a09f401");
     private static final UUID PRODUCT_ID = UUID.fromString("019f64b3-7364-7b6c-a889-618d3a09f402");
     private static final UUID DEVICE_ID = UUID.fromString("019f64b3-7364-7b6c-a889-618d3a09f403");
+    private static final UUID PROFILE_ID = UUID.fromString("019f64b3-7364-7b6c-a889-618d3a09f404");
 
     @Container
     @ServiceConnection
@@ -92,6 +95,9 @@ class CommandOutboxIT {
     private CommandMapper commandMapper;
 
     @Autowired
+    private CommandTemplateService commandTemplateService;
+
+    @Autowired
     private PlatformTransactionManager transactionManager;
 
     @BeforeEach
@@ -100,6 +106,10 @@ class CommandOutboxIT {
         jdbcTemplate.update("DELETE FROM sys_outbox_event");
         jdbcTemplate.update("DELETE FROM sys_inbox_event WHERE consumer_name = 'mine-server-command-status'");
         jdbcTemplate.update("DELETE FROM cmd_instance");
+        jdbcTemplate.update("DELETE FROM cmd_template_binding");
+        jdbcTemplate.update("DELETE FROM cmd_template_version");
+        jdbcTemplate.update("DELETE FROM cmd_template");
+        jdbcTemplate.update("DELETE FROM dev_device_connection_profile");
         jdbcTemplate.update("DELETE FROM dev_device");
         jdbcTemplate.update("DELETE FROM dev_product");
         jdbcTemplate.update("DELETE FROM sys_user WHERE id = ?", USER_ID);
@@ -116,6 +126,11 @@ class CommandOutboxIT {
                 INSERT INTO dev_device (id, product_id, device_code, name, status)
                 VALUES (?, ?, 'command-device-001', '命令测试设备', 'ENABLED')
                 """, DEVICE_ID, PRODUCT_ID);
+        jdbcTemplate.update("""
+                INSERT INTO dev_device_connection_profile (
+                    id, device_id, connection_mode, host, port
+                ) VALUES (?, ?, 'DEVICE_TO_PLATFORM_MQTT', 'mqtt.test.internal', 1883)
+                """, PROFILE_ID, DEVICE_ID);
     }
 
     @Test
@@ -153,6 +168,44 @@ class CommandOutboxIT {
                 FROM sys_outbox_event
                 WHERE id = ?
                 """, String.class, eventId)).isEqualTo("QUERY_STATUS");
+    }
+
+    @Test
+    void 已发布自定义十六进制模板应固化字节快照并进入统一Outbox() {
+        try (var stpUtil = mockStatic(cn.dev33.satoken.stp.StpUtil.class)) {
+            stpUtil.when(cn.dev33.satoken.stp.StpUtil::getLoginIdAsString)
+                    .thenReturn(USER_ID.toString());
+            var draft = commandTemplateService.create(new CommandTemplateRequest(
+                    "HORN_RAW", "鸣笛原始命令", null, "协议联调命令",
+                    "RAW_HEX", Map.of(
+                            "type", "object", "additionalProperties", false, "properties", Map.of()),
+                    "0xAA BB 01", 300, 30, true, List.of(PRODUCT_ID), 0
+            ));
+            commandTemplateService.publish(draft.versionId(), draft.version());
+        }
+
+        CommandInstance command = commandService.createLowRiskCommand(
+                USER_ID, DEVICE_ID, "HORN_RAW", Map.of(), "现场协议联调", null,
+                "request-custom-raw", 300, 30, "trace-custom-raw"
+        );
+
+        Map<String, Object> snapshot = jdbcTemplate.queryForMap("""
+                SELECT dispatch_source, payload_format, raw_payload_hex, payload_sha256,
+                       reply_expected, encode(raw_payload, 'hex') AS raw_payload
+                FROM cmd_instance
+                WHERE id = ?
+                """, command.id());
+        assertThat(snapshot.get("dispatch_source")).isEqualTo("CUSTOM_TEMPLATE");
+        assertThat(snapshot.get("payload_format")).isEqualTo("RAW_HEX");
+        assertThat(snapshot.get("raw_payload_hex")).isEqualTo("AABB01");
+        assertThat(snapshot.get("raw_payload")).isEqualTo("aabb01");
+        assertThat(snapshot.get("reply_expected")).isEqualTo(false);
+        assertThat(snapshot.get("payload_sha256").toString()).hasSize(64);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT payload ->> 'rawPayloadBase64'
+                FROM sys_outbox_event
+                WHERE aggregate_id = ?
+                """, String.class, command.id())).isEqualTo("qrsB");
     }
 
     @Test

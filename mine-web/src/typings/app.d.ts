@@ -457,6 +457,7 @@ declare namespace App {
           | 'aggregation'
           | 'command'
           | 'commandCenter'
+          | 'commandTemplates'
           | 'alarms'
           | 'alarmCenter'
           | 'notificationChannels'
@@ -1923,7 +1924,7 @@ declare namespace App {
           subtitle: string;
           empty: string;
           column: Record<'product' | 'device' | 'template' | 'status' | 'createdAt', string>;
-          action: Record<'create' | 'send' | 'confirmSend' | 'detail' | 'cancel' | 'confirmCancel', string>;
+          action: Record<'create' | 'rawHex' | 'send' | 'confirmSend' | 'detail' | 'cancel' | 'confirmCancel', string>;
           modal: Record<'create' | 'cancel', string>;
           field: Record<
             | 'id'
@@ -1938,7 +1939,9 @@ declare namespace App {
             | 'errorCode'
             | 'reason'
             | 'workOrderNo'
-            | 'cancelReason',
+            | 'cancelReason'
+            | 'payloadFormat'
+            | 'payloadSha256',
             string
           >;
           placeholder: Record<'device' | 'status' | 'template', string>;
@@ -1951,11 +1954,12 @@ declare namespace App {
           template: Record<'queryStatus' | 'setReportInterval' | 'requestLocation', string>;
           parameter: Record<'intervalSeconds', string>;
           detail: Record<'title' | 'timeline', string>;
-          timeline: Record<'queued' | 'sent' | 'received', string>;
+          timeline: Record<'queued' | 'sent' | 'published' | 'received', string>;
           status: Record<
             | 'created'
             | 'queued'
             | 'sent'
+            | 'published'
             | 'device_received'
             | 'succeeded'
             | 'refused'
@@ -1965,6 +1969,53 @@ declare namespace App {
             | 'cancelled',
             string
           >;
+          raw: Record<
+            | 'title'
+            | 'payload'
+            | 'payloadPlaceholder'
+            | 'byteCount'
+            | 'normalizedPayload'
+            | 'noticeTitle'
+            | 'noticeContent'
+            | 'fixedTemplateNotice'
+            | 'reasonPlaceholder'
+            | 'reviewAction'
+            | 'confirmTitle'
+            | 'confirmContent'
+            | 'confirmAction'
+            | 'validation'
+            | 'created',
+            string
+          >;
+        };
+        commandTemplates: {
+          title: string;
+          subtitle: string;
+          empty: string;
+          productSeparator: string;
+          notice: Record<'title' | 'content', string>;
+          action: Record<'create' | 'createVersion' | 'save' | 'publish', string>;
+          drawer: Record<'create' | 'edit', string>;
+          column: Record<'template' | 'format' | 'products' | 'status' | 'updatedAt', string>;
+          field: Record<
+            | 'templateKey'
+            | 'payloadFormat'
+            | 'nameZh'
+            | 'nameEn'
+            | 'description'
+            | 'products'
+            | 'rawPayloadHex'
+            | 'parameterSchema'
+            | 'requiresReason',
+            string
+          >;
+          placeholder: Record<'templateKey' | 'rawPayloadHex' | 'parameterSchema', string>;
+          byteCount: string;
+          format: Record<'rawHex' | 'mqttJson', string>;
+          status: Record<'draft' | 'published' | 'retired', string>;
+          validation: Record<'required' | 'rawHex' | 'schema', string>;
+          publish: Record<'title' | 'content', string>;
+          message: Record<'saved' | 'versionCreated' | 'published', string>;
         };
         fallback: Record<'unconfigured' | 'title' | 'description' | 'help', string>;
       };

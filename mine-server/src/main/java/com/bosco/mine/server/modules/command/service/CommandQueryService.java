@@ -116,7 +116,9 @@ public class CommandQueryService {
         return new CommandResponse(
                 stored.id(), stored.deviceId(), stored.templateKey(), stored.templateVersion(),
                 readMap(stored.parametersJson()), stored.reason(), stored.workOrderNo(),
-                stored.cancelledBy(), stored.cancelReason(), stored.riskLevel(), stored.status(),
+                stored.cancelledBy(), stored.cancelReason(), stored.dispatchSource(),
+                stored.payloadFormat(), stored.rawPayloadHex(), stored.payloadSha256(),
+                stored.replyExpected(), stored.riskLevel(), stored.status(),
                 stored.ttlSeconds(), stored.timeoutSeconds(), stored.idempotencyKey(),
                 stored.createdAt(), stored.updatedAt(), stored.queuedAt(), stored.sentAt(),
                 stored.deviceReceivedAt(), stored.completedAt(), stored.expiresAt(),

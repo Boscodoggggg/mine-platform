@@ -8,6 +8,10 @@ export type CommandTarget = components['schemas']['CommandTarget'];
 export type CommandTargetPage = components['schemas']['CommandTargetPage'];
 export type CommandPage = components['schemas']['CommandPage'];
 export type CommandCreateRequest = components['schemas']['CommandCreateRequest'];
+export type RawHexCommandRequest = components['schemas']['RawHexCommandRequest'];
+export type CommandTemplateDefinition = components['schemas']['CommandTemplateDefinition'];
+export type CommandTemplateDefinitionRequest = components['schemas']['CommandTemplateDefinitionRequest'];
+export type CommandTemplateProduct = components['schemas']['CommandTemplateProduct'];
 
 export interface CommandQuery {
   deviceId?: string | null;
@@ -24,8 +28,9 @@ export interface CommandTargetQuery {
 }
 
 /** 查询已发布的命令模板。 */
-export function getCommandTemplates() {
-  return request<CommandTemplate[]>('/command-templates');
+export function getCommandTemplates(deviceId?: string | null) {
+  const query = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : '';
+  return request<CommandTemplate[]>(`/command-templates${query}`);
 }
 
 /** 查询当前操作员可选择的启用命令目标设备。 */
@@ -49,6 +54,56 @@ export function createCommand(body: CommandCreateRequest, idempotencyKey: string
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(body)
+  });
+}
+
+/** 使用独立权限幂等下发临时原始十六进制命令。 */
+export function createRawHexCommand(body: RawHexCommandRequest, idempotencyKey: string) {
+  return request<Command>('/commands/raw-hex', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(body)
+  });
+}
+
+/** 查询全部自定义命令模板版本。 */
+export function getCommandTemplateDefinitions() {
+  return request<CommandTemplateDefinition[]>('/command-template-definitions');
+}
+
+/** 查询模板管理权限范围内可绑定的活动产品。 */
+export function getCommandTemplateProducts() {
+  return request<CommandTemplateProduct[]>('/command-template-definitions/products');
+}
+
+/** 创建自定义命令模板草稿。 */
+export function createCommandTemplateDefinition(body: CommandTemplateDefinitionRequest) {
+  return request<CommandTemplateDefinition>('/command-template-definitions', {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+}
+
+/** 修改尚未发布的自定义命令模板草稿。 */
+export function updateCommandTemplateDefinition(versionId: string, body: CommandTemplateDefinitionRequest) {
+  return request<CommandTemplateDefinition>(`/command-template-definitions/${encodeURIComponent(versionId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(body)
+  });
+}
+
+/** 从已发布版本复制下一版可编辑草稿。 */
+export function createNextCommandTemplateDraft(versionId: string) {
+  return request<CommandTemplateDefinition>(`/command-template-definitions/${encodeURIComponent(versionId)}/draft`, {
+    method: 'POST'
+  });
+}
+
+/** 将模板草稿发布为不可变版本。 */
+export function publishCommandTemplateDefinition(versionId: string, version: number) {
+  return request<CommandTemplateDefinition>(`/command-template-definitions/${encodeURIComponent(versionId)}/publish`, {
+    method: 'POST',
+    body: JSON.stringify({ version })
   });
 }
 

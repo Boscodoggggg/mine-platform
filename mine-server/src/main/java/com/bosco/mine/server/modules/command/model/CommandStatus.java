@@ -14,6 +14,8 @@ public enum CommandStatus {
     QUEUED,
     /** Broker 或连接层已确认发送。 */
     SENT,
+    /** 无需回复的命令已由设备侧 Broker 确认接收。 */
+    PUBLISHED,
     /** 设备应用层已确认收到。 */
     DEVICE_RECEIVED,
     /** 设备执行成功。 */
@@ -31,7 +33,7 @@ public enum CommandStatus {
 
     private static final Map<CommandStatus, Set<CommandStatus>> TRANSITIONS = Map.of(
             CREATED, EnumSet.of(QUEUED, CANCELLED),
-            QUEUED, EnumSet.of(SENT, EXPIRED, CANCELLED),
+            QUEUED, EnumSet.of(SENT, PUBLISHED, EXPIRED, CANCELLED),
             SENT, EnumSet.of(DEVICE_RECEIVED, TIMEOUT),
             DEVICE_RECEIVED, EnumSet.of(SUCCEEDED, REFUSED, FAILED, TIMEOUT)
     );

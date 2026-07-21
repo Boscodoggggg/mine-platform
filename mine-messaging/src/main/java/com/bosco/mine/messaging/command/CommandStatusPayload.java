@@ -30,7 +30,7 @@ public record CommandStatusPayload(
         String errorCode
 ) {
     private static final Set<String> ALLOWED_STATUSES = Set.of(
-            "SENT", "DEVICE_RECEIVED", "SUCCEEDED", "REFUSED", "FAILED", "EXPIRED", "TIMEOUT"
+            "SENT", "PUBLISHED", "DEVICE_RECEIVED", "SUCCEEDED", "REFUSED", "FAILED", "EXPIRED", "TIMEOUT"
     );
 
     /**

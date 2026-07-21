@@ -15,7 +15,7 @@ const events = computed(() => {
     type: 'default' | 'info' | 'success' | 'warning' | 'error';
   }> = [];
   result.push({ key: 'queued', title: t('mine.commands.timeline.queued'), time: props.command.queuedAt, type: 'info' });
-  if (props.command.sentAt) {
+  if (props.command.sentAt && props.command.status !== 'PUBLISHED') {
     result.push({ key: 'sent', title: t('mine.commands.timeline.sent'), time: props.command.sentAt, type: 'info' });
   }
   if (props.command.deviceReceivedAt) {
@@ -42,7 +42,7 @@ function statusLabel(status: CommandStatus) {
 }
 
 function statusType(status: CommandStatus) {
-  if (status === 'SUCCEEDED') return 'success' as const;
+  if (status === 'SUCCEEDED' || status === 'PUBLISHED') return 'success' as const;
   if (status === 'REFUSED' || status === 'EXPIRED' || status === 'TIMEOUT') return 'warning' as const;
   if (status === 'FAILED' || status === 'CANCELLED') return 'error' as const;
   return 'default' as const;

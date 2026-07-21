@@ -63,15 +63,18 @@ public final class CommandDispatchConsumer implements ChannelAwareMessageListene
             MessageEnvelope<CommandDispatchPayload> envelope = decoder.decode(message.getBody());
             downlinkPublisher.publish(envelope);
             Instant sentAt = clock.instant();
+            String status = envelope.payload().replyExpected() ? "SENT" : "PUBLISHED";
             statusPublisher.publish(new CommandStatusPayload(
-                    envelope.payload().commandId(), envelope.payload().deviceId(), "SENT",
+                    envelope.payload().commandId(), envelope.payload().deviceId(), status,
                     sentAt, null, Map.of(), null
             ), envelope.traceId(), envelope.tenantScope());
-            timeoutScheduler.schedule(
-                    envelope.payload().commandId(), envelope.payload().deviceId(),
-                    sentAt.plusSeconds(envelope.payload().timeoutSeconds()),
-                    envelope.traceId(), envelope.tenantScope()
-            );
+            if (envelope.payload().replyExpected()) {
+                timeoutScheduler.schedule(
+                        envelope.payload().commandId(), envelope.payload().deviceId(),
+                        sentAt.plusSeconds(envelope.payload().timeoutSeconds()),
+                        envelope.traceId(), envelope.tenantScope()
+                );
+            }
             channel.basicAck(deliveryTag, false);
         } catch (InvalidCommandMessageException exception) {
             LOGGER.warn("拒绝不可重试的命令下行消息: {}", exception.getMessage());

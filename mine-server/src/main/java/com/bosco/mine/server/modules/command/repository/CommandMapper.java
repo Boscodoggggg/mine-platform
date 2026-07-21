@@ -77,6 +77,12 @@ public interface CommandMapper {
      *
      * @param command 已入队命令
      * @param parametersJson 命令参数 JSON
+     * @param dispatchSource 命令来源
+     * @param payloadFormat 载荷格式
+     * @param rawPayload 原始命令字节
+     * @param rawPayloadHex 原始命令十六进制表示
+     * @param payloadSha256 原始命令摘要
+     * @param replyExpected 是否等待业务回复
      * @return 影响行数
      */
     @Insert("""
@@ -84,7 +90,9 @@ public interface CommandMapper {
                 id, device_id, template_key, template_version, parameters,
                 reason, work_order_no, risk_level, status, ttl_seconds, timeout_seconds,
                 idempotency_key, protocol_version, config_release_id, created_by,
-                created_at, updated_at, queued_at, expires_at, version
+                created_at, updated_at, queued_at, expires_at, version,
+                dispatch_source, payload_format, raw_payload, raw_payload_hex,
+                payload_sha256, reply_expected
             ) VALUES (
                 #{command.id}, #{command.deviceId}, #{command.templateKey},
                 #{command.templateVersion}, CAST(#{parametersJson} AS JSONB),
@@ -93,13 +101,21 @@ public interface CommandMapper {
                 #{command.idempotencyKey}, #{command.protocolVersion},
                 #{command.configReleaseId}, #{command.createdBy},
                 #{command.createdAt}, #{command.updatedAt}, #{command.queuedAt},
-                #{command.expiresAt}, #{command.version}
+                #{command.expiresAt}, #{command.version},
+                #{dispatchSource}, #{payloadFormat}, #{rawPayload}, #{rawPayloadHex},
+                #{payloadSha256}, #{replyExpected}
             )
             ON CONFLICT (created_by, idempotency_key) DO NOTHING
             """)
     int insert(
             @Param("command") CommandInstance command,
-            @Param("parametersJson") String parametersJson
+            @Param("parametersJson") String parametersJson,
+            @Param("dispatchSource") String dispatchSource,
+            @Param("payloadFormat") String payloadFormat,
+            @Param("rawPayload") byte[] rawPayload,
+            @Param("rawPayloadHex") String rawPayloadHex,
+            @Param("payloadSha256") String payloadSha256,
+            @Param("replyExpected") boolean replyExpected
     );
 
     /**
@@ -115,6 +131,9 @@ public interface CommandMapper {
                    parameters::TEXT AS parametersJson, reason,
                    work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
                    cancel_reason AS cancelReason,
+                   dispatch_source AS dispatchSource, payload_format AS payloadFormat,
+                   raw_payload_hex AS rawPayloadHex, payload_sha256 AS payloadSha256,
+                   reply_expected AS replyExpected,
                    risk_level AS riskLevel, status,
                    ttl_seconds AS ttlSeconds, timeout_seconds AS timeoutSeconds,
                    idempotency_key AS idempotencyKey,
@@ -145,7 +164,11 @@ public interface CommandMapper {
             SELECT id, device_id AS deviceId, template_key AS templateKey,
                    template_version AS templateVersion, parameters::TEXT AS parametersJson,
                    reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
-                   cancel_reason AS cancelReason, risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
+                   cancel_reason AS cancelReason,
+                   dispatch_source AS dispatchSource, payload_format AS payloadFormat,
+                   raw_payload_hex AS rawPayloadHex, payload_sha256 AS payloadSha256,
+                   reply_expected AS replyExpected,
+                   risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
                    timeout_seconds AS timeoutSeconds, idempotency_key AS idempotencyKey,
                    protocol_version AS protocolVersion, config_release_id AS configReleaseId,
                    created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
@@ -167,7 +190,11 @@ public interface CommandMapper {
             SELECT id, device_id AS deviceId, template_key AS templateKey,
                    template_version AS templateVersion, parameters::TEXT AS parametersJson,
                    reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
-                   cancel_reason AS cancelReason, risk_level AS riskLevel, status,
+                   cancel_reason AS cancelReason,
+                   dispatch_source AS dispatchSource, payload_format AS payloadFormat,
+                   raw_payload_hex AS rawPayloadHex, payload_sha256 AS payloadSha256,
+                   reply_expected AS replyExpected,
+                   risk_level AS riskLevel, status,
                    ttl_seconds AS ttlSeconds, timeout_seconds AS timeoutSeconds,
                    idempotency_key AS idempotencyKey, protocol_version AS protocolVersion,
                    config_release_id AS configReleaseId, created_by AS createdBy,
@@ -232,7 +259,11 @@ public interface CommandMapper {
             SELECT id, device_id AS deviceId, template_key AS templateKey,
                    template_version AS templateVersion, parameters::TEXT AS parametersJson,
                    reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
-                   cancel_reason AS cancelReason, risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
+                   cancel_reason AS cancelReason,
+                   dispatch_source AS dispatchSource, payload_format AS payloadFormat,
+                   raw_payload_hex AS rawPayloadHex, payload_sha256 AS payloadSha256,
+                   reply_expected AS replyExpected,
+                   risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
                    timeout_seconds AS timeoutSeconds, idempotency_key AS idempotencyKey,
                    protocol_version AS protocolVersion, config_release_id AS configReleaseId,
                    created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,

@@ -66,6 +66,30 @@ class CommandDispatchConsumerTest {
     }
 
     @Test
+    void 无回复原始命令在Broker确认后应发布PUBLISHED且不创建超时任务() throws Exception {
+        CommandDispatchConsumer.Decoder decoder = mock(CommandDispatchConsumer.Decoder.class);
+        CommandDispatchConsumer.DownlinkPublisher downlink = mock(CommandDispatchConsumer.DownlinkPublisher.class);
+        CommandStatusEventPublisher statusPublisher = mock(CommandStatusEventPublisher.class);
+        CommandTimeoutScheduler timeoutScheduler = mock(CommandTimeoutScheduler.class);
+        Channel channel = mock(Channel.class);
+        MessageEnvelope<CommandDispatchPayload> envelope = rawEnvelope();
+        when(decoder.decode(any())).thenReturn(envelope);
+        CommandDispatchConsumer consumer = new CommandDispatchConsumer(
+                decoder, downlink, statusPublisher, timeoutScheduler, Clock.fixed(NOW, ZoneOffset.UTC)
+        );
+
+        consumer.onMessage(message(44L), channel);
+
+        var status = org.mockito.ArgumentCaptor.forClass(CommandStatusPayload.class);
+        verify(statusPublisher).publish(status.capture(),
+                org.mockito.ArgumentMatchers.eq("trace-command-1"),
+                org.mockito.ArgumentMatchers.eq("mine-site-001"));
+        verify(timeoutScheduler, never()).schedule(any(), any(), any(), any(), any());
+        verify(channel).basicAck(44L, false);
+        assertThat(status.getValue().status()).isEqualTo("PUBLISHED");
+    }
+
+    @Test
     void 设备侧发布未确认时应重投且不得发布SENT() throws Exception {
         CommandDispatchConsumer.Decoder decoder = mock(CommandDispatchConsumer.Decoder.class);
         CommandDispatchConsumer.DownlinkPublisher downlink = mock(CommandDispatchConsumer.DownlinkPublisher.class);
@@ -121,6 +145,21 @@ class CommandDispatchConsumerTest {
                 new CommandDispatchPayload(
                         commandId, deviceId, "QUERY_STATUS", 1, Map.of(), "LOW",
                         300, 30, NOW.plusSeconds(300)
+                )
+        );
+    }
+
+    private MessageEnvelope<CommandDispatchPayload> rawEnvelope() {
+        UUID commandId = UUID.fromString("019f64e5-a000-7000-8000-000000000010");
+        UUID deviceId = UUID.fromString("019f64e5-a000-7000-8000-000000000020");
+        return new MessageEnvelope<>(
+                UUID.fromString("019f64e5-a000-7000-8000-000000000001"),
+                MessageType.of("command.dispatch.requested"), 1,
+                NOW.minusSeconds(1), NOW.minusSeconds(1), "mine-server",
+                "trace-command-1", commandId.toString(), deviceId.toString(), "mine-site-001",
+                new CommandDispatchPayload(
+                        commandId, deviceId, "RAW_HEX_AD_HOC", 1, Map.of(), "LOW",
+                        300, 30, NOW.plusSeconds(300), "RAW_HEX", "qrsB", false
                 )
         );
     }

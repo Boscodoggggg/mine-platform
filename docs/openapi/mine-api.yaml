@@ -769,6 +769,11 @@ paths:
       tags: [CommandCenter]
       operationId: listCommandTemplates
       summary: 查询可下发命令模板
+      parameters:
+        - name: deviceId
+          in: query
+          description: 传入设备后同时返回其产品绑定的已发布自定义模板。
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: 已发布的低风险命令模板。
@@ -779,6 +784,130 @@ paths:
                 items: { $ref: '#/components/schemas/CommandTemplate' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /command-template-definitions:
+    get:
+      tags: [CommandCenter]
+      operationId: listCommandTemplateDefinitions
+      summary: 查询自定义命令模板版本
+      responses:
+        '200':
+          description: 自定义命令模板版本列表。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CommandTemplateDefinition' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [CommandCenter]
+      operationId: createCommandTemplateDefinition
+      summary: 创建自定义命令模板草稿
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommandTemplateDefinitionRequest' }
+      responses:
+        '201':
+          description: 模板草稿已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandTemplateDefinition' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /command-template-definitions/{versionId}:
+    put:
+      tags: [CommandCenter]
+      operationId: updateCommandTemplateDefinition
+      summary: 修改自定义命令模板草稿
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CommandTemplateDefinitionRequest' }
+      responses:
+        '200':
+          description: 模板草稿已修改。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandTemplateDefinition' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CommandNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /command-template-definitions/products:
+    get:
+      tags: [CommandCenter]
+      operationId: listCommandTemplateProducts
+      summary: 查询命令模板可绑定的活动产品
+      responses:
+        '200':
+          description: 活动产品摘要列表。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CommandTemplateProduct' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /command-template-definitions/{versionId}/draft:
+    post:
+      tags: [CommandCenter]
+      operationId: createNextCommandTemplateDraft
+      summary: 从已发布版本复制下一版命令模板草稿
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '201':
+          description: 下一版模板草稿已创建。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandTemplateDefinition' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CommandNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+  /command-template-definitions/{versionId}/publish:
+    post:
+      tags: [CommandCenter]
+      operationId: publishCommandTemplateDefinition
+      summary: 发布不可变命令模板版本
+      parameters:
+        - name: versionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionRequest' }
+      responses:
+        '200':
+          description: 模板版本已发布。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommandTemplateDefinition' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/CommandNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /command-targets:
     get:
       tags: [CommandCenter]
@@ -870,6 +999,32 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/CommandNotFound' }
+  /commands/raw-hex:
+    post:
+      tags: [CommandCenter]
+      operationId: createRawHexCommand
+      summary: 幂等下发临时原始十六进制命令
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RawHexCommandRequest' }
+      responses:
+        '201':
+          description: 原始命令已进入可靠出站队列。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Command' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
   /commands/{commandId}/cancel:
     post:
       tags: [CommandCenter]
@@ -6648,7 +6803,7 @@ components:
         lastSeenAt: { type: [string, 'null'], format: date-time }
     CommandStatus:
       type: string
-      enum: [CREATED, QUEUED, SENT, DEVICE_RECEIVED, SUCCEEDED, REFUSED, FAILED, EXPIRED, TIMEOUT, CANCELLED]
+      enum: [CREATED, QUEUED, SENT, PUBLISHED, DEVICE_RECEIVED, SUCCEEDED, REFUSED, FAILED, EXPIRED, TIMEOUT, CANCELLED]
     CommandRiskLevel:
       type: string
       enum: [LOW, MEDIUM, HIGH]
@@ -7130,18 +7285,78 @@ components:
         version: { type: integer, format: int64, minimum: 0 }
     CommandTemplate:
       type: object
-      required: [key, version, riskLevel, defaultTtlSeconds, defaultTimeoutSeconds, parameterSchema, requiresReason]
+      required: [key, version, nameZh, riskLevel, payloadFormat, defaultTtlSeconds, defaultTimeoutSeconds, parameterSchema, requiresReason, replyExpected]
       properties:
         key: { type: string, maxLength: 128 }
         version: { type: integer, minimum: 1 }
+        nameZh: { type: string, maxLength: 128 }
+        nameEn: { type: [string, 'null'], maxLength: 128 }
+        description: { type: [string, 'null'], maxLength: 1000 }
         riskLevel: { $ref: '#/components/schemas/CommandRiskLevel' }
+        payloadFormat: { type: string, enum: [MQTT_JSON, RAW_HEX] }
         defaultTtlSeconds: { type: integer, minimum: 1 }
         defaultTimeoutSeconds: { type: integer, minimum: 1 }
         parameterSchema: { type: object, additionalProperties: true }
         requiresReason: { type: boolean }
+        replyExpected: { type: boolean }
+    CommandTemplateDefinition:
+      type: object
+      required: [templateId, versionId, templateKey, versionNumber, status, nameZh, riskLevel, payloadFormat, parameterSchema, defaultTtlSeconds, defaultTimeoutSeconds, requiresReason, replyExpected, productIds, createdAt, updatedAt, version]
+      properties:
+        templateId: { type: string, format: uuid }
+        versionId: { type: string, format: uuid }
+        templateKey: { type: string, maxLength: 128 }
+        versionNumber: { type: integer, minimum: 1 }
+        status: { type: string, enum: [DRAFT, PUBLISHED, RETIRED] }
+        nameZh: { type: string, maxLength: 128 }
+        nameEn: { type: [string, 'null'], maxLength: 128 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        riskLevel: { $ref: '#/components/schemas/CommandRiskLevel' }
+        payloadFormat: { type: string, enum: [MQTT_JSON, RAW_HEX] }
+        parameterSchema: { type: object, additionalProperties: true }
+        rawPayloadHex: { type: [string, 'null'] }
+        payloadSha256: { type: [string, 'null'], pattern: '^[0-9a-f]{64}$' }
+        defaultTtlSeconds: { type: integer, minimum: 1, maximum: 86400 }
+        defaultTimeoutSeconds: { type: integer, minimum: 1, maximum: 86400 }
+        requiresReason: { type: boolean }
+        replyExpected: { type: boolean }
+        productIds:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    CommandTemplateDefinitionRequest:
+      type: object
+      required: [templateKey, nameZh, payloadFormat, parameterSchema, defaultTtlSeconds, defaultTimeoutSeconds, requiresReason, productIds, version]
+      properties:
+        templateKey: { type: string, minLength: 3, maxLength: 128, pattern: '^[A-Za-z][A-Za-z0-9_]{2,127}$' }
+        nameZh: { type: string, minLength: 1, maxLength: 128 }
+        nameEn: { type: [string, 'null'], maxLength: 128 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        payloadFormat: { type: string, enum: [MQTT_JSON, RAW_HEX] }
+        parameterSchema: { type: object, additionalProperties: true }
+        rawPayloadHex: { type: [string, 'null'], maxLength: 32768 }
+        defaultTtlSeconds: { type: integer, minimum: 1, maximum: 86400 }
+        defaultTimeoutSeconds: { type: integer, minimum: 1, maximum: 86400 }
+        requiresReason: { type: boolean }
+        productIds:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        version: { type: integer, format: int64, minimum: 0 }
+    CommandTemplateProduct:
+      type: object
+      required: [id, productKey, name]
+      properties:
+        id: { type: string, format: uuid }
+        productKey: { type: string, maxLength: 64 }
+        name: { type: string, maxLength: 128 }
     Command:
       type: object
-      required: [id, deviceId, templateKey, templateVersion, parameters, riskLevel, status, ttlSeconds, timeoutSeconds, idempotencyKey, createdAt, updatedAt, queuedAt, expiresAt, version]
+      required: [id, deviceId, templateKey, templateVersion, parameters, dispatchSource, payloadFormat, replyExpected, riskLevel, status, ttlSeconds, timeoutSeconds, idempotencyKey, createdAt, updatedAt, queuedAt, expiresAt, version]
       properties:
         id: { type: string, format: uuid }
         deviceId: { type: string, format: uuid }
@@ -7152,6 +7367,11 @@ components:
         workOrderNo: { type: [string, 'null'], maxLength: 128 }
         cancelledBy: { type: [string, 'null'], format: uuid }
         cancelReason: { type: [string, 'null'], maxLength: 500 }
+        dispatchSource: { type: string, enum: [BUILTIN_TEMPLATE, CUSTOM_TEMPLATE, AD_HOC_HEX] }
+        payloadFormat: { type: string, enum: [MQTT_JSON, RAW_HEX] }
+        rawPayloadHex: { type: [string, 'null'] }
+        payloadSha256: { type: [string, 'null'], pattern: '^[0-9a-f]{64}$' }
+        replyExpected: { type: boolean }
         riskLevel: { $ref: '#/components/schemas/CommandRiskLevel' }
         status: { $ref: '#/components/schemas/CommandStatus' }
         ttlSeconds: { type: integer, minimum: 1 }
@@ -7203,6 +7423,14 @@ components:
         workOrderNo: { type: string, maxLength: 128 }
         ttlSeconds: { type: integer, minimum: 1, maximum: 86400 }
         timeoutSeconds: { type: integer, minimum: 1, maximum: 86400 }
+    RawHexCommandRequest:
+      type: object
+      required: [deviceId, rawPayloadHex, reason, ttlSeconds]
+      properties:
+        deviceId: { type: string, format: uuid }
+        rawPayloadHex: { type: string, minLength: 2, maxLength: 32768 }
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+        ttlSeconds: { type: integer, minimum: 1, maximum: 86400 }
     AlarmStatus:
       type: string
       enum:

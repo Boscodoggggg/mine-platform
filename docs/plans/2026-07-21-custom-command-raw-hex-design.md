@@ -37,7 +37,7 @@ MQTT Topic 继续由设备可信身份生成。模板和临时下发都不能输
 
 V59 新增三张表：
 
-- `cmd_template`：稳定模板编码、中文名、英文名、说明和乐观锁版本。
+- `cmd_template`：稳定模板编码、生命周期状态和乐观锁版本。
 - `cmd_template_version`：不可变版本、草稿/已发布/已退役状态、载荷格式、参数 Schema、固定原始字节、TTL、超时和发布审计字段。
 - `cmd_template_binding`：把模板版本绑定到产品。
 
@@ -46,6 +46,7 @@ V59 新增三张表：
 - `dispatch_source`：`BUILTIN_TEMPLATE`、`CUSTOM_TEMPLATE` 或 `AD_HOC_HEX`。
 - `payload_format`：`MQTT_JSON` 或 `RAW_HEX`。
 - `raw_payload`：实际下发的原始字节快照。
+- `raw_payload_hex`：原始字节的大写十六进制展示快照。
 - `payload_sha256`：原始字节摘要。
 - `reply_expected`：是否等待设备业务回复。
 

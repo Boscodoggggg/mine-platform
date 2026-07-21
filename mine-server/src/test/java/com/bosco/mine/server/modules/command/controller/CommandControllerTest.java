@@ -10,6 +10,7 @@ import com.bosco.mine.server.modules.command.dto.CommandResponse;
 import com.bosco.mine.server.modules.command.dto.CommandTargetResponse;
 import com.bosco.mine.server.modules.command.service.CommandQueryService;
 import com.bosco.mine.server.modules.command.service.CommandService;
+import com.bosco.mine.server.modules.command.template.CommandTemplateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -40,13 +41,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CommandControllerTest {
     private CommandService commandService;
     private CommandQueryService queryService;
+    private CommandTemplateService templateService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void 创建命令接口测试环境() {
         commandService = mock(CommandService.class);
         queryService = mock(CommandQueryService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new CommandController(commandService, queryService))
+        templateService = mock(CommandTemplateService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                        new CommandController(commandService, queryService, templateService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .addFilters(new TraceIdFilter())
                 .build();
@@ -96,6 +100,34 @@ class CommandControllerTest {
                                 }
                                 """))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 临时十六进制入口应要求原因并返回命令记录() throws Exception {
+        CommandResponse command = command("QUEUED");
+        when(commandService.createCurrentUserRawHexCommand(
+                any(UUID.class), anyString(), anyString(), anyString(), anyInt(), anyString()
+        )).thenReturn(command);
+
+        mockMvc.perform(post("/api/v1/commands/raw-hex")
+                        .header("Idempotency-Key", "request-raw-001")
+                        .header(TraceIdFilter.TRACE_ID_HEADER, "trace-command-raw")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "deviceId":"%s",
+                                  "rawPayloadHex":"0xAA BB 01",
+                                  "reason":"现场协议联调",
+                                  "ttlSeconds":300
+                                }
+                                """.formatted(command.deviceId())))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("Location", "/api/v1/commands/" + command.id()));
+
+        verify(commandService).createCurrentUserRawHexCommand(
+                command.deviceId(), "0xAA BB 01", "现场协议联调",
+                "request-raw-001", 300, "trace-command-raw"
+        );
     }
 
     @Test
@@ -156,7 +188,7 @@ class CommandControllerTest {
 
     @Test
     void 所有命令入口都应声明明确权限() throws Exception {
-        assertPermission("templates", "command:template:view");
+        assertPermission("templates", "command:template:view", UUID.class);
         assertPermission("targets", "command:instance:view", String.class, int.class, int.class);
         assertPermission("findCommands", "command:instance:view",
                 UUID.class, String.class, String.class, int.class, int.class);
@@ -164,6 +196,9 @@ class CommandControllerTest {
         assertPermission("createCommand", "command:instance:create",
                 String.class, jakarta.servlet.http.HttpServletRequest.class,
                 com.bosco.mine.server.modules.command.dto.CommandCreateRequest.class);
+        assertPermission("createRawHexCommand", "command:raw:execute",
+                String.class, jakarta.servlet.http.HttpServletRequest.class,
+                CommandController.RawHexCommandRequest.class);
         assertPermission("cancelCommand", "command:instance:cancel",
                 UUID.class, CommandController.CommandCancelRequest.class);
     }
@@ -173,7 +208,9 @@ class CommandControllerTest {
         return new CommandResponse(
                 UUID.fromString("019f64e5-a000-7000-8000-000000000010"),
                 UUID.fromString("019f64e5-a000-7000-8000-000000000020"),
-                "QUERY_STATUS", 1, Map.of(), null, null, null, null, "LOW", status, 300, 30,
+                "QUERY_STATUS", 1, Map.of(), null, null, null, null,
+                "BUILTIN_TEMPLATE", "MQTT_JSON", null, null, true,
+                "LOW", status, 300, 30,
                 "request-command-001", createdAt, createdAt, createdAt,
                 createdAt.plusSeconds(1), createdAt.plusSeconds(2), createdAt.plusSeconds(3),
                 createdAt.plusSeconds(300), null, Map.of("online", true), 4

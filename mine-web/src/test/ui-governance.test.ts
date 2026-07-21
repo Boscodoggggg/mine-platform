@@ -23,6 +23,7 @@ const businessPages = [
   'src/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue',
   'src/modules/monitoring/components/NumericCard.vue',
   'src/modules/command/pages/command-center/CommandCenterPage.vue',
+  'src/modules/command/pages/command-templates/CommandTemplatePage.vue',
   'src/modules/command/components/CommandTimeline.vue',
   'src/views/home/index.vue',
   'src/app/router/DynamicFallbackPage.vue'

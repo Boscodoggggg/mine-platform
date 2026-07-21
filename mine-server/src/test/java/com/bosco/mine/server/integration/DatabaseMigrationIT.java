@@ -125,6 +125,9 @@ class DatabaseMigrationIT {
             "sys_outbox_event",
             "sys_inbox_event",
             "cmd_instance",
+            "cmd_template",
+            "cmd_template_version",
+            "cmd_template_binding",
             "alarm_event",
             "alarm_acknowledgement",
             "notification_channel",
@@ -563,6 +566,52 @@ class DatabaseMigrationIT {
                 """, Long.class)).isZero();
         assertThat(constraintColumns("uk_cmd_instance_creator_idempotency"))
                 .containsExactly("created_by", "idempotency_key");
+    }
+
+    @Test
+    void 命令模板控制面必须版本化并完整记录原始载荷快照() {
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'cmd_template', 'cmd_template_version', 'cmd_template_binding'
+                )
+                ORDER BY class.relname
+                """, String.class))
+                .hasSize(3)
+                .allMatch(comment -> comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute
+                WHERE attrelid IN (
+                    'cmd_template'::regclass,
+                    'cmd_template_version'::regclass,
+                    'cmd_template_binding'::regclass,
+                    'cmd_instance'::regclass
+                )
+                  AND attnum > 0
+                  AND NOT attisdropped
+                  AND COALESCE(col_description(attrelid, attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(constraintColumns("uk_cmd_template_key")).containsExactly("template_key");
+        assertThat(constraintColumns("uk_cmd_template_version_number"))
+                .containsExactly("template_id", "version_number");
+        assertThat(constraintColumns("uk_cmd_template_binding_product"))
+                .containsExactly("template_version_id", "product_id");
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE permission IN (
+                    'command:template:edit', 'command:template:publish', 'command:raw:execute'
+                )
+                ORDER BY permission
+                """, String.class)).containsExactly(
+                "command:raw:execute", "command:template:edit", "command:template:publish");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT pg_get_constraintdef(oid)
+                FROM pg_constraint
+                WHERE conname = 'ck_cmd_instance_status'
+                """, String.class)).contains("PUBLISHED");
     }
 
     @Test
@@ -1062,6 +1111,7 @@ class DatabaseMigrationIT {
                 "aggregation-governance",
                 "alarm-center",
                 "command-center",
+                "command-templates",
                 "device-device-list",
                 "device-model-management",
                 "device-monitor",
@@ -1154,6 +1204,9 @@ class DatabaseMigrationIT {
                 "command:instance:cancel",
                 "command:instance:create",
                 "command:instance:view",
+                "command:raw:execute",
+                "command:template:edit",
+                "command:template:publish",
                 "command:template:view"
         );
         assertThat(jdbcTemplate.queryForList("""

@@ -21,6 +21,7 @@ class CommandStateMachineTest {
             "CREATED->QUEUED",
             "CREATED->CANCELLED",
             "QUEUED->SENT",
+            "QUEUED->PUBLISHED",
             "QUEUED->EXPIRED",
             "QUEUED->CANCELLED",
             "SENT->DEVICE_RECEIVED",
@@ -75,5 +76,29 @@ class CommandStateMachineTest {
         assertThat(queued.queuedAt()).isEqualTo(createdAt.plusSeconds(1));
         assertThat(queued.expiresAt()).isEqualTo(createdAt.plusSeconds(300));
         assertThat(queued.parameters()).containsEntry("includeLocation", true);
+    }
+
+    @Test
+    void 无回复命令发布后必须直接进入终态并记录完成时间() {
+        Instant createdAt = Instant.parse("2026-07-21T08:00:00Z");
+        CommandInstance queued = CommandInstance.createLowRisk(
+                UUID.fromString("019f82c7-99a0-7472-bdc8-327702425301"),
+                UUID.fromString("019f82c7-99a0-7472-bdc8-327702425302"),
+                "RAW_HEX_AD_HOC",
+                Map.of(),
+                "raw-hex-001",
+                UUID.fromString("019f82c7-99a0-7472-bdc8-327702425303"),
+                createdAt,
+                300,
+                30
+        ).transitionTo(CommandStatus.QUEUED, createdAt.plusSeconds(1));
+
+        CommandInstance published = queued.transitionTo(
+                CommandStatus.PUBLISHED, createdAt.plusSeconds(2));
+
+        assertThat(published.status()).isEqualTo(CommandStatus.PUBLISHED);
+        assertThat(published.sentAt()).isEqualTo(createdAt.plusSeconds(2));
+        assertThat(published.completedAt()).isEqualTo(createdAt.plusSeconds(2));
+        assertThat(published.status().terminal()).isTrue();
     }
 }

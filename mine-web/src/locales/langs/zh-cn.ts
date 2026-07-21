@@ -167,6 +167,7 @@ const local: App.I18n.Schema = {
       aggregation: '数值聚合',
       command: '命令管理',
       commandCenter: '命令中心',
+      commandTemplates: '命令模板',
       alarms: '告警管理',
       alarmCenter: '告警处置中心',
       notificationChannels: '通知渠道',
@@ -2243,6 +2244,7 @@ const local: App.I18n.Schema = {
       column: { product: '产品', device: '设备', template: '命令模板', status: '状态', createdAt: '下发时间' },
       action: {
         create: '下发命令',
+        rawHex: '临时十六进制',
         send: '准备下发',
         confirmSend: '确认下发',
         detail: '详情',
@@ -2263,7 +2265,9 @@ const local: App.I18n.Schema = {
         errorCode: '错误码',
         reason: '下发原因',
         workOrderNo: '作业单号',
-        cancelReason: '取消原因'
+        cancelReason: '取消原因',
+        payloadFormat: '载荷格式',
+        payloadSha256: '载荷 SHA-256'
       },
       placeholder: { device: '请选择设备', status: '全部命令状态', template: '全部命令模板' },
       validation: {
@@ -2281,11 +2285,12 @@ const local: App.I18n.Schema = {
       template: { queryStatus: '状态查询', setReportInterval: '设置上报周期', requestLocation: '立即请求位置' },
       parameter: { intervalSeconds: '上报周期（秒）' },
       detail: { title: '命令详情', timeline: '状态时间线' },
-      timeline: { queued: '已排队', sent: '已发送', received: '设备已接收' },
+      timeline: { queued: '已排队', sent: '已发送', published: 'Broker 已确认', received: '设备已接收' },
       status: {
         created: '已创建',
         queued: '已排队',
         sent: '已发送',
+        published: '已发布到设备 Broker',
         device_received: '设备已接收',
         succeeded: '执行成功',
         refused: '设备拒绝',
@@ -2293,6 +2298,67 @@ const local: App.I18n.Schema = {
         expired: '排队过期',
         timeout: '回复超时',
         cancelled: '已取消'
+      },
+      raw: {
+        title: '下发临时十六进制命令',
+        payload: '十六进制内容',
+        payloadPlaceholder: '例如 AA BB 01 或 0xAA 0xBB 0x01',
+        byteCount: '当前有效载荷 {count} 字节，最大 4096 字节',
+        normalizedPayload: '标准化载荷：{payload}',
+        noticeTitle: '原始字节将直接发布',
+        noticeContent: '仅支持当前在线的 MQTT 设备。Broker 确认只代表消息已发布，不代表设备已经执行成功。',
+        fixedTemplateNotice: '该模板会发送发布版本中固化的原始字节；Broker 确认后命令状态为“已发布”。',
+        reasonPlaceholder: '填写协议联调、现场诊断或作业依据',
+        reviewAction: '核对并下发',
+        confirmTitle: '确认发布原始字节',
+        confirmContent:
+          '将向“{device}”发布 {count} 字节原始内容：{payload}。此操作不等待设备业务回复，请再次核对设备和字节内容。',
+        confirmAction: '确认发布',
+        validation: '请选择设备，填写有效十六进制内容和下发原因；载荷不能超过 4096 字节',
+        created: '原始命令已进入可靠下发队列'
+      }
+    },
+    commandTemplates: {
+      title: '命令模板',
+      subtitle: '将设备命令定义为可审计草稿，按产品绑定并发布不可变版本。',
+      empty: '还没有自定义命令模板，可先创建一个草稿。',
+      productSeparator: '、',
+      notice: {
+        title: '发布后内容不可修改',
+        content: 'MQTT Topic 由平台根据设备身份生成。原始十六进制模板不等待设备回复，Broker 确认后记为已发布。'
+      },
+      action: { create: '新建模板', createVersion: '新建版本', save: '保存草稿', publish: '发布版本' },
+      drawer: { create: '新建命令模板', edit: '编辑模板草稿' },
+      column: { template: '模板', format: '载荷格式', products: '适用产品', status: '版本状态', updatedAt: '更新时间' },
+      field: {
+        templateKey: '模板编码',
+        payloadFormat: '载荷格式',
+        nameZh: '中文名称',
+        nameEn: '英文名称',
+        description: '用途与注意事项',
+        products: '适用产品',
+        rawPayloadHex: '固定十六进制内容',
+        parameterSchema: '参数 JSON Schema',
+        requiresReason: '下发时必须填写原因'
+      },
+      placeholder: {
+        templateKey: '例如 HORN_RAW',
+        rawPayloadHex: '例如 AA BB 01 或 0xAA 0xBB 0x01',
+        parameterSchema: '输入受限 JSON Schema 对象'
+      },
+      byteCount: '规范化后 {count} 字节，最大 4096 字节',
+      format: { rawHex: '原始十六进制', mqttJson: 'MQTT JSON' },
+      status: { draft: '草稿', published: '已发布', retired: '已退役' },
+      validation: {
+        required: '请填写模板编码、中文名称并至少选择一个产品',
+        rawHex: '请输入 1 至 4096 字节的有效十六进制内容',
+        schema: '参数 Schema 必须是合法 JSON 对象'
+      },
+      publish: { title: '发布不可变模板版本', content: '发布“{name}”后当前版本不能再修改，确认继续吗？' },
+      message: {
+        saved: '命令模板草稿已保存',
+        versionCreated: '下一版命令模板草稿已创建',
+        published: '命令模板版本已发布'
       }
     },
     fallback: {

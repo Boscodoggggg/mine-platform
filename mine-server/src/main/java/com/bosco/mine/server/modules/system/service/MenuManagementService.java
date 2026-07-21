@@ -50,6 +50,7 @@ public class MenuManagementService {
             new ComponentOption("retention-governance", "数据保留"),
             new ComponentOption("aggregation-governance", "数值聚合"),
             new ComponentOption("command-center", "命令中心"),
+            new ComponentOption("command-templates", "命令模板"),
             new ComponentOption("alarm-center", "告警中心"),
             new ComponentOption("notification-channel-management", "通知渠道"),
             new ComponentOption("mine-site-archive", "矿区档案"),

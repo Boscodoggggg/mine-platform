@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bosco.mine.server.modules.command.template.CommandTemplateMapper">
+
+    <resultMap id="templateRecord" type="com.bosco.mine.server.modules.command.template.CommandTemplateMapper$TemplateRecord">
+        <constructor>
+            <arg column="template_id" javaType="java.util.UUID"/>
+            <arg column="template_key" javaType="java.lang.String"/>
+            <arg column="template_status" javaType="java.lang.String"/>
+            <arg column="template_version" javaType="_long"/>
+            <arg column="version_id" javaType="java.util.UUID"/>
+            <arg column="version_number" javaType="_int"/>
+            <arg column="version_status" javaType="java.lang.String"/>
+            <arg column="name_zh" javaType="java.lang.String"/>
+            <arg column="name_en" javaType="java.lang.String"/>
+            <arg column="description" javaType="java.lang.String"/>
+            <arg column="risk_level" javaType="java.lang.String"/>
+            <arg column="payload_format" javaType="java.lang.String"/>
+            <arg column="parameter_schema_json" javaType="java.lang.String"/>
+            <arg column="raw_payload" javaType="_byte[]"/>
+            <arg column="raw_payload_hex" javaType="java.lang.String"/>
+            <arg column="raw_payload_sha256" javaType="java.lang.String"/>
+            <arg column="default_ttl_seconds" javaType="_int"/>
+            <arg column="default_timeout_seconds" javaType="_int"/>
+            <arg column="requires_reason" javaType="_boolean"/>
+            <arg column="reply_expected" javaType="_boolean"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+            <arg column="published_at" javaType="java.time.Instant"/>
+            <arg column="lock_version" javaType="_long"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="templateColumns">
+        SELECT template.id AS template_id,
+               template.template_key,
+               template.status AS template_status,
+               template.version AS template_version,
+               version.id AS version_id,
+               version.version_number,
+               version.status AS version_status,
+               version.name_zh,
+               version.name_en,
+               version.description,
+               version.risk_level,
+               version.payload_format,
+               version.parameter_schema::TEXT AS parameter_schema_json,
+               version.raw_payload,
+               version.raw_payload_hex,
+               version.raw_payload_sha256,
+               version.default_ttl_seconds,
+               version.default_timeout_seconds,
+               version.requires_reason,
+               version.reply_expected,
+               version.created_at,
+               version.updated_at,
+               version.published_at,
+               version.version AS lock_version
+        FROM cmd_template template
+        JOIN cmd_template_version version ON version.template_id = template.id
+    </sql>
+
+    <select id="findAll" resultMap="templateRecord">
+        <include refid="templateColumns"/>
+        ORDER BY template.template_key, version.version_number DESC
+    </select>
+
+    <select id="findByTemplateKey" resultMap="templateRecord">
+        <include refid="templateColumns"/>
+        WHERE template.template_key = #{templateKey}
+        ORDER BY version.version_number DESC
+        LIMIT 1
+    </select>
+
+    <select id="findByVersionId" resultMap="templateRecord">
+        <include refid="templateColumns"/>
+        WHERE version.id = #{versionId}
+    </select>
+
+    <select id="findPublishedByDeviceId" resultMap="templateRecord">
+        <include refid="templateColumns"/>
+        JOIN cmd_template_binding binding ON binding.template_version_id = version.id
+        JOIN dev_device device ON device.product_id = binding.product_id
+        WHERE device.id = #{deviceId}
+          AND device.status = 'ENABLED'
+          AND template.status = 'ACTIVE'
+          AND version.status = 'PUBLISHED'
+        ORDER BY version.name_zh, template.template_key
+    </select>
+
+    <select id="findPublishedByDeviceAndKey" resultMap="templateRecord">
+        <include refid="templateColumns"/>
+        JOIN cmd_template_binding binding ON binding.template_version_id = version.id
+        JOIN dev_device device ON device.product_id = binding.product_id
+        WHERE device.id = #{deviceId}
+          AND device.status = 'ENABLED'
+          AND template.status = 'ACTIVE'
+          AND version.status = 'PUBLISHED'
+          AND template.template_key = #{templateKey}
+        LIMIT 1
+    </select>
+</mapper>

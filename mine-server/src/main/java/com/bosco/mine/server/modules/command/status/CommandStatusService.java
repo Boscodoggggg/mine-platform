@@ -21,7 +21,7 @@ import java.util.UUID;
 public class CommandStatusService {
     private static final Set<String> TERMINAL_ACK = Set.of("SUCCEEDED", "REFUSED", "FAILED");
     private static final Set<String> TERMINAL = Set.of(
-            "SUCCEEDED", "REFUSED", "FAILED", "EXPIRED", "TIMEOUT", "CANCELLED"
+            "PUBLISHED", "SUCCEEDED", "REFUSED", "FAILED", "EXPIRED", "TIMEOUT", "CANCELLED"
     );
 
     private final CommandStatusRepository repository;
@@ -84,6 +84,10 @@ public class CommandStatusService {
             return null;
         }
         return switch (source + "->" + target) {
+            case "QUEUED->PUBLISHED" -> new CommandStateUpdate(
+                    "PUBLISHED", payload.occurredAt(), payload.occurredAt(),
+                    null, payload.occurredAt(), "{}", null
+            );
             case "QUEUED->SENT" -> new CommandStateUpdate(
                     "SENT", payload.occurredAt(), payload.occurredAt(),
                     null, null, "{}", null

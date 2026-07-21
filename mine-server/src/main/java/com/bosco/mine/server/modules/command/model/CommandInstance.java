@@ -116,7 +116,7 @@ public record CommandInstance(
             int timeoutSeconds
     ) {
         return createLowRisk(
-                id, deviceId, templateKey, parameters, null, null,
+                id, deviceId, templateKey, 1, parameters, null, null,
                 idempotencyKey, createdBy, createdAt, ttlSeconds, timeoutSeconds
         );
     }
@@ -150,8 +150,46 @@ public record CommandInstance(
             int ttlSeconds,
             int timeoutSeconds
     ) {
+        return createLowRisk(
+                id, deviceId, templateKey, 1, parameters, reason, workOrderNo,
+                idempotencyKey, createdBy, createdAt, ttlSeconds, timeoutSeconds
+        );
+    }
+
+    /**
+     * 创建指定不可变模板版本的低风险命令实例。
+     *
+     * @param id 命令标识
+     * @param deviceId 设备标识
+     * @param templateKey 模板编码
+     * @param templateVersion 模板版本
+     * @param parameters 命令参数
+     * @param reason 下发原因
+     * @param workOrderNo 作业单号
+     * @param idempotencyKey 幂等键
+     * @param createdBy 创建人
+     * @param createdAt 创建时间
+     * @param ttlSeconds TTL 秒数
+     * @param timeoutSeconds 超时秒数
+     * @return CREATED 状态命令
+     */
+    public static CommandInstance createLowRisk(
+            UUID id,
+            UUID deviceId,
+            String templateKey,
+            int templateVersion,
+            Map<String, Object> parameters,
+            String reason,
+            String workOrderNo,
+            String idempotencyKey,
+            UUID createdBy,
+            Instant createdAt,
+            int ttlSeconds,
+            int timeoutSeconds
+    ) {
         return new CommandInstance(
-                id, deviceId, templateKey, 1, parameters, normalize(reason), normalize(workOrderNo),
+                id, deviceId, templateKey, templateVersion, parameters,
+                normalize(reason), normalize(workOrderNo),
                 null, null, CommandRiskLevel.LOW,
                 CommandStatus.CREATED, ttlSeconds, timeoutSeconds, idempotencyKey,
                 null, null, createdBy, createdAt, createdAt,
@@ -177,7 +215,7 @@ public record CommandInstance(
                 target, ttlSeconds, timeoutSeconds, idempotencyKey, protocolVersion,
                 configReleaseId, createdBy, createdAt, occurredAt,
                 target == CommandStatus.QUEUED ? occurredAt : queuedAt,
-                target == CommandStatus.SENT ? occurredAt : sentAt,
+                target == CommandStatus.SENT || target == CommandStatus.PUBLISHED ? occurredAt : sentAt,
                 target == CommandStatus.DEVICE_RECEIVED ? occurredAt : deviceReceivedAt,
                 target.terminal() ? occurredAt : completedAt,
                 expiresAt, lastErrorCode, reply, version + 1

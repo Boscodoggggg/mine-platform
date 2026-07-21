@@ -118,6 +118,11 @@ public final class CommandMessageCodec implements CommandDispatchConsumer.Decode
      */
     public byte[] encodeDownlink(MessageEnvelope<CommandDispatchPayload> envelope) {
         CommandDispatchPayload payload = envelope.payload();
+        if ("RAW_HEX".equals(payload.payloadFormat())) {
+            byte[] raw = payload.decodedRawPayload();
+            requirePayloadSize(raw);
+            return raw;
+        }
         try {
             return jsonMapper.writeValueAsBytes(Map.of(
                     "commandId", payload.commandId().toString(),

@@ -29,6 +29,7 @@ const componentRegistry: Readonly<Record<string, ViewLoader>> = {
   'aggregation-governance': () => import('@/modules/device/pages/aggregation-governance/AggregationGovernancePage.vue'),
   'device-monitor': () => import('@/modules/monitoring/pages/device-monitor/DeviceMonitorPage.vue'),
   'command-center': () => import('@/modules/command/pages/command-center/CommandCenterPage.vue'),
+  'command-templates': () => import('@/modules/command/pages/command-templates/CommandTemplatePage.vue'),
   'alarm-center': () => import('@/modules/alarm/pages/alarm-center/AlarmCenterPage.vue'),
   'notification-channel-management': () =>
     import('@/modules/notification/pages/channel-management/NotificationChannelManagementPage.vue'),
@@ -62,6 +63,7 @@ const navigationI18nKeyByPath: Readonly<Partial<Record<string, App.I18n.I18nKey>
   '/governance/aggregation': 'mine.menu.aggregation',
   '/command': 'mine.menu.command',
   '/command/center': 'mine.menu.commandCenter',
+  '/command/templates': 'mine.menu.commandTemplates',
   '/alarm': 'mine.menu.alarms',
   '/alarm/center': 'mine.menu.alarmCenter',
   '/alarm/channels': 'mine.menu.notificationChannels',
@@ -91,6 +93,7 @@ const navigationI18nKeyByComponent: Readonly<Partial<Record<string, App.I18n.I18
   'aggregation-governance': 'mine.menu.aggregation',
   'device-monitor': 'mine.menu.monitor',
   'command-center': 'mine.menu.commandCenter',
+  'command-templates': 'mine.menu.commandTemplates',
   'alarm-center': 'mine.menu.alarmCenter',
   'notification-channel-management': 'mine.menu.notificationChannels',
   'mine-site-archive': 'mine.menu.mineSites',

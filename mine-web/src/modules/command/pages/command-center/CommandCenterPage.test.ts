@@ -7,6 +7,7 @@ import CommandCenterPage from './CommandCenterPage.vue';
 const api = vi.hoisted(() => ({
   cancelCommand: vi.fn(),
   createCommand: vi.fn(),
+  createRawHexCommand: vi.fn(),
   getCommand: vi.fn(),
   getCommandTargets: vi.fn(),
   getCommandTemplates: vi.fn(),
@@ -17,7 +18,7 @@ const registryApi = vi.hoisted(() => ({
   getProducts: vi.fn()
 }));
 const authState = vi.hoisted(() => ({
-  userInfo: { buttons: ['command:instance:create', 'command:template:view'] as string[] }
+  userInfo: { buttons: ['command:instance:create', 'command:template:view', 'command:raw:execute'] as string[] }
 }));
 
 vi.mock('@/modules/command/api/command', () => api);
@@ -42,6 +43,7 @@ describe('CommandCenterPage', () => {
     ]);
     api.getCommands.mockResolvedValue({ items: [command('SUCCEEDED')], page: 1, size: 20, total: 1 });
     api.createCommand.mockResolvedValue(command('QUEUED'));
+    api.createRawHexCommand.mockResolvedValue(command('QUEUED'));
     api.getCommand.mockResolvedValue(command('SUCCEEDED'));
     registryApi.getProducts.mockResolvedValue({
       items: [product()],
@@ -153,6 +155,40 @@ describe('CommandCenterPage', () => {
     expect(document.body.textContent).toContain('online');
     expect(document.body.textContent).toContain('300');
   });
+
+  it('临时十六进制命令应显示Broker语义确认并复用幂等键', async () => {
+    const wrapper = mount(CommandCenterPage, { global: { plugins: [i18n] } });
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      rawForm: Record<string, string | number>;
+      openRawCreate: () => void;
+      requestRawSubmit: () => void;
+      submitRawCommand: () => Promise<void>;
+      rawIdempotencyKey: string;
+    };
+    page.openRawCreate();
+    Object.assign(page.rawForm, {
+      deviceId: 'device-1',
+      rawPayloadHex: '0xAA BB 01',
+      reason: '现场协议联调',
+      ttlSeconds: 300
+    });
+
+    page.requestRawSubmit();
+
+    expect(window.$dialog?.warning).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '确认发布原始字节', content: expect.stringContaining('AABB01') })
+    );
+    const key = page.rawIdempotencyKey;
+    await page.submitRawCommand();
+    await page.submitRawCommand();
+    expect(api.createRawHexCommand).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ rawPayloadHex: '0xAA BB 01', reason: '现场协议联调' }),
+      key
+    );
+    expect(api.createRawHexCommand).toHaveBeenNthCalledWith(2, expect.any(Object), key);
+  });
 });
 
 function target() {
@@ -194,6 +230,9 @@ function command(status: string) {
     templateKey: 'QUERY_STATUS',
     templateVersion: 1,
     parameters: {},
+    dispatchSource: 'BUILTIN_TEMPLATE',
+    payloadFormat: 'MQTT_JSON',
+    replyExpected: true,
     riskLevel: 'LOW',
     status,
     ttlSeconds: 300,

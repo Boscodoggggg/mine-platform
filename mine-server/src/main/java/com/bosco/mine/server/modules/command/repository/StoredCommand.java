@@ -15,6 +15,11 @@ import java.util.UUID;
  * @param workOrderNo 作业单号
  * @param cancelledBy 取消人标识
  * @param cancelReason 取消原因
+ * @param dispatchSource 命令来源
+ * @param payloadFormat 执行载荷格式
+ * @param rawPayloadHex 原始载荷十六进制快照
+ * @param payloadSha256 原始载荷摘要
+ * @param replyExpected 是否等待设备业务回复
  * @param riskLevel 风险级别
  * @param status 命令状态
  * @param ttlSeconds TTL 秒数
@@ -44,6 +49,11 @@ public record StoredCommand(
         String workOrderNo,
         UUID cancelledBy,
         String cancelReason,
+        String dispatchSource,
+        String payloadFormat,
+        String rawPayloadHex,
+        String payloadSha256,
+        boolean replyExpected,
         String riskLevel,
         String status,
         int ttlSeconds,

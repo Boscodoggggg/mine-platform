@@ -65,14 +65,17 @@ public final class MqttCommandPublisher implements CommandDispatchConsumer.Downl
         if (remainingMillis <= 0) {
             throw new InvalidCommandMessageException("命令已经过期");
         }
-        Message message = MessageBuilder.withBody(codec.encodeDownlink(envelope))
-                .setContentType("application/json")
-                .setContentEncoding(StandardCharsets.UTF_8.name())
-                .setDeliveryMode(MessageDeliveryMode.PERSISTENT)
-                .setMessageId(payload.commandId().toString())
-                .setCorrelationId(envelope.traceId())
-                .setExpiration(Long.toString(remainingMillis))
-                .build();
+        MessageBuilder builder = MessageBuilder.withBody(codec.encodeDownlink(envelope));
+        builder.setContentType("RAW_HEX".equals(payload.payloadFormat())
+                ? "application/octet-stream" : "application/json");
+        builder.setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+        builder.setMessageId(payload.commandId().toString());
+        builder.setCorrelationId(envelope.traceId());
+        builder.setExpiration(Long.toString(remainingMillis));
+        if (!"RAW_HEX".equals(payload.payloadFormat())) {
+            builder.setContentEncoding(StandardCharsets.UTF_8.name());
+        }
+        Message message = builder.build();
         String routingKey = "mine.v1.%s.%s.down.command".formatted(
                 identity.productKey(), identity.clientId()
         );

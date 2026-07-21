@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import type { DataTableColumns, SelectOption } from 'naive-ui';
 import {
   NButton,
+  NAlert,
   NCard,
   NDataTable,
   NDescriptions,
@@ -21,6 +22,7 @@ import {
   NModal,
   NSelect,
   NSpace,
+  NSwitch,
   NTag,
   NText
 } from 'naive-ui';
@@ -31,6 +33,7 @@ import ListSearchPanel from '@/components/common/list-search-panel.vue';
 import {
   cancelCommand,
   createCommand,
+  createRawHexCommand,
   getCommand,
   getCommands,
   getCommandTargets,
@@ -42,7 +45,7 @@ import type { Device, Product } from '@/modules/device/api/device';
 import CommandTimeline from '@/modules/command/components/CommandTimeline.vue';
 import { useAuthStore } from '@/store/modules/auth';
 
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
 const authStore = useAuthStore();
 const loading = ref(false);
 const saving = ref(false);
@@ -55,10 +58,12 @@ const total = ref(0);
 const modalVisible = ref(false);
 const drawerVisible = ref(false);
 const cancelModalVisible = ref(false);
+const rawModalVisible = ref(false);
 const cancellingCommand = ref<Command | null>(null);
 const cancelReason = ref('');
 const selectedCommand = ref<Command | null>(null);
 const currentIdempotencyKey = ref('');
+const rawIdempotencyKey = ref('');
 const query = reactive<{
   deviceId: string | null;
   status: CommandStatus | null;
@@ -81,10 +86,17 @@ const commandForm = reactive({
   ttlSeconds: 300,
   timeoutSeconds: 30
 });
+const rawForm = reactive({
+  deviceId: null as string | null,
+  rawPayloadHex: '',
+  reason: '',
+  ttlSeconds: 300
+});
 const commandStatuses: CommandStatus[] = [
   'CREATED',
   'QUEUED',
   'SENT',
+  'PUBLISHED',
   'DEVICE_RECEIVED',
   'SUCCEEDED',
   'REFUSED',
@@ -109,6 +121,11 @@ const templateOptions = computed<SelectOption[]>(() =>
   }))
 );
 const selectedTemplate = computed(() => templates.value.find(item => item.key === commandForm.templateKey) || null);
+const normalizedRawHex = computed(() => rawForm.rawPayloadHex.replace(/0x/gi, '').replace(/\s+/g, '').toUpperCase());
+const rawHexValid = computed(
+  () => /^[0-9A-F]+$/.test(normalizedRawHex.value) && normalizedRawHex.value.length % 2 === 0
+);
+const rawByteLength = computed(() => (rawHexValid.value ? normalizedRawHex.value.length / 2 : 0));
 const parameterFields = computed(() => {
   const schema = selectedTemplate.value?.parameterSchema as Record<string, unknown> | undefined;
   const properties = schema?.properties as Record<string, Record<string, unknown>> | undefined;
@@ -116,6 +133,10 @@ const parameterFields = computed(() => {
   return Object.entries(properties || {}).map(([key, definition]) => ({
     key,
     type: String(definition.type || 'string'),
+    titleKey: typeof definition.titleKey === 'string' ? definition.titleKey : undefined,
+    enumValues: Array.isArray(definition.enum)
+      ? definition.enum.filter(value => ['string', 'number'].includes(typeof value))
+      : [],
     minimum: typeof definition.minimum === 'number' ? definition.minimum : undefined,
     maximum: typeof definition.maximum === 'number' ? definition.maximum : undefined,
     required: required.has(key)
@@ -210,10 +231,10 @@ async function loadTargets(keyword = '') {
   }
 }
 
-async function loadTemplates() {
+async function loadTemplates(deviceId?: string | null) {
   if (!can('command:template:view')) return;
   try {
-    templates.value = await getCommandTemplates();
+    templates.value = await getCommandTemplates(deviceId);
   } catch (error) {
     showError(error);
   }
@@ -245,9 +266,10 @@ function resetQuery() {
 }
 
 function openCreate() {
+  const deviceId = targets.value[0]?.id || null;
   const template = templates.value[0];
   Object.assign(commandForm, {
-    deviceId: targets.value[0]?.id || null,
+    deviceId,
     templateKey: template?.key || null,
     parameters: {},
     reason: '',
@@ -257,6 +279,15 @@ function openCreate() {
   });
   currentIdempotencyKey.value = createIdempotencyKey();
   modalVisible.value = true;
+  if (deviceId) void loadTemplates(deviceId);
+}
+
+async function syncDeviceTemplates(deviceId: string) {
+  await loadTemplates(deviceId);
+  if (!templates.value.some(template => template.key === commandForm.templateKey)) {
+    commandForm.templateKey = templates.value[0]?.key || null;
+  }
+  if (commandForm.templateKey) syncTemplateDefaults(commandForm.templateKey);
 }
 
 function syncTemplateDefaults(templateKey: string) {
@@ -320,13 +351,67 @@ async function submitCommand() {
   }
 }
 
-function setParameter(key: string, value: string | number | null) {
+function openRawCreate() {
+  Object.assign(rawForm, {
+    deviceId: targets.value[0]?.id || null,
+    rawPayloadHex: '',
+    reason: '',
+    ttlSeconds: 300
+  });
+  rawIdempotencyKey.value = createIdempotencyKey();
+  rawModalVisible.value = true;
+}
+
+function requestRawSubmit() {
+  if (!rawForm.deviceId || !rawForm.reason.trim() || !rawHexValid.value || rawByteLength.value > 4096) {
+    window.$message?.warning(t('mine.commands.raw.validation'));
+    return;
+  }
+  window.$dialog?.warning({
+    title: t('mine.commands.raw.confirmTitle'),
+    content: t('mine.commands.raw.confirmContent', {
+      device: deviceMap.value.get(rawForm.deviceId)?.name || rawForm.deviceId,
+      count: rawByteLength.value,
+      payload: normalizedRawHex.value
+    }),
+    positiveText: t('mine.commands.raw.confirmAction'),
+    negativeText: t('mine.common.cancel'),
+    onPositiveClick: submitRawCommand
+  });
+}
+
+async function submitRawCommand() {
+  if (!rawForm.deviceId) return;
+  saving.value = true;
+  try {
+    await createRawHexCommand(
+      {
+        deviceId: rawForm.deviceId,
+        rawPayloadHex: rawForm.rawPayloadHex,
+        reason: rawForm.reason.trim(),
+        ttlSeconds: rawForm.ttlSeconds
+      },
+      rawIdempotencyKey.value
+    );
+    window.$message?.success(t('mine.commands.raw.created'));
+    rawModalVisible.value = false;
+    await loadCommands();
+  } catch (error) {
+    showError(error);
+  } finally {
+    saving.value = false;
+  }
+}
+
+function setParameter(key: string, value: string | number | boolean | null) {
   if (value === null || value === '') Reflect.deleteProperty(commandForm.parameters, key);
   else commandForm.parameters[key] = value;
 }
 
-function getParameterLabel(key: string) {
-  return t(`mine.commands.parameter.${key}` as App.I18n.I18nKey);
+function getParameterLabel(field: { key: string; titleKey?: string }) {
+  if (field.titleKey && te(field.titleKey)) return t(field.titleKey);
+  const builtInKey = `mine.commands.parameter.${field.key}`;
+  return te(builtInKey) ? t(builtInKey) : field.key;
 }
 
 function getNumberParameter(key: string) {
@@ -337,6 +422,19 @@ function getNumberParameter(key: string) {
 function getStringParameter(key: string) {
   const value = commandForm.parameters[key];
   return typeof value === 'string' ? value : undefined;
+}
+
+function getSelectParameter(key: string) {
+  const value = commandForm.parameters[key];
+  return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+}
+
+function getBooleanParameter(key: string) {
+  return commandForm.parameters[key] === true;
+}
+
+function enumOptions(values: unknown[]): SelectOption[] {
+  return values.map(value => ({ label: String(value), value: value as string | number }));
 }
 
 function openCancel(command: Command) {
@@ -387,7 +485,9 @@ function templateLabel(key: string) {
     SET_REPORT_INTERVAL: 'mine.commands.template.setReportInterval',
     REQUEST_LOCATION: 'mine.commands.template.requestLocation'
   };
-  return labels[key] ? t(labels[key]) : key;
+  if (labels[key]) return t(labels[key]);
+  const template = templates.value.find(item => item.key === key);
+  return template ? (locale.value === 'zh-CN' ? template.nameZh : template.nameEn || template.nameZh) : key;
 }
 
 function statusLabel(status: CommandStatus) {
@@ -395,17 +495,14 @@ function statusLabel(status: CommandStatus) {
 }
 
 function statusType(status: CommandStatus) {
-  if (status === 'SUCCEEDED') return 'success' as const;
+  if (status === 'SUCCEEDED' || status === 'PUBLISHED') return 'success' as const;
   if (status === 'REFUSED' || status === 'EXPIRED' || status === 'TIMEOUT') return 'warning' as const;
   if (status === 'FAILED' || status === 'CANCELLED') return 'error' as const;
   return 'info' as const;
 }
 
 function identityCell(name: string, code: string) {
-  return h(NSpace, { vertical: true, size: 0 }, () => [
-    h(NText, null, () => name),
-    h(NText, { depth: 3 }, () => code)
-  ]);
+  return h(NSpace, { vertical: true, size: 0 }, () => [h(NText, null, () => name), h(NText, { depth: 3 }, () => code)]);
 }
 
 function formatTime(value: string) {
@@ -428,7 +525,19 @@ function showError(error: unknown) {
   window.$message?.error(message);
 }
 
-defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetails, currentIdempotencyKey });
+defineExpose({
+  commandForm,
+  rawForm,
+  openCreate,
+  openRawCreate,
+  requestSubmit,
+  requestRawSubmit,
+  submitCommand,
+  submitRawCommand,
+  showDetails,
+  currentIdempotencyKey,
+  rawIdempotencyKey
+});
 </script>
 
 <template>
@@ -477,6 +586,9 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
             >
               {{ t('mine.commands.action.create') }}
             </ListActionButton>
+            <NButton v-if="can('command:raw:execute')" type="warning" secondary @click="openRawCreate">
+              {{ t('mine.commands.action.rawHex') }}
+            </NButton>
             <ListActionButton kind="refresh" :loading="loading" @click="loadCommands">
               {{ t('common.refresh') }}
             </ListActionButton>
@@ -513,8 +625,12 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
             :options="deviceOptions"
             :placeholder="t('mine.commands.placeholder.device')"
             @search="loadTargets"
+            @update:value="value => value && syncDeviceTemplates(value)"
           />
         </NFormItem>
+        <NAlert v-if="selectedTemplate?.payloadFormat === 'RAW_HEX'" type="warning" :show-icon="true">
+          {{ t('mine.commands.raw.fixedTemplateNotice') }}
+        </NAlert>
         <NFormItem :label="t('mine.commands.field.template')" required>
           <NSelect
             v-model:value="commandForm.templateKey"
@@ -526,21 +642,34 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
         <NFormItem
           v-for="field in parameterFields"
           :key="field.key"
-          :label="getParameterLabel(field.key)"
+          :label="getParameterLabel(field)"
           :required="field.required"
         >
+          <NSelect
+            v-if="field.enumValues.length"
+            :value="getSelectParameter(field.key)"
+            :options="enumOptions(field.enumValues)"
+            clearable
+            :placeholder="t('mine.common.selectPlaceholder', { field: getParameterLabel(field) })"
+            @update:value="value => setParameter(field.key, value)"
+          />
+          <NSwitch
+            v-else-if="field.type === 'boolean'"
+            :value="getBooleanParameter(field.key)"
+            @update:value="value => setParameter(field.key, value)"
+          />
           <NInputNumber
-            v-if="field.type === 'integer' || field.type === 'number'"
+            v-else-if="field.type === 'integer' || field.type === 'number'"
             :value="getNumberParameter(field.key)"
             :min="field.minimum"
             :max="field.maximum"
-            :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field.key) })"
+            :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field) })"
             @update:value="value => setParameter(field.key, value)"
           />
           <NInput
             v-else
             :value="getStringParameter(field.key)"
-            :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field.key) })"
+            :placeholder="t('mine.common.enterPlaceholder', { field: getParameterLabel(field) })"
             @update:value="value => setParameter(field.key, value)"
           />
         </NFormItem>
@@ -583,6 +712,7 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
                 v-model:value="commandForm.timeoutSeconds"
                 :min="1"
                 :max="86400"
+                :disabled="selectedTemplate?.replyExpected === false"
                 :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.timeout') })"
               />
             </NFormItem>
@@ -594,6 +724,68 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
           <NButton @click="modalVisible = false">{{ t('mine.common.cancel') }}</NButton>
           <NButton type="primary" :loading="saving" @click="requestSubmit">
             {{ t('mine.commands.action.send') }}
+          </NButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="rawModalVisible" preset="card" :title="t('mine.commands.raw.title')" class="max-w-92vw w-160">
+      <NSpace vertical :size="16">
+        <NAlert type="warning" :title="t('mine.commands.raw.noticeTitle')">
+          {{ t('mine.commands.raw.noticeContent') }}
+        </NAlert>
+        <NForm label-placement="top">
+          <NFormItem :label="t('mine.commands.field.device')" required>
+            <NSelect
+              v-model:value="rawForm.deviceId"
+              filterable
+              remote
+              :options="deviceOptions"
+              :placeholder="t('mine.commands.placeholder.device')"
+              @search="loadTargets"
+            />
+          </NFormItem>
+          <NFormItem :label="t('mine.commands.raw.payload')" required>
+            <NInput
+              v-model:value="rawForm.rawPayloadHex"
+              type="textarea"
+              :autosize="{ minRows: 5, maxRows: 12 }"
+              :maxlength="32768"
+              :placeholder="t('mine.commands.raw.payloadPlaceholder')"
+            />
+            <template #feedback>
+              <NSpace vertical :size="0">
+                <NText>{{ t('mine.commands.raw.byteCount', { count: rawByteLength }) }}</NText>
+                <NText depth="3">
+                  {{ t('mine.commands.raw.normalizedPayload', { payload: normalizedRawHex || t('mine.common.empty') }) }}
+                </NText>
+              </NSpace>
+            </template>
+          </NFormItem>
+          <NFormItem :label="t('mine.commands.field.reason')" required>
+            <NInput
+              v-model:value="rawForm.reason"
+              type="textarea"
+              :maxlength="1000"
+              show-count
+              :placeholder="t('mine.commands.raw.reasonPlaceholder')"
+            />
+          </NFormItem>
+          <NFormItem :label="t('mine.commands.field.ttl')">
+            <NInputNumber
+              v-model:value="rawForm.ttlSeconds"
+              :min="1"
+              :max="86400"
+              :placeholder="t('mine.common.enterPlaceholder', { field: t('mine.commands.field.ttl') })"
+            />
+          </NFormItem>
+        </NForm>
+      </NSpace>
+      <template #footer>
+        <NSpace justify="end">
+          <NButton @click="rawModalVisible = false">{{ t('mine.common.cancel') }}</NButton>
+          <NButton type="warning" :loading="saving" @click="requestRawSubmit">
+            {{ t('mine.commands.raw.reviewAction') }}
           </NButton>
         </NSpace>
       </template>
@@ -632,6 +824,15 @@ defineExpose({ commandForm, openCreate, requestSubmit, submitCommand, showDetail
               </NDescriptionsItem>
               <NDescriptionsItem :label="t('mine.commands.field.timeout')">
                 {{ selectedCommand.timeoutSeconds }}
+              </NDescriptionsItem>
+              <NDescriptionsItem :label="t('mine.commands.field.payloadFormat')">
+                {{ selectedCommand.payloadFormat }}
+              </NDescriptionsItem>
+              <NDescriptionsItem v-if="selectedCommand.rawPayloadHex" :label="t('mine.commands.raw.payload')">
+                <NText code>{{ selectedCommand.rawPayloadHex }}</NText>
+              </NDescriptionsItem>
+              <NDescriptionsItem v-if="selectedCommand.payloadSha256" :label="t('mine.commands.field.payloadSha256')">
+                <NText code>{{ selectedCommand.payloadSha256 }}</NText>
               </NDescriptionsItem>
               <NDescriptionsItem :label="t('mine.commands.field.parameters')">
                 <NText code>{{ formatJson(selectedCommand.parameters) }}</NText>

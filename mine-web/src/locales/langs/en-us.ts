@@ -167,6 +167,7 @@ const local: App.I18n.Schema = {
       aggregation: 'Numeric Aggregation',
       command: 'Command Management',
       commandCenter: 'Command Center',
+      commandTemplates: 'Command Templates',
       alarms: 'Alarm Management',
       alarmCenter: 'Alarm Center',
       notificationChannels: 'Notification Channels',
@@ -2379,6 +2380,7 @@ const local: App.I18n.Schema = {
       },
       action: {
         create: 'Send Command',
+        rawHex: 'Ad-hoc Hex',
         send: 'Review Command',
         confirmSend: 'Confirm Send',
         detail: 'Details',
@@ -2399,7 +2401,9 @@ const local: App.I18n.Schema = {
         errorCode: 'Error Code',
         reason: 'Dispatch Reason',
         workOrderNo: 'Work Order',
-        cancelReason: 'Cancellation Reason'
+        cancelReason: 'Cancellation Reason',
+        payloadFormat: 'Payload Format',
+        payloadSha256: 'Payload SHA-256'
       },
       placeholder: { device: 'Select a device', status: 'All command statuses', template: 'All command templates' },
       validation: {
@@ -2424,11 +2428,12 @@ const local: App.I18n.Schema = {
       },
       parameter: { intervalSeconds: 'Reporting Interval (seconds)' },
       detail: { title: 'Command Details', timeline: 'Status Timeline' },
-      timeline: { queued: 'Queued', sent: 'Sent', received: 'Device Received' },
+      timeline: { queued: 'Queued', sent: 'Sent', published: 'Broker Confirmed', received: 'Device Received' },
       status: {
         created: 'Created',
         queued: 'Queued',
         sent: 'Sent',
+        published: 'Published to Device Broker',
         device_received: 'Device Received',
         succeeded: 'Succeeded',
         refused: 'Device Refused',
@@ -2436,6 +2441,79 @@ const local: App.I18n.Schema = {
         expired: 'Queue Expired',
         timeout: 'Reply Timeout',
         cancelled: 'Cancelled'
+      },
+      raw: {
+        title: 'Send Ad-hoc Hex Command',
+        payload: 'Hex Payload',
+        payloadPlaceholder: 'For example AA BB 01 or 0xAA 0xBB 0x01',
+        byteCount: '{count} valid bytes, maximum 4096 bytes',
+        normalizedPayload: 'Normalized payload: {payload}',
+        noticeTitle: 'Raw bytes are published directly',
+        noticeContent:
+          'Only currently online MQTT devices are supported. Broker confirmation means published, not executed by the device.',
+        fixedTemplateNotice:
+          'This template sends the raw bytes frozen in its published version. Broker confirmation completes the command as Published.',
+        reasonPlaceholder: 'Enter protocol commissioning, site diagnosis, or work evidence',
+        reviewAction: 'Review and Send',
+        confirmTitle: 'Confirm Raw Byte Publish',
+        confirmContent:
+          'Publish {count} raw bytes to “{device}”: {payload}. No device business reply will be awaited; verify the device and bytes again.',
+        confirmAction: 'Confirm Publish',
+        validation: 'Select a device and enter valid hex plus a dispatch reason. Payload cannot exceed 4096 bytes.',
+        created: 'Raw command entered the reliable delivery queue'
+      }
+    },
+    commandTemplates: {
+      title: 'Command Templates',
+      subtitle: 'Define auditable command drafts, bind them to products, and publish immutable versions.',
+      empty: 'No custom command template exists yet. Start with a draft.',
+      productSeparator: ', ',
+      notice: {
+        title: 'Published content is immutable',
+        content:
+          'MQTT topics are generated from device identity. Raw hex templates do not await device replies and complete when the broker confirms publication.'
+      },
+      action: { create: 'New Template', createVersion: 'New Version', save: 'Save Draft', publish: 'Publish Version' },
+      drawer: { create: 'New Command Template', edit: 'Edit Template Draft' },
+      column: {
+        template: 'Template',
+        format: 'Payload Format',
+        products: 'Products',
+        status: 'Version Status',
+        updatedAt: 'Updated'
+      },
+      field: {
+        templateKey: 'Template Key',
+        payloadFormat: 'Payload Format',
+        nameZh: 'Chinese Name',
+        nameEn: 'English Name',
+        description: 'Purpose and Site Notes',
+        products: 'Applicable Products',
+        rawPayloadHex: 'Fixed Hex Payload',
+        parameterSchema: 'Parameter JSON Schema',
+        requiresReason: 'Require Dispatch Reason'
+      },
+      placeholder: {
+        templateKey: 'For example HORN_RAW',
+        rawPayloadHex: 'For example AA BB 01 or 0xAA 0xBB 0x01',
+        parameterSchema: 'Enter a restricted JSON Schema object'
+      },
+      byteCount: '{count} normalized bytes, maximum 4096',
+      format: { rawHex: 'Raw Hex', mqttJson: 'MQTT JSON' },
+      status: { draft: 'Draft', published: 'Published', retired: 'Retired' },
+      validation: {
+        required: 'Enter a template key and Chinese name, then select at least one product',
+        rawHex: 'Enter between 1 and 4096 bytes of valid hexadecimal content',
+        schema: 'Parameter schema must be a valid JSON object'
+      },
+      publish: {
+        title: 'Publish Immutable Template Version',
+        content: '“{name}” cannot be edited after publication. Continue?'
+      },
+      message: {
+        saved: 'Command template draft saved',
+        versionCreated: 'The next command template draft was created',
+        published: 'Command template version published'
       }
     },
     fallback: {

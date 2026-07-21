@@ -10,10 +10,12 @@ import com.bosco.mine.server.modules.command.dto.CommandTemplateResponse;
 import com.bosco.mine.server.modules.command.service.PublishedCommandTemplates;
 import com.bosco.mine.server.modules.command.service.CommandQueryService;
 import com.bosco.mine.server.modules.command.service.CommandService;
+import com.bosco.mine.server.modules.command.template.CommandTemplateService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,23 +45,42 @@ import java.util.UUID;
 public class CommandController {
     private final CommandService commandService;
     private final CommandQueryService queryService;
+    private final CommandTemplateService templateService;
 
     /**
      * 创建命令控制器。
      *
      * @param commandService 命令写服务
      * @param queryService 命令查询服务
+     * @param templateService 自定义模板服务
      */
-    public CommandController(CommandService commandService, CommandQueryService queryService) {
+    public CommandController(
+            CommandService commandService,
+            CommandQueryService queryService,
+            CommandTemplateService templateService
+    ) {
         this.commandService = commandService;
         this.queryService = queryService;
+        this.templateService = templateService;
     }
 
     /** @return 当前已发布的低风险命令模板 */
     @GetMapping("/command-templates")
     @SaCheckPermission("command:template:view")
-    public List<CommandTemplateResponse> templates() {
-        return PublishedCommandTemplates.publishedTemplates();
+    public List<CommandTemplateResponse> templates(@RequestParam(required = false) UUID deviceId) {
+        if (deviceId == null) {
+            return PublishedCommandTemplates.publishedTemplates();
+        }
+        List<CommandTemplateResponse> custom = templateService.findPublishedForDevice(deviceId).stream()
+                .map(template -> new CommandTemplateResponse(
+                        template.templateKey(), template.versionNumber(), template.nameZh(),
+                        template.nameEn(), template.description(), template.riskLevel(),
+                        template.payloadFormat(), template.defaultTtlSeconds(),
+                        template.defaultTimeoutSeconds(), template.parameterSchema(),
+                        template.requiresReason(), template.replyExpected()
+                )).toList();
+        return java.util.stream.Stream.concat(
+                PublishedCommandTemplates.publishedTemplates().stream(), custom.stream()).toList();
     }
 
     /**
@@ -95,7 +116,7 @@ public class CommandController {
     public PageResponse<CommandResponse> findCommands(
             @RequestParam(required = false) UUID deviceId,
             @RequestParam(required = false) @Pattern(regexp =
-                    "CREATED|QUEUED|SENT|DEVICE_RECEIVED|SUCCEEDED|REFUSED|FAILED|EXPIRED|TIMEOUT|CANCELLED")
+                    "CREATED|QUEUED|SENT|PUBLISHED|DEVICE_RECEIVED|SUCCEEDED|REFUSED|FAILED|EXPIRED|TIMEOUT|CANCELLED")
             String status,
             @RequestParam(required = false) @Size(max = 128) String templateKey,
             @RequestParam(defaultValue = "1") @Min(1) @Max(1_000_000) int page,
@@ -143,6 +164,31 @@ public class CommandController {
     }
 
     /**
+     * 幂等创建并下发无需设备业务回复的临时十六进制命令。
+     *
+     * @param idempotencyKey 创建幂等键
+     * @param httpRequest HTTP 请求
+     * @param request 临时原始命令请求
+     * @return 命令和资源地址
+     */
+    @PostMapping("/commands/raw-hex")
+    @SaCheckPermission("command:raw:execute")
+    public ResponseEntity<CommandResponse> createRawHexCommand(
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 128) String idempotencyKey,
+            HttpServletRequest httpRequest,
+            @Valid @RequestBody RawHexCommandRequest request
+    ) {
+        String traceId = String.valueOf(httpRequest.getAttribute(TraceIdFilter.TRACE_ID_ATTRIBUTE));
+        CommandResponse command = commandService.createCurrentUserRawHexCommand(
+                request.deviceId(), request.rawPayloadHex(), request.reason(),
+                idempotencyKey, request.ttlSeconds(), traceId
+        );
+        URI location = UriComponentsBuilder.fromPath("/api/v1/commands/{id}")
+                .buildAndExpand(command.id()).toUri();
+        return ResponseEntity.created(location).body(command);
+    }
+
+    /**
      * 取消尚未开始发送的排队命令。
      *
      * @param commandId 命令标识
@@ -167,6 +213,22 @@ public class CommandController {
     public record CommandCancelRequest(
             @Min(0) long version,
             @NotBlank @Size(max = 500) String reason
+    ) {
+    }
+
+    /**
+     * 临时十六进制命令请求。
+     *
+     * @param deviceId 目标设备标识
+     * @param rawPayloadHex 十六进制命令内容
+     * @param reason 现场下发原因
+     * @param ttlSeconds TTL 秒数
+     */
+    public record RawHexCommandRequest(
+            @NotNull UUID deviceId,
+            @NotBlank @Size(max = 32768) String rawPayloadHex,
+            @NotBlank @Size(max = 1000) String reason,
+            @Min(1) @Max(86400) int ttlSeconds
     ) {
     }
 }

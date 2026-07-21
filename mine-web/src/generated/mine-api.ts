@@ -536,6 +536,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/command-template-definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询自定义命令模板版本 */
+        get: operations["listCommandTemplateDefinitions"];
+        put?: never;
+        /** 创建自定义命令模板草稿 */
+        post: operations["createCommandTemplateDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/command-template-definitions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** 修改自定义命令模板草稿 */
+        put: operations["updateCommandTemplateDefinition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/command-template-definitions/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询命令模板可绑定的活动产品 */
+        get: operations["listCommandTemplateProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/command-template-definitions/{versionId}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 从已发布版本复制下一版命令模板草稿 */
+        post: operations["createNextCommandTemplateDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/command-template-definitions/{versionId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 发布不可变命令模板版本 */
+        post: operations["publishCommandTemplateDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/command-targets": {
         parameters: {
             query?: never;
@@ -582,6 +668,23 @@ export interface paths {
         get: operations["getCommand"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/commands/raw-hex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 幂等下发临时原始十六进制命令 */
+        post: operations["createRawHexCommand"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4696,7 +4799,7 @@ export interface components {
             lastSeenAt?: string | null;
         };
         /** @enum {string} */
-        CommandStatus: "CREATED" | "QUEUED" | "SENT" | "DEVICE_RECEIVED" | "SUCCEEDED" | "REFUSED" | "FAILED" | "EXPIRED" | "TIMEOUT" | "CANCELLED";
+        CommandStatus: "CREATED" | "QUEUED" | "SENT" | "PUBLISHED" | "DEVICE_RECEIVED" | "SUCCEEDED" | "REFUSED" | "FAILED" | "EXPIRED" | "TIMEOUT" | "CANCELLED";
         /** @enum {string} */
         CommandRiskLevel: "LOW" | "MEDIUM" | "HIGH";
         ManagedMenuNode: {
@@ -5081,13 +5184,77 @@ export interface components {
         CommandTemplate: {
             key: string;
             version: number;
+            nameZh: string;
+            nameEn?: string | null;
+            description?: string | null;
             riskLevel: components["schemas"]["CommandRiskLevel"];
+            /** @enum {string} */
+            payloadFormat: "MQTT_JSON" | "RAW_HEX";
             defaultTtlSeconds: number;
             defaultTimeoutSeconds: number;
             parameterSchema: {
                 [key: string]: unknown;
             };
             requiresReason: boolean;
+            replyExpected: boolean;
+        };
+        CommandTemplateDefinition: {
+            /** Format: uuid */
+            templateId: string;
+            /** Format: uuid */
+            versionId: string;
+            templateKey: string;
+            versionNumber: number;
+            /** @enum {string} */
+            status: "DRAFT" | "PUBLISHED" | "RETIRED";
+            nameZh: string;
+            nameEn?: string | null;
+            description?: string | null;
+            riskLevel: components["schemas"]["CommandRiskLevel"];
+            /** @enum {string} */
+            payloadFormat: "MQTT_JSON" | "RAW_HEX";
+            parameterSchema: {
+                [key: string]: unknown;
+            };
+            rawPayloadHex?: string | null;
+            payloadSha256?: string | null;
+            defaultTtlSeconds: number;
+            defaultTimeoutSeconds: number;
+            requiresReason: boolean;
+            replyExpected: boolean;
+            productIds: string[];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            publishedAt?: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        CommandTemplateDefinitionRequest: {
+            templateKey: string;
+            nameZh: string;
+            nameEn?: string | null;
+            description?: string | null;
+            /** @enum {string} */
+            payloadFormat: "MQTT_JSON" | "RAW_HEX";
+            parameterSchema: {
+                [key: string]: unknown;
+            };
+            rawPayloadHex?: string | null;
+            defaultTtlSeconds: number;
+            defaultTimeoutSeconds: number;
+            requiresReason: boolean;
+            productIds: string[];
+            /** Format: int64 */
+            version: number;
+        };
+        CommandTemplateProduct: {
+            /** Format: uuid */
+            id: string;
+            productKey: string;
+            name: string;
         };
         Command: {
             /** Format: uuid */
@@ -5104,6 +5271,13 @@ export interface components {
             /** Format: uuid */
             cancelledBy?: string | null;
             cancelReason?: string | null;
+            /** @enum {string} */
+            dispatchSource: "BUILTIN_TEMPLATE" | "CUSTOM_TEMPLATE" | "AD_HOC_HEX";
+            /** @enum {string} */
+            payloadFormat: "MQTT_JSON" | "RAW_HEX";
+            rawPayloadHex?: string | null;
+            payloadSha256?: string | null;
+            replyExpected: boolean;
             riskLevel: components["schemas"]["CommandRiskLevel"];
             status: components["schemas"]["CommandStatus"];
             ttlSeconds: number;
@@ -5153,6 +5327,13 @@ export interface components {
             workOrderNo?: string;
             ttlSeconds: number;
             timeoutSeconds: number;
+        };
+        RawHexCommandRequest: {
+            /** Format: uuid */
+            deviceId: string;
+            rawPayloadHex: string;
+            reason: string;
+            ttlSeconds: number;
         };
         /** @enum {string} */
         AlarmStatus: "ACTIVE_UNACKNOWLEDGED" | "ACTIVE_ACKNOWLEDGED" | "RECOVERED_UNACKNOWLEDGED" | "RECOVERED_ACKNOWLEDGED" | "CLOSED";
@@ -7543,7 +7724,10 @@ export interface operations {
     };
     listCommandTemplates: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 传入设备后同时返回其产品绑定的已发布自定义模板。 */
+                deviceId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7561,6 +7745,169 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listCommandTemplateDefinitions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 自定义命令模板版本列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTemplateDefinition"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createCommandTemplateDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandTemplateDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description 模板草稿已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTemplateDefinition"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    updateCommandTemplateDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CommandTemplateDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description 模板草稿已修改。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTemplateDefinition"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["CommandNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    listCommandTemplateProducts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 活动产品摘要列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTemplateProduct"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createNextCommandTemplateDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 下一版模板草稿已创建。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTemplateDefinition"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["CommandNotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
+        };
+    };
+    publishCommandTemplateDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionRequest"];
+            };
+        };
+        responses: {
+            /** @description 模板版本已发布。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandTemplateDefinition"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["CommandNotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listCommandTargets: {
@@ -7674,6 +8021,37 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["CommandNotFound"];
+        };
+    };
+    createRawHexCommand: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RawHexCommandRequest"];
+            };
+        };
+        responses: {
+            /** @description 原始命令已进入可靠出站队列。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Command"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["UnprocessableEntity"];
         };
     };
     cancelCommand: {
