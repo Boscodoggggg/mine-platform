@@ -43,7 +43,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.28.2
       - uses: actions/setup-node@v6
@@ -124,7 +124,7 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.28.2
       - uses: actions/setup-node@v6
