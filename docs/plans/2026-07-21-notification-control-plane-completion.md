@@ -72,6 +72,8 @@
 ### Task 4: 实现不可变升级策略发布 API
 
 **Files:**
+- Create: `mine-server/src/main/resources/db/migration/V60__add_notification_recovery_template.sql`
+- Modify: `mine-server/src/test/java/com/bosco/mine/server/integration/DatabaseMigrationIT.java`
 - Create: `mine-server/src/main/java/com/bosco/mine/server/modules/notification/model/NotificationPolicy.java`
 - Create: `mine-server/src/main/java/com/bosco/mine/server/modules/notification/model/NotificationPolicyVersion.java`
 - Create: `mine-server/src/main/java/com/bosco/mine/server/modules/notification/model/NotificationPolicyStep.java`
@@ -86,16 +88,16 @@
 
 **Steps:**
 
-1. 先写失败测试，覆盖草稿创建、步骤顺序与延迟、启用依赖、等级/矿区/规则匹配条件、发布幂等、发布快照不可修改、新草稿派生、归档和重叠优先级冲突。
+1. 先写失败测试，覆盖独立恢复模板字段、草稿创建、步骤顺序与延迟、启用依赖、等级/矿区/规则匹配条件、发布幂等、发布快照不可修改、新草稿派生、归档和重叠优先级冲突。
 2. 验证 RED。
-3. 简单写操作用注解，多表依赖和冲突查询用 XML；发布事务中锁定根策略和草稿并记录发布人、发布时间。
+3. 先迁移并注释可选恢复模板外键；简单写操作用注解，多表依赖和冲突查询用 XML；发布事务中锁定根策略和草稿并记录发布人、发布时间。开启恢复通知时，每个步骤必须引用同渠道的启用恢复模板。
 4. 验证 GREEN，并运行数据库集成测试。
 5. 提交 `feat(notification): 发布版本化告警升级策略`。
 
 ### Task 5: 发布权限、OpenAPI 与前端类型
 
 **Files:**
-- Create: `mine-server/src/main/resources/db/migration/V60__publish_notification_control_permissions.sql`
+- Create: `mine-server/src/main/resources/db/migration/V61__publish_notification_control_permissions.sql`
 - Modify: `mine-server/src/test/java/com/bosco/mine/server/integration/DatabaseMigrationIT.java`
 - Modify: `docs/openapi/mine-api.yaml`
 - Modify: generated frontend API types according to the repository generator output
