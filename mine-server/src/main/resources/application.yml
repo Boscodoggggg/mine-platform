@@ -50,6 +50,9 @@ sa-token:
 mine:
   sensitive-data:
     key-file: ${MINE_PERSON_DATA_KEY_FILE:/run/secrets/mine_person_data_key}
+  notification:
+    security:
+      key-file: ${MINE_NOTIFICATION_DATA_KEY_FILE:/run/secrets/mine_notification_data_key}
   configuration-distribution:
     enabled: ${MINE_CONFIGURATION_DISTRIBUTION_ENABLED:false}
     service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
