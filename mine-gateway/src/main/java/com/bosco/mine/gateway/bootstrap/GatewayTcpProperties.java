@@ -1,6 +1,7 @@
 package com.bosco.mine.gateway.bootstrap;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -41,6 +42,11 @@ public record GatewayTcpProperties(
 ) {
 
     private static final Pattern PROTOCOL_KEY = Pattern.compile("[a-z][a-z0-9-]{2,63}");
+
+    /** 使用完整主构造器绑定 Spring Boot 配置属性。 */
+    @ConstructorBinding
+    public GatewayTcpProperties {
+    }
 
     /** 校验全部显式值和启用时的必填参数。 */
     public void validate() {

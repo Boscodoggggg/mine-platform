@@ -1,6 +1,9 @@
 package com.bosco.mine.gateway.bootstrap;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
 import java.time.Duration;
@@ -12,6 +15,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * 校验 TCP 监听器默认关闭、资源上限和 TLS secret 文件边界。
  */
 class GatewayTcpPropertiesTest {
+
+    @Test
+    void 应使用主构造器绑定包含监听模式的配置() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(BindingConfiguration.class)
+                .withPropertyValues(
+                        "mine.gateway.tcp.enabled=true",
+                        "mine.gateway.tcp.bind-host=127.0.0.1",
+                        "mine.gateway.tcp.port=9000",
+                        "mine.gateway.tcp.protocol-key=haul-truck-binary",
+                        "mine.gateway.tcp.mode=legacy"
+                )
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    assertThat(context).hasSingleBean(GatewayTcpProperties.class);
+                    GatewayTcpProperties properties = context.getBean(GatewayTcpProperties.class);
+                    assertThat(properties.resolvedMode()).isEqualTo(GatewayTcpProperties.ListenerMode.LEGACY);
+                    assertThat(properties.resolvedProtocolKey()).isEqualTo("haul-truck-binary");
+                });
+    }
 
     @Test
     void 应提供保守默认值且应用默认关闭() {
@@ -93,5 +116,10 @@ class GatewayTcpPropertiesTest {
                 enabled, bindHost, port, protocolKey, workerThreads,
                 null, null, null, null, null, null, tls
         );
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(GatewayTcpProperties.class)
+    static class BindingConfiguration {
     }
 }
