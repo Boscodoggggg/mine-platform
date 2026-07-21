@@ -200,7 +200,7 @@ docs/                      架构、契约、手册、报告和计划
 
 ## 参与贡献
 
-欢迎提交 Issue、设计讨论和 Pull Request。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [分支及发布策略](docs/13-branching-and-release.md)。项目采用短生命周期分支、中文 Conventional Commit、测试先行和受保护的 `main`。
+欢迎提交 Issue、设计讨论和 Pull Request。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [分支及发布策略](docs/15-branching-and-release.md)。项目采用短生命周期分支、中文 Conventional Commit、测试先行和受保护的 `main`。
 
 如果这个方向对你的矿山、集成团队或工业 IoT 项目有价值，欢迎 Star 并分享具体场景。可复现的厂商协议样本和真实现场约束尤其有价值。
 

@@ -46,7 +46,7 @@
 - Create: `.github/ISSUE_TEMPLATE/bug_report.yml`
 - Create: `.github/ISSUE_TEMPLATE/feature_request.yml`
 - Create: `.github/ISSUE_TEMPLATE/config.yml`
-- Create: `docs/13-branching-and-release.md`
+- Create: `docs/15-branching-and-release.md`
 - Modify: `docs/README.md`
 
 **Steps:**

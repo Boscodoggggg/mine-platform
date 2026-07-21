@@ -200,7 +200,7 @@ See [testing and release gates](docs/10-testing-quality-gates.md) for the author
 
 ## Contributing
 
-Issues, design discussions and Pull Requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [branching and release strategy](docs/13-branching-and-release.md). The project uses short-lived branches, Chinese Conventional Commits, test-first implementation and a protected `main` branch.
+Issues, design discussions and Pull Requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [branching and release strategy](docs/15-branching-and-release.md). The project uses short-lived branches, Chinese Conventional Commits, test-first implementation and a protected `main` branch.
 
 If this direction is useful to your mine, integration team or industrial IoT project, consider starring the repository and sharing a concrete use case. Actionable protocol samples and reproducible field constraints are especially valuable.
 

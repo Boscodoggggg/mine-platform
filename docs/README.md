@@ -47,6 +47,7 @@
 | 13 | [12-roadmap-and-codex-workflow.md](12-roadmap-and-codex-workflow.md) | 阶段路线与 Codex 协作方式 |
 | 14 | [13-technology-and-licenses.md](13-technology-and-licenses.md) | 技术版本、许可证和升级策略 |
 | 15 | [14-decisions-and-glossary.md](14-decisions-and-glossary.md) | ADR 摘要、术语和待确认项 |
+| 16 | [15-branching-and-release.md](15-branching-and-release.md) | GitHub Flow、主分支保护、PR、版本与 Hotfix 治理 |
 
 详细实施任务位于 plans/，必须按测试先行、小提交、逐阶段验收执行。
 

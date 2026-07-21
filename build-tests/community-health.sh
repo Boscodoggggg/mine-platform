@@ -21,7 +21,7 @@ required_files=(
   .github/ISSUE_TEMPLATE/bug_report.yml
   .github/ISSUE_TEMPLATE/feature_request.yml
   .github/ISSUE_TEMPLATE/config.yml
-  docs/13-branching-and-release.md
+  docs/15-branching-and-release.md
 )
 
 for relative_path in "${required_files[@]}"; do
