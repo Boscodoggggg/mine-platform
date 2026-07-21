@@ -5,6 +5,7 @@ test('策略管理员应查看最终值并通过幂等发布形成新的不可�
 
   await page.goto('/device/strategies');
   await expect(page.getByText('策略工作台', { exact: true }).first()).toBeVisible();
+  await page.getByText('设备组与优先级', { exact: true }).click();
   await expect(page.getByText('北区运输组', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('北区运输车 01', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('设备组覆盖', { exact: true }).last()).toBeVisible();
@@ -13,6 +14,7 @@ test('策略管理员应查看最终值并通过幂等发布形成新的不可�
   await page.locator('[data-field="publish-reason"] textarea').fill('雨季延长离线判定窗口');
   await page.locator('[data-action="publish-strategy"]').click();
 
+  await page.getByText('不可变发布历史', { exact: true }).click();
   await expect(page.getByText('发布序号 #9', { exact: true })).toBeVisible();
   expect(backend.publishAttempts).toBe(1);
   expect(backend.publishIdempotencyKey).toMatch(/\S+/);
