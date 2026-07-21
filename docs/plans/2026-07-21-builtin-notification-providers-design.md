@@ -20,7 +20,7 @@ Provider 编码来自编译期注册表。渠道管理 API 只接受注册表存
 
 `notification_channel.configuration` 保存非敏感 JSON，例如 SMTP 主机、端口、发件地址、安全模式、短信签名、官方 API 端点和通用 Webhook 主机允许列表。`notification_channel.secret_ciphertext` 保存整个 secrets JSON 的 AES-256-GCM 密文，例如 SMTP 用户名密码、机器人或通用 Webhook URL、签名密钥和阿里云 AccessKey。完整 secrets JSON 上限为 32 KiB。
 
-API 请求允许提交明文 secrets，但响应只返回 `secretConfigured` 和 Provider 字段定义，不返回明文或密文；响应序列化还会按照 Provider 元数据剔除非敏感配置中误存的 secret 字段。升级启动时，旧版通用 Webhook 的 `configuration.endpointUrl` 会在密钥校验成功后原子迁入密文并提升版本，迁移失败会阻断应用启动。更新渠道时：
+API 请求允许提交明文 secrets。普通列表与详情响应只返回 `secretConfigured` 和 Provider 字段定义，不返回明文或密文；响应序列化还会按照 Provider 元数据剔除非敏感配置中误存的 secret 字段。产品要求管理员能够维护既有密码、Webhook 和 AccessKey，因此额外提供受 `notification:channel:secret:view` 独立权限控制的凭据读取接口：仅在管理员进入编辑态时调用，响应禁止缓存，每次读取记录不含值的审计事件，响应对象的日志字符串同样不包含凭据。升级启动时，旧版通用 Webhook 的 `configuration.endpointUrl` 会在密钥校验成功后原子迁入密文并提升版本，迁移失败会阻断应用启动。更新渠道时：
 
 1. 使用旧渠道版本作为 AAD 解密已有 secrets；
 2. 将请求中出现的 secret 字段覆盖到旧快照；
@@ -28,7 +28,7 @@ API 请求允许提交明文 secrets，但响应只返回 `secretConfigured` 和
 4. 使用新渠道版本作为 AAD 重新加密完整 secrets；
 5. 通过乐观锁原子更新。
 
-禁用渠道允许暂存不完整密钥；启用渠道必须具备全部必填配置和 secrets。审计仅记录 Provider、渠道类型、状态和配置字段名，不记录配置值、接收目标、密文或明文。
+禁用渠道允许暂存不完整密钥；启用渠道必须具备全部必填配置和 secrets。修改审计与凭据读取审计仅记录 Provider、渠道类型、状态、版本和配置字段名，不记录配置值、接收目标、密文或明文。
 
 ## 3. 运行边界
 
@@ -40,4 +40,4 @@ SMTP 通过 Jakarta Mail 发送，成功只表示 SMTP 服务器受理。企业�
 
 ## 4. 验证边界
 
-自动化测试使用伪传输层和伪阿里云客户端，验证请求格式、签名、成功状态、错误分类、密文不出 API、Provider 白名单、数据库版本换密和注册表重复检测；真实 PostgreSQL 额外校验 Spring Provider 完整注册、渠道 Mapper、乐观锁和旧版 Webhook 明文地址迁移。启动期密钥身份哨兵阻止错误密钥读取既有凭据。真实 SMTP、机器人、短信与电话发送继续标记为延期验证，不在自动化中产生外部副作用。
+自动化测试使用伪传输层和伪阿里云客户端，验证请求格式、签名、成功状态、错误分类、普通 API 密文不出站、凭据接口精确权限与禁止缓存、审计不含凭据值、Provider 白名单、数据库版本换密和注册表重复检测；真实 PostgreSQL 额外校验 Spring Provider 完整注册、渠道 Mapper、乐观锁和旧版 Webhook 明文地址迁移。启动期密钥身份哨兵阻止错误密钥读取既有凭据。真实 SMTP、机器人、短信与电话发送继续标记为延期验证，不在自动化中产生外部副作用。

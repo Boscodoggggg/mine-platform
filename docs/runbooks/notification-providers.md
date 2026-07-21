@@ -16,7 +16,7 @@
 
 平台不提供通知 JAR 上传、开放 SPI 注册、动态类加载或任意脚本执行。新增 Provider 必须随平台代码评审、测试和版本发布。
 
-本批尚未实现升级策略发布、告警事务创建通知事件、投递租约工作器、异步回执、事件单和前端通知工作台。真实 SMTP、机器人、短信和电话发送按产品决策延期，自动化测试不会访问收费或外部 API。
+当前已提供管理员通知渠道工作台，可按 Provider 元数据动态配置渠道、启停状态、超时参数和加密凭据。尚未实现升级策略发布、告警事务创建通知事件、投递租约工作器、异步回执和事件单。真实 SMTP、机器人、短信和电话发送按产品决策延期，自动化测试不会访问收费或外部 API。
 
 ## 2. 独立数据密钥
 
@@ -36,10 +36,11 @@ Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用
 - `GET /api/v1/notifications/providers`：返回受控 Provider 和字段元数据。
 - `GET /api/v1/notifications/channels`：返回安全渠道摘要。
 - `GET /api/v1/notifications/channels/{channelId}`：返回单个安全渠道摘要。
+- `GET /api/v1/notifications/channels/{channelId}/secrets`：向具备独立权限的管理员返回当前真实凭据，并记录读取审计。
 - `POST /api/v1/notifications/channels`：创建渠道。
 - `PUT /api/v1/notifications/channels/{channelId}`：按 `version` 乐观更新渠道。
 
-查看需要 `notification:channel:view`，修改需要 `notification:channel:edit`。请求中的 `secrets` 为只写字段；响应仅返回 `secretConfigured`，不得返回明文、密文或脱敏后仍可复原的内容。服务端还会依据 Provider 元数据从响应配置中剔除误存的敏感字段。禁用渠道可以保存不完整草稿，启用前必须满足 Provider 必填配置。
+查看需要 `notification:channel:view`，修改需要 `notification:channel:edit`，真实凭据回显还必须具备 `notification:channel:secret:view`。普通列表和详情响应仅返回 `secretConfigured`，不得返回明文、密文或脱敏后仍可复原的内容；只有独立凭据接口可以返回真实值，其响应使用 `Cache-Control: no-store`，审计只记录渠道、Provider、版本和字段名，不记录字段值。前端仅在有权限的管理员打开编辑抽屉时调用该接口，密码、Webhook、AccessKey 等字段默认遮挡，可通过输入框显隐按钮查看。服务端还会依据 Provider 元数据从普通响应配置中剔除误存的敏感字段。禁用渠道可以保存不完整草稿，启用前必须满足 Provider 必填配置。
 
 ## 4. 网络与重复发送边界
 

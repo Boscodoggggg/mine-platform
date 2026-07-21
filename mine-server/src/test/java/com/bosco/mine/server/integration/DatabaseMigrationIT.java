@@ -1076,6 +1076,7 @@ class DatabaseMigrationIT {
                 "mine-site-archive",
                 "mine-spatial-management",
                 "mine-vehicle-management",
+                "notification-channel-management",
                 "retention-governance",
                 "system-dictionary-list",
                 "system-menu-list",
@@ -1173,8 +1174,22 @@ class DatabaseMigrationIT {
                 ORDER BY permission
                 """, String.class)).containsExactly(
                 "notification:channel:edit",
+                "notification:channel:secret:view",
                 "notification:channel:view"
         );
+        assertThat(jdbcTemplate.queryForMap("""
+                SELECT channel.path,
+                       channel.component_key,
+                       channel.permission,
+                       channel.visible,
+                       parent.path AS parent_path
+                FROM sys_menu channel
+                JOIN sys_menu parent ON parent.id = channel.parent_id
+                WHERE channel.component_key = 'notification-channel-management'
+                """)).containsEntry("path", "/alarm/channels")
+                .containsEntry("permission", "notification:channel:view")
+                .containsEntry("visible", true)
+                .containsEntry("parent_path", "/alarm");
         assertThat(jdbcTemplate.queryForList("""
                 SELECT permission
                 FROM sys_menu
