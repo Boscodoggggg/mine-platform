@@ -742,7 +742,7 @@ services:
     logging: *default-logging
 
   loki:
-    image: ${MINE_LOKI_IMAGE:-grafana/loki:3.7.2}
+    image: ${MINE_LOKI_IMAGE:-grafana/loki:3.7.3}
     profiles: ["observability"]
     restart: unless-stopped
     init: true
