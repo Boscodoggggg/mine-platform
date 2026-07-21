@@ -1,57 +1,213 @@
-# mine-platform
+<div align="center">
 
-mine-platform 是面向单矿区私有化部署的智慧矿山数据采集与设备管理平台。平台计划支持 MQTT、厂商私有 TCP 和二进制协议，在弱网环境中完成设备接入、遥测处理、告警、命令下发和历史数据管理。
+# ⛏️ mine-platform
 
-项目目前处于工程底座建设阶段，模块名为临时稳定名称，后续修改产品名称不改变模块边界。
+### Open-source industrial IoT infrastructure for smart mines
 
-告警通知控制面已经提供“告警管理 → 通知渠道”统一入口，可维护平台内置 Provider、加密凭据、接收组、接收对象、受控模板和不可变升级策略。当前结论仅覆盖仓库自动化与本地管理员闭环，不包含真实短信、电话、邮件、企业 IM 送达、异步回执或事件单运行时；上线边界和验收证据见 [通知 Provider 配置与安全运行手册](docs/runbooks/notification-providers.md) 与 [Phase 2 通知控制面验收报告](docs/reports/phase-2-notification-control-plane-acceptance.md)。
+**Offline-first. Weak-network aware. Protocol-extensible. Built around operational truth.**
 
-## 工程约定
+[![CI](https://github.com/Boscodoggggg/mine-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Boscodoggggg/mine-platform/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-2563eb.svg)](LICENSE)
+[![Java](https://img.shields.io/badge/Java-21-f97316.svg)](https://openjdk.org/projects/jdk/21/)
+[![Vue](https://img.shields.io/badge/Vue-3-42b883.svg)](https://vuejs.org/)
+[![Status](https://img.shields.io/badge/status-pre--1.0-8b5cf6.svg)](#project-maturity)
 
-- Maven groupId：`com.bosco`
-- Java 基础包：`com.bosco.mine`
-- Java：21
-- Spring Boot：4.1.0
-- 构建方式：Maven Wrapper
-- 许可证：Apache License 2.0
+[简体中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Standalone deployment](deploy/README.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
-## 后端模块
+</div>
 
-| 模块 | 职责 |
+---
+
+mine-platform is a self-hosted IoT and operations platform for mines where connectivity is unreliable, vendor protocols are fragmented, and cloud access cannot be assumed. It connects MQTT, private TCP, binary devices and positioning sources to a reliable telemetry, alarm, command, spatial and production workflow — all deployable inside the mine network.
+
+It is not a themed generic IoT dashboard. The repository models the hard parts of a mine system explicitly: replay-safe ingestion, device identity, event-time ordering, dual coordinates, geofences, shifts, haulage work orders, immutable operational evidence, offline delivery and recovery boundaries.
+
+> [!IMPORTANT]
+> The repository has a broad automated engineering baseline and is currently in **Phase 4 production hardening**. Real devices, site calibration, target capacity, HA, disaster-recovery drills and 24/72-hour soak evidence remain required before a customer production release.
+
+## Why mine-platform
+
+| | Capability | What it means in the field |
+|---|---|---|
+| 🔌 | **Protocol-extensible edge** | Configuration-driven MQTT JSON plus versioned MQTT/TCP binary plugins behind trusted device identity. |
+| 📡 | **Weak-network correctness** | Sequence, boot identity, idempotent Inbox/Outbox, publisher confirms, retry and late-data semantics instead of optimistic message handling. |
+| 🧭 | **Mine-native spatial model** | Sites, vehicles, people, tags, UWB observations, dual coordinates, routes, geofences and deterministic enter/leave/dwell events. |
+| 🚛 | **Operations, not just telemetry** | Shifts, haulage work orders, exception candidates, immutable facts, corrections and fixed-watermark statistics. |
+| 🚨 | **Governed alarms and notifications** | Versioned strategies, persistent alarm state, acknowledgement/closure workflow, built-in provider control plane and escalation policies. |
+| 🗺️ | **Offline 2D/3D workspace** | Cesium assets served locally, live operational overlays and an independent 2D fallback when WebGL or 3D resources fail. |
+| 📦 | **Private and offline delivery** | Reproducible Standalone Compose, locked images, SBOM, checksums, health gates and an offline installation bundle. |
+| 🛡️ | **Fail-closed recovery** | Same-version cold backup/restore validates manifests, dual checksums, archive paths and image IDs, then restores only into new volumes. |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Edge["Mine edge"]
+        D1["MQTT JSON / Binary"]
+        D2["Private TCP devices"]
+        D3["UWB / positioning"]
+        SIM["Deterministic simulator"]
+    end
+
+    subgraph Ingress["Reliable ingress"]
+        RMQ["RabbitMQ MQTT + AMQP"]
+        GW["mine-gateway\nidentity · protocol · ACK"]
+    end
+
+    subgraph Core["Operational core"]
+        TEL["mine-telemetry\nquality · alarm · aggregation"]
+        API["mine-server\ncontrol plane · mine business"]
+        PG[("PostgreSQL")]
+        TS[("TimescaleDB")]
+        REDIS[("Redis latest state")]
+        S3[("S3 / RustFS assets")]
+    end
+
+    subgraph Experience["Operations experience"]
+        WEB["Vue 3 control center"]
+        RT["Realtime WebSocket"]
+        MAP["2D / Cesium 3D"]
+    end
+
+    D1 --> RMQ
+    D2 --> GW
+    D3 --> RMQ
+    SIM --> RMQ
+    RMQ --> GW --> RMQ --> TEL
+    TEL --> TS
+    TEL --> REDIS
+    TEL --> RMQ --> API
+    API --> PG
+    API --> S3
+    API --> RT --> WEB
+    PG --> API
+    TS --> API
+    REDIS --> API
+    S3 --> MAP
+    WEB --> MAP
+```
+
+The control plane and data plane stay deliberately separate. Published configuration is immutable and distributed as a runtime snapshot; device traffic cannot choose its own plugin, tenant or mine scope. Historical facts remain in PostgreSQL/TimescaleDB, while Redis is treated as rebuildable latest state.
+
+## What is already here
+
+| Domain | Automated baseline |
 |---|---|
-| `mine-common` | 公共错误、时间、标识等基础能力 |
-| `mine-device-model` | 产品、物模型和统一设备消息 |
-| `mine-messaging` | 内部消息契约与 RabbitMQ 拓扑 |
-| `mine-protocol-sdk` | Java 协议插件开发接口 |
-| `mine-protocol-engine` | 可配置协议解析引擎 |
-| `mine-gateway` | Netty、MQTT 设备接入和命令下发 |
-| `mine-telemetry` | 遥测处理、告警计算和时序入库 |
-| `mine-server` | 矿山业务、系统管理和管理 API |
-| [`mine-device-simulator-app`](mine-device-simulator-app/README.md) | 独立单 JAR 矿山设备模拟台，提供 MQTT、TCP 和内置管理页面 |
-| `examples/device-simulator` | 可重复 MQTT 遥测、弱网与命令回复模拟器 |
+| Device connectivity | MQTT JSON, MQTT binary plugin SPI, TCP binary plugin SPI, TLS, identity snapshots, command ACK and deterministic simulators |
+| Telemetry | Unified messages, quality policy, idempotent processing, TimescaleDB history, Redis latest state and WebSocket updates |
+| Governance | Product/device models, versioned strategies, retention protection, numeric rollups, bounded recomputation and audit |
+| Alarms | Dual-source evaluation, persistent state machine, reliable events, acknowledgement/closure and notification control plane |
+| Mine operations | Site scope, assets, time-effective bindings, UWB positions, dual coordinates, routes, geofences, shifts and work orders |
+| Visualization | Realtime tracking, bounded trails, spatial/operation overlays, secure GLB/3D Tiles and independent 2D degradation |
+| Delivery | Standalone Compose, observability, offline bundle, image locks, CycloneDX SBOM and same-version cold recovery |
 
-## 开发命令
+The exact implemented/deferred matrix lives in the [roadmap](docs/12-roadmap-and-codex-workflow.md). Public API contracts are maintained in [OpenAPI](docs/openapi/mine-api.yaml).
 
-~~~bash
-./mvnw test
-~~~
+## Technology
 
-提交前执行全仓质量门禁：
+| Layer | Stack |
+|---|---|
+| Backend | Java 21, Spring Boot 4, MyBatis, Sa-Token, Flyway |
+| Device edge | Netty, Eclipse Paho, versioned Java protocol SPI |
+| Messaging | RabbitMQ 4 with MQTT and AMQP, quorum queues, DLQ and publisher confirms |
+| Data | PostgreSQL 18, TimescaleDB OSS, Redis |
+| Frontend | Vue 3, TypeScript, Vite, Naive UI, ECharts, Cesium |
+| Object storage | Standard S3 API; RustFS in the Standalone baseline |
+| Quality and delivery | JUnit, Testcontainers, Vitest, Playwright, Docker Compose, Prometheus, Grafana, Loki, Alloy, CycloneDX |
 
-~~~bash
+## Quick start
+
+### 1. Build and run the automated baseline
+
+Prerequisites: JDK 21, Node.js 20.19+, pnpm 10.5+ and Docker Engine 24+ with Compose v2.
+
+```bash
+git clone https://github.com/Boscodoggggg/mine-platform.git
+cd mine-platform
+
+./mvnw -B -ntp test
+pnpm --dir mine-web install --frozen-lockfile
+pnpm --dir mine-web typecheck
+pnpm --dir mine-web test:unit
+pnpm --dir mine-web build
+```
+
+Run the complete repository gate, including deployment contracts and SBOM generation:
+
+```bash
 bash scripts/verify.sh
-~~~
+```
 
-该命令会验证后端测试与架构规则、前端类型/规范/测试/构建、Compose 和可观测性配置，并在 `target/sbom/` 生成后端与前端 CycloneDX 1.6 SBOM。AGPL、SSPL 和 Commons Clause 依赖默认禁止自动引入，需要架构与法务评审后才能调整门禁。
+### 2. Start a Standalone environment
 
-GitHub Actions 会并行执行同样的后端、前端、部署配置和 SBOM 检查；失败时保留测试报告。Dependabot 每周检查 Maven、pnpm、Compose 镜像与 Actions 依赖，但版本升级仍需通过完整质量门禁和现场回归。
+The production-shaped single-host profile includes the application services, RabbitMQ, PostgreSQL, TimescaleDB, Redis, RustFS, HTTPS/MQTTS ingress and an optional observability profile.
 
-完整设计、架构决策和分阶段实施计划见 [docs/README.md](docs/README.md)。
+Follow the [Standalone deployment guide](deploy/README.md) to create local secrets, validate prerequisites and start the stack. Never use example credentials or development certificates in a real mine.
 
-需要在本机通过页面配置虚拟设备并联调平台时，使用独立的 [矿山设备模拟台](mine-device-simulator-app/README.md)。
+### 3. Simulate mine devices
 
-单机一体化环境的构建、配置、启动和验收步骤见 [deploy/README.md](deploy/README.md)。
+Use the standalone [mine device simulator](mine-device-simulator-app/README.md) for deterministic MQTT, TCP, weak-network and positioning scenarios without vendor hardware.
 
-## 许可证
+## Repository map
 
-本项目采用 [Apache License 2.0](LICENSE)。第三方软件仍遵循其各自许可证，发行时必须保留对应声明。
+```text
+mine-gateway/              Device identity, MQTT/TCP protocols and command delivery
+mine-telemetry/            Telemetry, quality, alarms, aggregation and persistence
+mine-server/               Management APIs and mine operational domain
+mine-device-model/         Shared device, strategy and location contracts
+mine-protocol-sdk/         Stable binary protocol plugin interfaces
+mine-protocol-engine/      Configuration and plugin execution runtime
+mine-web/                  Vue operations and governance workspace
+mine-device-simulator-app/ Standalone mine device simulator
+deploy/                    Compose, offline delivery, observability and recovery
+docs/                      Architecture, contracts, runbooks, reports and plans
+```
+
+## Project maturity
+
+The project is **pre-1.0**. Automated tests prove repository behavior in controlled environments; they are not a substitute for a signed production acceptance report.
+
+Before production use, each deployment must still complete at least:
+
+- real vendor protocol and device certification;
+- mine coordinate, map, geofence and operating-rule calibration;
+- customer browser/GPU and target-capacity testing;
+- notification delivery and on-call escalation drills;
+- HA, continuous backup/PITR and disaster-recovery exercises;
+- weak-network, power-loss and 24/72-hour soak tests;
+- security review, certificate rotation and site-specific threat modeling.
+
+See [testing and release gates](docs/10-testing-quality-gates.md) for the authoritative boundary.
+
+## Roadmap
+
+- [x] Phase 0 — engineering, security, CI and Standalone foundation
+- [x] Phase 1 — MQTT device-to-screen vertical loop
+- [x] Phase 2 — strategy, alarm, retention, aggregation and binary protocol baselines
+- [x] Phase 3 — mine assets, positioning, spatial events, operations and 2D/3D workspace
+- [ ] Phase 4 — production hardening: continuous backup/PITR, upgrade orchestration, HA, capacity, security and soak evidence
+
+## Documentation
+
+- [Documentation index](docs/README.md)
+- [Architecture and repository guide](docs/02-repository-backend.md)
+- [Messaging and telemetry](docs/05-messaging-telemetry-data.md)
+- [Mine business model](docs/06-mine-business.md)
+- [Security, authentication and audit](docs/08-security-auth-audit.md)
+- [Deployment and operations](docs/09-deployment-operations.md)
+- [Testing and quality gates](docs/10-testing-quality-gates.md)
+- [Standalone deployment](deploy/README.md)
+
+## Contributing
+
+Issues, design discussions and Pull Requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [branching and release strategy](docs/13-branching-and-release.md). The project uses short-lived branches, Chinese Conventional Commits, test-first implementation and a protected `main` branch.
+
+If this direction is useful to your mine, integration team or industrial IoT project, consider starring the repository and sharing a concrete use case. Actionable protocol samples and reproducible field constraints are especially valuable.
+
+## Security
+
+Do not open public issues for vulnerabilities or leaked credentials. Follow [SECURITY.md](SECURITY.md) and use GitHub private vulnerability reporting.
+
+## License
+
+mine-platform is released under the [Apache License 2.0](LICENSE). Third-party components retain their own licenses; see `THIRD-PARTY-NOTICES.md` and the generated CycloneDX SBOM.
