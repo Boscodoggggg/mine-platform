@@ -1,4 +1,4 @@
-package com.bosco.mine.notification.sdk;
+package com.bosco.mine.server.modules.notification.adapter;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
  * @param body             已渲染正文
  * @param templateVariables 受控模板变量
  * @param configuration    当前渠道配置快照
+ * @param credentials      仅在投递调用期间存在的解密凭据快照
  */
 public record NotificationDeliveryRequest(
         UUID deliveryId,
@@ -27,7 +28,8 @@ public record NotificationDeliveryRequest(
         String subject,
         String body,
         Map<String, Object> templateVariables,
-        Map<String, Object> configuration
+        Map<String, Object> configuration,
+        Map<String, Object> credentials
 ) {
     private static final Pattern IDEMPOTENCY_KEY =
             Pattern.compile("^[A-Za-z0-9._:-]{1,128}$");
@@ -50,6 +52,7 @@ public record NotificationDeliveryRequest(
         body = requireText(body, MAX_BODY_LENGTH, "通知正文");
         templateVariables = immutableMap(templateVariables, "模板变量", 0);
         configuration = immutableMap(configuration, "渠道配置", 0);
+        credentials = immutableMap(credentials, "渠道凭据", 0);
     }
 
     private static String requireText(String value, int maxLength, String label) {

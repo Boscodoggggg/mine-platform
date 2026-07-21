@@ -1,4 +1,4 @@
-package com.bosco.mine.notification.sdk;
+package com.bosco.mine.server.modules.notification.adapter;
 
 import java.time.Instant;
 import java.util.Optional;

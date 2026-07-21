@@ -1,4 +1,4 @@
-package com.bosco.mine.notification.sdk;
+package com.bosco.mine.server.modules.notification.adapter;
 
 /**
  * 平台支持的稳定通知渠道类型。

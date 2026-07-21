@@ -1,4 +1,4 @@
-package com.bosco.mine.notification.sdk;
+package com.bosco.mine.server.modules.notification.adapter;
 
 /**
  * 受信通知渠道实现必须遵循的稳定适配器边界。

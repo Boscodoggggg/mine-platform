@@ -1,4 +1,4 @@
-package com.bosco.mine.notification.sdk;
+package com.bosco.mine.server.modules.notification.adapter;
 
 import org.junit.jupiter.api.Test;
 
@@ -33,18 +33,22 @@ class NotificationAdapterContractTest {
         variables.put("labels", nested);
         Map<String, Object> configuration = new LinkedHashMap<>();
         configuration.put("timeoutSeconds", 3);
+        Map<String, Object> credentials = new LinkedHashMap<>();
+        credentials.put("password", "secret");
 
         NotificationDeliveryRequest request = new NotificationDeliveryRequest(
                 UUID.randomUUID(), "delivery-001", "13800000000",
-                "严重告警", "矿卡温度超过阈值", variables, configuration);
+                "严重告警", "矿卡温度超过阈值", variables, configuration, credentials);
         nested.add("changed");
         variables.put("late", true);
         configuration.put("timeoutSeconds", 9);
+        credentials.put("password", "changed");
 
         assertThat(request.templateVariables()).containsOnlyKeys("labels");
         assertThat(request.templateVariables().get("labels"))
                 .isEqualTo(List.of("critical"));
         assertThat(request.configuration()).containsEntry("timeoutSeconds", 3);
+        assertThat(request.credentials()).containsEntry("password", "secret");
         assertThatThrownBy(() -> request.templateVariables().put("x", "y"))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
@@ -54,11 +58,11 @@ class NotificationAdapterContractTest {
         UUID deliveryId = UUID.randomUUID();
         assertThatThrownBy(() -> new NotificationDeliveryRequest(
                 deliveryId, "delivery-001", " ", "严重告警", "正文",
-                Map.of(), Map.of()))
+                Map.of(), Map.of(), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new NotificationDeliveryRequest(
                 deliveryId, "delivery-001", "ops@example.com", "严重告警",
-                "x".repeat(16_385), Map.of(), Map.of()))
+                "x".repeat(16_385), Map.of(), Map.of(), Map.of()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
