@@ -47,6 +47,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <archunit.version>1.4.1</archunit.version>
+        <aliyun-sms-sdk.version>4.6.0</aliyun-sms-sdk.version>
+        <aliyun-voice-sdk.version>5.5.0</aliyun-voice-sdk.version>
         <aws-sdk.version>2.48.3</aws-sdk.version>
         <mybatis-plus.version>3.5.14</mybatis-plus.version>
         <paho-mqtt.version>1.2.5</paho-mqtt.version>

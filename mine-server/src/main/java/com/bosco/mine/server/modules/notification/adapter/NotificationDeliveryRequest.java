@@ -20,6 +20,8 @@ import java.util.regex.Pattern;
  * @param templateVariables 受控模板变量
  * @param configuration    当前渠道配置快照
  * @param credentials      仅在投递调用期间存在的解密凭据快照
+ * @param connectTimeoutMs 外部连接超时毫秒数
+ * @param readTimeoutMs    外部响应读取超时毫秒数
  */
 public record NotificationDeliveryRequest(
         UUID deliveryId,
@@ -29,7 +31,9 @@ public record NotificationDeliveryRequest(
         String body,
         Map<String, Object> templateVariables,
         Map<String, Object> configuration,
-        Map<String, Object> credentials
+        Map<String, Object> credentials,
+        int connectTimeoutMs,
+        int readTimeoutMs
 ) {
     private static final Pattern IDEMPOTENCY_KEY =
             Pattern.compile("^[A-Za-z0-9._:-]{1,128}$");
@@ -53,6 +57,38 @@ public record NotificationDeliveryRequest(
         templateVariables = immutableMap(templateVariables, "模板变量", 0);
         configuration = immutableMap(configuration, "渠道配置", 0);
         credentials = immutableMap(credentials, "渠道凭据", 0);
+        if (connectTimeoutMs < 100 || connectTimeoutMs > 30_000) {
+            throw new IllegalArgumentException("通知连接超时必须在 100 到 30000 毫秒之间");
+        }
+        if (readTimeoutMs < 100 || readTimeoutMs > 60_000) {
+            throw new IllegalArgumentException("通知读取超时必须在 100 到 60000 毫秒之间");
+        }
+    }
+
+    /**
+     * 使用安全默认超时创建投递请求，主要用于无需定制超时的内部调用。
+     *
+     * @param deliveryId 投递标识
+     * @param idempotencyKey 幂等键
+     * @param recipient 接收目标
+     * @param subject 标题
+     * @param body 正文
+     * @param templateVariables 模板变量
+     * @param configuration 渠道配置
+     * @param credentials 解密凭据
+     */
+    public NotificationDeliveryRequest(
+            UUID deliveryId,
+            String idempotencyKey,
+            String recipient,
+            String subject,
+            String body,
+            Map<String, Object> templateVariables,
+            Map<String, Object> configuration,
+            Map<String, Object> credentials
+    ) {
+        this(deliveryId, idempotencyKey, recipient, subject, body, templateVariables,
+                configuration, credentials, 3_000, 5_000);
     }
 
     private static String requireText(String value, int maxLength, String label) {

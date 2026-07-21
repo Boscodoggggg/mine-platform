@@ -5,8 +5,21 @@ import com.bosco.mine.server.modules.notification.adapter.NotificationChannelAda
 import com.bosco.mine.server.modules.notification.adapter.NotificationChannelType;
 import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryRequest;
 import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryResult;
+import com.bosco.mine.server.modules.notification.provider.aliyun.AliyunSmsGateway;
+import com.bosco.mine.server.modules.notification.provider.aliyun.AliyunSmsNotificationAdapter;
+import com.bosco.mine.server.modules.notification.provider.aliyun.AliyunVoiceGateway;
+import com.bosco.mine.server.modules.notification.provider.aliyun.AliyunVoiceNotificationAdapter;
+import com.bosco.mine.server.modules.notification.provider.http.GenericWebhookNotificationAdapter;
+import com.bosco.mine.server.modules.notification.provider.http.NotificationEndpointPolicy;
+import com.bosco.mine.server.modules.notification.provider.http.NotificationHttpTransport;
+import com.bosco.mine.server.modules.notification.provider.im.DingTalkRobotNotificationAdapter;
+import com.bosco.mine.server.modules.notification.provider.im.FeishuRobotNotificationAdapter;
+import com.bosco.mine.server.modules.notification.provider.im.WeComRobotNotificationAdapter;
+import com.bosco.mine.server.modules.notification.provider.smtp.SmtpNotificationAdapter;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
+import java.net.InetAddress;
 import java.util.List;
 import java.util.Map;
 
@@ -72,6 +85,31 @@ class NotificationProviderRegistryTest {
         assertThat(registry.catalog().getFirst().secretFields())
                 .extracting(NotificationProviderDefinition.Field::key)
                 .containsExactly("password");
+    }
+
+    @Test
+    void 平台发行版固定包含七种内置Provider() throws Exception {
+        NotificationHttpTransport transport = request ->
+                new NotificationHttpTransport.Response(200, "{}", Map.of());
+        NotificationEndpointPolicy endpointPolicy = new NotificationEndpointPolicy(
+                host -> List.of(InetAddress.getByName("8.8.8.8")));
+        var json = JsonMapper.builder().build();
+        NotificationProviderRegistry registry = new NotificationProviderRegistry(List.of(
+                new SmtpNotificationAdapter(command -> { }),
+                new WeComRobotNotificationAdapter(transport, endpointPolicy, json),
+                new DingTalkRobotNotificationAdapter(transport, endpointPolicy, json),
+                new FeishuRobotNotificationAdapter(transport, endpointPolicy, json),
+                new GenericWebhookNotificationAdapter(transport, endpointPolicy, json),
+                new AliyunSmsNotificationAdapter(
+                        command -> new AliyunSmsGateway.Response("OK", "biz"), json),
+                new AliyunVoiceNotificationAdapter(
+                        command -> new AliyunVoiceGateway.Response("OK", "call"), json)));
+
+        assertThat(registry.catalog())
+                .extracting(definition -> definition.key().provider())
+                .containsExactly(
+                        "aliyun-sms", "aliyun-voice", "dingtalk-robot", "feishu-robot",
+                        "generic-webhook", "smtp", "wecom-robot");
     }
 
     private NotificationChannelAdapter adapter(

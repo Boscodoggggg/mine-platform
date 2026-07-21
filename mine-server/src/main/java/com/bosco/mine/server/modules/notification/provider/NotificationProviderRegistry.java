@@ -92,7 +92,9 @@ public class NotificationProviderRegistry {
         NotificationProviderDefinition definition = adapter.definition();
         validateFields(definition.configurationFields(), safeConfiguration, enabled, false);
         validateFields(definition.secretFields(), safeCredentials, enabled, true);
-        adapter.validateConfiguration(Map.copyOf(safeConfiguration), Map.copyOf(safeCredentials));
+        if (enabled) {
+            adapter.validateConfiguration(Map.copyOf(safeConfiguration), Map.copyOf(safeCredentials));
+        }
     }
 
     private void validateFields(
