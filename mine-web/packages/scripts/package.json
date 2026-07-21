@@ -21,7 +21,7 @@
     "cac": "7.0.0",
     "consola": "3.4.2",
     "enquirer": "2.4.1",
-    "execa": "9.6.1",
+    "execa": "10.0.0",
     "kolorist": "1.8.0",
     "npm-check-updates": "22.2.0",
     "picomatch": "4.0.4",
