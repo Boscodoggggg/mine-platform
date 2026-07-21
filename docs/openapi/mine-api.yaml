@@ -34,6 +34,8 @@ tags:
     description: 设备命令下发与可靠状态时间线
   - name: AlarmCenter
     description: 双来源告警查询、确认和恢复后关闭
+  - name: NotificationConfiguration
+    description: 平台内置通知 Provider 目录和数据库加密渠道配置
   - name: MineScope
     description: 组织、矿区和当前会话数据范围
   - name: MineAssets
@@ -4299,6 +4301,104 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/SceneResourceNotFound' }
+  /notifications/providers:
+    get:
+      tags: [NotificationConfiguration]
+      operationId: listNotificationProviders
+      summary: 查询平台随版本发布的内置通知 Provider
+      description: |
+        需要 notification:channel:view 权限。只返回稳定 Provider 编码、渠道类型和字段元数据，
+        不开放 JAR 上传、外部 Provider 注册或任意代码执行。
+      responses:
+        '200':
+          description: 按 Provider 编码稳定排序的内置目录。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NotificationProviderDefinition' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /notifications/channels:
+    get:
+      tags: [NotificationConfiguration]
+      operationId: listNotificationChannels
+      summary: 查询全部数据库通知渠道
+      description: 需要 notification:channel:view 权限；响应永不返回凭据明文或密文。
+      responses:
+        '200':
+          description: 通知渠道安全摘要。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NotificationChannelResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [NotificationConfiguration]
+      operationId: createNotificationChannel
+      summary: 创建数据库通知渠道
+      description: |
+        需要 notification:channel:edit 权限。secrets 仅在请求中出现，服务端使用通知独立
+        AES-256-GCM 数据密钥加密；启用渠道必须满足 Provider 全部必填字段。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationChannelRequest' }
+      responses:
+        '201':
+          description: 已创建的通知渠道安全摘要。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationChannelResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/channels/{channelId}:
+    parameters:
+      - name: channelId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [NotificationConfiguration]
+      operationId: getNotificationChannel
+      summary: 查询指定数据库通知渠道
+      responses:
+        '200':
+          description: 通知渠道安全摘要。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationChannelResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotificationChannelNotFound' }
+    put:
+      tags: [NotificationConfiguration]
+      operationId: updateNotificationChannel
+      summary: 使用乐观锁修改数据库通知渠道
+      description: |
+        需要 notification:channel:edit 权限。未出现的 secret 字段保留，空字符串删除对应字段；
+        每次成功更新都使用新版本 AAD 重新加密完整凭据并清空旧验证时间。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationChannelRequest' }
+      responses:
+        '200':
+          description: 修改后的通知渠道安全摘要。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationChannelResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotificationChannelNotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
 components:
   securitySchemes:
@@ -4487,6 +4587,99 @@ components:
         maximum: 100
         default: 20
   schemas:
+    NotificationProviderCode:
+      type: string
+      enum: [smtp, wecom-robot, dingtalk-robot, feishu-robot, generic-webhook, aliyun-sms, aliyun-voice]
+    NotificationChannelType:
+      type: string
+      enum: [EMAIL, SMS, VOICE, ENTERPRISE_IM, WEBHOOK]
+    NotificationProviderFieldType:
+      type: string
+      enum: [STRING, INTEGER, BOOLEAN, STRING_LIST, SECRET]
+    NotificationAdapterKey:
+      type: object
+      additionalProperties: false
+      required: [channelType, provider]
+      properties:
+        channelType: { $ref: '#/components/schemas/NotificationChannelType' }
+        provider: { $ref: '#/components/schemas/NotificationProviderCode' }
+    NotificationProviderField:
+      type: object
+      additionalProperties: false
+      required: [key, type, required, maxLength, defaultValue, options]
+      properties:
+        key: { type: string, pattern: '^[a-z][a-zA-Z0-9]{1,63}$' }
+        type: { $ref: '#/components/schemas/NotificationProviderFieldType' }
+        required: { type: boolean }
+        maxLength: { type: [integer, 'null'], minimum: 1, maximum: 32768 }
+        defaultValue:
+          oneOf:
+            - { type: string }
+            - { type: integer }
+            - { type: boolean }
+            - { type: array, items: { type: string } }
+            - { type: 'null' }
+        options:
+          type: array
+          maxItems: 128
+          items: { type: string }
+    NotificationProviderDefinition:
+      type: object
+      additionalProperties: false
+      required: [key, displayNameKey, supportsDeliveryReceipt, configurationFields, secretFields]
+      properties:
+        key: { $ref: '#/components/schemas/NotificationAdapterKey' }
+        displayNameKey: { type: string, pattern: '^[a-z][a-zA-Z0-9.-]{2,127}$' }
+        supportsDeliveryReceipt: { type: boolean }
+        configurationFields:
+          type: array
+          maxItems: 128
+          items: { $ref: '#/components/schemas/NotificationProviderField' }
+        secretFields:
+          type: array
+          maxItems: 128
+          items: { $ref: '#/components/schemas/NotificationProviderField' }
+    NotificationChannelRequest:
+      type: object
+      additionalProperties: false
+      required: [channelCode, name, channelType, provider, status, configuration, secrets, connectTimeoutMs, readTimeoutMs, version]
+      properties:
+        channelCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        channelType: { $ref: '#/components/schemas/NotificationChannelType' }
+        provider: { $ref: '#/components/schemas/NotificationProviderCode' }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        configuration:
+          type: object
+          maxProperties: 128
+          additionalProperties: true
+        secrets:
+          type: object
+          writeOnly: true
+          maxProperties: 128
+          additionalProperties: { type: string, maxLength: 8192 }
+        connectTimeoutMs: { type: integer, minimum: 100, maximum: 30000 }
+        readTimeoutMs: { type: integer, minimum: 100, maximum: 60000 }
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationChannelResponse:
+      type: object
+      additionalProperties: false
+      required: [id, channelCode, name, channelType, provider, status, configuration, secretConfigured, connectTimeoutMs, readTimeoutMs, lastVerifiedAt, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        channelCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        channelType: { $ref: '#/components/schemas/NotificationChannelType' }
+        provider: { $ref: '#/components/schemas/NotificationProviderCode' }
+        status: { type: string, enum: [ENABLED, DISABLED] }
+        configuration: { type: object, maxProperties: 128, additionalProperties: true }
+        secretConfigured: { type: boolean }
+        connectTimeoutMs: { type: integer, minimum: 100, maximum: 30000 }
+        readTimeoutMs: { type: integer, minimum: 100, maximum: 60000 }
+        lastVerifiedAt: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
     MineArchiveStatus:
       type: string
       enum: [ACTIVE, ARCHIVED]
@@ -8184,6 +8377,12 @@ components:
             $ref: '#/components/schemas/ApiError'
     SceneStorageUnavailable:
       description: 三维资源存储不可用，错误码 MINE-SCENE-ASSET-503-001。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotificationChannelNotFound:
+      description: 通知渠道不存在，错误码 NOTIFICATION-404-001。
       content:
         application/json:
           schema:

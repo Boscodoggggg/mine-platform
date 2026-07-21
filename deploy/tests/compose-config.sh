@@ -44,6 +44,12 @@ jq -e '.services["mine-server"].environment.MINE_CONFIGURATION_DISTRIBUTION_ENAB
   and (.services["mine-gateway"].secrets | any(.source == "mine_configuration_distribution_token"))' "${rendered}" >/dev/null \
   || { echo "FAIL: server 与 gateway 必须启用基于 secret 的配置分发闭环" >&2; exit 1; }
 
+jq -e '.services["mine-server"].environment.MINE_NOTIFICATION_DATA_KEY_FILE == "/run/secrets/mine_notification_data_key"
+  and (.services["mine-server"].secrets | any(.source == "mine_notification_data_key"))
+  and (.secrets.mine_notification_data_key.file | endswith("/deploy/secrets/mine_notification_data_key"))' \
+  "${rendered}" >/dev/null \
+  || { echo "FAIL: mine-server 必须挂载独立通知 AES-256-GCM 数据密钥" >&2; exit 1; }
+
 jq -e '.services.rustfs.image | startswith("rustfs/rustfs:1.0.0-beta.10@sha256:")' \
   "${rendered}" >/dev/null \
   || { echo "FAIL: RustFS 必须固定到已验证的版本和镜像摘要" >&2; exit 1; }

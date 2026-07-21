@@ -2905,10 +2905,147 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/providers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询平台随版本发布的内置通知 Provider
+         * @description 需要 notification:channel:view 权限。只返回稳定 Provider 编码、渠道类型和字段元数据，
+         *     不开放 JAR 上传、外部 Provider 注册或任意代码执行。
+         */
+        get: operations["listNotificationProviders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询全部数据库通知渠道
+         * @description 需要 notification:channel:view 权限；响应永不返回凭据明文或密文。
+         */
+        get: operations["listNotificationChannels"];
+        put?: never;
+        /**
+         * 创建数据库通知渠道
+         * @description 需要 notification:channel:edit 权限。secrets 仅在请求中出现，服务端使用通知独立
+         *     AES-256-GCM 数据密钥加密；启用渠道必须满足 Provider 全部必填字段。
+         */
+        post: operations["createNotificationChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/channels/{channelId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        /** 查询指定数据库通知渠道 */
+        get: operations["getNotificationChannel"];
+        /**
+         * 使用乐观锁修改数据库通知渠道
+         * @description 需要 notification:channel:edit 权限。未出现的 secret 字段保留，空字符串删除对应字段；
+         *     每次成功更新都使用新版本 AAD 重新加密完整凭据并清空旧验证时间。
+         */
+        put: operations["updateNotificationChannel"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        NotificationProviderCode: "smtp" | "wecom-robot" | "dingtalk-robot" | "feishu-robot" | "generic-webhook" | "aliyun-sms" | "aliyun-voice";
+        /** @enum {string} */
+        NotificationChannelType: "EMAIL" | "SMS" | "VOICE" | "ENTERPRISE_IM" | "WEBHOOK";
+        /** @enum {string} */
+        NotificationProviderFieldType: "STRING" | "INTEGER" | "BOOLEAN" | "STRING_LIST" | "SECRET";
+        NotificationAdapterKey: {
+            channelType: components["schemas"]["NotificationChannelType"];
+            provider: components["schemas"]["NotificationProviderCode"];
+        };
+        NotificationProviderField: {
+            key: string;
+            type: components["schemas"]["NotificationProviderFieldType"];
+            required: boolean;
+            maxLength: number | null;
+            defaultValue: string | number | boolean | string[] | null;
+            options: string[];
+        };
+        NotificationProviderDefinition: {
+            key: components["schemas"]["NotificationAdapterKey"];
+            displayNameKey: string;
+            supportsDeliveryReceipt: boolean;
+            configurationFields: components["schemas"]["NotificationProviderField"][];
+            secretFields: components["schemas"]["NotificationProviderField"][];
+        };
+        NotificationChannelRequest: {
+            channelCode: string;
+            name: string;
+            channelType: components["schemas"]["NotificationChannelType"];
+            provider: components["schemas"]["NotificationProviderCode"];
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            configuration: {
+                [key: string]: unknown;
+            };
+            secrets: {
+                [key: string]: string;
+            };
+            connectTimeoutMs: number;
+            readTimeoutMs: number;
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationChannelResponse: {
+            /** Format: uuid */
+            id: string;
+            channelCode: string;
+            name: string;
+            channelType: components["schemas"]["NotificationChannelType"];
+            provider: components["schemas"]["NotificationProviderCode"];
+            /** @enum {string} */
+            status: "ENABLED" | "DISABLED";
+            configuration: {
+                [key: string]: unknown;
+            };
+            secretConfigured: boolean;
+            connectTimeoutMs: number;
+            readTimeoutMs: number;
+            /** Format: date-time */
+            lastVerifiedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
         /** @enum {string} */
         MineArchiveStatus: "ACTIVE" | "ARCHIVED";
         MineArchiveRequest: {
@@ -6330,6 +6467,15 @@ export interface components {
         };
         /** @description 三维资源存储不可用，错误码 MINE-SCENE-ASSET-503-001。 */
         SceneStorageUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 通知渠道不存在，错误码 NOTIFICATION-404-001。 */
+        NotificationChannelNotFound: {
             headers: {
                 [name: string]: unknown;
             };
@@ -12741,6 +12887,134 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["SceneResourceNotFound"];
+        };
+    };
+    listNotificationProviders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按 Provider 编码稳定排序的内置目录。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationProviderDefinition"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listNotificationChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 通知渠道安全摘要。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationChannelResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建的通知渠道安全摘要。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationChannelResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 通知渠道安全摘要。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationChannelResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotificationChannelNotFound"];
+        };
+    };
+    updateNotificationChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationChannelRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的通知渠道安全摘要。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationChannelResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotificationChannelNotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
 }

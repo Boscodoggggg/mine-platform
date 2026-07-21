@@ -59,9 +59,9 @@ public class NotificationChannelController {
      * @param id 渠道标识
      * @return 通知渠道
      */
-    @GetMapping("/channels/{id}")
+    @GetMapping("/channels/{channelId}")
     @SaCheckPermission("notification:channel:view")
-    public NotificationChannelResponse get(@PathVariable UUID id) {
+    public NotificationChannelResponse get(@PathVariable("channelId") UUID id) {
         return service.get(id);
     }
 
@@ -87,10 +87,10 @@ public class NotificationChannelController {
      * @param request 修改请求
      * @return 修改后的通知渠道
      */
-    @PutMapping("/channels/{id}")
+    @PutMapping("/channels/{channelId}")
     @SaCheckPermission("notification:channel:edit")
     public NotificationChannelResponse update(
-            @PathVariable UUID id,
+            @PathVariable("channelId") UUID id,
             @Valid @RequestBody NotificationChannelRequest request
     ) {
         return service.update(id, request);

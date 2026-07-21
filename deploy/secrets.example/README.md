@@ -21,6 +21,7 @@
 - `mine_configuration_distribution_token`：mine-server 与运行节点之间拉取配置快照、回报加载状态的共享服务令牌，至少 32 个随机字符。
 - `mine_super_admin_password`：平台首次启动超级管理员密码，12–72 UTF-8 字节。
 - `mine_person_data_key`：人员手机号和证件号码 AES-256-GCM 加密密钥，仅保存 `openssl rand -base64 32` 生成的一行 Base64 内容；丢失后历史敏感字段无法恢复。
+- `mine_notification_data_key`：通知渠道凭据和接收目标专用 AES-256-GCM 加密密钥，必须与人员数据密钥独立生成并备份；轮换前需完成受控重加密，丢失后历史通知配置无法恢复。
 - `grafana_admin_password`：Grafana 运维管理员密码，建议至少 24 个随机字符。
 - `tls.crt`：包含完整证书链的 PEM 证书。
 - `tls.key`：未加密 PEM 私钥，宿主机权限必须为 0600。

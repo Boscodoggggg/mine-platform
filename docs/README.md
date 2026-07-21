@@ -57,6 +57,8 @@ Phase 2 的 [数据质量策略运行消费验收报告](reports/phase-2-data-qu
 [数据质量策略运行手册](runbooks/data-quality-runtime.md)，该结论不替代真实设备、矿区网络、容量、HA 或 24/72 小时长稳验收。
 Phase 2 的 [双来源告警运行与处置验收报告](reports/phase-2-alarm-runtime-acceptance.md) 也已完成非现场自动化基线；发布观察、积压排查、人工处置和安全回退遵循
 [告警运行与处置手册](runbooks/alarm-runtime.md)。告警策略、可靠事件和处置中心可用于继续产品化开发，但通知送达、现场阈值、值班演练及生产放行仍是明确延期项。
+通知渠道控制面和七种平台内置 Provider 的数据库配置、加密与非现场请求映射遵循
+[通知 Provider 配置与安全运行手册](runbooks/notification-providers.md)。当前结论不包含升级策略、运行投递账本、异步回执、事件单、前端工作台或任何真实短信、电话、邮件和企业 IM 送达证明。
 Phase 2 的 [数据保留策略运行闭环验收报告](reports/phase-2-retention-runtime-acceptance.md) 已完成非现场自动化基线；影响预览、暂停、执行事实、告警处置和安全恢复遵循
 [数据保留运行手册](runbooks/retention-runtime.md)。策略回滚不能恢复已删除数据，真实数据 dry-run、备份恢复、容量、HA 和长稳仍是生产放行前置条件。
 Phase 2 的 [数值聚合运行闭环验收报告](reports/phase-2-aggregation-runtime-acceptance.md) 已完成非现场自动化基线；策略发布、版本化事实、冷热查询、受控重算、保留覆盖保护和故障恢复遵循
