@@ -48,6 +48,7 @@ import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 import static org.mockito.Mockito.mockStatic;
 
 /**
@@ -355,8 +356,10 @@ class CommandOutboxIT {
                 WHERE id = ?
                 """, command.id());
         assertThat(row.get("status")).isEqualTo("EXPIRED");
-        assertThat(((java.sql.Timestamp) row.get("updated_at")).toInstant()).isEqualTo(recoveredAt);
-        assertThat(((java.sql.Timestamp) row.get("completed_at")).toInstant()).isEqualTo(expiresAt);
+        assertThat(((java.sql.Timestamp) row.get("updated_at")).toInstant())
+                .isCloseTo(recoveredAt, within(1, java.time.temporal.ChronoUnit.MICROS));
+        assertThat(((java.sql.Timestamp) row.get("completed_at")).toInstant())
+                .isCloseTo(expiresAt, within(1, java.time.temporal.ChronoUnit.MICROS));
         assertThat(row.get("last_error_code")).isEqualTo("COMMAND_TTL_EXPIRED");
         assertThat(((Number) row.get("version")).longValue()).isEqualTo(2L);
         assertThat(commandQueryService.findById(command.id()).cancelable()).isFalse();

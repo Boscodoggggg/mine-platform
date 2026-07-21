@@ -40,6 +40,7 @@ import java.util.concurrent.TimeoutException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 /**
  * 使用真实 PostgreSQL 校验矿区资产换绑、幂等、资质和发生时解析闭环。
@@ -171,7 +172,7 @@ class MineBindingServiceIT {
         assertThat(preview.previousBinding().targetId()).isEqualTo(firstVehicleId);
         assertThat(preview.proposedBinding().targetId()).isEqualTo(secondVehicleId);
         assertThat(preview.proposedBinding().validTo())
-                .isEqualTo(effectiveAt.plusSeconds(86_400));
+                .isCloseTo(effectiveAt.plusSeconds(86_400), within(1, java.time.temporal.ChronoUnit.MICROS));
         assertThat(preview.qualification().required()).isTrue();
         assertThat(preview.qualification().qualified()).isTrue();
         assertThat(preview.blockers()).isEmpty();

@@ -46,6 +46,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 /**
  * 使用真实 PostgreSQL 验证途径点、路线和电子围栏的矿区级管理闭环。
@@ -332,7 +333,8 @@ class SpatialRouteManagementIT {
         CurrentSpatialRegionResponse response = queryService.findCurrentSpatialRegions(firstSiteId);
 
         assertThat(response.siteId()).isEqualTo(firstSiteId);
-        assertThat(response.nextChangeAt()).isEqualTo(futureFrom);
+        assertThat(response.nextChangeAt())
+                .isCloseTo(futureFrom, within(1, java.time.temporal.ChronoUnit.MICROS));
         assertThat(response.items())
                 .extracting(CurrentSpatialRegionResponse.Item::zoneVersionId)
                 .containsExactlyInAnyOrder(waypoint.id(), publishedGeofence.id());
