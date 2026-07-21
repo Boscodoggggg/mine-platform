@@ -1,0 +1,72 @@
+name: Bug report / 缺陷报告
+description: Report a reproducible mine-platform defect / 报告可复现的平台缺陷
+title: "[Bug]: "
+labels:
+  - bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve mine-platform. Remove all credentials, customer identifiers, personal data and sensitive mine coordinates.
+        感谢帮助改进项目。请移除凭据、客户标识、个人信息和矿区敏感坐标。
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component / 组件
+      options:
+        - Gateway / protocol
+        - Telemetry / alarm
+        - Server / API
+        - Mine operations / location
+        - Web frontend
+        - Deployment / observability / recovery
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Version or commit / 版本或提交
+      placeholder: v0.x.y or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / 环境
+      description: OS, architecture, JDK/Node/Docker versions and deployment mode.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction / 复现步骤
+      description: Provide the smallest deterministic sequence that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior / 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and evidence / 实际行为与证据
+      description: Sanitized logs, screenshots or test output. Do not paste secrets.
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks / 安全确认
+      options:
+        - label: I searched existing issues and documentation. / 我已搜索现有 Issue 和文档。
+          required: true
+        - label: This report contains no secrets or customer-sensitive information. / 本报告不包含凭据或客户敏感信息。
+          required: true
+        - label: This is not a security vulnerability. / 这不是安全漏洞。
+          required: true

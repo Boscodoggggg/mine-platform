@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="mountain" x1="8" y1="48" x2="53" y2="14" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#165DFF"/>
+      <stop offset="1" stop-color="#20D9F7"/>
+    </linearGradient>
+    <linearGradient id="data" x1="6" y1="49" x2="59" y2="49" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1565FF"/>
+      <stop offset=".72" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#F6B93B"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="#06132F"/>
+  <path d="m6 43 12-13 8 9M21 31l14-16 23 28" stroke="url(#mountain)" stroke-width="5" stroke-linejoin="miter"/>
+  <path d="m26 40 9-9 10 10Z" fill="url(#mountain)"/>
+  <path d="M6 47c15-9 36-8 54-1" stroke="url(#data)" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M8 53c14-8 30-8 44-3" stroke="url(#mountain)" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="29" cy="43" r="2.5" fill="#20CFF0"/>
+  <circle cx="45" cy="50" r="2.5" fill="#19B9F2"/>
+  <circle cx="60" cy="46" r="3" fill="#F6B93B"/>
+</svg>

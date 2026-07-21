@@ -1,0 +1,30 @@
+{
+  "eventId": "0190b4e8-3c00-7abc-8def-1234567890ab",
+  "eventType": "telemetry.normalized",
+  "schemaVersion": 1,
+  "occurredAt": "2026-07-14T08:00:00Z",
+  "publishedAt": "2026-07-14T08:00:02Z",
+  "producer": "mine-gateway",
+  "traceId": "trace-20260714-001",
+  "correlationId": "session-001",
+  "partitionKey": "device-001",
+  "tenantScope": "mine-local",
+  "payload": {
+    "messageId": "0190b4e8-3c01-7abc-8def-1234567890ab",
+    "messageType": "TELEMETRY",
+    "productKey": "haul-truck",
+    "deviceId": "device-001",
+    "protocolVersion": "truck-vendor-a@3",
+    "bootId": "boot-20260714-01",
+    "sequence": 12345,
+    "occurredAt": "2026-07-14T08:00:00Z",
+    "receivedAt": "2026-07-14T08:00:02Z",
+    "replayed": false,
+    "properties": {
+      "engine.rpm": 1350,
+      "coolant.temperature": 82.5
+    },
+    "quality": "GOOD",
+    "rawRef": "s3://raw/device-001/0190b4e8-3c01.bin"
+  }
+}

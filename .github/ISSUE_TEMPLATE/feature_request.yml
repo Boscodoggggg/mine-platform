@@ -1,0 +1,48 @@
+name: Feature request / 功能建议
+description: Propose a mine or industrial IoT capability / 建议矿山或工业 IoT 能力
+title: "[Feature]: "
+labels:
+  - enhancement
+  - needs-triage
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Field problem / 现场问题
+      description: Describe the operational problem before proposing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: users
+    attributes:
+      label: Users and scenario / 用户与场景
+      description: Who needs this, in which workflow, and under what network/deployment constraints?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome / 建议结果
+      description: Describe observable behavior and acceptance criteria, not only UI or technology choices.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 已考虑方案
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized protocol or field evidence / 脱敏协议或现场证据
+      description: Include only material you are authorized to publish.
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Boundaries / 边界确认
+      options:
+        - label: I checked the roadmap and existing issues. / 我已检查路线图和现有 Issue。
+          required: true
+        - label: I can help validate or implement this proposal. / 我愿意协助验证或实现此建议。
+          required: false
+        - label: The request contains no customer secrets or sensitive mine information. / 建议不包含客户秘密或矿区敏感信息。
+          required: true

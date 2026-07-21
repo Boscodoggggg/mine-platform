@@ -1,0 +1,206 @@
+package com.bosco.mine.server.modules.mine.scene;
+
+import cn.dev33.satoken.annotation.SaCheckPermission;
+import com.bosco.mine.server.bootstrap.web.PageResponse;
+import com.bosco.mine.server.modules.mine.dto.MineArchiveRequest;
+import com.bosco.mine.server.modules.mine.scene.dto.SceneAssetResponse;
+import com.bosco.mine.server.modules.mine.scene.storage.SceneAssetStorage;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpRange;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * 提供矿区三维资源上传、分页清单、归档和支持 Range 的受权文件读取接口。
+ */
+@Validated
+@RestController
+@RequestMapping("/api/v1/mine/sites/{siteId}/scene-assets")
+public class SceneAssetController {
+
+    private static final CacheControl IMMUTABLE_CACHE = CacheControl
+            .maxAge(Duration.ofDays(365))
+            .cachePrivate()
+            .immutable();
+
+    private final SceneAssetService service;
+
+    /**
+     * 创建三维资源控制器。
+     *
+     * @param service 三维资源应用服务
+     */
+    public SceneAssetController(SceneAssetService service) {
+        this.service = service;
+    }
+
+    /** 上传并安全校验一个 GLB 或 3D Tiles ZIP 资源。 */
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @SaCheckPermission("mine:scene:asset:upload")
+    public ResponseEntity<SceneAssetResponse> upload(
+            @PathVariable UUID siteId,
+            @RequestPart("file") MultipartFile file
+    ) throws IOException {
+        SceneAssetResponse response = service.upload(
+                siteId, file.getInputStream(), file.getOriginalFilename(), file.getContentType());
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    /** 分页查询矿区三维资源。 */
+    @GetMapping
+    @SaCheckPermission("mine:scene:view")
+    public PageResponse<SceneAssetResponse> findAssets(
+            @PathVariable UUID siteId,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") @Min(1) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+    ) {
+        return service.findAssets(siteId, status, page, size);
+    }
+
+    /** 查询资源详情和一页文件清单。 */
+    @GetMapping("/{assetId}")
+    @SaCheckPermission("mine:scene:view")
+    public SceneAssetResponse findAsset(
+            @PathVariable UUID siteId,
+            @PathVariable UUID assetId,
+            @RequestParam(defaultValue = "1") @Min(1) int filePage,
+            @RequestParam(defaultValue = "100") @Min(1) @Max(500) int fileSize
+    ) {
+        return service.findAsset(siteId, assetId, filePage, fileSize);
+    }
+
+    /** 使用乐观版本归档资源。 */
+    @PostMapping("/{assetId}/archive")
+    @SaCheckPermission("mine:scene:asset:upload")
+    public SceneAssetResponse archive(
+            @PathVariable UUID siteId,
+            @PathVariable UUID assetId,
+            @RequestHeader("Idempotency-Key") @NotBlank @Size(max = 128) String idempotencyKey,
+            @Valid @RequestBody MineArchiveRequest request
+    ) {
+        return service.archive(siteId, assetId, request.version(), idempotencyKey);
+    }
+
+    /**
+     * 条件读取一个已登记资源文件，只支持单一字节范围。
+     *
+     * @param siteId 矿区标识
+     * @param assetId 资源标识
+     * @param relativePath 包内完整相对路径
+     * @param rangeHeader 可选单一 Range 请求头
+     * @param ifNoneMatch 可选条件缓存摘要
+     * @return 完整、部分、未修改或范围不可满足响应
+     */
+    @GetMapping("/{assetId}/files/{*relativePath}")
+    @SaCheckPermission("mine:scene:view")
+    public ResponseEntity<?> readFile(
+            @PathVariable UUID siteId,
+            @PathVariable UUID assetId,
+            @PathVariable @NotBlank String relativePath,
+            @RequestHeader(name = HttpHeaders.RANGE, required = false) String rangeHeader,
+            @RequestHeader(name = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch
+    ) {
+        String normalizedPath = relativePath.startsWith("/")
+                ? relativePath.substring(1) : relativePath;
+        SceneAssetService.SceneAssetFileContent file = service.openFile(
+                siteId, assetId, normalizedPath);
+        String etag = quotedEtag(file.contentDigest());
+        HttpHeaders headers = responseHeaders(file, etag);
+        if (etagMatches(ifNoneMatch, etag)) {
+            return new ResponseEntity<>(null, headers, HttpStatus.NOT_MODIFIED);
+        }
+
+        if (rangeHeader == null || rangeHeader.isBlank()) {
+            SceneAssetStorage.StoredContent content = file.open(null);
+            headers.setContentLength(file.sizeBytes());
+            return new ResponseEntity<>(
+                    new InputStreamResource(content.inputStream()), headers, HttpStatus.OK);
+        }
+        try {
+            List<HttpRange> ranges = HttpRange.parseRanges(rangeHeader);
+            if (ranges.size() != 1) {
+                return rangeNotSatisfiable(headers, file.sizeBytes());
+            }
+            long start = ranges.getFirst().getRangeStart(file.sizeBytes());
+            long end = ranges.getFirst().getRangeEnd(file.sizeBytes());
+            long count = end - start + 1;
+            if (start >= file.sizeBytes() || count < 1 || end >= file.sizeBytes()) {
+                return rangeNotSatisfiable(headers, file.sizeBytes());
+            }
+            headers.set(HttpHeaders.CONTENT_RANGE,
+                    "bytes " + start + "-" + end + "/" + file.sizeBytes());
+            headers.setContentLength(count);
+            SceneAssetStorage.StoredContent content = file.open(
+                    new SceneAssetStorage.ByteRange(start, end));
+            return new ResponseEntity<>(
+                    new InputStreamResource(content.inputStream()),
+                    headers,
+                    HttpStatus.PARTIAL_CONTENT);
+        } catch (IllegalArgumentException exception) {
+            return rangeNotSatisfiable(headers, file.sizeBytes());
+        }
+    }
+
+    private HttpHeaders responseHeaders(
+            SceneAssetService.SceneAssetFileContent file,
+            String etag
+    ) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setETag(etag);
+        headers.setCacheControl(IMMUTABLE_CACHE);
+        headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
+        headers.set("X-Content-Type-Options", "nosniff");
+        headers.setContentType(MediaType.parseMediaType(file.contentType()));
+        return headers;
+    }
+
+    private ResponseEntity<Void> rangeNotSatisfiable(HttpHeaders headers, long length) {
+        headers.set(HttpHeaders.CONTENT_RANGE, "bytes */" + length);
+        return new ResponseEntity<>(null, headers, HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
+    }
+
+    private String quotedEtag(String digest) {
+        return "\"" + digest.replace("\"", "") + "\"";
+    }
+
+    private boolean etagMatches(String ifNoneMatch, String etag) {
+        if (ifNoneMatch == null || ifNoneMatch.isBlank()) {
+            return false;
+        }
+        for (String candidate : ifNoneMatch.split(",")) {
+            String normalized = candidate.strip();
+            if ("*".equals(normalized) || etag.equals(normalized)
+                    || (normalized.startsWith("W/") && etag.equals(normalized.substring(2)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+}

@@ -1,0 +1,54 @@
+{
+  "protocolKey": "vendor-nested-json",
+  "version": 1,
+  "trustedIdentity": {
+    "productKey": "haul-truck",
+    "deviceCode": "truck-002"
+  },
+  "metadata": {
+    "productKeyPath": "header.product",
+    "deviceCodePath": "header.device",
+    "bootIdPath": "header.boot",
+    "sequencePath": "header.seq",
+    "occurredAtPath": "header.timestamp",
+    "replayedPath": "header.replayed"
+  },
+  "properties": [
+    { "identifier": "engineRpm", "dataType": "INTEGER" },
+    { "identifier": "coolantTemperature", "dataType": "DECIMAL" }
+  ],
+  "fields": [
+    {
+      "sourcePath": "payload.engine.speed",
+      "sourceType": "INTEGER",
+      "targetIdentifier": "engineRpm",
+      "transform": "NONE",
+      "requiredField": true
+    },
+    {
+      "sourcePath": "payload.engine.coolant",
+      "sourceType": "DECIMAL",
+      "targetIdentifier": "coolantTemperature",
+      "transform": "NONE",
+      "requiredField": true
+    }
+  ],
+  "samples": [
+    {
+      "name": "正常嵌套遥测",
+      "payload": {
+        "header": {
+          "product": "haul-truck",
+          "device": "truck-002",
+          "boot": "boot-002",
+          "seq": 7,
+          "timestamp": "2026-07-16T00:00:01Z",
+          "replayed": false
+        },
+        "payload": { "engine": { "speed": 1350, "coolant": 82.5 } }
+      },
+      "expectedSuccess": true,
+      "expectedProperties": { "engineRpm": 1350, "coolantTemperature": 82.5 }
+    }
+  ]
+}

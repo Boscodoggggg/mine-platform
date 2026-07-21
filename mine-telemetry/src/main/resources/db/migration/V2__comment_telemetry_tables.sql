@@ -1,0 +1,27 @@
+COMMENT ON TABLE telemetry_numeric IS '设备数值型遥测历史数据';
+COMMENT ON COLUMN telemetry_numeric.time IS '设备数据发生时间（UTC）';
+COMMENT ON COLUMN telemetry_numeric.device_id IS '平台设备唯一标识';
+COMMENT ON COLUMN telemetry_numeric.product_key IS '设备所属产品编码';
+COMMENT ON COLUMN telemetry_numeric.property_id IS '物模型属性标识';
+COMMENT ON COLUMN telemetry_numeric.value_double IS '数值型属性值';
+COMMENT ON COLUMN telemetry_numeric.quality IS '数据质量编码';
+COMMENT ON COLUMN telemetry_numeric.boot_id IS '设备本次启动标识';
+COMMENT ON COLUMN telemetry_numeric.sequence IS '设备启动周期内消息序号';
+COMMENT ON COLUMN telemetry_numeric.event_id IS '统一消息事件唯一标识';
+COMMENT ON COLUMN telemetry_numeric.received_at IS '平台接收时间（UTC）';
+
+COMMENT ON TABLE location_point IS '设备或UWB标签位置轨迹点';
+COMMENT ON COLUMN location_point.time IS '位置数据发生时间（UTC）';
+COMMENT ON COLUMN location_point.device_id IS '关联的平台设备唯一标识，可为空';
+COMMENT ON COLUMN location_point.tag_id IS 'UWB标签唯一标识';
+COMMENT ON COLUMN location_point.x IS '矿区坐标系X轴坐标';
+COMMENT ON COLUMN location_point.y IS '矿区坐标系Y轴坐标';
+COMMENT ON COLUMN location_point.z IS '矿区坐标系Z轴坐标';
+COMMENT ON COLUMN location_point.speed IS '移动速度';
+COMMENT ON COLUMN location_point.heading IS '航向角';
+COMMENT ON COLUMN location_point.quality IS '位置数据质量编码';
+COMMENT ON COLUMN location_point.coordinate_system_id IS '坐标系唯一标识';
+COMMENT ON COLUMN location_point.boot_id IS '设备本次启动标识';
+COMMENT ON COLUMN location_point.sequence IS '设备启动周期内消息序号';
+COMMENT ON COLUMN location_point.event_id IS '统一消息事件唯一标识';
+COMMENT ON COLUMN location_point.received_at IS '平台接收时间（UTC）';

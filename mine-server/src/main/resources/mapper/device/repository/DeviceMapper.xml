@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bosco.mine.server.modules.device.repository.DeviceMapper">
+
+    <select id="countProducts" resultType="long">
+        SELECT COUNT(*)
+        FROM dev_product
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+          AND (product_key ILIKE CONCAT('%', #{keyword}, '%')
+               OR name ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+
+    </select>
+
+    <select id="findProducts" resultType="com.bosco.mine.server.modules.device.model.Product">
+        SELECT id, product_key AS productKey, name, device_type AS deviceType, status,
+               archived_at AS archivedAt, created_at AS createdAt,
+               updated_at AS updatedAt, version
+        FROM dev_product
+        WHERE 1 = 1
+        <if test="keyword != null and keyword != ''">
+          AND (product_key ILIKE CONCAT('%', #{keyword}, '%')
+               OR name ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+        ORDER BY created_at DESC, id
+        OFFSET #{offset} LIMIT #{limit}
+
+    </select>
+
+    <select id="countDevices" resultType="long">
+        SELECT COUNT(*)
+        FROM dev_device
+        WHERE 1 = 1
+        <if test="productId != null">
+          AND product_id = #{productId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+          AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
+               OR name ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+
+    </select>
+
+    <select id="findDevices" resultType="com.bosco.mine.server.modules.device.model.Device">
+        SELECT id, product_id AS productId, device_code AS deviceCode, name, status,
+               archived_at AS archivedAt, created_at AS createdAt,
+               updated_at AS updatedAt, version
+        FROM dev_device
+        WHERE 1 = 1
+        <if test="productId != null">
+          AND product_id = #{productId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+          AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
+               OR name ILIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status != ''">
+          AND status = #{status}
+        </if>
+        ORDER BY created_at DESC, id
+        OFFSET #{offset} LIMIT #{limit}
+
+    </select>
+
+    <select id="findDevicesByIds" resultType="com.bosco.mine.server.modules.device.model.Device">
+        SELECT id, product_id AS productId, device_code AS deviceCode, name, status,
+               archived_at AS archivedAt, created_at AS createdAt,
+               updated_at AS updatedAt, version
+          FROM dev_device
+         WHERE id IN
+         <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+           #{deviceId}
+         </foreach>
+         ORDER BY id
+
+    </select>
+
+</mapper>

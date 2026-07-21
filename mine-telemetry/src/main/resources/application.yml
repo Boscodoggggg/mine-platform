@@ -1,0 +1,118 @@
+spring:
+  application:
+    name: mine-telemetry
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${MINE_TELEMETRY_HTTP_PORT:8082}
+  shutdown: graceful
+
+management:
+  health:
+    rabbit:
+      enabled: ${MINE_TELEMETRY_RABBIT_ENABLED:false}
+  server:
+    port: ${MINE_TELEMETRY_MANAGEMENT_PORT:18082}
+    address: ${MINE_MANAGEMENT_ADDRESS:127.0.0.1}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: 矿山遥测处理服务
+    version: ${MINE_APP_VERSION:0.1.0-SNAPSHOT}
+
+mine:
+  telemetry:
+    rabbit:
+      enabled: ${MINE_TELEMETRY_RABBIT_ENABLED:false}
+      auto-startup: ${MINE_TELEMETRY_RABBIT_AUTO_STARTUP:true}
+      host: ${MINE_TELEMETRY_RABBIT_HOST:rabbitmq}
+      port: ${MINE_TELEMETRY_RABBIT_PORT:5672}
+      prefetch: ${MINE_TELEMETRY_RABBIT_PREFETCH:200}
+      batch-size: ${MINE_TELEMETRY_RABBIT_BATCH_SIZE:100}
+      receive-timeout-millis: ${MINE_TELEMETRY_RABBIT_RECEIVE_TIMEOUT_MILLIS:1000}
+      confirm-timeout-millis: ${MINE_TELEMETRY_RABBIT_CONFIRM_TIMEOUT_MILLIS:5000}
+      account:
+        username: ${MINE_TELEMETRY_RABBIT_USERNAME:mine-telemetry}
+        password-file: ${MINE_TELEMETRY_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_telemetry_password}
+      outbox:
+        instance-id: ${MINE_TELEMETRY_INSTANCE_ID:${HOSTNAME:mine-telemetry}}
+        lease-duration: ${MINE_TELEMETRY_OUTBOX_LEASE_DURATION:30s}
+        max-attempts: ${MINE_TELEMETRY_OUTBOX_MAX_ATTEMPTS:8}
+        recovery-limit: ${MINE_TELEMETRY_OUTBOX_RECOVERY_LIMIT:500}
+        retry-base-delay: ${MINE_TELEMETRY_OUTBOX_RETRY_BASE_DELAY:1s}
+        retry-max-delay: ${MINE_TELEMETRY_OUTBOX_RETRY_MAX_DELAY:5m}
+        dispatch-concurrency: ${MINE_TELEMETRY_OUTBOX_DISPATCH_CONCURRENCY:4}
+        dispatch-queue-capacity: ${MINE_TELEMETRY_OUTBOX_DISPATCH_QUEUE_CAPACITY:1000}
+        recovery-interval: ${MINE_TELEMETRY_OUTBOX_RECOVERY_INTERVAL:10s}
+      location:
+        prefetch: ${MINE_TELEMETRY_LOCATION_PREFETCH:100}
+        outbox:
+          instance-id: ${MINE_TELEMETRY_LOCATION_INSTANCE_ID:${HOSTNAME:mine-telemetry}-location}
+          lease-duration: ${MINE_TELEMETRY_LOCATION_OUTBOX_LEASE_DURATION:30s}
+          max-attempts: ${MINE_TELEMETRY_LOCATION_OUTBOX_MAX_ATTEMPTS:8}
+          recovery-limit: ${MINE_TELEMETRY_LOCATION_OUTBOX_RECOVERY_LIMIT:2000}
+          retry-base-delay: ${MINE_TELEMETRY_LOCATION_OUTBOX_RETRY_BASE_DELAY:1s}
+          retry-max-delay: ${MINE_TELEMETRY_LOCATION_OUTBOX_RETRY_MAX_DELAY:5m}
+          dispatch-concurrency: ${MINE_TELEMETRY_LOCATION_OUTBOX_CONCURRENCY:4}
+          dispatch-queue-capacity: ${MINE_TELEMETRY_LOCATION_OUTBOX_QUEUE_CAPACITY:10000}
+          recovery-interval: ${MINE_TELEMETRY_LOCATION_OUTBOX_RECOVERY_INTERVAL:10s}
+        cache-recovery-interval: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_INTERVAL:5m}
+        cache-recovery-site-limit: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_SITE_LIMIT:100}
+        cache-recovery-tag-limit: ${MINE_TELEMETRY_LOCATION_CACHE_RECOVERY_TAG_LIMIT:10000}
+        spatial:
+          enabled: ${MINE_TELEMETRY_SPATIAL_ENABLED:true}
+          evaluation-interval: ${MINE_TELEMETRY_SPATIAL_EVALUATION_INTERVAL:1s}
+          evaluation-batch-size: ${MINE_TELEMETRY_SPATIAL_EVALUATION_BATCH_SIZE:500}
+          outbox:
+            instance-id: ${MINE_TELEMETRY_SPATIAL_INSTANCE_ID:${HOSTNAME:mine-telemetry}-spatial}
+            lease-duration: ${MINE_TELEMETRY_SPATIAL_LEASE_DURATION:30s}
+            max-attempts: ${MINE_TELEMETRY_SPATIAL_MAX_ATTEMPTS:8}
+            recovery-limit: ${MINE_TELEMETRY_SPATIAL_RECOVERY_LIMIT:2000}
+            retry-base-delay: ${MINE_TELEMETRY_SPATIAL_RETRY_BASE_DELAY:1s}
+            retry-max-delay: ${MINE_TELEMETRY_SPATIAL_RETRY_MAX_DELAY:5m}
+            dispatch-concurrency: ${MINE_TELEMETRY_SPATIAL_DISPATCH_CONCURRENCY:2}
+            dispatch-queue-capacity: ${MINE_TELEMETRY_SPATIAL_DISPATCH_QUEUE_CAPACITY:5000}
+            recovery-interval: ${MINE_TELEMETRY_SPATIAL_RECOVERY_INTERVAL:10s}
+    strategy-distribution:
+      enabled: ${MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED:false}
+      server-url: ${MINE_TELEMETRY_STRATEGY_SERVER_URL:http://mine-server:8080}
+      service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
+      page-size: ${MINE_TELEMETRY_STRATEGY_PAGE_SIZE:500}
+      request-timeout: ${MINE_TELEMETRY_STRATEGY_REQUEST_TIMEOUT:10s}
+    location-distribution:
+      enabled: ${MINE_TELEMETRY_LOCATION_DISTRIBUTION_ENABLED:false}
+      server-url: ${MINE_TELEMETRY_LOCATION_SERVER_URL:http://mine-server:8080}
+      service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
+      page-size: ${MINE_TELEMETRY_LOCATION_PAGE_SIZE:500}
+      request-timeout: ${MINE_TELEMETRY_LOCATION_REQUEST_TIMEOUT:10s}
+    retention:
+      enabled: ${MINE_TELEMETRY_RETENTION_ENABLED:false}
+      instance-id: ${MINE_TELEMETRY_RETENTION_INSTANCE_ID:${MINE_TELEMETRY_INSTANCE_ID:${HOSTNAME:mine-telemetry}}}
+      batch-size: ${MINE_TELEMETRY_RETENTION_BATCH_SIZE:10000}
+      max-cycles: ${MINE_TELEMETRY_RETENTION_MAX_CYCLES:10}
+      initial-delay: ${MINE_TELEMETRY_RETENTION_INITIAL_DELAY:30s}
+      interval: ${MINE_TELEMETRY_RETENTION_INTERVAL:5m}
+      stale-execution-timeout: ${MINE_TELEMETRY_RETENTION_STALE_TIMEOUT:2h}
+    aggregation:
+      enabled: ${MINE_TELEMETRY_AGGREGATION_ENABLED:false}
+      instance-id: ${MINE_TELEMETRY_AGGREGATION_INSTANCE_ID:${MINE_TELEMETRY_INSTANCE_ID:${HOSTNAME:mine-telemetry}}}
+      batch-size: ${MINE_TELEMETRY_AGGREGATION_BATCH_SIZE:1000}
+      max-cycles: ${MINE_TELEMETRY_AGGREGATION_MAX_CYCLES:10}
+      initial-delay: ${MINE_TELEMETRY_AGGREGATION_INITIAL_DELAY:30s}
+      interval: ${MINE_TELEMETRY_AGGREGATION_INTERVAL:1m}
+      stale-execution-timeout: ${MINE_TELEMETRY_AGGREGATION_STALE_TIMEOUT:2h}
+      recompute-enabled: ${MINE_TELEMETRY_AGGREGATION_RECOMPUTE_ENABLED:false}
+      recompute-lease-duration: ${MINE_TELEMETRY_AGGREGATION_RECOMPUTE_LEASE:10m}

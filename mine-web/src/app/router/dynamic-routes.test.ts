@@ -1,0 +1,442 @@
+import { describe, expect, it } from 'vitest';
+import { setLocale } from '@/locales';
+import { buildDynamicNavigation } from './dynamic-routes';
+import type { NavigationMenuNode } from '@/modules/system/api/auth';
+
+const nodes: NavigationMenuNode[] = [
+  {
+    id: 'directory-1',
+    parentId: null,
+    name: '设备管理',
+    type: 'DIRECTORY',
+    path: '/device',
+    componentKey: null,
+    permission: null,
+    icon: 'mdi:factory',
+    sortOrder: 1,
+    visible: true,
+    children: [
+      {
+        id: 'menu-known',
+        parentId: 'directory-1',
+        name: '运行总览',
+        type: 'MENU',
+        path: '/device/overview',
+        componentKey: 'home-overview',
+        permission: null,
+        icon: 'mdi:monitor-dashboard',
+        sortOrder: 1,
+        visible: true,
+        children: [
+          {
+            id: 'button-1',
+            parentId: 'menu-known',
+            name: '查看详情',
+            type: 'BUTTON',
+            path: null,
+            componentKey: null,
+            permission: 'device:device:list',
+            icon: null,
+            sortOrder: 1,
+            visible: true,
+            children: []
+          }
+        ]
+      },
+      {
+        id: 'menu-unknown',
+        parentId: 'directory-1',
+        name: '厂商页面',
+        type: 'MENU',
+        path: '/device/vendor',
+        componentKey: 'vendor-arbitrary-file',
+        permission: null,
+        icon: null,
+        sortOrder: 2,
+        visible: true,
+        children: []
+      }
+    ]
+  }
+];
+
+describe('buildDynamicNavigation', () => {
+  it('只为白名单MENU生成路由且未知组件不对用户可见', () => {
+    const result = buildDynamicNavigation(nodes);
+
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes.map(route => route.path)).toEqual(['/device/overview']);
+    expect(result.routes[0]?.meta?.componentFallback).toBe(false);
+    expect(result.unknownComponentKeys).toEqual(['vendor-arbitrary-file']);
+    expect(result.routes.some(route => route.path === 'device:device:list')).toBe(false);
+  });
+
+  it('目录保留层级而按钮不进入导航菜单', () => {
+    const result = buildDynamicNavigation(nodes);
+
+    expect(result.menus).toHaveLength(1);
+    expect(result.menus[0]?.label).toBe('设备管理');
+    expect(result.menus[0]?.children).toHaveLength(1);
+    expect(result.menus[0]?.children?.some(menu => menu.label === '查看详情')).toBe(false);
+  });
+
+  it('矿区管理九个页面应命中组件白名单并提供国际化导航', () => {
+    const componentKeys = [
+      'mine-site-archive',
+      'mine-vehicle-management',
+      'mine-person-management',
+      'mine-location-tag-management',
+      'mine-binding-management',
+      'mine-location-monitor',
+      'mine-spatial-management',
+      'mine-production-operations',
+      'mine-scene-workbench'
+    ];
+    const mineNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'mine-directory',
+        name: '矿区管理',
+        path: '/mine',
+        i18nKey: 'mine.menu.mine',
+        children: componentKeys.map((componentKey, index) => ({
+          ...nodes[0].children[0],
+          id: `mine-menu-${index}`,
+          name: `矿区页面${index}`,
+          path: [
+            '/mine/sites',
+            '/mine/vehicles',
+            '/mine/people',
+            '/mine/location-tags',
+            '/mine/bindings',
+            '/mine/location',
+            '/mine/spatial',
+            '/mine/operations',
+            '/mine/scene'
+          ][index],
+          componentKey,
+          sortOrder: index,
+          children: []
+        }))
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(mineNodes);
+    setLocale('zh-CN');
+
+    expect(result.routes).toHaveLength(9);
+    expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]?.label).toBe('Mine Management');
+    expect(result.menus[0]?.children?.map(child => child.label)).toEqual([
+      'Mine Sites',
+      'Vehicles',
+      'People',
+      'Location Tags',
+      'Bindings',
+      'Live Location',
+      'Routes & Geofences',
+      'Production Operations',
+      '3D Scene'
+    ]);
+  });
+
+  it('本地图标标记应按本地图标渲染', () => {
+    const result = buildDynamicNavigation([
+      {
+        ...nodes[0],
+        icon: 'local:activity',
+        children: [{ ...nodes[0].children[0], icon: 'local:activity', children: [] }]
+      }
+    ]);
+    const iconRenderer = result.menus[0]?.icon as (() => { props?: Record<string, unknown> }) | undefined;
+
+    expect(iconRenderer?.().props).toMatchObject({ localIcon: 'activity' });
+    expect(result.routes[0]?.meta).toMatchObject({ localIcon: 'activity' });
+    expect(result.routes[0]?.meta?.icon).toBeUndefined();
+    expect(result.routes[0]?.children?.[0]?.meta).toMatchObject({ localIcon: 'activity' });
+    expect(result.routes[0]?.children?.[0]?.meta?.icon).toBeUndefined();
+  });
+
+  it('系统用户角色和运行监控组件键应命中本地白名单', () => {
+    const systemNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'system-directory',
+        name: '系统管理',
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'system-users',
+            name: '用户管理',
+            path: '/system/users',
+            componentKey: 'system-user-list',
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'system-roles',
+            name: '角色管理',
+            path: '/system/roles',
+            componentKey: 'system-role-list',
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'system-operations',
+            name: '运行监控',
+            path: '/system/operations',
+            componentKey: 'system-operations-monitor',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    const result = buildDynamicNavigation(systemNodes);
+
+    expect(result.routes).toHaveLength(3);
+    expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
+    expect(result.unknownComponentKeys).toEqual([]);
+  });
+
+  it('设备产品台账和监控组件键应命中本地白名单并提供国际化菜单', () => {
+    const deviceNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'device-products',
+            name: '产品管理',
+            path: '/device/products',
+            componentKey: 'device-product-list',
+            sortOrder: 10,
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'device-devices',
+            name: '设备台账',
+            path: '/device/devices',
+            componentKey: 'device-device-list',
+            sortOrder: 20,
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'device-strategies',
+            name: '策略工作台',
+            path: '/device/strategies',
+            componentKey: 'device-strategy-workbench',
+            sortOrder: 35,
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'device-monitor',
+            name: '设备监控',
+            path: '/device/monitor',
+            componentKey: 'device-monitor',
+            sortOrder: 40,
+            children: []
+          }
+        ]
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(deviceNodes);
+    setLocale('zh-CN');
+
+    expect(result.routes).toHaveLength(4);
+    expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]?.children?.map(menu => menu.label)).toEqual([
+      'Product Management',
+      'Device Registry',
+      'Strategy Workbench',
+      'Device Monitoring'
+    ]);
+  });
+
+  it('数据治理菜单应命中保留和聚合页面并固定保留策略类型', () => {
+    const governanceNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'governance-directory',
+        name: '数据治理',
+        path: '/governance',
+        i18nKey: 'mine.menu.governance',
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'retention-governance',
+            name: '数据保留',
+            path: '/governance/retention',
+            componentKey: 'retention-governance',
+            permission: 'governance:retention:view',
+            i18nKey: 'mine.menu.retention',
+            children: []
+          },
+          {
+            ...nodes[0].children[0],
+            id: 'aggregation-governance',
+            name: '数值聚合',
+            path: '/governance/aggregation',
+            componentKey: 'aggregation-governance',
+            permission: 'governance:aggregation:view',
+            i18nKey: 'mine.menu.aggregation',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(governanceNodes);
+    setLocale('zh-CN');
+
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.routes).toHaveLength(2);
+    const retentionRoute = result.routes.find(route => route.path === '/governance/retention');
+    expect(retentionRoute?.children?.[0]?.props).toEqual({ fixedStrategyType: 'RETENTION' });
+    expect(result.routes.some(route => route.path === '/governance/aggregation')).toBe(true);
+    expect(result.menus[0]?.label).toBe('Data Governance');
+    expect(result.menus[0]?.children?.map(child => child.label).sort()).toEqual([
+      'Data Retention',
+      'Numeric Aggregation'
+    ]);
+    expect(result.routes.every(route => route.meta?.componentFallback === false)).toBe(true);
+  });
+
+  it('告警中心组件键应命中本地白名单并生成国际化导航', () => {
+    const alarmDirectory: NavigationMenuNode = {
+      ...nodes[0],
+      id: 'alarm-directory',
+      name: '告警管理',
+      path: '/alarm',
+      children: [
+        {
+          ...nodes[0].children[0],
+          id: 'alarm-center',
+          name: '告警处置中心',
+          path: '/alarm/center',
+          componentKey: 'alarm-center',
+          children: []
+        }
+      ]
+    };
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation([alarmDirectory]);
+    setLocale('zh-CN');
+
+    expect(result.routes[0]?.meta?.componentFallback).toBe(false);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]?.label).toBe('Alarm Management');
+    expect(result.menus[0]?.children?.[0]?.label).toBe('Alarm Center');
+  });
+
+  it('通知渠道组件键应命中本地白名单并生成国际化导航', () => {
+    const alarmDirectory: NavigationMenuNode = {
+      ...nodes[0],
+      id: 'alarm-directory',
+      name: '告警管理',
+      path: '/alarm',
+      children: [
+        {
+          ...nodes[0].children[0],
+          id: 'notification-channels',
+          name: '通知渠道',
+          path: '/alarm/channels',
+          componentKey: 'notification-channel-management',
+          permission: 'notification:channel:view',
+          i18nKey: 'mine.menu.notificationChannels',
+          children: []
+        }
+      ]
+    };
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation([alarmDirectory]);
+    setLocale('zh-CN');
+
+    expect(result.routes[0]?.meta?.componentFallback).toBe(false);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]?.children?.[0]?.label).toBe('Notification Channels');
+  });
+
+  it('已注册动态菜单应生成国际化键并按当前语言显示', () => {
+    const systemNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'system-directory',
+        name: '系统管理',
+        path: '/system',
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'system-users',
+            name: '用户管理',
+            path: '/system/users',
+            componentKey: 'system-user-list',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(systemNodes);
+    setLocale('zh-CN');
+
+    expect(result.menus[0]).toMatchObject({
+      i18nKey: 'mine.menu.system',
+      label: 'System Management'
+    });
+    expect(result.menus[0]?.children?.[0]).toMatchObject({
+      i18nKey: 'mine.menu.users',
+      label: 'User Management'
+    });
+    expect(result.routes[0]?.children?.[0]?.meta).toMatchObject({
+      i18nKey: 'mine.menu.users',
+      title: '用户管理'
+    });
+  });
+
+  it('命令中心组件键应命中白名单并提供国际化菜单', () => {
+    const commandNodes: NavigationMenuNode[] = [
+      {
+        ...nodes[0],
+        id: 'command-directory',
+        name: '命令管理',
+        path: '/command',
+        children: [
+          {
+            ...nodes[0].children[0],
+            id: 'command-center',
+            name: '命令中心',
+            path: '/command/center',
+            componentKey: 'command-center',
+            children: []
+          }
+        ]
+      }
+    ];
+
+    setLocale('en-US');
+    const result = buildDynamicNavigation(commandNodes);
+    setLocale('zh-CN');
+
+    expect(result.routes).toHaveLength(1);
+    expect(result.routes[0]?.meta?.componentFallback).toBe(false);
+    expect(result.unknownComponentKeys).toEqual([]);
+    expect(result.menus[0]).toMatchObject({ label: 'Command Management', i18nKey: 'mine.menu.command' });
+    expect(result.menus[0]?.children?.[0]).toMatchObject({
+      label: 'Command Center',
+      i18nKey: 'mine.menu.commandCenter'
+    });
+  });
+});

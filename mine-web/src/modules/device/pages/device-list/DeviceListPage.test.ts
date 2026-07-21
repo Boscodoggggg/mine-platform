@@ -1,0 +1,458 @@
+import { flushPromises, mount } from '@vue/test-utils';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NButton } from 'naive-ui';
+import { i18n, setLocale } from '@/locales';
+import DeviceListPage from './DeviceListPage.vue';
+
+const api = vi.hoisted(() => ({
+  archiveDevice: vi.fn(),
+  createDevice: vi.fn(),
+  getDeviceAccessStatuses: vi.fn(),
+  getDeviceConnectionProfile: vi.fn(),
+  getDevices: vi.fn(),
+  getProducts: vi.fn(),
+  saveDeviceConnectionProfile: vi.fn(),
+  testDeviceAccessStatus: vi.fn(),
+  testDeviceConnectionProfile: vi.fn(),
+  updateDevice: vi.fn()
+}));
+const dictionaryApi = vi.hoisted(() => ({ getEnabledDictionaryItems: vi.fn() }));
+const strategyApi = vi.hoisted(() => ({ getEffectiveStrategy: vi.fn() }));
+const authState = vi.hoisted(() => ({ userInfo: { buttons: [] as string[] } }));
+
+vi.mock('@/modules/device/api/device', () => api);
+vi.mock('@/modules/system/api/dictionary', () => dictionaryApi);
+vi.mock('@/modules/device/api/strategy', () => strategyApi);
+vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
+
+const product = {
+  id: 'product-1',
+  productKey: 'haul-truck',
+  name: '矿用运输车',
+  deviceType: 'VEHICLE',
+  status: 'ACTIVE' as const,
+  archivedAt: null,
+  createdAt: '2026-07-15T00:00:00Z',
+  updatedAt: '2026-07-15T00:00:00Z',
+  version: 0
+};
+const device = {
+  id: 'device-1',
+  productId: 'product-1',
+  deviceCode: 'truck-001',
+  name: '一号运输车',
+  status: 'ENABLED' as const,
+  archivedAt: null,
+  createdAt: '2026-07-15T00:00:00Z',
+  updatedAt: '2026-07-15T00:00:00Z',
+  version: 0
+};
+const connectionProfile = {
+  id: 'connection-1',
+  deviceId: 'device-1',
+  connectionMode: 'DEVICE_TO_PLATFORM_MQTT' as const,
+  host: 'mqtt.mine.local',
+  port: 8883,
+  tlsEnabled: true,
+  tlsServerName: 'mqtt.mine.local',
+  connectTimeoutMillis: 5000,
+  keepAliveSeconds: 60,
+  offlineThresholdSeconds: 180,
+  lastTestStatus: 'NOT_TESTED' as const,
+  lastTestAt: null,
+  lastTestDurationMillis: null,
+  lastTestMessage: null,
+  lastTestStages: [],
+  createdAt: '2026-07-16T00:00:00Z',
+  updatedAt: '2026-07-16T00:00:00Z',
+  version: 0
+};
+
+describe('DeviceListPage', () => {
+  beforeEach(() => {
+    setLocale('zh-CN');
+    Object.values(api).forEach(mock => mock.mockReset());
+    dictionaryApi.getEnabledDictionaryItems.mockReset();
+    strategyApi.getEffectiveStrategy.mockReset();
+    dictionaryApi.getEnabledDictionaryItems.mockResolvedValue([
+      dictionaryItem('ENABLED', '启用', 'Enabled', 'primary'),
+      dictionaryItem('DISABLED', '停用', 'Disabled', 'warning'),
+      dictionaryItem('ARCHIVED', '已归档', 'Archived', 'default')
+    ]);
+    api.getProducts.mockResolvedValue({ items: [product], page: 1, size: 100, total: 1 });
+    api.getDevices.mockResolvedValue({ items: [device], page: 1, size: 20, total: 1 });
+    api.getDeviceAccessStatuses.mockResolvedValue([
+      {
+        deviceId: 'device-1',
+        status: 'ONLINE',
+        firstSeenAt: '2026-07-16T00:50:00Z',
+        lastReceivedAt: '2026-07-16T01:00:00Z',
+        offlineThresholdSeconds: 180,
+        message: 'ACCESS_ONLINE'
+      }
+    ]);
+    api.createDevice.mockResolvedValue(device);
+    api.getDeviceConnectionProfile.mockResolvedValue(connectionProfile);
+    api.saveDeviceConnectionProfile.mockResolvedValue({ ...connectionProfile, version: 1 });
+    api.testDeviceConnectionProfile.mockResolvedValue({
+      deviceId: 'device-1',
+      status: 'PARTIAL',
+      startedAt: '2026-07-16T01:00:00Z',
+      durationMillis: 12,
+      message: 'TEST_PARTIAL',
+      stages: [
+        { stage: 'CONFIG', status: 'PASSED', message: 'CONFIG_OK', durationMillis: 0 },
+        { stage: 'DEVICE_CONFIRMATION', status: 'SKIPPED', message: 'FIRST_MESSAGE_REQUIRED', durationMillis: 0 }
+      ]
+    });
+    api.testDeviceAccessStatus.mockResolvedValue({
+      deviceId: 'device-1',
+      status: 'ONLINE',
+      checkedAt: '2026-07-16T01:00:01Z',
+      durationMillis: 18,
+      message: 'ACCESS_ONLINE',
+      stages: [
+        { layer: 'ENDPOINT', status: 'PASSED', message: 'TEST_PARTIAL', observedAt: null, durationMillis: 12 },
+        {
+          layer: 'TRANSPORT',
+          status: 'PASSED',
+          message: 'TRANSPORT_CONNECTED',
+          observedAt: '2026-07-16T00:59:58Z',
+          durationMillis: 0
+        },
+        {
+          layer: 'ACTIVITY',
+          status: 'PASSED',
+          message: 'FIRST_FRAME_CONFIRMED',
+          observedAt: '2026-07-16T00:50:00Z',
+          durationMillis: 0
+        },
+        {
+          layer: 'DATA',
+          status: 'PASSED',
+          message: 'DATA_FRESH',
+          observedAt: '2026-07-16T01:00:00Z',
+          durationMillis: 0
+        }
+      ]
+    });
+    strategyApi.getEffectiveStrategy.mockResolvedValue({
+      deviceId: 'device-1',
+      strategyType: 'ONLINE_STATUS',
+      values: { offlineThresholdSeconds: 180 },
+      sources: {
+        offlineThresholdSeconds: {
+          scopeType: 'PRODUCT',
+          scopeId: 'product-1',
+          groupPriority: null,
+          strategyVersionId: 'strategy-version-1'
+        }
+      },
+      conflicts: [],
+      valid: true
+    });
+    window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
+  });
+
+  it('筛选操作按钮应保持紧凑宽度', async () => {
+    const wrapper = mountPage([]);
+    await flushPromises();
+    await wrapper.get('[data-list-search-panel] .n-collapse-item__header-main').trigger('click');
+    await flushPromises();
+    const filterButtons = wrapper.findAllComponents(NButton).filter(button => ['查询', '重置'].includes(button.text()));
+
+    expect(wrapper.find('[data-filter-actions]').exists()).toBe(true);
+    expect(filterButtons).toHaveLength(2);
+    expect(filterButtons.every(button => button.props('block') !== true)).toBe(true);
+    expect(filterButtons.every(button => button.props('size') === 'small')).toBe(true);
+    expect(filterButtons.every(button => button.find('.n-button__icon').exists())).toBe(true);
+  });
+
+  it('应显示设备与所属产品并按权限显示创建入口', async () => {
+    const wrapper = mountPage(['device:device:create']);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('设备列表');
+    expect(wrapper.text()).toContain('一号运输车');
+    expect(wrapper.text()).toContain('矿用运输车');
+    expect(wrapper.text()).toContain('在线');
+    expect(wrapper.text()).toContain('最后上报');
+    expect(wrapper.find('[data-action="create-device"]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-search-panel]').exists()).toBe(true);
+    expect(wrapper.find('[data-list-card]').exists()).toBe(true);
+    const listToolbar = wrapper.get('[data-list-toolbar]');
+    expect(listToolbar.text()).toContain('创建设备');
+    expect(listToolbar.text()).toContain('刷新');
+    const createButton = wrapper
+      .findAllComponents(NButton)
+      .find(button => button.attributes('data-action') === 'create-device');
+    expect(createButton?.props('size')).toBe('small');
+    expect(createButton?.props('ghost')).toBe(true);
+    expect(createButton?.find('.n-button__icon').exists()).toBe(true);
+    expect(wrapper.find('[data-action="connection-profile"]').exists()).toBe(false);
+  });
+
+  it('创建设备时应提交产品标识和矿区内设备编码', async () => {
+    const wrapper = mountPage(['device:device:create']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      deviceForm: Record<string, string>;
+      openCreate: () => void;
+      saveDevice: () => Promise<void>;
+    };
+
+    page.openCreate();
+    Object.assign(page.deviceForm, {
+      productId: 'product-1',
+      deviceCode: 'truck-002',
+      name: '二号运输车',
+      status: 'ENABLED'
+    });
+    await page.saveDevice();
+
+    expect(api.createDevice).toHaveBeenCalledWith({
+      productId: 'product-1',
+      deviceCode: 'truck-002',
+      name: '二号运输车',
+      status: 'ENABLED'
+    });
+  });
+
+  it('应从字典加载设备状态选项', async () => {
+    const wrapper = mountPage(['device:device:create']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      statusOptions: Array<{ label: string; value: string }>;
+      deviceStatusType: (status: string) => string;
+    };
+
+    expect(dictionaryApi.getEnabledDictionaryItems).toHaveBeenCalledWith('device_status');
+    expect(page.statusOptions).toEqual([
+      { label: '启用', value: 'ENABLED' },
+      { label: '停用', value: 'DISABLED' },
+      { label: '已归档', value: 'ARCHIVED' }
+    ]);
+    expect(page.deviceStatusType('ENABLED')).toBe('primary');
+  });
+
+  it('创建设备时只能选择已发布产品', async () => {
+    api.getProducts.mockResolvedValue({
+      items: [{ ...product, status: 'DRAFT', id: 'product-draft', productKey: 'draft-truck' }, product],
+      page: 1,
+      size: 100,
+      total: 2
+    });
+    const wrapper = mountPage(['device:device:create']);
+    await flushPromises();
+
+    const page = wrapper.vm as unknown as {
+      creatableProductOptions: Array<{ value: string }>;
+    };
+    expect(page.creatableProductOptions.map(option => option.value)).toEqual(['product-1']);
+  });
+
+  it('应按权限加载保存接入配置并执行分层诊断', async () => {
+    const wrapper = mountPage(['device:connection:view', 'device:connection:update', 'device:connection:test']);
+    await flushPromises();
+
+    expect(wrapper.find('[data-action="connection-profile"]').exists()).toBe(true);
+    const page = wrapper.vm as unknown as {
+      connectionForm: Record<string, string | number | boolean>;
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      saveConnectionProfile: () => Promise<void>;
+      runConnectionTest: () => Promise<void>;
+    };
+    await page.openConnectionConfig(device);
+    expect(api.getDeviceConnectionProfile).toHaveBeenCalledWith('device-1');
+
+    page.connectionForm.host = 'edge.mine.local';
+    page.connectionForm.port = 1883;
+    await page.runConnectionTest();
+    expect(api.testDeviceConnectionProfile).not.toHaveBeenCalled();
+
+    await page.saveConnectionProfile();
+    expect(api.saveDeviceConnectionProfile).toHaveBeenCalledWith(
+      'device-1',
+      expect.objectContaining({ host: 'edge.mine.local', port: 1883, version: 0 })
+    );
+
+    await page.runConnectionTest();
+    expect(api.testDeviceConnectionProfile).toHaveBeenCalledWith('device-1');
+    expect(window.$message?.warning).toHaveBeenCalledWith('网络端点检查通过，仍需设备首帧确认');
+  });
+
+  it('应支持手动检查端点传输活动和数据四层状态', async () => {
+    const wrapper = mountPage(['device:connection:view', 'device:connection:test']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      accessTest: { stages: Array<{ layer: string }> } | null;
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      runAccessStatusTest: () => Promise<void>;
+    };
+
+    await page.openConnectionConfig(device);
+    await flushPromises();
+
+    await page.runAccessStatusTest();
+    await flushPromises();
+
+    expect(api.testDeviceAccessStatus).toHaveBeenCalledWith('device-1');
+    expect(page.accessTest?.stages.map(stage => stage.layer)).toEqual(['ENDPOINT', 'TRANSPORT', 'ACTIVITY', 'DATA']);
+  });
+
+  it('切换接入方式时应更换字段语义和默认值并保留独立草稿', async () => {
+    const wrapper = mountPage(['device:connection:view', 'device:connection:update']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      connectionForm: {
+        connectionMode: string;
+        host: string;
+        port: number;
+        tlsEnabled: boolean;
+        keepAliveSeconds: number;
+      };
+      connectionPresentation: {
+        description: string;
+        hostLabel: string;
+        hostPlaceholder: string;
+        keepAliveLabel: string;
+      };
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      switchConnectionMode: (mode: string) => void;
+    };
+    await page.openConnectionConfig(device);
+    page.connectionForm.host = 'custom-mqtt.mine.local';
+
+    page.switchConnectionMode('DEVICE_TO_PLATFORM_TCP');
+
+    expect(page.connectionForm).toMatchObject({
+      connectionMode: 'DEVICE_TO_PLATFORM_TCP',
+      host: '',
+      port: 9000,
+      tlsEnabled: false,
+      keepAliveSeconds: 60
+    });
+    expect(page.connectionPresentation.hostLabel).toBe('平台 TCP 监听地址');
+    expect(page.connectionPresentation.hostPlaceholder).toBe('例如 tcp.mine.local');
+    expect(page.connectionPresentation.keepAliveLabel).toBe('应用心跳间隔（秒）');
+    expect(page.connectionPresentation.description).toContain('设备将主动连接');
+
+    page.connectionForm.host = 'tcp.mine.local';
+    page.switchConnectionMode('PLATFORM_TO_DEVICE_TCP');
+
+    expect(page.connectionForm).toMatchObject({
+      connectionMode: 'PLATFORM_TO_DEVICE_TCP',
+      host: '',
+      port: 9000,
+      tlsEnabled: false,
+      keepAliveSeconds: 60
+    });
+    expect(page.connectionPresentation.hostLabel).toBe('设备 IP 或域名');
+    expect(page.connectionPresentation.description).toContain('平台将主动连接');
+
+    page.switchConnectionMode('DEVICE_TO_PLATFORM_MQTT');
+
+    expect(page.connectionForm.connectionMode).toBe('DEVICE_TO_PLATFORM_MQTT');
+    expect(page.connectionForm.host).toBe('custom-mqtt.mine.local');
+    expect(page.connectionForm.port).toBe(8883);
+    expect(page.connectionForm.tlsEnabled).toBe(true);
+    expect(page.connectionPresentation.hostLabel).toBe('Broker 地址');
+    expect(page.connectionPresentation.keepAliveLabel).toBe('MQTT KeepAlive（秒）');
+  });
+
+  it('切换接入方式时应清除上一模式的诊断结果', async () => {
+    const wrapper = mountPage(['device:connection:view', 'device:connection:test']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      connectionTest: unknown;
+      accessTest: unknown;
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      runConnectionTest: () => Promise<void>;
+      runAccessStatusTest: () => Promise<void>;
+      switchConnectionMode: (mode: string) => void;
+    };
+    await page.openConnectionConfig(device);
+    await page.runConnectionTest();
+    expect(page.connectionTest).not.toBeNull();
+
+    page.switchConnectionMode('DEVICE_TO_PLATFORM_TCP');
+
+    expect(page.connectionTest).toBeNull();
+    expect(page.accessTest).toBeNull();
+
+    page.switchConnectionMode('DEVICE_TO_PLATFORM_MQTT');
+    await page.runAccessStatusTest();
+    expect(page.accessTest).not.toBeNull();
+
+    page.switchConnectionMode('PLATFORM_TO_DEVICE_TCP');
+
+    expect(page.connectionTest).toBeNull();
+    expect(page.accessTest).toBeNull();
+  });
+
+  it('四层检查后应刷新配置版本再允许切换保存', async () => {
+    api.getDeviceConnectionProfile
+      .mockResolvedValueOnce(connectionProfile)
+      .mockResolvedValueOnce({ ...connectionProfile, version: 1 });
+    const wrapper = mountPage(['device:connection:view', 'device:connection:update', 'device:connection:test']);
+    await flushPromises();
+    const page = wrapper.vm as unknown as {
+      connectionForm: { host: string; version: number };
+      openConnectionConfig: (target: typeof device) => Promise<void>;
+      runAccessStatusTest: () => Promise<void>;
+      saveConnectionProfile: () => Promise<void>;
+      switchConnectionMode: (mode: string) => void;
+    };
+    await page.openConnectionConfig(device);
+
+    await page.runAccessStatusTest();
+
+    expect(api.getDeviceConnectionProfile).toHaveBeenCalledTimes(2);
+    expect(page.connectionForm.version).toBe(1);
+    page.switchConnectionMode('PLATFORM_TO_DEVICE_TCP');
+    page.connectionForm.host = 'edge.mine.local';
+    await page.saveConnectionProfile();
+    expect(api.saveDeviceConnectionProfile).toHaveBeenCalledWith(
+      'device-1',
+      expect.objectContaining({ connectionMode: 'PLATFORM_TO_DEVICE_TCP', version: 1 })
+    );
+  });
+
+  it('设备行应提供当前策略入口并展示最终生效来源', async () => {
+    const wrapper = mountPage(['device:strategy:view']);
+    await flushPromises();
+
+    expect(wrapper.get('[data-action="device-effective-strategy"]').text()).toBe('当前策略');
+    const page = wrapper.vm as unknown as {
+      openCurrentStrategy: (target: typeof device) => Promise<void>;
+    };
+
+    await page.openCurrentStrategy(device);
+    await flushPromises();
+
+    expect(strategyApi.getEffectiveStrategy).toHaveBeenCalledWith('device-1', 'ONLINE_STATUS');
+    expect(wrapper.text()).toContain('一号运输车 · 当前策略');
+    expect(wrapper.text()).toContain('180 秒');
+    expect(wrapper.text()).toContain('产品默认');
+  });
+});
+
+function mountPage(permissions: string[]) {
+  authState.userInfo.buttons = permissions;
+  return mount(DeviceListPage, { global: { plugins: [i18n], stubs: { teleport: true } } });
+}
+
+function dictionaryItem(value: string, labelZh: string, labelEn: string, semanticType: string) {
+  return {
+    id: `item-${value}`,
+    typeId: 'type-1',
+    value,
+    labelZh,
+    labelEn,
+    semanticType,
+    sortOrder: 10,
+    defaultItem: false,
+    status: 'ENABLED',
+    version: 0
+  };
+}

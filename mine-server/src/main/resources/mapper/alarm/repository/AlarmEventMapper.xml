@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bosco.mine.server.modules.alarm.repository.AlarmEventMapper">
+
+    <sql id="alarmColumns">
+        alarm.id, alarm.device_id AS deviceId,
+        device.device_code AS deviceCode, device.name AS deviceName,
+        alarm.product_key AS productKey, alarm.rule_key AS ruleKey,
+        alarm.rule_name AS ruleName, alarm.source_type AS sourceType,
+        alarm.severity, alarm.property_id AS propertyId,
+        alarm.policy_runtime_revision AS policyRuntimeRevision,
+        alarm.policy_snapshot_id AS policySnapshotId,
+        alarm.policy_content_hash AS policyContentHash,
+        alarm.raised_at AS raisedAt, alarm.raised_evidence::TEXT AS raisedEvidenceJson,
+        alarm.raised_event_id AS raisedEventId, alarm.recovered_at AS recoveredAt,
+        alarm.recovered_evidence::TEXT AS recoveredEvidenceJson,
+        alarm.recovered_event_id AS recoveredEventId, alarm.recovery_reason AS recoveryReason,
+        alarm.acknowledged_at AS acknowledgedAt, alarm.acknowledged_by AS acknowledgedBy,
+        alarm.acknowledgement_note AS acknowledgementNote, alarm.closed_at AS closedAt,
+        alarm.closed_by AS closedBy, alarm.close_note AS closeNote,
+        alarm.close_idempotency_key AS closeIdempotencyKey, alarm.version
+    </sql>
+
+    <sql id="queryFilters">
+        <if test="query.siteId != null">
+            AND EXISTS (
+                SELECT 1
+                FROM mine_vehicle_device_binding site_binding
+                WHERE site_binding.device_id = alarm.device_id
+                  AND site_binding.site_id = #{query.siteId}
+                  AND site_binding.valid_period @&gt; alarm.raised_at
+            )
+        </if>
+        <if test="query.active != null">
+            <choose>
+                <when test="query.active">
+                    AND alarm.recovered_at IS NULL AND alarm.closed_at IS NULL
+                </when>
+                <otherwise>
+                    AND alarm.recovered_at IS NOT NULL
+                </otherwise>
+            </choose>
+        </if>
+        <if test="query.closed != null">
+            <choose>
+                <when test="query.closed">
+                    AND alarm.closed_at IS NOT NULL
+                </when>
+                <otherwise>
+                    AND alarm.closed_at IS NULL
+                </otherwise>
+            </choose>
+        </if>
+        <if test="status != null">
+            <choose>
+                <when test="status == 'ACTIVE_UNACKNOWLEDGED'">
+                    AND alarm.closed_at IS NULL AND alarm.recovered_at IS NULL
+                    AND alarm.acknowledged_at IS NULL
+                </when>
+                <when test="status == 'ACTIVE_ACKNOWLEDGED'">
+                    AND alarm.closed_at IS NULL AND alarm.recovered_at IS NULL
+                    AND alarm.acknowledged_at IS NOT NULL
+                </when>
+                <when test="status == 'RECOVERED_UNACKNOWLEDGED'">
+                    AND alarm.closed_at IS NULL AND alarm.recovered_at IS NOT NULL
+                    AND alarm.acknowledged_at IS NULL
+                </when>
+                <when test="status == 'RECOVERED_ACKNOWLEDGED'">
+                    AND alarm.closed_at IS NULL AND alarm.recovered_at IS NOT NULL
+                    AND alarm.acknowledged_at IS NOT NULL
+                </when>
+                <when test="status == 'CLOSED'">
+                    AND alarm.closed_at IS NOT NULL
+                </when>
+            </choose>
+        </if>
+        <if test="query.severity != null">
+            AND alarm.severity = #{query.severity}
+        </if>
+        <if test="query.deviceId != null">
+            AND alarm.device_id = #{query.deviceId}
+        </if>
+        <if test="query.deviceKeyword != null">
+            AND (POSITION(LOWER(#{query.deviceKeyword}) IN LOWER(device.device_code)) &gt; 0
+                 OR POSITION(LOWER(#{query.deviceKeyword}) IN LOWER(device.name)) &gt; 0)
+        </if>
+        <if test="query.ruleKey != null">
+            AND alarm.rule_key = #{query.ruleKey}
+        </if>
+        <if test="query.from != null">
+            AND alarm.raised_at &gt;= #{query.from}
+        </if>
+        <if test="query.to != null">
+            AND alarm.raised_at &lt; #{query.to}
+        </if>
+    </sql>
+
+    <insert id="recordInbox">
+        INSERT INTO sys_inbox_event (consumer_name, event_id, result)
+        VALUES (#{consumerName}, #{eventId}, 'SUCCESS')
+        ON CONFLICT (consumer_name, event_id) DO NOTHING
+    </insert>
+
+    <select id="lockOccurrence" resultType="object">
+        SELECT pg_advisory_xact_lock(hashtextextended(#{lockKey}, 0))
+    </select>
+
+    <select id="findDeviceProductKey" resultType="string">
+        SELECT product.product_key
+        FROM dev_device device
+        JOIN dev_product product ON product.id = device.product_id
+        WHERE device.id = #{deviceId}
+    </select>
+
+    <select id="lockById"
+            resultType="com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository$AlarmEventRecord">
+        SELECT <include refid="alarmColumns"/>
+        FROM alarm_event alarm
+        JOIN dev_device device ON device.id = alarm.device_id
+        WHERE alarm.id = #{alarmId}
+        FOR UPDATE OF alarm
+    </select>
+
+    <select id="findById"
+            resultType="com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository$AlarmEventRecord">
+        SELECT <include refid="alarmColumns"/>
+        FROM alarm_event alarm
+        JOIN dev_device device ON device.id = alarm.device_id
+        WHERE alarm.id = #{alarmId}
+    </select>
+
+    <insert id="insertRaised">
+        INSERT INTO alarm_event (
+            id, device_id, product_key, rule_key, rule_name, source_type, severity,
+            property_id, policy_runtime_revision, policy_snapshot_id, policy_content_hash,
+            raised_at, raised_evidence, raised_event_id, created_at, updated_at
+        ) VALUES (
+            #{payload.alarmOccurrenceId}, #{payload.deviceId}, #{payload.productKey},
+            #{payload.ruleKey}, #{payload.ruleName}, #{payload.sourceType}, #{payload.severity},
+            #{payload.propertyId}, #{payload.policyRuntimeRevision}, #{payload.policySnapshotId},
+            #{payload.policyContentHash}, #{payload.raisedAt}, CAST(#{evidenceJson} AS JSONB),
+            #{eventId}, #{now}, #{now}
+        )
+    </insert>
+
+    <insert id="insertRecovered">
+        INSERT INTO alarm_event (
+            id, device_id, product_key, rule_key, rule_name, source_type, severity,
+            property_id, policy_runtime_revision, policy_snapshot_id, policy_content_hash,
+            raised_at, recovered_at, recovered_evidence, recovered_event_id,
+            recovery_reason, created_at, updated_at
+        ) VALUES (
+            #{payload.alarmOccurrenceId}, #{payload.deviceId}, #{payload.productKey},
+            #{payload.ruleKey}, #{payload.ruleName}, #{payload.sourceType}, #{payload.severity},
+            #{payload.propertyId}, #{payload.policyRuntimeRevision}, #{payload.policySnapshotId},
+            #{payload.policyContentHash}, #{payload.raisedAt}, #{payload.recoveredAt},
+            CAST(#{evidenceJson} AS JSONB), #{eventId}, #{payload.recoveryReason}, #{now}, #{now}
+        )
+    </insert>
+
+    <update id="supplementRaised">
+        UPDATE alarm_event
+        SET raised_evidence = CAST(#{evidenceJson} AS JSONB), raised_event_id = #{eventId},
+            updated_at = #{now}, version = version + 1
+        WHERE id = #{alarmId} AND raised_event_id IS NULL
+    </update>
+
+    <update id="applyRecovery">
+        UPDATE alarm_event
+        SET recovered_at = #{recoveredAt}, recovered_evidence = CAST(#{evidenceJson} AS JSONB),
+            recovered_event_id = #{eventId}, recovery_reason = #{recoveryReason},
+            updated_at = #{now}, version = version + 1
+        WHERE id = #{alarmId} AND recovered_event_id IS NULL
+    </update>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*)
+        FROM alarm_event alarm
+        JOIN dev_device device ON device.id = alarm.device_id
+        WHERE 1 = 1
+        <include refid="queryFilters"/>
+    </select>
+
+    <select id="countActiveBySeverity" resultType="long">
+        SELECT COUNT(*)
+        FROM alarm_event
+        WHERE recovered_at IS NULL AND closed_at IS NULL AND severity = #{severity}
+    </select>
+
+    <select id="find"
+            resultType="com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository$AlarmEventRecord">
+        SELECT <include refid="alarmColumns"/>
+        FROM alarm_event alarm
+        JOIN dev_device device ON device.id = alarm.device_id
+        WHERE 1 = 1
+        <include refid="queryFilters"/>
+        ORDER BY alarm.raised_at DESC, alarm.id DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="findAcknowledgement"
+            resultType="com.bosco.mine.server.modules.alarm.repository.AlarmEventRepository$AcknowledgementRecord">
+        SELECT id, operator_id AS operatorId, note, idempotency_key AS idempotencyKey,
+               acknowledged_at AS acknowledgedAt
+        FROM alarm_acknowledgement
+        WHERE alarm_id = #{alarmId} AND idempotency_key = #{idempotencyKey}
+    </select>
+
+    <insert id="insertAcknowledgement">
+        INSERT INTO alarm_acknowledgement (
+            id, alarm_id, operator_id, note, idempotency_key, acknowledged_at
+        ) VALUES (
+            #{id}, #{alarmId}, #{operatorId}, #{note}, #{idempotencyKey}, #{acknowledgedAt}
+        )
+    </insert>
+
+    <update id="acknowledge">
+        UPDATE alarm_event
+        SET acknowledged_at = #{acknowledgedAt}, acknowledged_by = #{operatorId},
+            acknowledgement_note = #{note}, updated_at = #{acknowledgedAt}, version = version + 1
+        WHERE id = #{alarmId} AND version = #{expectedVersion} AND acknowledged_at IS NULL
+    </update>
+
+    <update id="close">
+        UPDATE alarm_event
+        SET closed_at = #{closedAt}, closed_by = #{operatorId}, close_note = #{note},
+            close_idempotency_key = #{idempotencyKey}, updated_at = #{closedAt},
+            version = version + 1
+        WHERE id = #{alarmId} AND version = #{expectedVersion}
+          AND recovered_at IS NOT NULL AND closed_at IS NULL
+    </update>
+
+</mapper>

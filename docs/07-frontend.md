@@ -1,0 +1,477 @@
+# 07 Vue 3 前端设计
+
+## 1. 技术选择
+
+前端以 SoybeanAdmin Naive UI 版本为工程底座，保留：
+
+- 布局、主题、登录页和错误页。
+- 动态路由和菜单框架。
+- 请求封装、国际化基础和图标体系。
+- Naive UI、Pinia、UnoCSS 和 TypeScript 工程规范。
+
+不直接采用其第三方后端、Mock 数据、业务权限模型和示例页面。矿山页面、API 契约和实时数据层全部自研。
+
+## 2. 目录结构
+
+~~~text
+mine-web/src/
+├── app/                       # 启动、路由、权限和全局插件
+├── layouts/                   # Soybean布局适配
+├── modules/
+│   ├── dashboard/
+│   ├── monitoring/
+│   ├── device/
+│   ├── protocol/
+│   ├── strategy/
+│   ├── vehicle/
+│   ├── personnel/
+│   ├── route/
+│   ├── uwb/
+│   ├── operation/
+│   ├── command/
+│   ├── alarm/
+│   ├── scene3d/
+│   ├── operations/
+│   └── system/
+├── realtime/                  # 独立高频数据层
+├── shared/
+│   ├── api/
+│   ├── components/
+│   ├── contracts/
+│   ├── hooks/
+│   └── utils/
+└── styles/
+~~~
+
+每个 modules 子目录可包含 pages、components、api、stores、types 和 tests。模块外只能导入其公开 index，不导入内部相对路径。
+
+## 3. 页面信息架构
+
+| 一级模块 | 主要页面 |
+|---|---|
+| 总览 | 调度运行态势、数据中断设备、今日遥测和常用生产入口 |
+| 实时监控 | 动态设备仪表、当前作业、实时位置 |
+| 设备中心 | 产品、设备、分组、凭据、在线会话 |
+| 协议中心 | 协议定义、样本、调试、版本和插件 |
+| 策略中心 | 物模型、映射、质量、告警、保留、配置发布 |
+| 矿区管理 | 车辆、人员与资质、时间绑定、路线与围栏、定位监控、生产运营 |
+| 命令中心 | 模板、下发、状态时间线和回复 |
+| 告警中心 | 活动告警、历史、确认和恢复 |
+| 三维场景 | 场景、图层、车辆/人员/告警叠加 |
+| 系统管理 | 用户、角色、运行监控、日志和字典 |
+
+### 3.1 调度首页与系统运行监控边界
+
+默认 `/home` 只服务矿区调度员和值班人员，不展示数据库、Redis、RabbitMQ 等技术实现细节。首页从
+`GET /api/v1/dashboard/operations` 获取启用设备、正常上报、数据中断、从未上报、今日入库消息和关注设备；
+后端数据不可用时必须显示“暂不可用”，不得把未知状态渲染为零。
+
+系统管理员使用“系统管理 / 运行监控”，路径为 `/system/operations`，组件标识为
+`system-operations-monitor`，权限为 `system:operations:view`。该页面仅在进入或手动刷新时调用
+`GET /api/v1/system/operations`，不使用 `setInterval`，也不会触发服务启动扫表。页面按平台服务、消息中枢、
+存储与缓存分组显示脱敏状态；连接地址、账号、凭据和异常堆栈不得返回浏览器。
+
+两类页面不按角色名称硬编码。首页是登录后的生产入口；运行监控菜单与接口都由权限快照控制。
+
+### 3.2 生产运营工作台
+
+“矿区管理 / 生产运营”路径固定为 `/mine/operations`，组件白名单键为 `mine-production-operations`，查看权限为
+`mine:operation:view`。页面使用一个业务工作台承载概览、班次、作业单、候选和记录五个页签，避免把同一生产流程拆成多个互不对账的菜单。
+
+- 概览按营业日期展示计划/实际趟数、完成率、吨位和待处置候选；未知吨位保持未知，不渲染成零。
+- 班次展示模板和实例，开启/关账/取消走乐观版本和稳定幂等键；关账使用独立高风险权限 `mine:shift:close`。
+- 作业单展示计划、调度分配、冻结空间版本和生命周期；发布、启动、暂停、恢复、完成、取消、异常终止均为显式动作。
+- 候选显示发生时身份、区域、原因和处置状态，人工关联、忽略或转补录需要 `mine:operation:correct` 和必填原因。
+- 记录使用固定业务水位和不透明游标分页，详情保留原始事实、有效投影、证据和全部修正链。
+
+页面通过 RealtimeHub 订阅 `MINE_SITE_OPERATION`，使用矿区连续 `businessSequence` 去重。连接重建、序号缺口或订阅失败时只触发当前页有界 REST 回查并显示实时降级，不自行推测遗漏状态，也不影响班次、作业单和记录的只读访问。
+
+## 4. 路由、菜单和权限
+
+登录后：
+
+1. `GET /api/v1/auth/me` 获取用户基本信息。
+2. `GET /api/v1/auth/menus` 一次返回角色码、权限码和 sys_menu 授权树。
+3. 前端把后端 `componentKey` 映射到 `componentRegistry` 中明确注册的本地页面组件。
+4. BUTTON 类型不生成路由，只控制按钮/操作可见性。
+5. 页面展示权限只改善体验，后端 API 注解才是最终安全边界。
+
+禁止后端返回任意组件路径让前端动态 import，防止加载未授权模块或形成远程代码执行入口。未知
+`componentKey` 使用本地占位页面，并在浏览器控制台记录未注册键；它不会回退到字符串拼接 import。
+
+首批实现位置：
+
+~~~text
+src/app/router/dynamic-routes.ts       componentKey 白名单、路由和菜单转换
+src/app/router/DynamicFallbackPage.vue 未注册组件的安全降级页
+src/app/permission/permission.ts       v-permission 指令与纯权限判断函数
+src/store/modules/route/index.ts       登录后装载授权快照和动态路由
+~~~
+
+页面组件注册示例：
+
+~~~ts
+const componentRegistry = {
+  'home-overview': () => import('@/views/home/index.vue'),
+  'device-device-list': () => import('@/modules/device/pages/device-list/DeviceListPage.vue'),
+  'system-operations-monitor': () => import('@/modules/system/pages/operations/SystemOperationsPage.vue')
+};
+~~~
+
+后端菜单管理页只能从前端发布版本支持的 `componentKey` 字典中选择。新页面首次开发时要同时完成：组件注册、
+页面路由测试、后端接口权限、按钮权限和菜单数据配置。菜单发布不等于上传前端代码。
+
+按钮权限用法：
+
+~~~vue
+<!-- 单权限 -->
+<NButton v-permission="'device:device:create'">新增设备</NButton>
+
+<!-- 数组表示满足任意一项；all 表示必须全部满足 -->
+<NButton v-permission="['device:device:update', 'device:device:archive']">维护设备</NButton>
+<NButton v-permission="{ all: ['protocol:definition:test', 'protocol:definition:publish'] }">发布协议</NButton>
+~~~
+
+`v-permission` 只隐藏无权限操作；直接调用 API 时后端仍必须通过 `@SaCheckPermission` 拒绝越权请求。
+
+权限码示例：
+
+~~~text
+device:device:list
+device:device:create
+protocol:definition:publish
+strategy:package:rollback
+command:instance:create
+system:audit:list
+~~~
+
+## 5. 状态管理
+
+Pinia 适合：
+
+- 当前用户和权限。
+- 菜单和主题。
+- 低频筛选条件。
+- 当前编辑草稿摘要。
+
+Pinia 不适合每秒更新成千上万位置点。高频数据由 RealtimeHub 管理：
+
+~~~text
+单个 WebSocket
+→ 协议解码
+→ topic订阅表
+→ 内存最新值缓存
+→ 批量/节流通知
+→ 监控组件或Cesium适配器
+~~~
+
+RealtimeHub 职责：
+
+- 连接、心跳、指数退避重连。
+- 登录过期处理。
+- subscribe/unsubscribe 引用计数。
+- sequence 检测和断线后快照重同步。
+- 在同一事件循环内合并组件通知。
+
+首批实现位于 `src/realtime/RealtimeHub.ts`，全站实例由 `src/realtime/index.ts` 导出。页面组件必须通过
+`realtimeHub.subscribe(deviceId, propertyIds, listener)` 获取数据并在卸载时调用返回的释放函数，不允许各页面自行
+创建 WebSocket 或用 `setInterval` 轮询最新值接口。同一设备属性被多个卡片订阅时只向服务端订阅一次；同一事件循环
+到达的多条增量合并后再通知组件，避免高频数据触发整页重复渲染。
+
+## 6. WebSocket 协议
+
+客户端请求：
+
+~~~json
+{
+  "action": "SUBSCRIBE",
+  "requestId": "rt-2",
+  "topics": [
+    {
+      "type": "DEVICE_LATEST",
+      "ids": ["0198aef6-2e80-7000-8000-000000000101"],
+      "properties": ["speed", "engine.rpm"]
+    }
+  ]
+}
+~~~
+
+服务端响应：
+
+~~~json
+{
+  "type": "DATA",
+  "sequence": 1024,
+  "serverTime": "2026-07-14T08:00:00Z",
+  "topic": "DEVICE_LATEST",
+  "deviceId": "0198aef6-2e80-7000-8000-000000000101",
+  "eventId": "0198aef6-2e80-7000-8000-000000000999",
+  "values": {"speed": 15.2, "engine.rpm": 1380}
+}
+~~~
+
+浏览器连接建立后先发送 `AUTH`，收到鉴权 ACK 才恢复当前引用计数表中的全部订阅。默认每 25 秒发送一次 `PING`
+维持 WSS 空闲连接；10 秒内未收到 `PONG` 时按半开连接主动关闭，这只是连接和令牌校验，不会触发数据库查询。
+断开后按 1、2、4、8 秒指数退避并加入随机抖动，最大 30 秒。重连后先请求当前快照，再接增量，不能只靠“从断点继续”
+假设服务器保留无限历史。
+
+## 7. 动态设备监控页面
+
+页面输入：
+
+- thingModelVersion。
+- displaySchemaVersion。
+- 当前属性。
+- 活动告警。
+- 用户权限。
+
+组件注册表：
+
+~~~text
+number      → NumericCard
+gauge       → GaugeCard
+progress    → ProgressCard
+enum        → StatusBadge
+boolean     → BooleanIndicator
+trend       → TrendSparkline
+location    → LocationSummary
+~~~
+
+未知 widget 使用通用只读组件并记录前端告警，不能导致整页白屏。
+
+### 7.1 首批设备页面实现
+
+首批页面使用后端菜单的 `componentKey` 动态注册，不在前端写死用户角色：
+
+| componentKey | 页面 | 主要权限 |
+|---|---|---|
+| `device-product-list` | 产品管理 | `device:product:view/create/update/archive` |
+| `device-device-list` | 设备管理 | `device:device:view/create/update/archive` |
+| `device-monitor` | 设备实时监控 | `device:telemetry:view` |
+
+产品和设备页面支持分页、条件查询、创建、修改、乐观锁并发控制和归档。编码与归属产品在创建后不可修改，
+前端仅做交互层校验，后端仍是数据约束和权限的最终边界。
+
+实时监控页面的字段集合不是固定 Java DTO：页面先以字段标识查询一次最新快照，然后向全站单例 `RealtimeHub`
+订阅同一批字段。监控中可动态增删私有厂商字段；未识别的字段使用通用数值卡展示，值缺失时显示“等待数据”，不将缺失值伪造为 `0`。
+
+OpenAPI 是前后端契约的唯一类型来源。修改 `docs/openapi/mine-api.yaml` 后执行：
+
+~~~bash
+cd mine-web
+pnpm gen:api
+pnpm typecheck
+~~~
+
+生成的 `src/generated/mine-api.ts` 需要随契约一起提交；业务页只通过 `modules/device/api/device.ts` 包装后的函数访问接口，
+不在组件内拼接请求。
+
+相关质量门禁：
+
+~~~bash
+pnpm test
+pnpm lint:check
+pnpm typecheck
+pnpm test:e2e --project=chromium
+pnpm build
+~~~
+
+## 8. 协议工作台
+
+采用三栏或上下组合：
+
+- 左侧：协议版本、消息类型和样本。
+- 中间：帧结构、字段表、十六进制输入和分段着色。
+- 右侧：解析树、校验过程、物模型映射和错误。
+
+关键交互：
+
+- 修改后明确显示未保存/未测试。
+- 单样本调试与全量回归分开。
+- 发布前显示旧新结果差异。
+- 大报文使用虚拟列表/Canvas，避免数千字节 DOM 节点。
+
+## 9. 策略工作台
+
+布局：
+
+~~~text
+顶部：草稿 / 测试 / 影响预览 / 发布 / 回滚
+左侧：产品 → 设备组 → 设备作用范围
+中间：当前策略编辑器
+右侧：有效值、继承来源、冲突和校验结果
+~~~
+
+保留、告警、映射等策略各自编辑，但发布时组成一个配置包。前端必须提示“保存草稿不等于运行生效”。
+
+已实现的 `ALARM` 编辑器在现有产品/设备组/单设备作用域中工作，支持数值阈值与质量命中两类规则、启停、等级、触发/恢复持续、冷却、复制、排序和删除。切换来源时会移除不兼容字段；阈值最多 12 位小数并在前后端执行一致校验。由于 `rules` 是原子覆盖字段，设备组或单设备覆盖会显式提示“整组替换父级规则”，有效配置面板同时展示来源、启停、时间参数、阈值和策略哈希。
+
+`RETENTION` 既可由通用策略工作台承载，也已发布为 `数据治理 → 数据保留` 独立菜单，路由为 `/governance/retention`。独立入口固定策略类型并隐藏类型选择器，避免用户误以为功能没有进入产品菜单；原 `/device/strategies` 继续保留，不破坏已有书签和其他策略工作流。
+
+数据保留页面提供四个受控预设、等级内天数调整、产品/设备组/设备作用域、最终值来源、历史发布和回滚。普通发布只允许预览已保存草稿；表单存在未保存策略修改时会阻止预览和发布。预览展示统计时点、目标/变化/仍启用设备、两个数据集的候选行数、最早时间和统计封顶标记，并把一次性凭证提交给发布。历史回滚会针对历史版本及原作用域重新预览、重新确认不可逆风险并提交新凭证，不能复用普通发布预览。执行区独立加载最近执行事实，即使产品列表为空或产品接口失败也能观察全局运行状态。
+
+独立菜单使用 `governance:retention:view` 做导航授权，运行 API 仍由 `device:strategy:view` 保护，编辑/发布继续要求 `device:strategy:edit` / `device:strategy:publish`。后端在授予独立菜单时原子补齐产品、设备和策略三项只读依赖，不补齐任何写权限。角色权限树使用精确非级联选择，防止选择只读父节点时意外授予归档、凭据、编辑或发布权限。
+
+### 9.1 告警中心
+
+- 默认查询所有未关闭告警，包含活动、已恢复未确认和已恢复已确认，避免恢复早于值班确认的告警从待处置视图消失。
+- 支持状态、等级、设备名称/编码、规则编码和时间范围筛选；列表与详情均由服务端分页/过滤，页面不额外请求无权限的设备全集。
+- 详情抽屉展示设备与规则快照、触发/恢复证据、恢复原因、确认/关闭人员与说明、策略修订/快照/哈希。
+- 确认和关闭都要求说明、二次确认、`Idempotency-Key` 与乐观版本；瞬时失败复用同一个幂等键，`409` 后刷新详情和列表，不盲目重放新请求。
+- 确认按钮只对未确认告警和 `alarm:event:ack` 权限显示；关闭按钮只对已恢复未关闭告警和 `alarm:event:close` 权限显示。后端仍是最终鉴权和状态边界。
+- 页面使用 Naive UI、主题 token 和中英文资源，不引入页面私有颜色、样式表或独立主题状态。
+
+## 10. 命令页面
+
+- 只展示设备当前配置包支持的命令。
+- 参数表单由 command schema 生成。
+- 高风险命令使用醒目但不过度刺激的警告，要求输入原因并二次确认。
+- 提交后展示状态时间线，不用一个“发送成功”绿色标签结束。
+- 网络失败时使用 Idempotency-Key 查询原提交结果，避免重复下发。
+
+## 11. 三维场景
+
+- “三维场景”路径固定为 `/mine/scene`，组件白名单键为 `mine-scene-workbench`。运行查看、场景编辑、资源上传/归档和发布/默认切换分别使用 `mine:scene:view`、`mine:scene:edit`、`mine:scene:asset:upload`、`mine:scene:publish`。
+- 工作台分运行和治理两个页签；查看用户不因缺少写权限请求治理接口，上传、发布、默认切换和归档仍由后端做最终鉴权与矿区隔离。
+- Cesium 模块、Workers、Assets、Widgets 和 ThirdParty 按路由异步加载，离开页面销毁 Viewer；非三维路由不得请求 Cesium chunk 或静态资源。
+- 模型和瓦片只使用运行快照返回的同源受权 URL，不依赖 Cesium ion，不接受任意外链、对象存储凭据或浏览器拼接存储键。
+- 前端在渲染前复核运行 schema、有限数值、图层数量、摘要格式和资源 URL 结构；非法快照不部分加载。
+- RealtimeHub 和业务 composable 分别提供位置、空间事件、告警与运营增量，不把高频对象放入 Pinia；轨迹有时间窗和点数上限，车辆/人员标记使用有界对象集合。
+- 静态 GLB/3D Tiles、位置、轨迹、区域、空间事件、告警和运营图层独立维护状态；一个子链路失败只显示对应降级，不清空其他已提交事实。
+- 页面提供自动、三维、二维三种模式。WebGL 不可用时自动切换二维；二维视口不创建 Cesium Viewer，仍接收位置/业务增量、展示最后更新时间并支持矿区切换。
+- 位置连接序号缺口通过 RealtimeHub 发送 WebSocket `RESYNC` 并接收新 `SNAPSHOT`；空间事件和运营业务序号缺口按各自固定水位 REST 有界回查。矿区切换释放旧订阅、取消支持 AbortSignal 的治理/轨迹/业务请求，并用世代号丢弃其他迟到响应，禁止跨矿区复用缓存。
+
+详细运行边界见 [矿区三维场景运行与安全回退手册](runbooks/mine-scene-runtime.md)。
+
+## 12. 请求层与契约
+
+- OpenAPI 作为 REST 契约来源，生成 TypeScript 类型和基础 client。
+- 生成代码放 shared/api/generated，不手工编辑。
+- 业务模块包装生成 client，处理页面语义。
+- 错误统一展示 code、message 和 traceId。
+- 401 统一清理会话并跳转登录；403 展示无权限；409 展示冲突详情；422 展示字段/规则错误。
+
+## 13. 弱网前端体验
+
+- 页面顶部显示 API 和 WebSocket 独立状态。
+- 实时数据卡片显示最后更新时间和“数据已陈旧”。
+- 断线时保留最后数据但改变质量状态，不清零伪装正常。
+- 编辑草稿定期保存到后端；本地只做防意外临时缓存。
+- 发布、命令等写操作不能在浏览器离线队列中自动重放。
+
+## 14. 性能目标
+
+- 管理页面不加载 Cesium。
+- 高频更新不触发整个页面树重渲染。
+- 大列表必须分页或虚拟滚动。
+- 历史曲线由后端聚合，前端不一次加载百万点。
+- 路由 chunk、图标、模型和 source map 纳入离线包体积检查。
+- 真实 1366×768、1920×1080 和大屏分辨率测试；关键操作不只适配设计稿宽屏。
+
+## 15. 前端测试
+
+- Vitest + Vue Test Utils：动态表单、权限指令、策略继承展示、RealtimeHub。
+- Mock Service Worker 或类型安全 stub：API 边界。
+- Playwright：登录、角色菜单、设备注册、协议发布、策略回滚、命令下发和告警确认。
+- Cesium adapter 和运行快照使用 Vitest 行为测试；Playwright 使用真实 WebGL 和仓库确定性 GLB 验证离线加载，并覆盖单图层 500 降级、WebGL 不可用时二维仍接收位置/业务事实及切换矿区、非三维路由不加载 Cesium。
+- 不以快照测试代替行为断言。
+
+动态授权至少覆盖：DIRECTORY 层级保留、BUTTON 不生成路由、未知组件降级、任一/全部权限语义、超级管理员
+`*` 通配权限。组件白名单测试不能通过 mock 任意 import 来弱化安全边界。
+
+## 16. 主题、样式与国际化强制规范
+
+### 16.1 唯一主题来源
+
+`src/theme/settings.ts` 是颜色、圆角、阴影和默认主题模式的唯一静态配置入口，`useThemeStore` 是运行时主题状态的唯一来源。
+主题设置生成 CSS 变量并注入 Naive UI，业务页面不得复制一份品牌色、暗色调色板或主题状态。
+
+主题模式统一支持：
+
+- `light`：亮色模式。
+- `dark`：暗色模式。
+- `auto`：跟随操作系统。
+
+页面通过 `ThemeSchemaSwitch` 调用 `themeStore.toggleThemeScheme()`。禁止页面直接调用 `matchMedia` 判断模式、创建
+`isDark` 私有状态、调用 `setThemeScheme` 强行覆盖全局模式，或使用 `mine-login-theme` 等独立 localStorage 键。
+
+### 16.2 组件和样式使用边界
+
+业务页面按以下优先级实现视觉效果：
+
+1. 使用 Naive UI 的 `NCard`、`NForm`、`NDataTable`、`NAlert`、`NTag`、`NResult` 等组件。
+2. 使用 Naive UI 的 `type="primary|success|warning|error|info"` 表达语义状态。
+3. 仅使用 UnoCSS 处理布局、间距、宽高和响应式，例如 `flex`、`grid`、`gap-4`、`max-w-640px`。
+4. 只有主题基础设施可以维护颜色 token；业务页面不得定义新颜色。
+
+业务页面禁止：
+
+- `<style>` 或外接页面私有 CSS/SCSS。
+- `style="..."` 和运行时拼装的内联样式；组件 API 明确要求的尺寸参数除外。
+- `#ed6500`、`rgb(...)`、`hsl(...)` 等颜色常量。
+- `bg-[#...]`、`text-[#...]`、`border-[#...]` 等任意值颜色类。
+- 为某一页面复制亮色/暗色两套选择器。
+- 用颜色作为唯一状态信息；必须同时提供文字或图标。
+
+确有 Naive UI 和现有 token 无法覆盖的通用视觉需求时，先扩展 `src/theme/settings.ts`、`src/theme/vars.ts` 和相应类型，
+经过评审后再由多个页面复用，不能在单页临时增加 CSS。
+
+### 16.3 国际化
+
+所有用户可见内容必须进入 Vue I18n 资源：
+
+- 中文：`src/locales/langs/zh-cn.ts`。
+- 英文：`src/locales/langs/en-us.ts`。
+- 类型：`src/typings/app.d.ts` 中的 `App.I18n.Schema`。
+- 默认回退语言：`en-US`。
+
+国际化覆盖标题、按钮、表头、占位符、校验反馈、成功/失败消息、确认框、空状态、状态标签、帮助文案、
+`title`、`aria-label` 和图片替代文本。后端返回的实体名称、设备字段和值不翻译，但前端补充的前后缀必须翻译。
+日期和数字格式使用当前 `locale`，不得固定为 `zh-CN`。
+
+动态菜单的数据库 `name` 只作为未注册菜单的回退文案。前端在 `src/app/router/dynamic-routes.ts` 中使用稳定的
+`path` 或 `componentKey` 映射 `i18nKey`，已注册菜单必须同时提供中英文资源；语言切换后菜单、面包屑和标签页
+通过同一个 `i18nKey` 更新。新增菜单时必须同步扩展映射、语言资源和动态路由测试。
+
+业务组件使用示例：
+
+~~~vue
+<script setup lang="ts">
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
+</script>
+
+<template>
+  <NCard :title="t('mine.users.title')">
+    <NTag type="success">{{ t('mine.common.status.enabled') }}</NTag>
+  </NCard>
+</template>
+~~~
+
+### 16.4 自动门禁
+
+`src/test/ui-governance.test.ts` 检查已纳入治理范围的业务页面：
+
+- 不存在 `<style>`。
+- 不存在十六进制、RGB、HSL 或任意值颜色。
+- 不存在硬编码中文用户文案。
+- 页面使用 `useI18n`。
+- 登录页不维护私有主题状态。
+
+本地执行：
+
+~~~bash
+pnpm --dir mine-web check:ui-governance
+~~~
+
+新增业务页面时必须加入治理测试的 `businessPages` 清单。该检查同时由 `lint:check` 和 CI 执行。
+
+## 17. UI 设计原则
+
+- 运行状态使用文字 + 图标 + 颜色，不能只靠颜色。
+- 告警颜色与普通品牌色分离。
+- 表格和配置页面优先清晰、密度适中，不追求炫技。
+- 危险操作按钮位置稳定，避免误触。
+- 所有时间展示矿区时区，并可查看 UTC/设备原始时间。
+- 字段单位、精度和质量来自物模型，不在组件中硬编码。

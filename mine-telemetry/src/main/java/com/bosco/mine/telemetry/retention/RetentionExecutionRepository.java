@@ -1,0 +1,459 @@
+package com.bosco.mine.telemetry.retention;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.Duration;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * 使用同一 TimescaleDB 会话持有单实例锁，并执行有界保留删除和执行事实写入。
+ */
+public final class RetentionExecutionRepository implements RetentionExecutor.Store {
+
+    private static final String LOCK_SQL =
+            "SELECT pg_try_advisory_lock(hashtextextended('mine:telemetry:retention', 0))";
+    private static final String UNLOCK_SQL =
+            "SELECT pg_advisory_unlock(hashtextextended('mine:telemetry:retention', 0))";
+
+    /** 设备当前任意聚合规则尚未成熟或缺少同版本有效聚合事实时判定为阻塞。 */
+    private static final String AGGREGATION_COVERAGE_BLOCKED_PREDICATE = """
+            EXISTS (
+                SELECT 1
+                  FROM telemetry_aggregation_policy aggregation_policy
+                  CROSS JOIN LATERAL jsonb_array_elements(
+                      aggregation_policy.values_json -> 'policy' -> 'rules'
+                  ) aggregation_rule(value)
+                  CROSS JOIN LATERAL (
+                      SELECT (aggregation_rule.value ->> 'bucketSeconds')::INTEGER
+                             AS bucket_seconds
+                  ) rule_config
+                  CROSS JOIN LATERAL (
+                      SELECT to_timestamp(
+                                 floor(extract(epoch FROM numeric.time)
+                                     / rule_config.bucket_seconds)
+                                 * rule_config.bucket_seconds
+                             ) AS bucket_start
+                  ) bucket
+                 WHERE aggregation_policy.device_id = numeric.device_id
+                   AND aggregation_policy.enabled
+                   AND aggregation_rule.value ->> 'propertyId' = numeric.property_id
+                   AND (
+                       CURRENT_TIMESTAMP < bucket.bucket_start
+                           + make_interval(secs => rule_config.bucket_seconds)
+                           + make_interval(
+                               secs => aggregation_policy.correction_window_seconds)
+                       OR NOT EXISTS (
+                           SELECT 1
+                             FROM telemetry_numeric_rollup rollup
+                             JOIN telemetry_aggregation_execution aggregation_execution
+                               ON aggregation_execution.execution_id = rollup.execution_id
+                            WHERE rollup.device_id = numeric.device_id
+                              AND rollup.property_id = numeric.property_id
+                              AND rollup.bucket_seconds = rule_config.bucket_seconds
+                              AND rollup.bucket_start = bucket.bucket_start
+                              AND rollup.runtime_revision =
+                                  aggregation_policy.runtime_revision
+                              AND rollup.snapshot_id = aggregation_policy.snapshot_id
+                              AND rollup.policy_content_hash =
+                                  aggregation_policy.content_hash
+                              AND rollup.source_watermark >= numeric.ingest_id
+                              AND aggregation_execution.status IN ('SUCCEEDED', 'PARTIAL')
+                       )
+                   )
+            )
+            """;
+
+    /** 保留策略和全局最短保留期共同判定原始遥测已过期。 */
+    private static final String RAW_TELEMETRY_EXPIRED_PREDICATE = """
+            policy.enabled
+            AND numeric.time < CURRENT_TIMESTAMP - make_interval(days => (
+                SELECT MIN(global_policy.raw_telemetry_days)
+                  FROM telemetry_retention_policy global_policy
+                 WHERE global_policy.enabled
+            ))
+            AND numeric.time < CURRENT_TIMESTAMP
+                - make_interval(days => policy.raw_telemetry_days)
+            AND numeric.received_at < CURRENT_TIMESTAMP
+                - make_interval(days => policy.raw_telemetry_days)
+            """;
+
+    /** 有界观察下一批过期原始遥测中的聚合覆盖阻塞量。 */
+    private static final String COUNT_AGGREGATION_BLOCKED_SQL = """
+            WITH expired AS MATERIALIZED (
+                SELECT numeric.time, numeric.event_id, numeric.property_id,
+                       numeric.device_id, numeric.ingest_id
+                  FROM telemetry_numeric numeric
+                  JOIN telemetry_retention_policy policy
+                    ON policy.device_id = numeric.device_id
+                 WHERE %s
+                 ORDER BY numeric.time, numeric.event_id, numeric.property_id
+                 LIMIT ?
+            )
+            SELECT COUNT(*)
+              FROM expired numeric
+             WHERE %s
+            """.formatted(
+            RAW_TELEMETRY_EXPIRED_PREDICATE,
+            AGGREGATION_COVERAGE_BLOCKED_PREDICATE);
+
+    /** 只选取已过期且通过当前聚合覆盖门禁的原始遥测执行删除。 */
+    private static final String DELETE_RAW_TELEMETRY_SQL = """
+            WITH expired AS MATERIALIZED (
+                SELECT numeric.time, numeric.event_id, numeric.property_id
+                  FROM telemetry_numeric numeric
+                  JOIN telemetry_retention_policy policy
+                    ON policy.device_id = numeric.device_id
+                 WHERE %s
+                   AND NOT %s
+                 ORDER BY numeric.time, numeric.event_id, numeric.property_id
+                 LIMIT ?
+            )
+            DELETE FROM telemetry_numeric numeric
+            USING expired
+             WHERE numeric.time = expired.time
+               AND numeric.event_id = expired.event_id
+               AND numeric.property_id = expired.property_id
+            """.formatted(
+            RAW_TELEMETRY_EXPIRED_PREDICATE,
+            AGGREGATION_COVERAGE_BLOCKED_PREDICATE);
+
+    private final DataSource dataSource;
+
+    /**
+     * 创建数据保留执行仓储。
+     *
+     * @param dataSource Telemetry 时序数据库数据源
+     */
+    public RetentionExecutionRepository(DataSource dataSource) {
+        this.dataSource = Objects.requireNonNull(dataSource, "数据保留数据源不能为空");
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public <T> Optional<T> withLock(RetentionExecutor.LockedWork<T> work) {
+        Objects.requireNonNull(work, "数据保留锁内工作不能为空");
+        try (Connection connection = dataSource.getConnection()) {
+            enableAutoCommit(connection);
+            if (!queryBoolean(connection, LOCK_SQL)) {
+                return Optional.empty();
+            }
+            try {
+                return Optional.of(Objects.requireNonNull(
+                        work.execute(new JdbcSession(connection)),
+                        "数据保留锁内工作不得返回空值"
+                ));
+            } finally {
+                queryBoolean(connection, UNLOCK_SQL);
+            }
+        } catch (SQLException exception) {
+            throw new RetentionStorageException("无法访问数据保留时序数据库", exception);
+        }
+    }
+
+    private void enableAutoCommit(Connection connection) throws SQLException {
+        if (!connection.getAutoCommit()) {
+            connection.setAutoCommit(true);
+        }
+    }
+
+    private boolean queryBoolean(Connection connection, String sql) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet resultSet = statement.executeQuery()) {
+            if (!resultSet.next()) {
+                throw new SQLException("数据库锁语句没有返回结果");
+            }
+            return resultSet.getBoolean(1);
+        }
+    }
+
+    /** 持有数据库会话级锁期间使用的 JDBC 操作集合。 */
+    private static final class JdbcSession implements RetentionExecutor.Session {
+        private final Connection connection;
+
+        private JdbcSession(Connection connection) {
+            this.connection = connection;
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public int recoverStaleExecutions(Duration timeout) {
+            long seconds;
+            try {
+                seconds = timeout.toSeconds();
+            } catch (ArithmeticException exception) {
+                throw new IllegalArgumentException("数据保留失联超时过大", exception);
+            }
+            if (seconds < 1) {
+                throw new IllegalArgumentException("数据保留失联超时必须至少一秒");
+            }
+            return update("""
+                    UPDATE telemetry_retention_execution
+                       SET status = 'FAILED',
+                           completed_at = CURRENT_TIMESTAMP,
+                           last_error = '运行实例超过失联超时，已由后续执行收敛'
+                     WHERE status = 'RUNNING'
+                       AND started_at < CURRENT_TIMESTAMP - make_interval(secs => ?)
+                    """, statement -> statement.setLong(1, seconds));
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public int countEnabledPolicies() {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT COUNT(*)
+                      FROM telemetry_retention_policy
+                     WHERE enabled
+                    """); ResultSet resultSet = statement.executeQuery()) {
+                resultSet.next();
+                return Math.toIntExact(resultSet.getLong(1));
+            } catch (SQLException exception) {
+                throw storageFailure("无法统计启用的数据保留策略", exception);
+            }
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public void startExecution(
+                UUID executionId,
+                String instanceId,
+                int enabledPolicyCount
+        ) {
+            int updated = update("""
+                    INSERT INTO telemetry_retention_execution (
+                        execution_id, instance_id, status, policy_count
+                    ) VALUES (?, ?, 'RUNNING', ?)
+                    """, statement -> {
+                statement.setObject(1, executionId);
+                statement.setString(2, instanceId);
+                statement.setInt(3, enabledPolicyCount);
+            });
+            requireSingleUpdate(updated, "创建数据保留执行事实");
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public long countAggregationBlockedRawRows(int scanLimit) {
+            if (scanLimit < 1 || scanLimit > 100_000) {
+                throw new IllegalArgumentException("聚合覆盖阻塞观察批次必须在 1 到 100000 之间");
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    COUNT_AGGREGATION_BLOCKED_SQL)) {
+                statement.setInt(1, scanLimit);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    resultSet.next();
+                    return resultSet.getLong(1);
+                }
+            } catch (SQLException exception) {
+                throw storageFailure("无法统计聚合覆盖阻塞的原始遥测", exception);
+            }
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public int deleteRawTelemetryBatch(
+                UUID executionId,
+                int limit,
+                long rawRowsDeleted,
+                long qualityRowsDeleted,
+                int batchCount
+        ) {
+            return inBatchTransaction(() -> {
+                int deleted = update(
+                        DELETE_RAW_TELEMETRY_SQL,
+                        statement -> statement.setInt(1, limit));
+                if (deleted > 0) {
+                    checkpointExecution(
+                            executionId,
+                            Math.addExact(rawRowsDeleted, deleted),
+                            qualityRowsDeleted,
+                            Math.incrementExact(batchCount)
+                    );
+                }
+                return deleted;
+            });
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public int deleteQualityEvidenceBatch(
+                UUID executionId,
+                int limit,
+                long rawRowsDeleted,
+                long qualityRowsDeleted,
+                int batchCount
+        ) {
+            return inBatchTransaction(() -> {
+                int deleted = update("""
+                        WITH expired AS MATERIALIZED (
+                            SELECT evidence.event_id, evidence.property_id, evidence.rule_code
+                              FROM telemetry_quality_evidence evidence
+                              JOIN telemetry_retention_policy policy
+                                ON policy.device_id = evidence.device_id
+                             WHERE policy.enabled
+                               AND evidence.created_at < CURRENT_TIMESTAMP
+                                   - make_interval(days => (
+                                       SELECT MIN(global_policy.quality_evidence_days)
+                                         FROM telemetry_retention_policy global_policy
+                                        WHERE global_policy.enabled
+                                   ))
+                               AND evidence.created_at < CURRENT_TIMESTAMP
+                                   - make_interval(days => policy.quality_evidence_days)
+                             ORDER BY evidence.created_at, evidence.event_id,
+                                      evidence.property_id, evidence.rule_code
+                             LIMIT ?
+                        )
+                        DELETE FROM telemetry_quality_evidence evidence
+                        USING expired
+                         WHERE evidence.event_id = expired.event_id
+                           AND evidence.property_id = expired.property_id
+                           AND evidence.rule_code = expired.rule_code
+                        """, statement -> statement.setInt(1, limit));
+                if (deleted > 0) {
+                    checkpointExecution(
+                            executionId,
+                            rawRowsDeleted,
+                            Math.addExact(qualityRowsDeleted, deleted),
+                            Math.incrementExact(batchCount)
+                    );
+                }
+                return deleted;
+            });
+        }
+
+        private void checkpointExecution(
+                UUID executionId,
+                long rawRowsDeleted,
+                long qualityRowsDeleted,
+                int batchCount
+        ) {
+            int updated = update("""
+                    UPDATE telemetry_retention_execution
+                       SET raw_rows_deleted = ?,
+                           quality_rows_deleted = ?,
+                           batch_count = ?
+                     WHERE execution_id = ?
+                       AND status = 'RUNNING'
+                    """, statement -> {
+                statement.setLong(1, rawRowsDeleted);
+                statement.setLong(2, qualityRowsDeleted);
+                statement.setInt(3, batchCount);
+                statement.setObject(4, executionId);
+            });
+            requireSingleUpdate(updated, "记录数据保留执行进度");
+        }
+
+        private int inBatchTransaction(BatchWork work) {
+            try {
+                connection.setAutoCommit(false);
+                int result = work.execute();
+                connection.commit();
+                connection.setAutoCommit(true);
+                return result;
+            } catch (SQLException exception) {
+                rollbackAndRestore(exception);
+                throw storageFailure("无法提交数据保留原子批次", exception);
+            } catch (RuntimeException exception) {
+                rollbackAndRestore(exception);
+                throw exception;
+            }
+        }
+
+        private void rollbackAndRestore(Throwable failure) {
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            try {
+                connection.setAutoCommit(true);
+            } catch (SQLException restoreFailure) {
+                failure.addSuppressed(restoreFailure);
+            }
+        }
+
+        /** {@inheritDoc} */
+        @Override
+        public void completeExecution(
+                UUID executionId,
+                RetentionExecutor.RunStatus status,
+                long rawRowsDeleted,
+                long qualityRowsDeleted,
+                int batchCount,
+                String errorSummary
+        ) {
+            if (status == RetentionExecutor.RunStatus.SKIPPED_LOCKED) {
+                throw new IllegalArgumentException("锁忙状态不能写入执行事实");
+            }
+            int updated = update("""
+                    UPDATE telemetry_retention_execution
+                       SET status = ?,
+                           raw_rows_deleted = ?,
+                           quality_rows_deleted = ?,
+                           batch_count = ?,
+                           completed_at = CURRENT_TIMESTAMP,
+                           last_error = ?
+                     WHERE execution_id = ?
+                       AND status = 'RUNNING'
+                    """, statement -> {
+                statement.setString(1, status.name());
+                statement.setLong(2, rawRowsDeleted);
+                statement.setLong(3, qualityRowsDeleted);
+                statement.setInt(4, batchCount);
+                statement.setString(5, errorSummary);
+                statement.setObject(6, executionId);
+            });
+            requireSingleUpdate(updated, "完成数据保留执行事实");
+        }
+
+        private int update(String sql, StatementBinder binder) {
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                binder.bind(statement);
+                return statement.executeUpdate();
+            } catch (SQLException exception) {
+                throw storageFailure("数据保留数据库写入失败", exception);
+            }
+        }
+
+        private void requireSingleUpdate(int updated, String action) {
+            if (updated != 1) {
+                throw new RetentionStorageException(action + "未影响唯一目标行");
+            }
+        }
+
+        private RetentionStorageException storageFailure(String message, SQLException cause) {
+            return new RetentionStorageException(message, cause);
+        }
+    }
+
+    /** JDBC 参数绑定函数。 */
+    @FunctionalInterface
+    private interface StatementBinder {
+        /** 绑定预编译语句参数。 */
+        void bind(PreparedStatement statement) throws SQLException;
+    }
+
+    /** 单个原子删除批次的数据库工作。 */
+    @FunctionalInterface
+    private interface BatchWork {
+        /** 执行删除与进度写入并返回删除行数。 */
+        int execute();
+    }
+
+    /** 数据保留数据库访问失败。 */
+    public static final class RetentionStorageException extends RuntimeException {
+        /** 创建无底层异常的存储失败。 */
+        public RetentionStorageException(String message) {
+            super(message);
+        }
+
+        /** 创建保留底层异常链的存储失败。 */
+        public RetentionStorageException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+}

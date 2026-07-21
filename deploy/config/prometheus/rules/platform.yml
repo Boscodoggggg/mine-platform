@@ -1,0 +1,575 @@
+groups:
+  - name: mine-platform-availability
+    rules:
+      - alert: MineRuntimeServiceDown
+        expr: up{job=~"mine-server|mine-gateway|mine-telemetry"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "智慧矿山运行服务不可用"
+          description: "{{ $labels.job }} 已连续 2 分钟无法被 Prometheus 抓取。"
+
+      - alert: MineRabbitMqDown
+        expr: up{job="rabbitmq"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RabbitMQ 不可用"
+          description: "设备 MQTT 与内部消息总线监控目标不可用。"
+
+      - alert: MineDatabaseExporterDown
+        expr: up{job=~"postgres|timescale"} == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库指标采集失败"
+          description: "{{ $labels.job }} exporter 已连续 3 分钟不可用。"
+
+      - alert: MineRedisDown
+        expr: up{job="redis"} == 0 or redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis 不可用"
+          description: "Redis exporter 无法被采集或无法连接平台 Redis。"
+
+  - name: mine-platform-capacity
+    rules:
+      - alert: MineJvmHeapPressureHigh
+        expr: sum by (job) (jvm_memory_used_bytes{area="heap"}) / sum by (job) (jvm_memory_max_bytes{area="heap"}) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM 堆内存持续偏高"
+          description: "{{ $labels.job }} 堆内存使用率已连续 10 分钟超过 85%。"
+
+      - alert: MineRabbitQueueBacklogHigh
+        expr: sum(rabbitmq_queue_messages_ready) > 100000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ 消息积压"
+          description: "待消费消息已连续 5 分钟超过 100000 条。"
+
+  - name: mine-gateway-configuration
+    rules:
+      - alert: MineGatewayConfigurationLoadFailed
+        expr: increase(mine_gateway_configuration_distribution_total{outcome="permanent_failure"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway 配置发布永久加载失败"
+          description: "最近 10 分钟有配置快照被判定为永久无效，节点已上报 FAILED；请在策略工作台核对发布证据。"
+
+      - alert: MineGatewayConfigurationRetrying
+        expr: increase(mine_gateway_configuration_distribution_total{outcome="transient_failure"}[10m]) >= 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway 配置分发持续重试"
+          description: "Gateway 在 10 分钟内至少 3 次因网络、磁盘或状态回报失败而重投配置事件。"
+
+  - name: mine-gateway-tcp
+    rules:
+      - alert: MineGatewayTcpListenerDown
+        expr: max by (job, protocol) (mine_gateway_tcp_listener_up) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway TCP 二进制监听器不可用"
+          description: "{{ $labels.job }} 的 {{ $labels.protocol }} 监听器已连续 2 分钟停止接受连接。"
+
+      - alert: MineGatewayTcpConnectionsRejected
+        expr: sum by (job, protocol) (increase(mine_gateway_tcp_connections{result="rejected"}[10m])) >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway TCP 连接持续被拒绝"
+          description: "{{ $labels.protocol }} 最近 10 分钟至少拒绝 10 个连接，请检查全局及单来源连接上限和异常接入流量。"
+
+      - alert: MineGatewayTcpFramesRejected
+        expr: sum by (job, protocol, reason) (increase(mine_gateway_tcp_frames{result="rejected"}[10m])) >= 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway TCP 二进制帧持续被拒绝"
+          description: "{{ $labels.protocol }} 因固定原因 {{ $labels.reason }} 在最近 10 分钟至少拒绝 10 帧，请检查设备协议版本、CRC、身份和链路质量。"
+
+      - alert: MineGatewayTcpPublishFailures
+        expr: sum by (job, protocol) (increase(mine_gateway_tcp_publish_failures{result="failure"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway TCP 遥测可靠发布失败"
+          description: "{{ $labels.protocol }} 最近 5 分钟出现 RabbitMQ 发布确认或 ACK 编码失败；Gateway 未向设备返回成功确认。"
+
+      - alert: MineGatewayTcpNoSuccessfulTelemetry
+        expr: >-
+          (max by (job, instance, protocol) (mine_gateway_tcp_listener_up) == 1)
+          and on (job, instance) (time() - process_start_time_seconds >= 1800)
+          and on (job, instance, protocol) (sum by (job, instance, protocol)
+          (increase(mine_gateway_tcp_frames{result="success"}[30m])) == 0)
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway TCP 长时间没有成功遥测"
+          description: "{{ $labels.protocol }} 监听器仍在线，进程已运行且连续 30 分钟没有完成解析、可靠发布和 ACK，请检查矿区设备、边缘网络及协议配置。"
+
+  - name: mine-telemetry-strategy-quality
+    rules:
+      - alert: MineTelemetryStrategyLoadFailed
+        expr: increase(mine_telemetry_strategy_distribution_total{outcome="permanent_failure"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Telemetry 数据质量策略永久加载失败"
+          description: "最近 10 分钟有策略快照未通过完整性校验并进入死信；最后正确版本仍在运行，请检查策略队列死信和控制面快照。"
+
+      - alert: MineTelemetryStrategyRetrying
+        expr: increase(mine_telemetry_strategy_distribution_total{outcome="transient_failure"}[10m]) >= 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Telemetry 策略分发持续重试"
+          description: "Telemetry 在 10 分钟内至少 3 次因控制面、网络或数据库暂时失败而重投策略事件。"
+
+      - alert: MineTelemetryDataQualitySpike
+        expr: sum by (rule, result) (increase(mine_telemetry_quality_rule_hits_total[10m])) >= 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "遥测数据质量异常突增"
+          description: "规则 {{ $labels.rule }} 的 {{ $labels.result }} 结果在最近 10 分钟命中至少 100 次；请核对设备时钟、传感器和当前数据质量策略。"
+
+  - name: mine-alarm-runtime
+    rules:
+      - alert: MineTelemetryAlarmOutboxBacklog
+        expr: sum(mine_telemetry_alarm_outbox_events{status=~"PENDING|PUBLISHING"}) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "告警可靠发布持续积压"
+          description: "Telemetry 待发布或发布中的告警 Outbox 事件已连续 5 分钟超过 1000 条，请检查 RabbitMQ 和发布确认。"
+
+      - alert: MineTelemetryAlarmOutboxFailed
+        expr: mine_telemetry_alarm_outbox_events{status="FAILED"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "告警可靠发布持续重试"
+          description: "Telemetry 存在持续 5 分钟尚未重试成功的告警 Outbox 事件，请检查 RabbitMQ 路由、网络和发布确认。"
+
+      - alert: MineTelemetryAlarmOutboxDead
+        expr: mine_telemetry_alarm_outbox_events{status="DEAD"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "告警可靠发布事件进入死信"
+          description: "Telemetry 存在已耗尽重试次数的告警 Outbox 事件，告警事实尚未送达告警中心，必须立即人工处置。"
+
+      - alert: MineServerAlarmConsumeFailures
+        expr: sum(increase(mine_server_alarm_consume_total{outcome="rejected"}[10m])) > 0 or sum(increase(mine_server_alarm_consume_total{outcome="requeued"}[10m])) >= 5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "告警事实消费异常"
+          description: "最近 10 分钟出现永久拒绝的告警事件，或至少 5 次暂时失败重投；请检查死信、数据库和消息契约。"
+
+      - alert: MineCriticalActiveAlarmsGrowing
+        expr: mine_server_alarm_active{severity="CRITICAL"} >= 10 and delta(mine_server_alarm_active{severity="CRITICAL"}[10m]) >= 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "严重活动告警持续增长"
+          description: "严重活动告警不少于 10 条且 10 分钟内净增长至少 5 条，请立即进入告警中心组织处置。"
+
+  - name: mine-telemetry-retention
+    rules:
+      - alert: MineTelemetryRetentionConsecutiveFailures
+        expr: max by (job) (mine_telemetry_retention_consecutive_failures) >= 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "数据保留任务连续失败"
+          description: "{{ $labels.job }} 数据保留任务已连续失败至少 3 轮，请检查 TimescaleDB、执行事实和最近脱敏错误。"
+
+      - alert: MineTelemetryRetentionNoRecentSuccess
+        expr: >-
+          ((max by (job) (mine_telemetry_retention_last_success_epoch_seconds) > 0)
+          and on (job) (time() - max by (job)
+          (mine_telemetry_retention_last_success_epoch_seconds) > 7200))
+          or ((max by (job) (mine_telemetry_retention_last_success_epoch_seconds) == 0)
+          and on (job) (time() - min by (job)
+          (mine_telemetry_retention_started_epoch_seconds) > 7200))
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据保留任务长时间没有完整成功"
+          description: "{{ $labels.job }} 超过 2 小时没有完成一次全量过期扫描，请检查失败、锁竞争或持续部分完成状态。"
+
+      - alert: MineTelemetryRetentionPersistentlyPartial
+        expr: max by (job) (mine_telemetry_retention_consecutive_partial) >= 3
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据保留任务持续未完成"
+          description: "{{ $labels.job }} 已连续至少 3 轮达到有界批次上限，请评估积压、批次参数和 TimescaleDB 执行计划。"
+
+      - alert: MineTelemetryRetentionAggregationCoverageBlocked
+        expr: max by (job) (mine_telemetry_retention_aggregation_coverage_blocked_rows) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "聚合覆盖持续阻塞原始数据清理"
+          description: "{{ $labels.job }} 连续 15 分钟发现已过保留期但尚未满足当前聚合策略覆盖门禁的原始遥测，请检查聚合失败、积压、策略版本和修正窗口。"
+
+  - name: mine-telemetry-aggregation
+    rules:
+      - alert: MineTelemetryAggregationConsecutiveFailures
+        expr: max by (job) (mine_telemetry_aggregation_consecutive_failures) >= 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "数值聚合任务连续失败"
+          description: "{{ $labels.job }} 数值聚合任务已连续失败至少 3 轮，请检查 TimescaleDB、执行事实和最近脱敏错误。"
+
+      - alert: MineTelemetryAggregationNoRecentSuccess
+        expr: >-
+          ((max by (job) (mine_telemetry_aggregation_last_success_epoch_seconds) > 0)
+          and on (job) (time() - max by (job)
+          (mine_telemetry_aggregation_last_success_epoch_seconds) > 1800))
+          or ((max by (job) (mine_telemetry_aggregation_last_success_epoch_seconds) == 0)
+          and on (job) (time() - min by (job)
+          (mine_telemetry_aggregation_started_epoch_seconds) > 1800))
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数值聚合任务长时间没有完整成功"
+          description: "{{ $labels.job }} 超过 30 分钟没有完成一次固定水位闭合桶扫描，请检查失败、锁竞争或持续部分完成状态。"
+
+      - alert: MineTelemetryAggregationPersistentlyPartial
+        expr: max by (job) (mine_telemetry_aggregation_consecutive_partial) >= 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数值聚合任务持续未完成"
+          description: "{{ $labels.job }} 已连续至少 3 轮达到有界聚合上限，请评估桶积压、批次参数和 TimescaleDB 查询计划。"
+
+      - alert: MineTelemetryAggregationLateRowsIgnored
+        expr: sum by (job) (increase(mine_telemetry_aggregation_late_rows_ignored_total[15m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "遥测到达延迟超过聚合修正窗口"
+          description: "{{ $labels.job }} 最近 15 分钟存在未纳入聚合的超窗口迟到遥测，请检查边缘网络、设备时钟和修正窗口策略。"
+
+      - alert: MineTelemetryAggregationRecomputeConsecutiveFailures
+        expr: >-
+          (max by (job) (mine_telemetry_aggregation_recompute_enabled) == 1)
+          and on (job) (max by (job)
+          (mine_telemetry_aggregation_recompute_consecutive_failures) >= 3)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "显式聚合重算连续失败"
+          description: "{{ $labels.job }} 显式重算已连续失败至少 3 轮，请检查控制面内部接口、service token、TimescaleDB 和最近脱敏错误。"
+
+      - alert: MineTelemetryAggregationRecomputeWorkerStuck
+        expr: >-
+          (max by (job) (mine_telemetry_aggregation_recompute_enabled) == 1)
+          and on (job) (max by (job)
+          (mine_telemetry_aggregation_recompute_running) == 1)
+          and on (job) (time() - max by (job)
+          (mine_telemetry_aggregation_recompute_operation_started_epoch_seconds) > 900)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "显式聚合重算执行卡死"
+          description: "{{ $labels.job }} 单次显式重算已运行超过 15 分钟，超过默认租约恢复窗口，请检查数据库锁、慢查询和线程转储。"
+
+      - alert: MineTelemetryAggregationRecomputeNoRecentPoll
+        expr: >-
+          (max by (job) (mine_telemetry_aggregation_recompute_enabled) == 1)
+          and on (job) (((max by (job)
+          (mine_telemetry_aggregation_recompute_last_poll_epoch_seconds) > 0)
+          and on (job) (time() - max by (job)
+          (mine_telemetry_aggregation_recompute_last_poll_epoch_seconds) > 300))
+          or ((max by (job)
+          (mine_telemetry_aggregation_recompute_last_poll_epoch_seconds) == 0)
+          and on (job) (time() - min by (job)
+          (mine_telemetry_aggregation_started_epoch_seconds) > 300)))
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "显式聚合重算长时间没有轮询控制面"
+          description: "{{ $labels.job }} 超过 5 分钟未成功访问重算认领接口，请检查调度线程、mine-server 健康状态和内部网络。"
+
+      - alert: MineServerAggregationRecomputeClaimableBacklog
+        expr: >-
+          max by (job)
+          (mine_server_aggregation_recompute_claimable_oldest_age_seconds) > 600
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "显式聚合重算可认领请求持续积压"
+          description: "{{ $labels.job }} 最老可认领重算请求已等待超过 10 分钟，请检查 Telemetry 重算消费、租约和控制面鉴权。"
+
+      - alert: MineTelemetryAggregationRecomputeLeaseLost
+        expr: >-
+          sum by (job) (increase(mine_telemetry_aggregation_recompute_runs_total
+          {status="LEASE_LOST"}[15m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "显式聚合重算发生租约转移"
+          description: "{{ $labels.job }} 最近 15 分钟发生重算完成回写租约丢失，系统会用稳定执行标识自动重放；若持续出现请检查查询时长和租约配置。"
+
+  - name: mine-location-runtime
+    rules:
+      - alert: MineLocationSnapshotFailuresPersistent
+        expr: >-
+          sum(increase(mine_telemetry_location_snapshot_result_total
+          {outcome=~"permanent_failure|transient_failure|invalid_message"}[15m])) >= 3
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "定位运行快照持续失败"
+          description: "最近 15 分钟定位运行快照至少失败 3 次，最后正确版本仍在运行；请检查控制面快照、服务令牌、网络和存储。"
+
+      - alert: MineLocationQueueBacklogHigh
+        expr: rabbitmq_queue_messages_ready{queue="mine.location.q"} > 5000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "定位观测队列持续积压"
+          description: "定位观测待消费消息已连续 5 分钟超过 5000 条，请检查 Telemetry 消费、TimescaleDB 写入和 RabbitMQ 容量。"
+
+      - alert: MineLocationIngressRejectionRateHigh
+        expr: >-
+          (sum(rate(mine_gateway_location_ingest_total{result="rejected"}[10m]))
+          / clamp_min(sum(rate(mine_gateway_location_ingest_total[10m])), 0.001) > 0.05)
+          and (sum(increase(mine_gateway_location_ingest_total[10m])) >= 100)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "定位接入拒绝率突增"
+          description: "最近 10 分钟定位接入样本不少于 100 条且拒绝率持续超过 5%，请检查凭据快照、Topic 和固定 JSON 协议。"
+
+      - alert: MineLocationRedisLatestFailuresPersistent
+        expr: >-
+          sum(increase(mine_telemetry_location_redis_latest_total
+          {result="failure"}[10m])) >= 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "定位当前位置缓存持续失败"
+          description: "最近 10 分钟 Redis 当前位置刷新至少失败 5 次；历史事实仍会保存，请检查 Redis 并确认缓存重建任务恢复。"
+
+      - alert: MineLocationQuarantineNearLimit
+        expr: mine_telemetry_location_quarantine_size >= 80000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "定位隔离区逼近处置上限"
+          description: "定位隔离区记录数已持续达到 80000，请按原因处理异常来源，并按批准流程清理已到期证据。"
+
+  - name: mine-spatial-runtime
+    rules:
+      - alert: MineSpatialEvaluationQueueBacklogHigh
+        expr: mine_telemetry_spatial_queue_backlog > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "空间评估队列持续积压"
+          description: "空间评估待处理或待重试记录已连续 5 分钟超过 1000 条，请检查评估线程、TimescaleDB 锁竞争和区域配置复杂度。"
+
+      - alert: MineSpatialTooLateRateHigh
+        expr: >-
+          (sum(rate(mine_telemetry_spatial_queue_events_total
+          {reason="too_late"}[10m]))
+          / clamp_min(sum(rate(mine_telemetry_spatial_queue_events_total[10m])), 0.001)
+          > 0.05)
+          and (sum(increase(mine_telemetry_spatial_queue_events_total[10m])) >= 100)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "空间评估过晚定位比例升高"
+          description: "最近 10 分钟空间评估样本不少于 100 条且过晚定位比例持续超过 5%，请检查设备时钟、边缘缓存、网络延迟和水位策略。"
+
+      - alert: MineSpatialOutboxDead
+        expr: mine_telemetry_spatial_outbox_dead > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "空间事件可靠发布出现死信"
+          description: "空间事件 Outbox 存在 DEAD 记录，事件已停止自动重试；请检查 RabbitMQ、发布确认和脱敏错误后按审计流程恢复。"
+
+      - alert: MineSpatialStateRecoveryFailures
+        expr: >-
+          sum(increase(mine_telemetry_spatial_stage_events_total
+          {stage="evaluation",result=~"failure|dead",reason="state_recovery"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "空间区域状态推进失败"
+          description: "最近 10 分钟空间区域状态评估发生失败或死信，请检查精确运行快照、队列租约、位置事实和数据库事务。"
+
+      - alert: MineSpatialReplayTimeout
+        expr: mine_telemetry_spatial_replay_oldest_active_age_seconds > 1800
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "空间历史重放长时间未完成"
+          description: "最老活动空间重放请求已持续超过 30 分钟，请检查重放租约、查询计划、批量上限和失败退避。"
+
+  - name: mine-operation-runtime
+    rules:
+      - alert: MineOperationQueueBacklogHigh
+        expr: mine_server_operation_queue_backlog > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "生产运营空间事件队列持续积压"
+          description: "生产运营待处理或待重试空间事件已连续 5 分钟超过 1000 条，请检查自动化工作器、数据库锁竞争和事件时间水位。"
+
+      - alert: MineOperationTooLateRateHigh
+        expr: >-
+          (sum(rate(mine_server_operation_queue_events_total
+          {reason="too_late"}[10m]))
+          / clamp_min(sum(rate(mine_server_operation_queue_events_total[10m])), 0.001)
+          > 0.05)
+          and (sum(increase(mine_server_operation_queue_events_total[10m])) >= 100)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "生产运营过晚空间事件比例升高"
+          description: "最近 10 分钟运营自动化样本不少于 100 条且过晚事件比例持续超过 5%，请检查设备时钟、网络延迟和允许乱序窗口。"
+
+      - alert: MineOperationStateAdvanceFailures
+        expr: >-
+          sum(increase(mine_server_operation_stage_events_total
+          {stage="automation",result=~"failure|dead",reason="state_advance"}[10m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "生产运营状态推进失败"
+          description: "最近 10 分钟运输循环状态推进发生失败或死信，请检查持久队列租约、运行快照和数据库事务。"
+
+      - alert: MineOperationCandidateSpike
+        expr: sum(increase(mine_server_operation_candidates_total[10m])) >= 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "生产运营待确认候选持续突增"
+          description: "最近 10 分钟新增待确认候选不少于 20 条，请检查班次、作业分配、区域版本、定位顺序和步骤超时配置。"
+
+      - alert: MineOperationOutboxDead
+        expr: mine_server_operation_outbox_dead > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "生产运营实时事件出现死信"
+          description: "运营 Outbox 存在 DEAD 记录，实时变更已停止自动重试；数据库运营事实不受影响，必须检查 RabbitMQ 和发布确认后恢复。"
+
+      - alert: MineOperationShiftCloseLeftovers
+        expr: mine_server_operation_shift_close_leftovers > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "到期班次存在关账遗留状态"
+          description: "已超过计划结束时间的开放班次仍有未终结作业或运输循环，请在生产运营工作台完成处置后关账。"
+
+  - name: mine-scene-runtime
+    rules:
+      - alert: MineSceneStorageUnavailable
+        expr: mine_server_scene_storage_available == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "三维场景资源存储不可用"
+          description: "三维资源专用创建、读取和删除探针已连续失败；平台应先降级二维，禁止清理资源卷或修改已发布场景事实。"
+
+      - alert: MineSceneReadFailureRateHigh
+        expr: >-
+          (sum(rate(mine_server_scene_operations_total
+          {stage="read",result="failure"}[10m]))
+          / clamp_min(sum(rate(mine_server_scene_operations_total
+          {stage="read"}[10m])), 0.001) > 0.05)
+          and (sum(increase(mine_server_scene_operations_total
+          {stage="read"}[10m])) >= 100)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "三维场景资源读取失败率升高"
+          description: "最近 10 分钟场景读取样本不少于 100 次且失败率持续超过 5%；先保持二维运行，检查存储和网络，禁止替换摘要内容。"
+
+      - alert: MineSceneQuarantinedAssetsHigh
+        expr: mine_server_scene_assets_quarantined > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "三维场景隔离资源持续积压"
+          description: "隔离资源已连续 10 分钟超过 50 个；请核对上传事务和孤儿对账，禁止直接清资源卷或绕过清单修改发布事实。"
+
+      - alert: MineSceneSnapshotFailuresPersistent
+        expr: >-
+          sum(increase(mine_server_scene_operations_total
+          {stage="snapshot",result="degraded"}[10m])) >= 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "默认三维场景快照持续降级"
+          description: "最近 10 分钟默认场景快照至少 3 次降级；客户端应继续使用二维视口，请检查发布摘要和资源可读性，禁止修改不可变发布版本。"

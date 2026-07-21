@@ -1,0 +1,221 @@
+spring:
+  application:
+    name: mine-server
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  servlet:
+    multipart:
+      max-file-size: ${MINE_SCENE_MULTIPART_MAX_FILE_SIZE:2GB}
+      max-request-size: ${MINE_SCENE_MULTIPART_MAX_REQUEST_SIZE:2050MB}
+      file-size-threshold: ${MINE_SCENE_MULTIPART_FILE_SIZE_THRESHOLD:0B}
+      location: ${MINE_SCENE_MULTIPART_LOCATION:/tmp}
+
+server:
+  port: ${MINE_SERVER_HTTP_PORT:8080}
+  shutdown: graceful
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-handlers-package: com.bosco.mine.server.modules.system.repository
+
+management:
+  server:
+    port: ${MINE_SERVER_MANAGEMENT_PORT:18080}
+    address: ${MINE_MANAGEMENT_ADDRESS:127.0.0.1}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      validate-group-membership: false
+      group:
+        readiness:
+          include: readinessState,db,redis,telemetryQuery
+
+sa-token:
+  token-name: X-Mine-Token
+  timeout: 43200
+  active-timeout: ${MINE_AUTH_ACTIVE_TIMEOUT_SECONDS:1800}
+  is-concurrent: true
+  is-share: false
+  is-read-cookie: false
+  is-read-body: false
+
+mine:
+  sensitive-data:
+    key-file: ${MINE_PERSON_DATA_KEY_FILE:/run/secrets/mine_person_data_key}
+  notification:
+    security:
+      key-file: ${MINE_NOTIFICATION_DATA_KEY_FILE:/run/secrets/mine_notification_data_key}
+  configuration-distribution:
+    enabled: ${MINE_CONFIGURATION_DISTRIBUTION_ENABLED:false}
+    service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
+  device-connection:
+    allowed-cidrs: ${MINE_DEVICE_CONNECTION_ALLOWED_CIDRS:}
+    max-concurrent-probes: ${MINE_DEVICE_CONNECTION_MAX_CONCURRENT_PROBES:8}
+  strategy:
+    cache:
+      maximum-size: ${MINE_STRATEGY_CACHE_MAXIMUM_SIZE:10000}
+      ttl: ${MINE_STRATEGY_CACHE_TTL:PT30S}
+  site:
+    zone-id: ${MINE_SITE_ZONE_ID:Asia/Shanghai}
+  scene-storage:
+    type: ${MINE_SCENE_STORAGE_TYPE:filesystem}
+    root: ${MINE_SCENE_STORAGE_ROOT:${java.io.tmpdir}/mine-scene-assets}
+    max-upload-bytes: ${MINE_SCENE_STORAGE_MAX_UPLOAD_BYTES:2147483648}
+    max-expanded-bytes: ${MINE_SCENE_STORAGE_MAX_EXPANDED_BYTES:8589934592}
+    max-single-file-bytes: ${MINE_SCENE_STORAGE_MAX_SINGLE_FILE_BYTES:1073741824}
+    max-file-count: ${MINE_SCENE_STORAGE_MAX_FILE_COUNT:10000}
+    max-compression-ratio: ${MINE_SCENE_STORAGE_MAX_COMPRESSION_RATIO:100}
+    max-json-bytes: ${MINE_SCENE_STORAGE_MAX_JSON_BYTES:16777216}
+    orphan-grace-period: ${MINE_SCENE_STORAGE_ORPHAN_GRACE_PERIOD:PT24H}
+  object-storage:
+    type: ${MINE_OBJECT_STORAGE_TYPE:filesystem}
+    s3:
+      endpoint: ${MINE_OBJECT_STORAGE_S3_ENDPOINT:http://127.0.0.1:9000}
+      region: ${MINE_OBJECT_STORAGE_S3_REGION:us-east-1}
+      bucket: ${MINE_OBJECT_STORAGE_S3_BUCKET:mine-scene-assets}
+      access-key: ${MINE_OBJECT_STORAGE_S3_ACCESS_KEY:}
+      secret-key: ${MINE_OBJECT_STORAGE_S3_SECRET_KEY:}
+      path-style-access: ${MINE_OBJECT_STORAGE_S3_PATH_STYLE_ACCESS:true}
+      # 仅供开发环境初始化；生产环境应由基础设施流程预创建 bucket。
+      initialize-bucket: ${MINE_OBJECT_STORAGE_S3_INITIALIZE_BUCKET:false}
+  dashboard:
+    freshness-seconds: ${MINE_DASHBOARD_FRESHNESS_SECONDS:300}
+  operations:
+    probe-timeout: ${MINE_OPERATIONS_PROBE_TIMEOUT:PT2S}
+    gateway-health-url: ${MINE_GATEWAY_HEALTH_URL:http://mine-gateway:18081/actuator/health}
+    telemetry-health-url: ${MINE_TELEMETRY_HEALTH_URL:http://mine-telemetry:18082/actuator/health}
+    prometheus:
+      enabled: ${MINE_OPERATIONS_PROMETHEUS_ENABLED:false}
+      base-url: ${MINE_OPERATIONS_PROMETHEUS_URL:http://prometheus:9090}
+      connect-timeout: ${MINE_OPERATIONS_PROMETHEUS_CONNECT_TIMEOUT:PT1S}
+      request-timeout: ${MINE_OPERATIONS_PROMETHEUS_REQUEST_TIMEOUT:PT2S}
+      max-response-bytes: ${MINE_OPERATIONS_PROMETHEUS_MAX_RESPONSE_BYTES:2000000}
+  platform:
+    version: "@project.version@"
+  security:
+    bootstrap-admin:
+      enabled: ${MINE_BOOTSTRAP_ADMIN_ENABLED:false}
+      id: ${MINE_BOOTSTRAP_ADMIN_ID:0198aef6-2e80-7000-8000-000000000001}
+      username: ${MINE_BOOTSTRAP_ADMIN_USERNAME:mine-admin}
+      display-name: ${MINE_BOOTSTRAP_ADMIN_DISPLAY_NAME:矿区超级管理员}
+      password-file: ${MINE_BOOTSTRAP_ADMIN_PASSWORD_FILE:/run/secrets/mine_super_admin_password}
+    password:
+      bcrypt-strength: ${MINE_PASSWORD_BCRYPT_STRENGTH:12}
+    login-protection:
+      max-failures-per-account: ${MINE_LOGIN_MAX_FAILURES_PER_ACCOUNT:5}
+      max-failures-per-source: ${MINE_LOGIN_MAX_FAILURES_PER_SOURCE:25}
+      attempt-window: ${MINE_LOGIN_ATTEMPT_WINDOW:PT10M}
+      lock-duration: ${MINE_LOGIN_LOCK_DURATION:PT15M}
+  rabbitmq:
+    admin:
+      base-url: ${MINE_RABBITMQ_ADMIN_BASE_URL:http://rabbitmq:15672}
+      username-file: ${MINE_RABBITMQ_ADMIN_USERNAME_FILE:/run/secrets/rabbitmq_admin_username}
+      password-file: ${MINE_RABBITMQ_ADMIN_PASSWORD_FILE:/run/secrets/rabbitmq_admin_password}
+      vhost: ${MINE_RABBITMQ_DEVICE_VHOST:/mine-device}
+      connect-timeout: ${MINE_RABBITMQ_ADMIN_CONNECT_TIMEOUT:PT5S}
+      request-timeout: ${MINE_RABBITMQ_ADMIN_REQUEST_TIMEOUT:PT10S}
+  telemetry-query:
+    enabled: ${MINE_TELEMETRY_QUERY_ENABLED:false}
+    url: ${MINE_TELEMETRY_QUERY_URL:jdbc:postgresql://timescale:5432/mine_telemetry}
+    username: ${MINE_TELEMETRY_QUERY_USERNAME:mine_ts_reader}
+    password-file: ${MINE_TELEMETRY_QUERY_PASSWORD_FILE:/run/secrets/timescale_reader_password}
+    maximum-pool-size: ${MINE_TELEMETRY_QUERY_MAXIMUM_POOL_SIZE:5}
+    connection-timeout: ${MINE_TELEMETRY_QUERY_CONNECTION_TIMEOUT:PT2S}
+    query-timeout: ${MINE_TELEMETRY_QUERY_QUERY_TIMEOUT:PT2S}
+  spatial-replay:
+    enabled: ${MINE_SPATIAL_REPLAY_ENABLED:false}
+    url: ${MINE_SPATIAL_REPLAY_URL:jdbc:postgresql://timescale:5432/mine_telemetry}
+    username: ${MINE_SPATIAL_REPLAY_USERNAME:mine_ts_replay}
+    password-file: ${MINE_SPATIAL_REPLAY_PASSWORD_FILE:/run/secrets/timescale_replay_password}
+    maximum-pool-size: ${MINE_SPATIAL_REPLAY_MAXIMUM_POOL_SIZE:2}
+    connection-timeout: ${MINE_SPATIAL_REPLAY_CONNECTION_TIMEOUT:PT2S}
+    statement-timeout: ${MINE_SPATIAL_REPLAY_STATEMENT_TIMEOUT:PT3S}
+  alarm:
+    rabbit:
+      enabled: ${MINE_ALARM_RABBIT_ENABLED:false}
+      auto-startup: ${MINE_ALARM_RABBIT_AUTO_STARTUP:true}
+      host: ${MINE_ALARM_RABBIT_HOST:rabbitmq}
+      port: ${MINE_ALARM_RABBIT_PORT:5672}
+      prefetch: ${MINE_ALARM_RABBIT_PREFETCH:50}
+      account:
+        username: ${MINE_ALARM_RABBIT_USERNAME:mine-server-alarm}
+        password-file: ${MINE_ALARM_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_alarm_password}
+  realtime:
+    enabled: ${MINE_REALTIME_ENABLED:false}
+    path: ${MINE_REALTIME_PATH:/api/v1/realtime}
+    instance-id: ${MINE_REALTIME_INSTANCE_ID:${HOSTNAME:standalone}}
+    max-subscriptions: ${MINE_REALTIME_MAX_SUBSCRIPTIONS:64}
+    max-devices: ${MINE_REALTIME_MAX_DEVICES:128}
+    max-properties: ${MINE_REALTIME_MAX_PROPERTIES:1024}
+    max-message-bytes: ${MINE_REALTIME_MAX_MESSAGE_BYTES:65536}
+    authorization-ttl: ${MINE_REALTIME_AUTHORIZATION_TTL:PT30S}
+    rabbit-enabled: ${MINE_REALTIME_RABBIT_ENABLED:false}
+    rabbit-host: ${MINE_REALTIME_RABBIT_HOST:rabbitmq}
+    rabbit-port: ${MINE_REALTIME_RABBIT_PORT:5672}
+    rabbit-auto-startup: ${MINE_REALTIME_RABBIT_AUTO_STARTUP:true}
+    rabbit-prefetch: ${MINE_REALTIME_RABBIT_PREFETCH:500}
+    account:
+      username: ${MINE_REALTIME_RABBIT_USERNAME:mine-server-realtime}
+      password-file: ${MINE_REALTIME_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_realtime_password}
+  command-outbox:
+    enabled: ${MINE_COMMAND_OUTBOX_ENABLED:false}
+    instance-id: ${MINE_COMMAND_OUTBOX_INSTANCE_ID:${HOSTNAME:standalone}}
+    rabbit-host: ${MINE_COMMAND_OUTBOX_RABBIT_HOST:rabbitmq}
+    rabbit-port: ${MINE_COMMAND_OUTBOX_RABBIT_PORT:5672}
+    confirm-timeout: ${MINE_COMMAND_OUTBOX_CONFIRM_TIMEOUT:PT5S}
+    lease-duration: ${MINE_COMMAND_OUTBOX_LEASE_DURATION:PT30S}
+    max-attempts: ${MINE_COMMAND_OUTBOX_MAX_ATTEMPTS:8}
+    recovery-limit: ${MINE_COMMAND_OUTBOX_RECOVERY_LIMIT:500}
+    retry-base-delay: ${MINE_COMMAND_OUTBOX_RETRY_BASE_DELAY:PT1S}
+    retry-max-delay: ${MINE_COMMAND_OUTBOX_RETRY_MAX_DELAY:PT1M}
+    status-prefetch: ${MINE_COMMAND_STATUS_PREFETCH:50}
+    account:
+      username: ${MINE_COMMAND_OUTBOX_RABBIT_USERNAME:mine-server-command}
+      password-file: ${MINE_COMMAND_OUTBOX_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_command_password}
+  operation-runtime:
+    # 生产默认关闭；Standalone 会显式开启。
+    # 关闭后空间事件仍会保留在持久队列，但不会自动形成运营记录。
+    rabbit-enabled: ${MINE_OPERATION_RUNTIME_RABBIT_ENABLED:false}
+    auto-startup: ${MINE_OPERATION_RUNTIME_AUTO_STARTUP:true}
+    host: ${MINE_OPERATION_RUNTIME_HOST:rabbitmq}
+    port: ${MINE_OPERATION_RUNTIME_PORT:5672}
+    prefetch: ${MINE_OPERATION_RUNTIME_PREFETCH:50}
+    ingress-retry-attempts: ${MINE_OPERATION_RUNTIME_INGRESS_RETRY_ATTEMPTS:5}
+    ingress-retry-base-delay: ${MINE_OPERATION_RUNTIME_INGRESS_RETRY_BASE_DELAY:PT1S}
+    ingress-retry-max-delay: ${MINE_OPERATION_RUNTIME_INGRESS_RETRY_MAX_DELAY:PT30S}
+    allowed-lateness: ${MINE_OPERATION_RUNTIME_ALLOWED_LATENESS:PT30S}
+    idle-flush: ${MINE_OPERATION_RUNTIME_IDLE_FLUSH:PT5S}
+    lease-duration: ${MINE_OPERATION_RUNTIME_LEASE_DURATION:PT30S}
+    max-attempts: ${MINE_OPERATION_RUNTIME_MAX_ATTEMPTS:8}
+    retry-base-delay: ${MINE_OPERATION_RUNTIME_RETRY_BASE_DELAY:PT1S}
+    retry-max-delay: ${MINE_OPERATION_RUNTIME_RETRY_MAX_DELAY:PT1M}
+    automation-interval: ${MINE_OPERATION_RUNTIME_AUTOMATION_INTERVAL:PT0.25S}
+    step-timeout: ${MINE_OPERATION_RUNTIME_STEP_TIMEOUT:PT2H}
+    drain-limit: ${MINE_OPERATION_RUNTIME_DRAIN_LIMIT:100}
+    account:
+      username: ${MINE_OPERATION_RUNTIME_ACCOUNT_USERNAME:mine-server-operation}
+      password-file: ${MINE_OPERATION_RUNTIME_ACCOUNT_PASSWORD_FILE:/run/secrets/rabbitmq_server_operation_password}
+  operation-outbox:
+    # 生产默认关闭；Standalone 会显式开启。
+    # 关闭后运营事实仍会提交，但实时变更将留在 Outbox 等待恢复。
+    enabled: ${MINE_OPERATION_OUTBOX_ENABLED:false}
+    rabbit-host: ${MINE_OPERATION_OUTBOX_RABBIT_HOST:rabbitmq}
+    rabbit-port: ${MINE_OPERATION_OUTBOX_RABBIT_PORT:5672}
+    confirm-timeout: ${MINE_OPERATION_OUTBOX_CONFIRM_TIMEOUT:PT5S}
+    lease-duration: ${MINE_OPERATION_OUTBOX_LEASE_DURATION:PT30S}
+    max-attempts: ${MINE_OPERATION_OUTBOX_MAX_ATTEMPTS:8}
+    recovery-limit: ${MINE_OPERATION_OUTBOX_RECOVERY_LIMIT:500}
+    retry-base-delay: ${MINE_OPERATION_OUTBOX_RETRY_BASE_DELAY:PT1S}
+    retry-max-delay: ${MINE_OPERATION_OUTBOX_RETRY_MAX_DELAY:PT1M}
+    recovery-interval: ${MINE_OPERATION_OUTBOX_RECOVERY_INTERVAL:PT1S}
+    account:
+      username: ${MINE_OPERATION_OUTBOX_RABBIT_USERNAME:mine-server-operation-outbox}
+      password-file: ${MINE_OPERATION_OUTBOX_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_server_operation_outbox_password}

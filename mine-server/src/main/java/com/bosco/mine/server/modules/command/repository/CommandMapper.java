@@ -1,0 +1,343 @@
+package com.bosco.mine.server.modules.command.repository;
+
+import com.bosco.mine.server.modules.command.model.CommandInstance;
+import com.bosco.mine.server.modules.command.dto.CommandTargetResponse;
+import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * 命令实例的 MyBatis 数据访问接口。
+ */
+@Mapper
+public interface CommandMapper {
+
+    /**
+     * 以共享行锁读取设备状态，使并发禁用与命令提交形成明确顺序。
+     *
+     * @param deviceId 设备标识
+     * @return 设备状态
+     */
+    @Select("SELECT status FROM dev_device WHERE id = #{deviceId} FOR SHARE")
+    Optional<String> lockDeviceStatus(@Param("deviceId") UUID deviceId);
+
+    /**
+     * 分页读取启用的命令目标设备。
+     *
+     * @param keyword 设备编码或名称关键词，可为空
+     * @param offset 起始偏移
+     * @param limit 返回上限
+     * @return 目标设备摘要
+     */
+    @Select("""
+            <script>
+            SELECT id, device_code AS deviceCode, name
+            FROM dev_device
+            WHERE status = 'ENABLED'
+            <if test="keyword != null and keyword != ''">
+              AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
+                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            ORDER BY name, device_code, id
+            OFFSET #{offset} LIMIT #{limit}
+            </script>
+            """)
+    List<CommandTargetResponse> findEnabledTargets(
+            @Param("keyword") String keyword,
+            @Param("offset") int offset,
+            @Param("limit") int limit
+    );
+
+    /**
+     * 统计启用的命令目标设备。
+     *
+     * @param keyword 设备编码或名称关键词，可为空
+     * @return 目标设备数量
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM dev_device
+            WHERE status = 'ENABLED'
+            <if test="keyword != null and keyword != ''">
+              AND (device_code ILIKE CONCAT('%', #{keyword}, '%')
+                   OR name ILIKE CONCAT('%', #{keyword}, '%'))
+            </if>
+            </script>
+            """)
+    long countEnabledTargets(@Param("keyword") String keyword);
+
+    /**
+     * 插入命令；同一创建人和幂等键已存在时不修改原记录。
+     *
+     * @param command 已入队命令
+     * @param parametersJson 命令参数 JSON
+     * @param dispatchSource 命令来源
+     * @param payloadFormat 载荷格式
+     * @param rawPayload 原始命令字节
+     * @param rawPayloadHex 原始命令十六进制表示
+     * @param payloadSha256 原始命令摘要
+     * @param replyExpected 是否等待业务回复
+     * @return 影响行数
+     */
+    @Insert("""
+            INSERT INTO cmd_instance (
+                id, device_id, template_key, template_version, parameters,
+                reason, work_order_no, risk_level, status, ttl_seconds, timeout_seconds,
+                idempotency_key, protocol_version, config_release_id, created_by,
+                created_at, updated_at, queued_at, expires_at, version,
+                dispatch_source, payload_format, raw_payload, raw_payload_hex,
+                payload_sha256, reply_expected
+            ) VALUES (
+                #{command.id}, #{command.deviceId}, #{command.templateKey},
+                #{command.templateVersion}, CAST(#{parametersJson} AS JSONB),
+                #{command.reason}, #{command.workOrderNo}, #{command.riskLevel}, #{command.status},
+                #{command.ttlSeconds}, #{command.timeoutSeconds},
+                #{command.idempotencyKey}, #{command.protocolVersion},
+                #{command.configReleaseId}, #{command.createdBy},
+                #{command.createdAt}, #{command.updatedAt}, #{command.queuedAt},
+                #{command.expiresAt}, #{command.version},
+                #{dispatchSource}, #{payloadFormat}, #{rawPayload}, #{rawPayloadHex},
+                #{payloadSha256}, #{replyExpected}
+            )
+            ON CONFLICT (created_by, idempotency_key) DO NOTHING
+            """)
+    int insert(
+            @Param("command") CommandInstance command,
+            @Param("parametersJson") String parametersJson,
+            @Param("dispatchSource") String dispatchSource,
+            @Param("payloadFormat") String payloadFormat,
+            @Param("rawPayload") byte[] rawPayload,
+            @Param("rawPayloadHex") String rawPayloadHex,
+            @Param("payloadSha256") String payloadSha256,
+            @Param("replyExpected") boolean replyExpected
+    );
+
+    /**
+     * 按创建人和幂等键读取原命令。
+     *
+     * @param createdBy 创建人标识
+     * @param idempotencyKey 幂等键
+     * @return 命令持久化行
+     */
+    @Select("""
+            SELECT id, device_id AS deviceId, template_key AS templateKey,
+                   template_version AS templateVersion,
+                   parameters::TEXT AS parametersJson, reason,
+                   work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
+                   cancel_reason AS cancelReason,
+                   dispatch_source AS dispatchSource, payload_format AS payloadFormat,
+                   raw_payload_hex AS rawPayloadHex, payload_sha256 AS payloadSha256,
+                   reply_expected AS replyExpected,
+                   risk_level AS riskLevel, status,
+                   ttl_seconds AS ttlSeconds, timeout_seconds AS timeoutSeconds,
+                   idempotency_key AS idempotencyKey,
+                   protocol_version AS protocolVersion,
+                   config_release_id AS configReleaseId, created_by AS createdBy,
+                   created_at AS createdAt, updated_at AS updatedAt,
+                   queued_at AS queuedAt, sent_at AS sentAt,
+                   device_received_at AS deviceReceivedAt,
+                   completed_at AS completedAt, expires_at AS expiresAt,
+                   last_error_code AS lastErrorCode, reply::TEXT AS replyJson,
+                   (cmd_instance.status = 'QUEUED' AND EXISTS (
+                       SELECT 1 FROM sys_outbox_event outbox
+                       WHERE outbox.aggregate_type = 'COMMAND'
+                         AND outbox.aggregate_id = cmd_instance.id
+                         AND outbox.event_type = 'command.dispatch.requested'
+                         AND outbox.status IN ('PENDING', 'FAILED')
+                   )) AS cancelable,
+                   version
+            FROM cmd_instance
+            WHERE created_by = #{createdBy}
+              AND idempotency_key = #{idempotencyKey}
+            """)
+    Optional<StoredCommand> findByIdempotencyKey(
+            @Param("createdBy") UUID createdBy,
+            @Param("idempotencyKey") String idempotencyKey
+    );
+
+    /**
+     * 按标识读取命令。
+     *
+     * @param commandId 命令标识
+     * @return 命令持久化行
+     */
+    @Select("""
+            SELECT id, device_id AS deviceId, template_key AS templateKey,
+                   template_version AS templateVersion, parameters::TEXT AS parametersJson,
+                   reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
+                   cancel_reason AS cancelReason,
+                   dispatch_source AS dispatchSource, payload_format AS payloadFormat,
+                   raw_payload_hex AS rawPayloadHex, payload_sha256 AS payloadSha256,
+                   reply_expected AS replyExpected,
+                   risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
+                   timeout_seconds AS timeoutSeconds, idempotency_key AS idempotencyKey,
+                   protocol_version AS protocolVersion, config_release_id AS configReleaseId,
+                   created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
+                   queued_at AS queuedAt, sent_at AS sentAt,
+                   device_received_at AS deviceReceivedAt, completed_at AS completedAt,
+                   expires_at AS expiresAt, last_error_code AS lastErrorCode,
+                   reply::TEXT AS replyJson,
+                   (cmd_instance.status = 'QUEUED' AND EXISTS (
+                       SELECT 1 FROM sys_outbox_event outbox
+                       WHERE outbox.aggregate_type = 'COMMAND'
+                         AND outbox.aggregate_id = cmd_instance.id
+                         AND outbox.event_type = 'command.dispatch.requested'
+                         AND outbox.status IN ('PENDING', 'FAILED')
+                   )) AS cancelable,
+                   version
+            FROM cmd_instance WHERE id = #{commandId}
+            """)
+    Optional<StoredCommand> findById(@Param("commandId") UUID commandId);
+
+    /**
+     * 以排他锁读取待取消命令，和发送状态更新形成明确顺序。
+     *
+     * @param commandId 命令标识
+     * @return 命令持久化行
+     */
+    @Select("""
+            SELECT id, device_id AS deviceId, template_key AS templateKey,
+                   template_version AS templateVersion, parameters::TEXT AS parametersJson,
+                   reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
+                   cancel_reason AS cancelReason,
+                   dispatch_source AS dispatchSource, payload_format AS payloadFormat,
+                   raw_payload_hex AS rawPayloadHex, payload_sha256 AS payloadSha256,
+                   reply_expected AS replyExpected,
+                   risk_level AS riskLevel, status,
+                   ttl_seconds AS ttlSeconds, timeout_seconds AS timeoutSeconds,
+                   idempotency_key AS idempotencyKey, protocol_version AS protocolVersion,
+                   config_release_id AS configReleaseId, created_by AS createdBy,
+                   created_at AS createdAt, updated_at AS updatedAt, queued_at AS queuedAt,
+                   sent_at AS sentAt, device_received_at AS deviceReceivedAt,
+                   completed_at AS completedAt, expires_at AS expiresAt,
+                   last_error_code AS lastErrorCode, reply::TEXT AS replyJson,
+                   (cmd_instance.status = 'QUEUED' AND EXISTS (
+                       SELECT 1 FROM sys_outbox_event outbox
+                       WHERE outbox.aggregate_type = 'COMMAND'
+                         AND outbox.aggregate_id = cmd_instance.id
+                         AND outbox.event_type = 'command.dispatch.requested'
+                         AND outbox.status IN ('PENDING', 'FAILED')
+                   )) AS cancelable,
+                   version
+            FROM cmd_instance WHERE id = #{commandId} FOR UPDATE
+            """)
+    Optional<StoredCommand> lockById(@Param("commandId") UUID commandId);
+
+    /**
+     * 将尚未被出站中继领取的命令事件标记为终止。
+     *
+     * @param commandId 命令标识
+     * @return 影响事件数
+     */
+    @Update("""
+            UPDATE sys_outbox_event
+            SET status = 'DEAD', last_error = 'cancelled before dispatch',
+                locked_by = NULL, locked_at = NULL, lease_expires_at = NULL
+            WHERE aggregate_id = #{commandId}
+              AND event_type = 'command.dispatch.requested'
+              AND status IN ('PENDING', 'FAILED')
+            """)
+    int cancelPendingDispatch(@Param("commandId") UUID commandId);
+
+    /**
+     * 使用乐观锁把排队命令置为已取消。
+     *
+     * @param commandId 命令标识
+     * @param version 期望版本
+     * @param cancelledBy 取消人
+     * @param cancelReason 取消原因
+     * @return 影响行数
+     */
+    @Update("""
+            UPDATE cmd_instance
+            SET status = 'CANCELLED', completed_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP, cancelled_by = #{cancelledBy},
+                cancel_reason = #{cancelReason}, version = version + 1
+            WHERE id = #{commandId} AND status = 'QUEUED' AND version = #{version}
+            """)
+    int cancelQueuedCommand(
+            @Param("commandId") UUID commandId,
+            @Param("version") long version,
+            @Param("cancelledBy") UUID cancelledBy,
+            @Param("cancelReason") String cancelReason
+    );
+
+    /**
+     * 按设备和状态分页查询命令。
+     *
+     * @param deviceId 设备筛选，可为空
+     * @param status 状态筛选，可为空
+     * @param offset 起始偏移
+     * @param limit 返回上限
+     * @return 命令列表
+     */
+    @Select("""
+            <script>
+            SELECT id, device_id AS deviceId, template_key AS templateKey,
+                   template_version AS templateVersion, parameters::TEXT AS parametersJson,
+                   reason, work_order_no AS workOrderNo, cancelled_by AS cancelledBy,
+                   cancel_reason AS cancelReason,
+                   dispatch_source AS dispatchSource, payload_format AS payloadFormat,
+                   raw_payload_hex AS rawPayloadHex, payload_sha256 AS payloadSha256,
+                   reply_expected AS replyExpected,
+                   risk_level AS riskLevel, status, ttl_seconds AS ttlSeconds,
+                   timeout_seconds AS timeoutSeconds, idempotency_key AS idempotencyKey,
+                   protocol_version AS protocolVersion, config_release_id AS configReleaseId,
+                   created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
+                   queued_at AS queuedAt, sent_at AS sentAt,
+                   device_received_at AS deviceReceivedAt, completed_at AS completedAt,
+                   expires_at AS expiresAt, last_error_code AS lastErrorCode,
+                   reply::TEXT AS replyJson,
+                   (cmd_instance.status = 'QUEUED' AND EXISTS (
+                       SELECT 1 FROM sys_outbox_event outbox
+                       WHERE outbox.aggregate_type = 'COMMAND'
+                         AND outbox.aggregate_id = cmd_instance.id
+                         AND outbox.event_type = 'command.dispatch.requested'
+                         AND outbox.status IN ('PENDING', 'FAILED')
+                   )) AS cancelable,
+                   version
+            FROM cmd_instance
+            WHERE 1 = 1
+            <if test="deviceId != null">AND device_id = #{deviceId}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="templateKey != null and templateKey != ''">AND template_key = #{templateKey}</if>
+            ORDER BY created_at DESC, id DESC
+            OFFSET #{offset} LIMIT #{limit}
+            </script>
+            """)
+    List<StoredCommand> findCommands(
+            @Param("deviceId") UUID deviceId,
+            @Param("status") String status,
+            @Param("templateKey") String templateKey,
+            @Param("offset") int offset,
+            @Param("limit") int limit
+    );
+
+    /**
+     * 统计符合条件的命令。
+     *
+     * @param deviceId 设备筛选，可为空
+     * @param status 状态筛选，可为空
+     * @return 命令数量
+     */
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM cmd_instance
+            WHERE 1 = 1
+            <if test="deviceId != null">AND device_id = #{deviceId}</if>
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="templateKey != null and templateKey != ''">AND template_key = #{templateKey}</if>
+            </script>
+            """)
+    long countCommands(
+            @Param("deviceId") UUID deviceId,
+            @Param("status") String status,
+            @Param("templateKey") String templateKey
+    );
+}

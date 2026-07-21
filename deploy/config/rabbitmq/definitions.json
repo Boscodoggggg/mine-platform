@@ -1,0 +1,390 @@
+{
+  "users": [],
+  "vhosts": [
+    {
+      "name": "/mine-device",
+      "description": "设备 MQTT 上下行虚拟主机",
+      "tags": [],
+      "metadata": {
+        "description": "设备 MQTT 上下行虚拟主机",
+        "tags": [],
+        "default_queue_type": "classic"
+      }
+    },
+    {
+      "name": "/mine-platform",
+      "description": "平台内部可靠消息虚拟主机",
+      "tags": [],
+      "metadata": {
+        "description": "平台内部可靠消息虚拟主机",
+        "tags": [],
+        "default_queue_type": "quorum"
+      }
+    }
+  ],
+  "permissions": [],
+  "topic_permissions": [],
+  "parameters": [],
+  "global_parameters": [],
+  "policies": [],
+  "queues": [
+    {
+      "name": "mine.gateway.uplink.q",
+      "vhost": "/mine-device",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.device.dlx"
+      }
+    },
+    {
+      "name": "mine.gateway.command-ack.q",
+      "vhost": "/mine-device",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.device.dlx"
+      }
+    },
+    {
+      "name": "mine.gateway.location-uplink.q",
+      "vhost": "/mine-device",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.device.dlx"
+      }
+    },
+    {
+      "name": "mine.device.dead-letter.q",
+      "vhost": "/mine-device",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-max-length-bytes": 1073741824,
+        "x-overflow": "drop-head"
+      }
+    },
+    {
+      "name": "mine.telemetry.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.gateway.command.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.location.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.server.command-status.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.command.timeout.wait.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.command.x",
+        "x-dead-letter-routing-key": "command.status.timeout"
+      }
+    },
+    {
+      "name": "mine.config.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.telemetry.strategy.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.server.alarm-event.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.server.operation-spatial.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.telemetry.location-config.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-dead-letter-exchange": "mine.dlx"
+      }
+    },
+    {
+      "name": "mine.dead-letter.q",
+      "vhost": "/mine-platform",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-queue-type": "quorum",
+        "x-max-length-bytes": 1073741824,
+        "x-overflow": "drop-head"
+      }
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "mine.device.dlx",
+      "vhost": "/mine-device",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.telemetry.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.command.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.config.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.strategy.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.realtime.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.location-config.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.business.x",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    },
+    {
+      "name": "mine.dlx",
+      "vhost": "/mine-platform",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "amq.topic",
+      "vhost": "/mine-device",
+      "destination": "mine.gateway.uplink.q",
+      "destination_type": "queue",
+      "routing_key": "mine.v1.*.*.up.telemetry",
+      "arguments": {}
+    },
+    {
+      "source": "amq.topic",
+      "vhost": "/mine-device",
+      "destination": "mine.gateway.command-ack.q",
+      "destination_type": "queue",
+      "routing_key": "mine.v1.*.*.up.command-ack",
+      "arguments": {}
+    },
+    {
+      "source": "amq.topic",
+      "vhost": "/mine-device",
+      "destination": "mine.gateway.location-uplink.q",
+      "destination_type": "queue",
+      "routing_key": "mine.v1.*.*.up.location",
+      "arguments": {}
+    },
+    {
+      "source": "mine.device.dlx",
+      "vhost": "/mine-device",
+      "destination": "mine.device.dead-letter.q",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.telemetry.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.telemetry.q",
+      "destination_type": "queue",
+      "routing_key": "telemetry.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.command.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.gateway.command.q",
+      "destination_type": "queue",
+      "routing_key": "command.dispatch.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.telemetry.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.location.q",
+      "destination_type": "queue",
+      "routing_key": "location.observation",
+      "arguments": {}
+    },
+    {
+      "source": "mine.command.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.server.command-status.q",
+      "destination_type": "queue",
+      "routing_key": "command.status.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.command.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.command.timeout.wait.q",
+      "destination_type": "queue",
+      "routing_key": "command.timeout.schedule",
+      "arguments": {}
+    },
+    {
+      "source": "mine.config.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.config.q",
+      "destination_type": "queue",
+      "routing_key": "config.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.strategy.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.telemetry.strategy.q",
+      "destination_type": "queue",
+      "routing_key": "strategy.runtime.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.business.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.server.alarm-event.q",
+      "destination_type": "queue",
+      "routing_key": "alarm.*",
+      "arguments": {}
+    },
+    {
+      "source": "mine.realtime.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.server.operation-spatial.q",
+      "destination_type": "queue",
+      "routing_key": "realtime.spatial.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.location-config.x",
+      "vhost": "/mine-platform",
+      "destination": "mine.telemetry.location-config.q",
+      "destination_type": "queue",
+      "routing_key": "location.runtime.#",
+      "arguments": {}
+    },
+    {
+      "source": "mine.dlx",
+      "vhost": "/mine-platform",
+      "destination": "mine.dead-letter.q",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    }
+  ]
+}

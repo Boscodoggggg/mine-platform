@@ -1,0 +1,81 @@
+package com.bosco.mine.server.bootstrap.websocket;
+
+import com.bosco.mine.server.modules.device.service.DeviceTelemetryQueryService;
+import com.bosco.mine.server.modules.mine.location.LocationQueryService;
+import com.bosco.mine.server.modules.mine.service.MineScopeAuthorizer;
+import org.junit.jupiter.api.Test;
+import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
+
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+
+/**
+ * 校验统一实时端点注册和最新值快照委托关系。
+ */
+class RealtimeWebSocketConfigurationTest {
+
+    @Test
+    void 应将处理器注册到配置的统一实时路径() {
+        RealtimeWebSocketHandler handler = mock(RealtimeWebSocketHandler.class);
+        WebSocketHandlerRegistry registry = mock(WebSocketHandlerRegistry.class);
+        RealtimeProperties properties = new RealtimeProperties(
+                true, "/ws/realtime", "server-a", null, null, null, null,
+                Duration.ofSeconds(45), false, null, null, null, null,
+                new RealtimeProperties.Account("unused", Path.of("/tmp/unused"))
+        );
+
+        WebSocketConfigurer configurer = new RealtimeWebSocketConfiguration()
+                .realtimeWebSocketConfigurer(handler, properties);
+        configurer.registerWebSocketHandlers(registry);
+
+        verify(registry).addHandler(handler, "/ws/realtime");
+    }
+
+    @Test
+    void 会话注册表必须使用配置的授权快照有效期() {
+        RealtimeProperties properties = new RealtimeProperties(
+                true, null, "server-a", null, null, null, null,
+                Duration.ofSeconds(45), false, null, null, null, null,
+                new RealtimeProperties.Account("unused", Path.of("/tmp/unused"))
+        );
+
+        RealtimeSessionRegistry registry = new RealtimeWebSocketConfiguration()
+                .realtimeSessionRegistry(properties);
+
+        assertThat(registry.authorizationTtl()).isEqualTo(Duration.ofSeconds(45));
+    }
+
+    @Test
+    void 快照读取器应委托给设备遥测查询服务() {
+        DeviceTelemetryQueryService service = mock(DeviceTelemetryQueryService.class);
+        UUID deviceId = UUID.randomUUID();
+
+        RealtimeSnapshotProvider provider = new RealtimeWebSocketConfiguration()
+                .realtimeSnapshotProvider(service);
+        provider.load(deviceId, List.of("speed"));
+
+        verify(service).findLatest(deviceId, List.of("speed"));
+    }
+
+    @Test
+    void 位置快照和实时作用域应委托给统一矿区服务() {
+        LocationQueryService queryService = mock(LocationQueryService.class);
+        MineScopeAuthorizer authorizer = mock(MineScopeAuthorizer.class);
+        UUID userId = UUID.randomUUID();
+        UUID siteId = UUID.randomUUID();
+        RealtimeWebSocketConfiguration configuration = new RealtimeWebSocketConfiguration();
+
+        configuration.realtimeLocationSnapshotProvider(queryService).load(userId, siteId);
+        configuration.realtimeSiteAuthorizer(authorizer).requireAccess(userId, siteId);
+
+        verify(queryService).findCurrentForUser(userId, siteId, 10_000);
+        verify(authorizer).requireSiteForUser(userId, siteId);
+    }
+}

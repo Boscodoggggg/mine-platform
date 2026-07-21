@@ -1,0 +1,15 @@
+server:
+  address: ${MINE_SIMULATOR_BIND_ADDRESS:127.0.0.1}
+  port: ${MINE_SIMULATOR_PORT:18090}
+  shutdown: graceful
+
+spring:
+  application:
+    name: mine-device-simulator-app
+  lifecycle:
+    timeout-per-shutdown-phase: 10s
+
+mine:
+  simulator:
+    profile-file: ${MINE_SIMULATOR_PROFILE_FILE:${user.home}/.mine-device-simulator/profiles.yaml}
+    allow-non-loopback: ${MINE_SIMULATOR_ALLOW_NON_LOOPBACK:false}

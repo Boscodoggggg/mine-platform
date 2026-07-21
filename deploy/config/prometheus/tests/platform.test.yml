@@ -1,0 +1,549 @@
+rule_files:
+  - ../rules/platform.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: TCP 监听器启动满三十分钟且没有成功遥测才告警
+    interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="mine-gateway", instance="mine-gateway:18081"}'
+        values: '0+0x40'
+      - series: 'mine_gateway_tcp_listener_up{job="mine-gateway", instance="mine-gateway:18081", protocol="haul-truck-binary"}'
+        values: '1+0x40'
+      - series: 'mine_gateway_tcp_frames{job="mine-gateway", instance="mine-gateway:18081", protocol="haul-truck-binary", result="success", reason="none"}'
+        values: '0+0x40'
+    alert_rule_test:
+      - eval_time: 29m
+        alertname: MineGatewayTcpNoSuccessfulTelemetry
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: MineGatewayTcpNoSuccessfulTelemetry
+        exp_alerts:
+          - exp_labels:
+              instance: mine-gateway:18081
+              job: mine-gateway
+              protocol: haul-truck-binary
+              severity: warning
+            exp_annotations:
+              summary: Gateway TCP 长时间没有成功遥测
+              description: haul-truck-binary 监听器仍在线，进程已运行且连续 30 分钟没有完成解析、可靠发布和 ACK，请检查矿区设备、边缘网络及协议配置。
+
+  - name: TCP 成功遥测会重置三十分钟无数据窗口
+    interval: 1m
+    input_series:
+      - series: 'process_start_time_seconds{job="mine-gateway", instance="mine-gateway:18081"}'
+        values: '0+0x50'
+      - series: 'mine_gateway_tcp_listener_up{job="mine-gateway", instance="mine-gateway:18081", protocol="haul-truck-binary"}'
+        values: '1+0x50'
+      - series: 'mine_gateway_tcp_frames{job="mine-gateway", instance="mine-gateway:18081", protocol="haul-truck-binary", result="success", reason="none"}'
+        values: '0+0x9 1+0x41'
+    alert_rule_test:
+      - eval_time: 38m
+        alertname: MineGatewayTcpNoSuccessfulTelemetry
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: MineGatewayTcpNoSuccessfulTelemetry
+        exp_alerts:
+          - exp_labels:
+              instance: mine-gateway:18081
+              job: mine-gateway
+              protocol: haul-truck-binary
+              severity: warning
+            exp_annotations:
+              summary: Gateway TCP 长时间没有成功遥测
+              description: haul-truck-binary 监听器仍在线，进程已运行且连续 30 分钟没有完成解析、可靠发布和 ACK，请检查矿区设备、边缘网络及协议配置。
+
+  - name: 定位运行快照持续失败应触发严重告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_location_snapshot_result_total{job="mine-telemetry", outcome="transient_failure"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineLocationSnapshotFailuresPersistent
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: 定位运行快照持续失败
+              description: 最近 15 分钟定位运行快照至少失败 3 次，最后正确版本仍在运行；请检查控制面快照、服务令牌、网络和存储。
+
+  - name: 定位队列持续积压应触发容量告警
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{job="rabbitmq", queue="mine.location.q"}'
+        values: '6000+0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: MineLocationQueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              job: rabbitmq
+              queue: mine.location.q
+              severity: warning
+            exp_annotations:
+              summary: 定位观测队列持续积压
+              description: 定位观测待消费消息已连续 5 分钟超过 5000 条，请检查 Telemetry 消费、TimescaleDB 写入和 RabbitMQ 容量。
+
+  - name: 定位接入拒绝率在足量样本下突增应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_gateway_location_ingest_total{job="mine-gateway", result="accepted", reason="none"}'
+        values: '0+8x25'
+      - series: 'mine_gateway_location_ingest_total{job="mine-gateway", result="rejected", reason="invalid_message"}'
+        values: '0+2x25'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: MineLocationIngressRejectionRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 定位接入拒绝率突增
+              description: 最近 10 分钟定位接入样本不少于 100 条且拒绝率持续超过 5%，请检查凭据快照、Topic 和固定 JSON 协议。
+
+  - name: Redis当前位置持续失败应保留历史并触发恢复告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_location_redis_latest_total{job="mine-telemetry", result="failure"}'
+        values: '0+1x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineLocationRedisLatestFailuresPersistent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 定位当前位置缓存持续失败
+              description: 最近 10 分钟 Redis 当前位置刷新至少失败 5 次；历史事实仍会保存，请检查 Redis 并确认缓存重建任务恢复。
+
+  - name: 定位隔离区逼近默认处置上限应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_location_quarantine_size{job="mine-telemetry"}'
+        values: '90000+0x15'
+    alert_rule_test:
+      - eval_time: 11m
+        alertname: MineLocationQuarantineNearLimit
+        exp_alerts:
+          - exp_labels:
+              job: mine-telemetry
+              severity: warning
+            exp_annotations:
+              summary: 定位隔离区逼近处置上限
+              description: 定位隔离区记录数已持续达到 80000，请按原因处理异常来源，并按批准流程清理已到期证据。
+
+  - name: 空间评估队列持续积压应触发容量告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_backlog{job="mine-telemetry"}'
+        values: '1500+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineSpatialEvaluationQueueBacklogHigh
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: MineSpatialEvaluationQueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              job: mine-telemetry
+              severity: warning
+            exp_annotations:
+              summary: 空间评估队列持续积压
+              description: 空间评估待处理或待重试记录已连续 5 分钟超过 1000 条，请检查评估线程、TimescaleDB 锁竞争和区域配置复杂度。
+
+  - name: 空间过晚定位在足量样本下升高应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="success", reason="none"}'
+        values: '0+8x25'
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="skipped", reason="too_late"}'
+        values: '0+2x25'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: MineSpatialTooLateRateHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MineSpatialTooLateRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 空间评估过晚定位比例升高
+              description: 最近 10 分钟空间评估样本不少于 100 条且过晚定位比例持续超过 5%，请检查设备时钟、边缘缓存、网络延迟和水位策略。
+
+  - name: 空间事件Outbox死信应立即触发严重告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_outbox_dead{job="mine-telemetry"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: MineSpatialOutboxDead
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: MineSpatialOutboxDead
+        exp_alerts:
+          - exp_labels:
+              job: mine-telemetry
+              severity: critical
+            exp_annotations:
+              summary: 空间事件可靠发布出现死信
+              description: 空间事件 Outbox 存在 DEAD 记录，事件已停止自动重试；请检查 RabbitMQ、发布确认和脱敏错误后按审计流程恢复。
+
+  - name: 空间区域状态推进失败应触发恢复告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_stage_events_total{job="mine-telemetry", stage="evaluation", result="failure", reason="state_recovery"}'
+        values: '0+1x10'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: MineSpatialStateRecoveryFailures
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: MineSpatialStateRecoveryFailures
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: 空间区域状态推进失败
+              description: 最近 10 分钟空间区域状态评估发生失败或死信，请检查精确运行快照、队列租约、位置事实和数据库事务。
+
+  - name: 空间历史重放超时应触发持续时间告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_replay_oldest_active_age_seconds{job="mine-telemetry"}'
+        values: '1900+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineSpatialReplayTimeout
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: MineSpatialReplayTimeout
+        exp_alerts:
+          - exp_labels:
+              job: mine-telemetry
+              severity: warning
+            exp_annotations:
+              summary: 空间历史重放长时间未完成
+              description: 最老活动空间重放请求已持续超过 30 分钟，请检查重放租约、查询计划、批量上限和失败退避。
+
+  - name: 空间评估队列未超过阈值不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_backlog{job="mine-telemetry"}'
+        values: '1000+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineSpatialEvaluationQueueBacklogHigh
+        exp_alerts: []
+
+  - name: 空间过晚定位样本不足时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="success", reason="none"}'
+        values: '0+8x9'
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="skipped", reason="too_late"}'
+        values: '0+2x9'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MineSpatialTooLateRateHigh
+        exp_alerts: []
+
+  - name: 空间过晚定位比例等于阈值时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="success", reason="none"}'
+        values: '0+95x20'
+      - series: 'mine_telemetry_spatial_queue_events_total{job="mine-telemetry", result="skipped", reason="too_late"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: MineSpatialTooLateRateHigh
+        exp_alerts: []
+
+  - name: 空间Outbox无死信时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_outbox_dead{job="mine-telemetry"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: MineSpatialOutboxDead
+        exp_alerts: []
+
+  - name: 空间区域状态没有失败时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_stage_events_total{job="mine-telemetry", stage="evaluation", result="failure", reason="state_recovery"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineSpatialStateRecoveryFailures
+        exp_alerts: []
+
+  - name: 空间历史重放未超过阈值不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_telemetry_spatial_replay_oldest_active_age_seconds{job="mine-telemetry"}'
+        values: '1800+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineSpatialReplayTimeout
+        exp_alerts: []
+
+  - name: 运营事件队列持续积压应在等待期后告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_queue_backlog{job="mine-server"}'
+        values: '1500+0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineOperationQueueBacklogHigh
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: MineOperationQueueBacklogHigh
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: warning
+            exp_annotations:
+              summary: 生产运营空间事件队列持续积压
+              description: 生产运营待处理或待重试空间事件已连续 5 分钟超过 1000 条，请检查自动化工作器、数据库锁竞争和事件时间水位。
+
+  - name: 运营事件队列等于阈值时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_queue_backlog{job="mine-server"}'
+        values: '1000+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineOperationQueueBacklogHigh
+        exp_alerts: []
+
+  - name: 运营过晚事件在足量样本下升高应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_queue_events_total{job="mine-server", result="success", reason="none"}'
+        values: '0+8x25'
+      - series: 'mine_server_operation_queue_events_total{job="mine-server", result="skipped", reason="too_late"}'
+        values: '0+2x25'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: MineOperationTooLateRateHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MineOperationTooLateRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 生产运营过晚空间事件比例升高
+              description: 最近 10 分钟运营自动化样本不少于 100 条且过晚事件比例持续超过 5%，请检查设备时钟、网络延迟和允许乱序窗口。
+
+  - name: 运营过晚事件样本不足时不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_queue_events_total{job="mine-server", result="success", reason="none"}'
+        values: '0+8x9'
+      - series: 'mine_server_operation_queue_events_total{job="mine-server", result="skipped", reason="too_late"}'
+        values: '0+2x9'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MineOperationTooLateRateHigh
+        exp_alerts: []
+
+  - name: 运营状态推进失败应在等待期后告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_stage_events_total{job="mine-server", stage="automation", result="failure", reason="state_advance"}'
+        values: '0+1x10'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: MineOperationStateAdvanceFailures
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: MineOperationStateAdvanceFailures
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: 生产运营状态推进失败
+              description: 最近 10 分钟运输循环状态推进发生失败或死信，请检查持久队列租约、运行快照和数据库事务。
+
+  - name: 运营候选持续突增应在等待期后告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_candidates_total{job="mine-server", candidateType="unexpected_event", reason="unexpected_event"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineOperationCandidateSpike
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: MineOperationCandidateSpike
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 生产运营待确认候选持续突增
+              description: 最近 10 分钟新增待确认候选不少于 20 条，请检查班次、作业分配、区域版本、定位顺序和步骤超时配置。
+
+  - name: 运营Outbox死信应在等待期后告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_outbox_dead{job="mine-server"}'
+        values: '1+0x5'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: MineOperationOutboxDead
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: MineOperationOutboxDead
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: critical
+            exp_annotations:
+              summary: 生产运营实时事件出现死信
+              description: 运营 Outbox 存在 DEAD 记录，实时变更已停止自动重试；数据库运营事实不受影响，必须检查 RabbitMQ 和发布确认后恢复。
+
+  - name: 班次关账遗留持续存在应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_operation_shift_close_leftovers{job="mine-server"}'
+        values: '2+0x20'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: MineOperationShiftCloseLeftovers
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MineOperationShiftCloseLeftovers
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: warning
+            exp_annotations:
+              summary: 到期班次存在关账遗留状态
+              description: 已超过计划结束时间的开放班次仍有未终结作业或运输循环，请在生产运营工作台完成处置后关账。
+
+  - name: 三维场景存储持续不可用应先降级二维
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_storage_available{job="mine-server"}'
+        values: '0+0x5'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: MineSceneStorageUnavailable
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: MineSceneStorageUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: warning
+            exp_annotations:
+              summary: 三维场景资源存储不可用
+              description: 三维资源专用创建、读取和删除探针已连续失败；平台应先降级二维，禁止清理资源卷或修改已发布场景事实。
+
+  - name: 三维场景读取失败率足量且超过阈值应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="success",reason="none",assetType="glb"}'
+        values: '0+9x25'
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="failure",reason="storage_unavailable",assetType="glb"}'
+        values: '0+1x25'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: MineSceneReadFailureRateHigh
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: MineSceneReadFailureRateHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 三维场景资源读取失败率升高
+              description: 最近 10 分钟场景读取样本不少于 100 次且失败率持续超过 5%；先保持二维运行，检查存储和网络，禁止替换摘要内容。
+
+  - name: 三维场景读取失败率样本不足不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="success",reason="none",assetType="tiles_3d"}'
+        values: '0+8x9'
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="failure",reason="storage_unavailable",assetType="tiles_3d"}'
+        values: '0+2x9'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MineSceneReadFailureRateHigh
+        exp_alerts: []
+
+  - name: 三维场景读取失败率等于阈值不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="success",reason="none",assetType="glb"}'
+        values: '0+95x20'
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="read",result="failure",reason="storage_unavailable",assetType="glb"}'
+        values: '0+5x20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: MineSceneReadFailureRateHigh
+        exp_alerts: []
+
+  - name: 三维场景隔离资源超过阈值并持续应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_assets_quarantined{job="mine-server"}'
+        values: '51+0x15'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: MineSceneQuarantinedAssetsHigh
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: MineSceneQuarantinedAssetsHigh
+        exp_alerts:
+          - exp_labels:
+              job: mine-server
+              severity: warning
+            exp_annotations:
+              summary: 三维场景隔离资源持续积压
+              description: 隔离资源已连续 10 分钟超过 50 个；请核对上传事务和孤儿对账，禁止直接清资源卷或绕过清单修改发布事实。
+
+  - name: 三维场景隔离资源等于阈值不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_assets_quarantined{job="mine-server"}'
+        values: '50+0x15'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: MineSceneQuarantinedAssetsHigh
+        exp_alerts: []
+
+  - name: 默认三维场景快照持续降级应告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="snapshot",result="degraded",reason="invalid_published_snapshot",assetType="none"}'
+        values: '0+1x15'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: MineSceneSnapshotFailuresPersistent
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: MineSceneSnapshotFailuresPersistent
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: 默认三维场景快照持续降级
+              description: 最近 10 分钟默认场景快照至少 3 次降级；客户端应继续使用二维视口，请检查发布摘要和资源可读性，禁止修改不可变发布版本。
+
+  - name: 默认三维场景快照降级样本不足不得告警
+    interval: 1m
+    input_series:
+      - series: 'mine_server_scene_operations_total{job="mine-server",stage="snapshot",result="degraded",reason="storage_unavailable",assetType="none"}'
+        values: '0+0x4 1+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: MineSceneSnapshotFailuresPersistent
+        exp_alerts: []

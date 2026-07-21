@@ -1,0 +1,76 @@
+spring:
+  application:
+    name: mine-gateway
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${MINE_GATEWAY_HTTP_PORT:8081}
+  shutdown: graceful
+
+management:
+  server:
+    port: ${MINE_GATEWAY_MANAGEMENT_PORT:18081}
+    address: ${MINE_MANAGEMENT_ADDRESS:127.0.0.1}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: ${spring.application.name}
+    description: 矿山设备接入服务
+    version: ${MINE_APP_VERSION:0.1.0-SNAPSHOT}
+
+mine:
+  gateway:
+    tcp:
+      enabled: ${MINE_GATEWAY_TCP_ENABLED:false}
+      bind-host: ${MINE_GATEWAY_TCP_BIND_HOST:0.0.0.0}
+      port: ${MINE_GATEWAY_TCP_PORT:9000}
+      protocol-key: ${MINE_GATEWAY_TCP_PROTOCOL_KEY:}
+      mode: ${MINE_GATEWAY_TCP_MODE:LEGACY}
+      worker-threads: ${MINE_GATEWAY_TCP_WORKER_THREADS:2}
+      business-threads: ${MINE_GATEWAY_TCP_BUSINESS_THREADS:4}
+      backlog: ${MINE_GATEWAY_TCP_BACKLOG:1024}
+      max-connections: ${MINE_GATEWAY_TCP_MAX_CONNECTIONS:10000}
+      max-connections-per-ip: ${MINE_GATEWAY_TCP_MAX_CONNECTIONS_PER_IP:100}
+      read-idle-seconds: ${MINE_GATEWAY_TCP_READ_IDLE_SECONDS:120}
+      shutdown-timeout: ${MINE_GATEWAY_TCP_SHUTDOWN_TIMEOUT:30s}
+      tls:
+        enabled: ${MINE_GATEWAY_TCP_TLS_ENABLED:false}
+        certificate: ${MINE_GATEWAY_TCP_TLS_CERTIFICATE:}
+        private-key: ${MINE_GATEWAY_TCP_TLS_PRIVATE_KEY:}
+    configuration-distribution:
+      enabled: ${MINE_GATEWAY_CONFIGURATION_DISTRIBUTION_ENABLED:false}
+      server-base-url: ${MINE_GATEWAY_CONFIGURATION_SERVER_URL:http://mine-server:8080}
+      service-token-file: ${MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE:/run/secrets/mine_configuration_distribution_token}
+      request-timeout: ${MINE_GATEWAY_CONFIGURATION_REQUEST_TIMEOUT:PT5S}
+      max-snapshot-bytes: ${MINE_GATEWAY_CONFIGURATION_MAX_SNAPSHOT_BYTES:2097152}
+      cache-file: ${MINE_GATEWAY_CONFIGURATION_CACHE_FILE:/var/lib/mine/gateway/protocol-snapshots.json}
+      max-cache-bytes: ${MINE_GATEWAY_CONFIGURATION_MAX_CACHE_BYTES:16777216}
+      node-id: ${MINE_GATEWAY_NODE_ID:${HOSTNAME:standalone}}
+    rabbit:
+      enabled: ${MINE_GATEWAY_RABBIT_ENABLED:false}
+      auto-startup: ${MINE_GATEWAY_RABBIT_AUTO_STARTUP:true}
+      host: ${MINE_GATEWAY_RABBIT_HOST:rabbitmq}
+      port: ${MINE_GATEWAY_RABBIT_PORT:5672}
+      max-payload-bytes: ${MINE_GATEWAY_MAX_PAYLOAD_BYTES:65536}
+      confirm-timeout-millis: ${MINE_GATEWAY_CONFIRM_TIMEOUT_MILLIS:5000}
+      prefetch: ${MINE_GATEWAY_RABBIT_PREFETCH:50}
+      identity-snapshot-file: ${MINE_GATEWAY_IDENTITY_SNAPSHOT_FILE:/etc/mine/gateway/device-identities.json}
+      identity-refresh-millis: ${MINE_GATEWAY_IDENTITY_REFRESH_MILLIS:5000}
+      device:
+        username: ${MINE_GATEWAY_DEVICE_RABBIT_USERNAME:mine-gateway-device}
+        password-file: ${MINE_GATEWAY_DEVICE_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_gateway_device_password}
+      platform:
+        username: ${MINE_GATEWAY_PLATFORM_RABBIT_USERNAME:mine-gateway-platform}
+        password-file: ${MINE_GATEWAY_PLATFORM_RABBIT_PASSWORD_FILE:/run/secrets/rabbitmq_gateway_platform_password}

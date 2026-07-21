@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bosco.mine.server.modules.notification.repository.NotificationPolicyMapper">
+
+    <insert id="insertSteps">
+        INSERT INTO notification_policy_step (
+            id, policy_version_id, step_order, delay_seconds,
+            channel_id, recipient_group_id, template_id, recovery_template_id,
+            ticket_action, ticket_priority
+        ) VALUES
+        <foreach collection="steps" item="step" separator=",">
+            (
+                #{step.id}, #{step.policyVersionId}, #{step.stepOrder},
+                #{step.delaySeconds}, #{step.channelId}, #{step.recipientGroupId},
+                #{step.templateId}, #{step.recoveryTemplateId},
+                #{step.ticketAction}, #{step.ticketPriority}
+            )
+        </foreach>
+    </insert>
+
+    <select id="findDependencyStatuses"
+            resultType="com.bosco.mine.server.modules.notification.model.NotificationPolicyDependencyStatus">
+        WITH requested (
+            step_id, channel_id, recipient_group_id, template_id, recovery_template_id
+        ) AS (
+            VALUES
+            <foreach collection="steps" item="step" separator=",">
+                (
+                    CAST(#{step.id} AS UUID), CAST(#{step.channelId} AS UUID),
+                    CAST(#{step.recipientGroupId} AS UUID),
+                    CAST(#{step.templateId} AS UUID),
+                    CAST(#{step.recoveryTemplateId} AS UUID)
+                )
+            </foreach>
+        )
+        SELECT requested.step_id AS stepId,
+               channel.status AS channelStatus,
+               channel.channel_type AS channelType,
+               recipient_group.status AS recipientGroupStatus,
+               (
+                   SELECT COUNT(*)
+                   FROM notification_recipient recipient
+                   WHERE recipient.group_id = requested.recipient_group_id
+                     AND recipient.channel_type = channel.channel_type
+                     AND recipient.status = 'ENABLED'
+               ) AS enabledRecipientCount,
+               trigger_template.status AS templateStatus,
+               trigger_template.channel_type AS templateChannelType,
+               trigger_template.event_type AS templateEventType,
+               recovery_template.status AS recoveryTemplateStatus,
+               recovery_template.channel_type AS recoveryTemplateChannelType,
+               recovery_template.event_type AS recoveryTemplateEventType
+        FROM requested
+        LEFT JOIN notification_channel channel ON channel.id = requested.channel_id
+        LEFT JOIN notification_recipient_group recipient_group
+               ON recipient_group.id = requested.recipient_group_id
+        LEFT JOIN notification_template trigger_template
+               ON trigger_template.id = requested.template_id
+        LEFT JOIN notification_template recovery_template
+               ON recovery_template.id = requested.recovery_template_id
+        ORDER BY requested.step_id
+    </select>
+
+    <select id="findOverlapCandidates"
+            resultType="com.bosco.mine.server.modules.notification.model.NotificationPolicyOverlapCandidate">
+        SELECT policy.id AS policyId,
+               policy.policy_code AS policyCode,
+               version.match_conditions::text AS matchConditionsJson,
+               version.severity_filter::text AS severityFilterJson
+        FROM notification_policy policy
+        JOIN notification_policy_version version
+          ON version.policy_id = policy.id AND version.state = 'PUBLISHED'
+        WHERE policy.status = 'ACTIVE'
+          AND policy.priority = #{priority}
+          AND policy.id &lt;&gt; #{excludedPolicyId}
+        ORDER BY policy.policy_code, policy.id
+    </select>
+</mapper>

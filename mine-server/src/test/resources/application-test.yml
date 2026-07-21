@@ -1,0 +1,17 @@
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  datasource:
+    hikari:
+      maximum-pool-size: 2
+
+mine:
+  sensitive-data:
+    key-file: classpath:mine-person-test-key.secret
+  notification:
+    security:
+      key-file: classpath:mine-notification-test-key.secret
+  security:
+    bootstrap-admin:
+      enabled: false

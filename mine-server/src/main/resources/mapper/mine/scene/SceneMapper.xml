@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.bosco.mine.server.modules.mine.scene.SceneMapper">
+
+    <select id="findRuntimeRows"
+            resultType="com.bosco.mine.server.modules.mine.scene.SceneMapper$SceneRuntimeRow">
+        WITH requested_site AS (
+            SELECT CAST(#{siteId} AS UUID) AS site_id
+        ), default_scene AS (
+            SELECT scene.id, scene.scene_code, scene.name
+            FROM mine_scene scene
+            JOIN requested_site requested ON requested.site_id = scene.site_id
+            WHERE scene.status = 'ACTIVE' AND scene.default_scene
+        ), published_version AS (
+            SELECT version.id, version.scene_id, version.coordinate_system_id,
+                   version.revision_number, version.schema_version,
+                   version.coordinate_mode,
+                   version.origin_x, version.origin_y, version.origin_z,
+                   version.heading_degrees, version.pitch_degrees,
+                   version.roll_degrees, version.scale,
+                   version.default_camera, version.fallback_viewport,
+                   version.content_hash, version.published_at
+            FROM mine_scene_version version
+            JOIN default_scene scene ON scene.id = version.scene_id
+            JOIN requested_site requested ON requested.site_id = version.site_id
+            WHERE version.status = 'PUBLISHED'
+        )
+        SELECT scene.id AS sceneId,
+               scene.scene_code AS sceneCode,
+               scene.name AS sceneName,
+               version.id AS versionId,
+               version.coordinate_system_id AS coordinateSystemId,
+               version.revision_number AS revisionNumber,
+               version.schema_version AS schemaVersion,
+               version.coordinate_mode AS coordinateMode,
+               version.origin_x AS originX,
+               version.origin_y AS originY,
+               version.origin_z AS originZ,
+               version.heading_degrees AS headingDegrees,
+               version.pitch_degrees AS pitchDegrees,
+               version.roll_degrees AS rollDegrees,
+               version.scale AS sceneScale,
+               version.default_camera::TEXT AS defaultCameraJson,
+               version.fallback_viewport::TEXT AS fallbackViewportJson,
+               version.content_hash AS contentHash,
+               version.published_at AS publishedAt,
+               COUNT(layer.id) OVER (PARTITION BY version.id) AS layerCount,
+               layer.id AS layerId,
+               layer.layer_code AS layerCode,
+               layer.order_number AS orderNumber,
+               layer.layer_type AS layerType,
+               layer.visible,
+               layer.opacity,
+               layer.minimum_distance AS minimumDistance,
+               layer.maximum_distance AS maximumDistance,
+               layer.offset_x AS offsetX,
+               layer.offset_y AS offsetY,
+               layer.offset_z AS offsetZ,
+               layer.heading_degrees AS layerHeadingDegrees,
+               layer.pitch_degrees AS layerPitchDegrees,
+               layer.roll_degrees AS layerRollDegrees,
+               layer.scale AS layerScale,
+               layer.max_items AS maxItems,
+               layer.options::TEXT AS optionsJson,
+               asset.id AS assetId,
+               asset.asset_type AS assetType,
+               asset.status AS assetStatus,
+               asset.content_digest AS assetContentDigest,
+               asset.entry_path AS assetEntryPath,
+               asset.file_count AS assetFileCount
+        FROM requested_site requested
+        LEFT JOIN default_scene scene ON TRUE
+        LEFT JOIN published_version version ON version.scene_id = scene.id
+        LEFT JOIN mine_scene_layer layer
+          ON layer.site_id = requested.site_id
+         AND layer.scene_version_id = version.id
+        LEFT JOIN mine_scene_asset asset
+          ON asset.site_id = requested.site_id
+         AND asset.id = layer.asset_id
+        ORDER BY layer.order_number NULLS LAST, layer.id
+    </select>
+
+</mapper>
