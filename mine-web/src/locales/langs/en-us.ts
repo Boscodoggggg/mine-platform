@@ -61,8 +61,30 @@ const local: App.I18n.Schema = {
         'aliyun-sms': 'Alibaba Cloud SMS',
         'aliyun-voice': 'Alibaba Cloud Voice'
       },
-      title: 'Notification Channels',
-      subtitle: 'Configure alarm email, enterprise IM, webhooks, SMS and voice delivery endpoints',
+      channelType: {
+        email: 'Email',
+        sms: 'SMS',
+        voice: 'Voice call',
+        enterpriseIm: 'Enterprise IM',
+        webhook: 'Webhook'
+      },
+      event: {
+        alarmRaised: 'Alarm raised',
+        alarmAcknowledged: 'Alarm acknowledged',
+        alarmRecovered: 'Alarm recovered',
+        alarmClosed: 'Alarm closed',
+        ticketCreated: 'Ticket created',
+        ticketEscalated: 'Ticket escalated',
+        ticketClosed: 'Ticket closed'
+      },
+      title: 'Notification & Escalation',
+      subtitle: 'Manage delivery channels, recipients, safe templates and immutable escalation policies',
+      tab: {
+        channels: 'Channels',
+        recipients: 'Recipients',
+        templates: 'Templates',
+        policies: 'Escalation policies'
+      },
       noticeTitle: 'Only shipped capabilities are available',
       noticeContent: 'Only built-in providers can be selected. Secrets are encrypted and revealed only to separately authorized administrators with a read audit.',
       readOnly: 'Read only',
@@ -147,6 +169,150 @@ const local: App.I18n.Schema = {
         volume: 'Volume',
         speed: 'Speech rate',
         unknown: 'Provider field'
+      },
+      recipient: {
+        title: 'Recipient Groups & Targets',
+        subtitle: 'Organize on-call responsibilities and store encrypted destinations per channel',
+        group: 'Recipient group',
+        member: 'Recipient',
+        channel: 'Channel',
+        target: 'Destination',
+        noGroupSelected: 'Select a recipient group',
+        memberHint: 'Lists show masked destinations. Revealing a real value creates an audit record.',
+        emptyGroups: 'No recipient group yet. Create an on-call responsibility group first.',
+        emptyRecipients: 'This recipient group has no recipients yet.',
+        preserveTarget: 'Leave the destination empty to preserve the encrypted database value.',
+        type: { system: 'System user', external: 'External contact' },
+        action: {
+          createGroup: 'New group',
+          createRecipient: 'Add recipient',
+          members: 'View members',
+          reveal: 'Reveal destination',
+          revealed: 'Destination revealed'
+        },
+        drawer: {
+          createGroup: 'New Recipient Group',
+          editGroup: 'Edit Recipient Group',
+          createRecipient: 'Add Notification Recipient',
+          editRecipient: 'Edit Notification Recipient'
+        },
+        form: {
+          groupCode: 'Group code',
+          description: 'Responsibility description',
+          type: 'Recipient type',
+          channel: 'Delivery channel',
+          displayName: 'Display name',
+          userId: 'System user ID',
+          userIdPlaceholder: 'Copy an enabled user ID from User Management',
+          target: 'Real destination',
+          targetPlaceholder: 'Email, phone, robot identifier, or webhook URL'
+        },
+        message: {
+          groupSaved: 'Recipient group saved',
+          recipientSaved: 'Recipient saved',
+          targetVersionChanged: 'Another administrator updated this recipient. Refresh and try again.',
+          targetRevealed: 'The real destination is visible and this read has been audited.'
+        }
+      },
+      template: {
+        title: 'Safe Notification Templates',
+        subtitle: 'Configure controlled-variable templates for alarm and ticket lifecycle events',
+        variableTitle: 'Fixed variable allowlist',
+        variableHint: 'Templates accept double-brace placeholders only. Select allowed variables before referencing them.',
+        empty: 'No notification template yet. Start with a disabled template and review its content.',
+        noVariables: 'No variables',
+        action: { create: 'New template' },
+        column: {
+          template: 'Template',
+          route: 'Channel & event',
+          locale: 'Locale',
+          variables: 'Allowed variables'
+        },
+        locale: { zhCn: 'Simplified Chinese', enUs: 'English' },
+        drawer: { create: 'New Safe Notification Template', edit: 'Edit Safe Notification Template' },
+        form: {
+          code: 'Template code',
+          channel: 'Channel',
+          event: 'Business event',
+          locale: 'Locale',
+          providerCode: 'Provider template code',
+          variables: 'Allowed variables',
+          subject: 'Subject template',
+          body: 'Body template'
+        },
+        message: { saved: 'Notification template saved' }
+      },
+      policy: {
+        title: 'Notification Escalation Policies',
+        subtitle: 'Map alarm severity, mine and rule scopes to ordered notifications and ticket actions',
+        versionTitle: 'Published snapshots are immutable',
+        versionHint: 'Only drafts are editable. Publishing validates channels, recipients, templates, and equal-priority scope conflicts.',
+        empty: 'No escalation policy yet. Create the first draft.',
+        action: {
+          create: 'New policy',
+          editDraft: 'Edit draft',
+          deriveDraft: 'Derive new draft',
+          publish: 'Publish',
+          confirmPublish: 'Confirm publish',
+          archive: 'Archive',
+          addStep: 'Add step',
+          removeStep: 'Remove'
+        },
+        column: {
+          policy: 'Policy',
+          priority: 'Priority',
+          scope: 'Match scope',
+          version: 'Version state'
+        },
+        state: { published: 'Published', draft: 'Draft' },
+        status: { active: 'Active', archived: 'Archived' },
+        severity: { info: 'Info', warning: 'Warning', critical: 'Critical' },
+        ticket: { none: 'No ticket action', create: 'Create ticket', assign: 'Assign ticket', escalate: 'Escalate ticket' },
+        scope: {
+          none: 'Not configured',
+          all: 'All mines and rules',
+          summary: '{mineCount} mines / {ruleCount} rules'
+        },
+        drawer: { create: 'New Notification Escalation Policy', edit: 'Edit Notification Policy Draft' },
+        form: {
+          code: 'Policy code',
+          priority: 'Match priority',
+          severity: 'Alarm severity',
+          description: 'Policy description',
+          mineIds: 'Mine ID scope (empty means all)',
+          ruleKeys: 'Alarm rule key scope (empty means all)',
+          stopOnAck: 'Stop future escalation after acknowledgement',
+          notifyOnRecovery: 'Notify on recovery',
+          steps: 'Ordered delivery steps'
+        },
+        step: {
+          title: 'Step {number}',
+          delay: 'Delay after alarm (seconds)',
+          channel: 'Notification channel',
+          group: 'Recipient group',
+          triggerTemplate: 'Alarm-raised template',
+          recoveryTemplate: 'Alarm-recovered template',
+          ticketAction: 'Ticket action',
+          ticketPriority: 'Ticket priority'
+        },
+        publish: {
+          title: 'Publish Immutable Policy Version',
+          warningTitle: 'Direct edits are blocked after publishing',
+          warningContent: 'Publishing immediately replaces the active version. Further changes require a new draft derived from the snapshot.',
+          reason: 'Publication reason'
+        },
+        archive: {
+          title: 'Archive escalation policy',
+          content: 'Archived policies stop matching new alarms while historical snapshots remain auditable.'
+        },
+        message: {
+          required: 'Complete the policy name, severity, and every delivery-step dependency.',
+          saved: 'Notification policy draft saved',
+          draftCreated: 'A new draft was derived from the published snapshot',
+          publicationReasonRequired: 'Enter a publication reason',
+          published: 'Notification escalation policy published',
+          archived: 'Notification escalation policy archived'
+        }
       }
     },
     menu: {

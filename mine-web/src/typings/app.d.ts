@@ -374,8 +374,20 @@ declare namespace App {
             | 'aliyun-voice',
             string
           >;
+          channelType: Record<'email' | 'sms' | 'voice' | 'enterpriseIm' | 'webhook', string>;
+          event: Record<
+            | 'alarmRaised'
+            | 'alarmAcknowledged'
+            | 'alarmRecovered'
+            | 'alarmClosed'
+            | 'ticketCreated'
+            | 'ticketEscalated'
+            | 'ticketClosed',
+            string
+          >;
           title: string;
           subtitle: string;
+          tab: Record<'channels' | 'recipients' | 'templates' | 'policies', string>;
           noticeTitle: string;
           noticeContent: string;
           readOnly: string;
@@ -438,6 +450,109 @@ declare namespace App {
             | 'unknown',
             string
           >;
+          recipient: {
+            title: string;
+            subtitle: string;
+            group: string;
+            member: string;
+            channel: string;
+            target: string;
+            noGroupSelected: string;
+            memberHint: string;
+            emptyGroups: string;
+            emptyRecipients: string;
+            preserveTarget: string;
+            type: Record<'system' | 'external', string>;
+            action: Record<
+              'createGroup' | 'createRecipient' | 'members' | 'reveal' | 'revealed',
+              string
+            >;
+            drawer: Record<'createGroup' | 'editGroup' | 'createRecipient' | 'editRecipient', string>;
+            form: Record<
+              | 'groupCode'
+              | 'description'
+              | 'type'
+              | 'channel'
+              | 'displayName'
+              | 'userId'
+              | 'userIdPlaceholder'
+              | 'target'
+              | 'targetPlaceholder',
+              string
+            >;
+            message: Record<'groupSaved' | 'recipientSaved' | 'targetVersionChanged' | 'targetRevealed', string>;
+          };
+          template: {
+            title: string;
+            subtitle: string;
+            variableTitle: string;
+            variableHint: string;
+            empty: string;
+            noVariables: string;
+            action: Record<'create', string>;
+            column: Record<'template' | 'route' | 'locale' | 'variables', string>;
+            locale: Record<'zhCn' | 'enUs', string>;
+            drawer: Record<'create' | 'edit', string>;
+            form: Record<
+              'code' | 'channel' | 'event' | 'locale' | 'providerCode' | 'variables' | 'subject' | 'body',
+              string
+            >;
+            message: Record<'saved', string>;
+          };
+          policy: {
+            title: string;
+            subtitle: string;
+            versionTitle: string;
+            versionHint: string;
+            empty: string;
+            action: Record<
+              | 'create'
+              | 'editDraft'
+              | 'deriveDraft'
+              | 'publish'
+              | 'confirmPublish'
+              | 'archive'
+              | 'addStep'
+              | 'removeStep',
+              string
+            >;
+            column: Record<'policy' | 'priority' | 'scope' | 'version', string>;
+            state: Record<'published' | 'draft', string>;
+            status: Record<'active' | 'archived', string>;
+            severity: Record<'info' | 'warning' | 'critical', string>;
+            ticket: Record<'none' | 'create' | 'assign' | 'escalate', string>;
+            scope: Record<'none' | 'all' | 'summary', string>;
+            drawer: Record<'create' | 'edit', string>;
+            form: Record<
+              | 'code'
+              | 'priority'
+              | 'severity'
+              | 'description'
+              | 'mineIds'
+              | 'ruleKeys'
+              | 'stopOnAck'
+              | 'notifyOnRecovery'
+              | 'steps',
+              string
+            >;
+            step: Record<
+              | 'title'
+              | 'delay'
+              | 'channel'
+              | 'group'
+              | 'triggerTemplate'
+              | 'recoveryTemplate'
+              | 'ticketAction'
+              | 'ticketPriority',
+              string
+            >;
+            publish: Record<'title' | 'warningTitle' | 'warningContent' | 'reason', string>;
+            archive: Record<'title' | 'content', string>;
+            message: Record<
+              'required' | 'saved' | 'draftCreated' | 'publicationReasonRequired' | 'published' | 'archived',
+              string
+            >;
+          };
         };
         menu: Record<
           | 'system'

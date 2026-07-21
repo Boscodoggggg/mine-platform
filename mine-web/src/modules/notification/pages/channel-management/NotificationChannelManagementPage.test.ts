@@ -5,6 +5,11 @@ import NotificationChannelManagementPage from './NotificationChannelManagementPa
 
 const api = vi.hoisted(() => ({
   createNotificationChannel: vi.fn(),
+  getNotificationPolicies: vi.fn(),
+  getNotificationRecipientGroups: vi.fn(),
+  getNotificationRecipients: vi.fn(),
+  getNotificationTemplates: vi.fn(),
+  getNotificationTemplateVariables: vi.fn(),
   getNotificationChannel: vi.fn(),
   getNotificationChannels: vi.fn(),
   getNotificationProviders: vi.fn(),
@@ -52,6 +57,11 @@ describe('NotificationChannelManagementPage', () => {
     Object.values(api).forEach(mock => mock.mockReset());
     api.getNotificationProviders.mockResolvedValue([smtpProvider]);
     api.getNotificationChannels.mockResolvedValue([channel]);
+    api.getNotificationPolicies.mockResolvedValue([]);
+    api.getNotificationRecipientGroups.mockResolvedValue([]);
+    api.getNotificationRecipients.mockResolvedValue([]);
+    api.getNotificationTemplates.mockResolvedValue([]);
+    api.getNotificationTemplateVariables.mockResolvedValue([]);
     api.getNotificationChannel.mockResolvedValue(channel);
     api.revealNotificationChannelSecrets.mockResolvedValue({
       channelId: 'channel-1',
@@ -120,6 +130,20 @@ describe('NotificationChannelManagementPage', () => {
       'channel-1',
       expect.objectContaining({ secrets: {} })
     );
+    wrapper.unmount();
+  });
+
+  it('超级管理员应在原通知渠道菜单内看到接收对象模板和升级策略页签', async () => {
+    authState.userInfo.buttons = ['*'];
+    const wrapper = mount(NotificationChannelManagementPage, {
+      global: { plugins: [i18n], stubs: { teleport: true } }
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('通知渠道');
+    expect(wrapper.text()).toContain('接收对象');
+    expect(wrapper.text()).toContain('通知模板');
+    expect(wrapper.text()).toContain('升级策略');
     wrapper.unmount();
   });
 });

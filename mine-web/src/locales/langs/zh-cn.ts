@@ -61,8 +61,30 @@ const local: App.I18n.Schema = {
         'aliyun-sms': '阿里云短信',
         'aliyun-voice': '阿里云语音'
       },
-      title: '通知渠道',
-      subtitle: '集中配置告警邮件、企业 IM、Webhook、短信和语音出口',
+      channelType: {
+        email: '邮件',
+        sms: '短信',
+        voice: '语音电话',
+        enterpriseIm: '企业 IM',
+        webhook: 'Webhook'
+      },
+      event: {
+        alarmRaised: '告警触发',
+        alarmAcknowledged: '告警确认',
+        alarmRecovered: '告警恢复',
+        alarmClosed: '告警关闭',
+        ticketCreated: '事件单创建',
+        ticketEscalated: '事件单升级',
+        ticketClosed: '事件单关闭'
+      },
+      title: '通知与升级',
+      subtitle: '统一维护通知出口、接收对象、安全模板和不可变升级策略',
+      tab: {
+        channels: '通知渠道',
+        recipients: '接收对象',
+        templates: '通知模板',
+        policies: '升级策略'
+      },
       noticeTitle: '配置即平台能力',
       noticeContent: '这里只能选择平台内置 Provider。敏感配置加密保存，真实值仅向具备独立权限的管理员回显并记录读取审计。',
       readOnly: '只读',
@@ -147,6 +169,150 @@ const local: App.I18n.Schema = {
         volume: '音量',
         speed: '语速',
         unknown: 'Provider 字段'
+      },
+      recipient: {
+        title: '接收组与接收对象',
+        subtitle: '按值班职责组织人员，并为不同渠道保存加密触达目标',
+        group: '接收组',
+        member: '接收对象',
+        channel: '渠道',
+        target: '触达目标',
+        noGroupSelected: '请选择接收组',
+        memberHint: '普通列表只显示脱敏目标，真实值读取会写入审计。',
+        emptyGroups: '还没有接收组，先创建一个值班职责组。',
+        emptyRecipients: '当前接收组还没有接收对象。',
+        preserveTarget: '目标留空将保留数据库中的原加密值。',
+        type: { system: '系统用户', external: '外部联系人' },
+        action: {
+          createGroup: '新建接收组',
+          createRecipient: '添加接收对象',
+          members: '查看成员',
+          reveal: '查看真实目标',
+          revealed: '真实目标已回显'
+        },
+        drawer: {
+          createGroup: '新建通知接收组',
+          editGroup: '编辑通知接收组',
+          createRecipient: '添加通知接收对象',
+          editRecipient: '编辑通知接收对象'
+        },
+        form: {
+          groupCode: '接收组编码',
+          description: '职责说明',
+          type: '对象类型',
+          channel: '触达渠道',
+          displayName: '展示名称',
+          userId: '系统用户 ID',
+          userIdPlaceholder: '从用户管理复制启用用户 ID',
+          target: '真实触达目标',
+          targetPlaceholder: '邮箱、手机号、机器人接收标识或 Webhook 地址'
+        },
+        message: {
+          groupSaved: '接收组已保存',
+          recipientSaved: '接收对象已保存',
+          targetVersionChanged: '接收对象已被其他管理员更新，请刷新后重试',
+          targetRevealed: '真实目标已回显，本次读取已写入操作审计'
+        }
+      },
+      template: {
+        title: '安全通知模板',
+        subtitle: '为告警和事件单生命周期配置受控变量模板',
+        variableTitle: '固定变量白名单',
+        variableHint: '模板仅支持双花括号占位符；先选择允许变量，再在标题或正文中引用。',
+        empty: '还没有通知模板，先创建一个禁用模板并完成内容审核。',
+        noVariables: '不使用变量',
+        action: { create: '新建模板' },
+        column: {
+          template: '模板',
+          route: '渠道与事件',
+          locale: '语言',
+          variables: '允许变量'
+        },
+        locale: { zhCn: '简体中文', enUs: 'English' },
+        drawer: { create: '新建安全通知模板', edit: '编辑安全通知模板' },
+        form: {
+          code: '模板编码',
+          channel: '适用渠道',
+          event: '业务事件',
+          locale: '语言区域',
+          providerCode: '供应商模板编码',
+          variables: '允许变量',
+          subject: '标题模板',
+          body: '正文模板'
+        },
+        message: { saved: '通知模板已保存' }
+      },
+      policy: {
+        title: '通知升级策略',
+        subtitle: '将告警等级、矿区和规则范围映射到有序通知与事件单动作',
+        versionTitle: '发布快照不可变',
+        versionHint: '编辑只发生在草稿；发布前会校验渠道、接收对象、模板和同优先级范围冲突。',
+        empty: '还没有升级策略，先创建第一版草稿。',
+        action: {
+          create: '新建策略',
+          editDraft: '编辑草稿',
+          deriveDraft: '派生新草稿',
+          publish: '发布',
+          confirmPublish: '确认发布',
+          archive: '归档',
+          addStep: '增加步骤',
+          removeStep: '移除'
+        },
+        column: {
+          policy: '策略',
+          priority: '优先级',
+          scope: '匹配范围',
+          version: '版本状态'
+        },
+        state: { published: '已发布', draft: '草稿' },
+        status: { active: '活动', archived: '已归档' },
+        severity: { info: '提示', warning: '警告', critical: '严重' },
+        ticket: { none: '不操作事件单', create: '创建事件单', assign: '分派事件单', escalate: '升级事件单' },
+        scope: {
+          none: '尚未配置',
+          all: '全部矿区与规则',
+          summary: '{mineCount} 个矿区 / {ruleCount} 条规则'
+        },
+        drawer: { create: '新建通知升级策略', edit: '编辑通知升级策略草稿' },
+        form: {
+          code: '策略编码',
+          priority: '匹配优先级',
+          severity: '告警等级',
+          description: '策略说明',
+          mineIds: '矿区 ID 范围（空表示全部）',
+          ruleKeys: '告警规则编码范围（空表示全部）',
+          stopOnAck: '确认后停止后续升级',
+          notifyOnRecovery: '恢复时发送通知',
+          steps: '有序触达步骤'
+        },
+        step: {
+          title: '第 {number} 步',
+          delay: '告警发生后延迟（秒）',
+          channel: '通知渠道',
+          group: '接收组',
+          triggerTemplate: '告警触发模板',
+          recoveryTemplate: '告警恢复模板',
+          ticketAction: '事件单动作',
+          ticketPriority: '事件单优先级'
+        },
+        publish: {
+          title: '发布不可变策略版本',
+          warningTitle: '发布后不能直接修改',
+          warningContent: '发布将立即替换当前生效版本。后续修改必须从已发布快照派生新草稿。',
+          reason: '发布原因'
+        },
+        archive: {
+          title: '归档升级策略',
+          content: '归档后该策略不再匹配新告警，历史发布快照仍保留审计。'
+        },
+        message: {
+          required: '请补齐策略名称、等级和所有触达步骤依赖',
+          saved: '通知升级策略草稿已保存',
+          draftCreated: '已从发布快照派生新草稿',
+          publicationReasonRequired: '请填写发布原因',
+          published: '通知升级策略已发布',
+          archived: '通知升级策略已归档'
+        }
       }
     },
     menu: {

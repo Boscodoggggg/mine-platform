@@ -23,7 +23,9 @@ import {
   NSelect,
   NSpace,
   NSwitch,
+  NTabPane,
   NTag,
+  NTabs,
   NText
 } from 'naive-ui';
 import { ApiError } from '@/api/client';
@@ -42,6 +44,9 @@ import type {
   NotificationProviderDefinition,
   NotificationProviderField
 } from '@/modules/notification/api/notification';
+import NotificationPoliciesPanel from '@/modules/notification/components/NotificationPoliciesPanel.vue';
+import NotificationRecipientsPanel from '@/modules/notification/components/NotificationRecipientsPanel.vue';
+import NotificationTemplatesPanel from '@/modules/notification/components/NotificationTemplatesPanel.vue';
 import { useAuthStore } from '@/store/modules/auth';
 
 interface ChannelForm {
@@ -96,10 +101,14 @@ const secretProblem = ref<string | null>(null);
 const providers = ref<NotificationProviderDefinition[]>([]);
 const channels = ref<NotificationChannel[]>([]);
 const secretsLoaded = ref(false);
+const activeTab = ref('channels');
 const form = reactive<ChannelForm>(emptyForm());
 
 const canEdit = computed(() => can('notification:channel:edit'));
 const canRevealSecrets = computed(() => can('notification:channel:secret:view'));
+const canViewRecipients = computed(() => can('notification:recipient:view'));
+const canViewTemplates = computed(() => can('notification:template:view'));
+const canViewPolicies = computed(() => can('notification:policy:view'));
 const editing = computed(() => Boolean(form.id));
 const selectedProvider = computed(() => providers.value.find(item => item.key.provider === form.provider) ?? null);
 const providerOptions = computed<SelectOption[]>(() =>
@@ -423,44 +432,57 @@ defineExpose({ openEdit, saveChannel });
 
 <template>
   <div class="flex flex-col gap-4">
-    <NPageHeader :title="t('mine.notification.title')" :subtitle="t('mine.notification.subtitle')">
-      <template #extra>
-        <NSpace>
-          <NButton :loading="loading" @click="loadChannels">
-            {{ t('mine.notification.action.refresh') }}
-          </NButton>
-          <NButton v-if="canEdit" type="primary" data-action="create-channel" @click="openCreate">
-            {{ t('mine.notification.action.create') }}
-          </NButton>
-        </NSpace>
-      </template>
-    </NPageHeader>
-
-    <NAlert type="info" :title="t('mine.notification.noticeTitle')">
-      {{ t('mine.notification.noticeContent') }}
-    </NAlert>
-    <NAlert v-if="problem" type="error" :title="t('mine.notification.message.loadFailed')">
-      {{ problem }}
-    </NAlert>
+    <NPageHeader :title="t('mine.notification.title')" :subtitle="t('mine.notification.subtitle')" />
 
     <NCard :bordered="false">
-      <NDataTable
-        :columns="columns"
-        :data="channels"
-        :loading="loading"
-        :row-key="row => row.id"
-        :scroll-x="1080"
-      >
-        <template #empty>
-          <NEmpty :description="t('mine.notification.empty')">
-            <template v-if="canEdit" #extra>
-              <NButton type="primary" @click="openCreate">
-                {{ t('mine.notification.action.createFirst') }}
-              </NButton>
-            </template>
-          </NEmpty>
-        </template>
-      </NDataTable>
+      <NTabs v-model:value="activeTab" type="line" animated>
+        <NTabPane name="channels" :tab="t('mine.notification.tab.channels')">
+          <NFlex vertical :size="20">
+            <NFlex justify="flex-end" align="center" wrap>
+              <NSpace>
+                <NButton :loading="loading" @click="loadChannels">
+                  {{ t('mine.notification.action.refresh') }}
+                </NButton>
+                <NButton v-if="canEdit" type="primary" data-action="create-channel" @click="openCreate">
+                  {{ t('mine.notification.action.create') }}
+                </NButton>
+              </NSpace>
+            </NFlex>
+            <NAlert type="info" :title="t('mine.notification.noticeTitle')">
+              {{ t('mine.notification.noticeContent') }}
+            </NAlert>
+            <NAlert v-if="problem" type="error" :title="t('mine.notification.message.loadFailed')">
+              {{ problem }}
+            </NAlert>
+            <NDataTable
+              :columns="columns"
+              :data="channels"
+              :loading="loading"
+              :row-key="row => row.id"
+              :scroll-x="1080"
+            >
+              <template #empty>
+                <NEmpty :description="t('mine.notification.empty')">
+                  <template v-if="canEdit" #extra>
+                    <NButton type="primary" @click="openCreate">
+                      {{ t('mine.notification.action.createFirst') }}
+                    </NButton>
+                  </template>
+                </NEmpty>
+              </template>
+            </NDataTable>
+          </NFlex>
+        </NTabPane>
+        <NTabPane v-if="canViewRecipients" name="recipients" :tab="t('mine.notification.tab.recipients')">
+          <NotificationRecipientsPanel />
+        </NTabPane>
+        <NTabPane v-if="canViewTemplates" name="templates" :tab="t('mine.notification.tab.templates')">
+          <NotificationTemplatesPanel />
+        </NTabPane>
+        <NTabPane v-if="canViewPolicies" name="policies" :tab="t('mine.notification.tab.policies')">
+          <NotificationPoliciesPanel />
+        </NTabPane>
+      </NTabs>
     </NCard>
 
     <NDrawer v-model:show="drawerVisible" :width="720" placement="right" @after-leave="closeDrawer">
