@@ -184,7 +184,13 @@ Compose profiles：
 
 所有服务启动时输出“非敏感有效配置摘要”和版本，不打印 secret。
 
-### 7.1 数据保留调度参数
+### 7.1 通知控制面密钥与恢复顺序
+
+`mine-server` 通过只读文件 `/run/secrets/mine_notification_data_key` 加载通知独立 AES-256-GCM 数据密钥。该密钥与 PostgreSQL 中的渠道凭据、接收目标和 `notification_secret_key_guard` 必须作为同一恢复集合管理，但 `deploy/scripts/backup-standalone.sh` 生成的事实备份有意排除 `deploy/secrets/`；部署方必须把密钥单独写入受控密码库或离线密钥备份，禁止把它附加到普通数据库归档、Git、镜像、日志或工单。
+
+恢复时先从受控介质恢复原通知密钥并校验文件权限，再恢复 PostgreSQL，最后启动 `mine-server`。密钥缺失或与数据库哨兵不匹配时启动门禁会保持服务不健康；不得通过删除哨兵、清空密文或替换随机密钥绕过。完整发布、备份、恢复和回退步骤见 [通知 Provider 配置与安全运行手册](runbooks/notification-providers.md)。
+
+### 7.2 数据保留调度参数
 
 数据保留在应用默认配置中关闭，单机 Compose 显式开启。多 Telemetry 实例可以同时开启，但必须使用不同实例标识；数据库 advisory lock 会让同一 TimescaleDB 每轮只有一个实例真正执行。
 
@@ -200,7 +206,7 @@ Compose profiles：
 
 批次和周期上限是数据库保护参数，不是吞吐承诺。调整前必须结合候选积压、磁盘、WAL、锁等待、查询计划和备份窗口；不得为追赶积压直接提高到最大值。标准操作、暂停和恢复步骤见 [数据保留运行手册](runbooks/retention-runtime.md)。
 
-### 7.2 数值聚合与显式重算参数
+### 7.3 数值聚合与显式重算参数
 
 数值聚合和显式重算在应用默认配置中关闭，单机 Compose 显式开启。多 Telemetry 实例必须使用不同实例标识；常规物化与显式重算共用数据库 advisory lock。每轮常规物化退出后最多认领一个重算请求，避免历史修复挤占实时遥测资源。
 
@@ -218,7 +224,7 @@ Compose profiles：
 
 批次、周期、间隔和租约是资源保护参数，不是性能承诺。生产调整前必须使用真实数据分布验证桶积压、查询计划、WAL/IO、磁盘、并发历史查询和重算时长。操作、告警、暂停和恢复见 [数值聚合运行手册](runbooks/aggregation-runtime.md)。
 
-### 7.3 TCP 二进制 Gateway 参数
+### 7.4 TCP 二进制 Gateway 参数
 
 TCP 二进制监听器在应用默认配置中关闭，Standalone Compose 为可复现纵向样例显式开启。容器内部监听全部接口，
 宿主发布地址默认 `127.0.0.1`；只有设备网防火墙、来源白名单、证书、身份快照和告警全部就绪后，才能把

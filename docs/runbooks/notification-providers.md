@@ -16,7 +16,9 @@
 
 平台不提供通知 JAR 上传、开放 SPI 注册、动态类加载或任意脚本执行。新增 Provider 必须随平台代码评审、测试和版本发布。
 
-当前已提供管理员通知渠道工作台，可按 Provider 元数据动态配置渠道、启停状态、超时参数和加密凭据。尚未实现升级策略发布、告警事务创建通知事件、投递租约工作器、异步回执和事件单。真实 SMTP、机器人、短信和电话发送按产品决策延期，自动化测试不会访问收费或外部 API。
+管理员通过“告警管理 → 通知渠道”进入统一工作台，四个页签分别维护通知渠道、接收对象、通知模板和升级策略。渠道表单按 Provider 元数据动态生成；密码、Webhook、Bearer Token、AccessKey 等敏感字段加密保存，只有具备独立权限的管理员主动打开编辑页时才回显并记录读取审计。接收目标在普通列表中只显示脱敏值，真实目标使用独立接口回显并审计。模板限制渠道、告警生命周期和变量白名单；升级策略只编辑草稿，发布前校验启用渠道、接收组、至少一个启用成员、模板类型和同优先级范围冲突，发布快照不可原地修改。
+
+当前尚未实现告警事务创建通知事件、投递账本与租约工作器、异步回执、送达状态和事件单运行时。七种 Provider 已实现请求映射与安全分类，但没有运行时调用方时不会自行发送。真实 SMTP、机器人、短信和电话发送按产品决策延期，自动化测试不会访问收费或外部 API；本手册中的 `SUBMITTED`/`UNKNOWN` 等语义描述的是适配器被后续投递运行时调用后的契约，不是当前控制面已经产生的送达证明。
 
 ## 2. 独立数据密钥
 
@@ -31,7 +33,7 @@ Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用
 
 禁止把密钥写入环境变量、Git、镜像、数据库、日志或工单。密钥文件必须纳入现场受控备份。当前版本尚未提供在线密钥轮换作业，轮换前必须先实现并演练批量重加密；直接替换会导致历史渠道凭据无法解密。
 
-## 3. 管理接口
+## 3. 管理接口与权限拆分
 
 - `GET /api/v1/notifications/providers`：返回受控 Provider 和字段元数据。
 - `GET /api/v1/notifications/channels`：返回安全渠道摘要。
@@ -39,8 +41,20 @@ Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用
 - `GET /api/v1/notifications/channels/{channelId}/secrets`：向具备独立权限的管理员返回当前真实凭据，并记录读取审计。
 - `POST /api/v1/notifications/channels`：创建渠道。
 - `PUT /api/v1/notifications/channels/{channelId}`：按 `version` 乐观更新渠道。
+- `/api/v1/notifications/recipient-groups/**`：维护接收组、接收对象和受控真实目标读取。
+- `/api/v1/notifications/templates/**`：查询变量目录并维护受控模板。
+- `/api/v1/notifications/policies/**`：维护草稿、从发布快照派生草稿、发布不可变版本和归档策略。
 
-查看需要 `notification:channel:view`，修改需要 `notification:channel:edit`，真实凭据回显还必须具备 `notification:channel:secret:view`。普通列表和详情响应仅返回 `secretConfigured`，不得返回明文、密文或脱敏后仍可复原的内容；只有独立凭据接口可以返回真实值，其响应使用 `Cache-Control: no-store`，审计只记录渠道、Provider、版本和字段名，不记录字段值。前端仅在有权限的管理员打开编辑抽屉时调用该接口，密码、Webhook、AccessKey 等字段默认遮挡，可通过输入框显隐按钮查看。服务端还会依据 Provider 元数据从普通响应配置中剔除误存的敏感字段。禁用渠道可以保存不完整草稿，启用前必须满足 Provider 必填配置。
+| 能力 | 查看权限 | 修改/动作权限 | 敏感/高风险权限 |
+|---|---|---|---|
+| 渠道 | `notification:channel:view` | `notification:channel:edit` | `notification:channel:secret:view` |
+| 接收对象 | `notification:recipient:view` | `notification:recipient:edit` | `notification:recipient:secret:view` |
+| 模板 | `notification:template:view` | `notification:template:edit` | 无 |
+| 升级策略 | `notification:policy:view` | `notification:policy:edit` | `notification:policy:publish` |
+
+普通列表和详情响应仅返回 `secretConfigured` 或脱敏目标，不得返回明文、密文或可复原内容；只有独立敏感接口可以返回真实值，其响应使用 `Cache-Control: no-store`，审计只记录资源、版本和字段名，不记录字段值。密码、Webhook、AccessKey 等字段默认遮挡，可通过输入框显隐按钮查看。服务端还会依据 Provider 元数据从普通响应配置中剔除误存的敏感字段。禁用渠道可以保存不完整草稿，启用前必须满足 Provider 必填配置。
+
+发布权限不得因为用户拥有策略编辑权限而自动授予。管理员菜单是否可见同时依赖 V57/V61 菜单迁移、角色权限和当前登录令牌；升级后如果页面仍是旧菜单，先确认 Nginx 使用的新 `mine-web/dist` 已发布，再让用户重新登录刷新权限快照，不要通过前端硬编码绕过菜单或按钮权限。
 
 ## 4. 网络与重复发送边界
 
@@ -53,7 +67,29 @@ Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用
 - SMTP 连接失败可重试；认证或收件地址错误为永久失败；发送阶段无法判断是否提交时返回 `UNKNOWN`。
 - `SUBMITTED` 只代表供应商或邮件服务器受理，不代表最终终端送达。只有后续可信异步回执可以把短信或语音更新为 `DELIVERED`。
 
-## 5. 上线前检查
+## 5. 发布、备份与恢复
+
+### 5.1 发布顺序
+
+1. 备份 PostgreSQL 事实库，并在独立受控介质中确认 `mine_notification_data_key` 可恢复；记录当前不可变镜像、前端制品摘要和 Flyway 版本。
+2. 运行 `bash deploy/scripts/preflight.sh`，确认通知密钥存在、权限正确、证书与 Compose 配置有效。
+3. 先发布能执行 V53～V62 的新 `mine-server`，等待 Flyway 完成和健康检查通过，再发布匹配的 `mine-web/dist` 与 Nginx。
+4. 使用拥有相应权限的管理员重新登录，检查四个页签、脱敏列表、受控回显、草稿保存、发布和归档；验收策略必须使用不会命中真实告警的唯一规则范围，并在验证后归档、停用验收渠道。
+5. 检查 `sys_operation_log` 中的创建、敏感读取、发布、归档记录，不在日志或验收报告中保存真实凭据和触达目标。
+
+### 5.2 备份与恢复
+
+PostgreSQL 一致性备份必须包含 `notification_channel`、`notification_recipient_group`、`notification_recipient`、`notification_template`、`notification_policy`、`notification_policy_version`、`notification_policy_step`、`notification_secret_key_guard` 和关联 `sys_operation_log`。Standalone 事实备份有意排除所有 secret，因此通知密钥必须通过密码库或独立加密离线介质备份，不能塞回普通事实归档。
+
+恢复顺序固定为：恢复原通知密钥并校验权限 → 恢复 PostgreSQL → 启动单个 `mine-server` 完成密钥哨兵和 Flyway 校验 → 检查敏感字段可受控读取 → 扩容服务和开放管理入口。缺少原密钥时历史密文不可恢复；不得删除哨兵、清空密文或生成新密钥强行启动。当前没有在线轮换作业，轮换必须先实现可恢复的批量重加密和双人演练。
+
+### 5.3 回退
+
+数据库迁移只向前执行，不运行 Flyway down、不删除发布快照和审计事实。V62 已把外部联系人从 `EXTERNAL` 迁移为公开契约 `EXTERNAL_CONTACT`，只认识旧枚举的后端与 V62 数据不兼容；完成 V62 后不得直接回退旧应用。优先以前向修复恢复服务；确需回退时必须进入维护窗口，基于已验证备份同时转换数据与约束，并用匹配版本验证，不能只替换 JAR。
+
+业务策略回退也不修改已发布版本：从当前发布快照派生新草稿，修订后发布更高版本；需要立即停止匹配时归档策略或停用渠道。任何回退都不得以直接更新 `notification_policy_version`、删除步骤或覆盖密文实现。
+
+## 6. 上线前检查
 
 ```bash
 bash deploy/tests/compose-config.sh
@@ -61,3 +97,5 @@ bash deploy/scripts/preflight.sh
 ```
 
 现场启用任一 Provider 前还必须完成：供应商账号最小权限、IP/域名出口策略、签名与模板审核、号码资质、费用限额、退订与隐私要求、真实单条发送、回执对账、失败演练和密钥恢复演练。上述证据完成前，通知能力只能标记为非现场自动化通过，不能作为生产放行依据。
+
+如果启用 Webhook 时提示供应商配置不合法，优先检查应用容器能否解析目标域名、目标是否为精确白名单内的公网 HTTPS 地址，以及解析结果是否命中私网/环回/链路本地/共享地址保护。不要为了通过校验关闭 SSRF 保护；网络未准备好时先保存禁用草稿。

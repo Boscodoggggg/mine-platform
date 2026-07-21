@@ -696,6 +696,8 @@ V47 创建发生时作业状态历史；V48 创建矿区连续业务序号；V49
 
 `alarm_event` 以告警周期为聚合根，保存设备与规则快照、策略运行证据，以及相互正交的触发、恢复、首次确认和关闭事实。推导状态包括 `ACTIVE_UNACKNOWLEDGED`、`ACTIVE_ACKNOWLEDGED`、`RECOVERED_UNACKNOWLEDGED`、`RECOVERED_ACKNOWLEDGED`、`CLOSED`；数据库约束保证关闭一定晚于恢复。`alarm_acknowledgement` 是每个周期唯一的首次确认事实，保存操作人、说明、幂等键和时间。V26 为两表及全部字段提供中文注释，`DatabaseMigrationIT` 校验完整性、索引、约束和菜单权限节点。
 
+通知控制面由 V53～V62 固化：`notification_channel` 保存 Provider、非敏感配置和独立密钥加密凭据；`notification_recipient_group` 与 `notification_recipient` 保存启用边界、加密触达目标和不可逆查重摘要；`notification_template` 保存渠道、告警生命周期和变量白名单约束；`notification_policy`、`notification_policy_version` 与 `notification_policy_step` 保存稳定策略、有序步骤、草稿和不可变发布快照；`notification_secret_key_guard` 在启动时验证数据库与部署密钥身份。V62 把外部联系人契约统一为 `EXTERNAL_CONTACT` 并迁移旧 `EXTERNAL` 数据。全部表和字段都有中文注释，迁移集成测试同时验证约束、权限和升级兼容。
+
 Telemetry 数据库另保存：
 
 - `telemetry_alarm_policy`：每台设备最后正确的已编译告警策略镜像。

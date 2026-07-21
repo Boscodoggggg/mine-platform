@@ -4,6 +4,8 @@ mine-platform 是面向单矿区私有化部署的智慧矿山数据采集与设
 
 项目目前处于工程底座建设阶段，模块名为临时稳定名称，后续修改产品名称不改变模块边界。
 
+告警通知控制面已经提供“告警管理 → 通知渠道”统一入口，可维护平台内置 Provider、加密凭据、接收组、接收对象、受控模板和不可变升级策略。当前结论仅覆盖仓库自动化与本地管理员闭环，不包含真实短信、电话、邮件、企业 IM 送达、异步回执或事件单运行时；上线边界和验收证据见 [通知 Provider 配置与安全运行手册](docs/runbooks/notification-providers.md) 与 [Phase 2 通知控制面验收报告](docs/reports/phase-2-notification-control-plane-acceptance.md)。
+
 ## 工程约定
 
 - Maven groupId：`com.bosco`
