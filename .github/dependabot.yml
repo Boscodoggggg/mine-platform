@@ -8,9 +8,10 @@ updates:
       time: "09:00"
       timezone: Asia/Shanghai
     groups:
-      java-minor-patch:
-        update-types: [minor, patch]
-    open-pull-requests-limit: 5
+      java-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "chore(deps)"
 
@@ -22,9 +23,10 @@ updates:
       time: "09:30"
       timezone: Asia/Shanghai
     groups:
-      frontend-minor-patch:
-        update-types: [minor, patch]
-    open-pull-requests-limit: 5
+      frontend-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "chore(deps)"
 
@@ -35,7 +37,11 @@ updates:
       day: monday
       time: "10:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    groups:
+      compose-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "chore(deps)"
 
@@ -46,6 +52,10 @@ updates:
       day: monday
       time: "10:30"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 5
+    groups:
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "chore(ci)"

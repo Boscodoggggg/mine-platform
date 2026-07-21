@@ -101,20 +101,27 @@ security_url = "https://github.com/Boscodoggggg/mine-platform/security/advisorie
 fail_with("#{config_path} 缺少私密漏洞报告入口") unless links.any? { |link| link["url"] == security_url }
 
 codeowners_path = File.join(ROOT_DIR, ".github", "CODEOWNERS")
-rules = File.readlines(codeowners_path, chomp: true).map do |line|
-  stripped = line.strip
-  next if stripped.empty? || stripped.start_with?("#")
+fail_with("单维护者阶段不应配置 CODEOWNERS 自动请求本人审查") if File.exist?(codeowners_path)
 
-  tokens = stripped.split
-  fail_with("CODEOWNERS 规则必须包含路径和至少一个所有者：#{stripped}") if tokens.length < 2
-  pattern, *owners = tokens
-  fail_with("CODEOWNERS 路径模式非法：#{pattern}") unless pattern == "*" || pattern.start_with?("/")
-  owners.each do |owner|
-    valid_owner = owner.match?(/\A@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?\z/) || owner.match?(/\A[^\s@]+@[^\s@]+\.[^\s@]+\z/)
-    fail_with("CODEOWNERS 所有者非法：#{owner}") unless valid_owner
+dependabot_path = File.join(".github", "dependabot.yml")
+dependabot = load_yaml(dependabot_path)
+updates = dependabot.is_a?(Hash) ? dependabot["updates"] : nil
+fail_with("#{dependabot_path} 必须包含更新配置") unless updates.is_a?(Array) && !updates.empty?
+
+expected_ecosystems = %w[maven npm docker-compose github-actions]
+actual_ecosystems = updates.map { |update| update["package-ecosystem"] }.compact
+missing_ecosystems = expected_ecosystems - actual_ecosystems
+fail_with("#{dependabot_path} 缺少生态配置 #{missing_ecosystems.join(', ')}") unless missing_ecosystems.empty?
+
+updates.each do |update|
+  ecosystem = update["package-ecosystem"]
+  fail_with("#{dependabot_path} #{ecosystem} 必须禁用常规版本更新 PR") unless update["open-pull-requests-limit"] == 0
+
+  groups = update["groups"]
+  security_grouped = groups.is_a?(Hash) && groups.values.any? do |group|
+    group.is_a?(Hash) && group["applies-to"] == "security-updates" && group["patterns"] == ["*"]
   end
-  [pattern, owners]
-end.compact
-fail_with("CODEOWNERS 缺少全仓默认所有者") unless rules.any? { |pattern, owners| pattern == "*" && owners.include?("@Boscodoggggg") }
+  fail_with("#{dependabot_path} #{ecosystem} 必须将安全更新分组") unless security_grouped
+end
 
-puts "PASS: Issue Forms、社区配置与 CODEOWNERS 结构合法"
+puts "PASS: Issue Forms、社区配置与 Dependabot 低噪音策略合法"
