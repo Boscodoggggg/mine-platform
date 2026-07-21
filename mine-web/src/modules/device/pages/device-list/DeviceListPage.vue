@@ -50,6 +50,9 @@ import type {
   DeviceStatus,
   Product
 } from '@/modules/device/api/device';
+import { getEffectiveStrategy } from '@/modules/device/api/strategy';
+import type { EffectiveStrategy, StrategyType } from '@/modules/device/api/strategy';
+import EffectiveStrategyPanel from '@/modules/device/components/strategy/EffectiveStrategyPanel.vue';
 import { getEnabledDictionaryItems } from '@/modules/system/api/dictionary';
 import type { DictionaryItem } from '@/modules/system/api/dictionary';
 import { useAuthStore } from '@/store/modules/auth';
@@ -93,6 +96,17 @@ const deviceForm = reactive({
   version: 0
 });
 const connectionDrawerVisible = ref(false);
+const strategyDrawerVisible = ref(false);
+const strategyLoading = ref(false);
+const strategyDevice = ref<Device | null>(null);
+const currentStrategyType = ref<StrategyType>('ONLINE_STATUS');
+const effectiveStrategy = ref<EffectiveStrategy | null>(null);
+const strategyProblem = ref<{
+  code: string;
+  message: string;
+  traceId?: string;
+  details?: Record<string, unknown>;
+} | null>(null);
 const connectionLoading = ref(false);
 const connectionSaving = ref(false);
 const connectionTesting = ref(false);
@@ -137,6 +151,12 @@ const editableStatusOptions = computed(() =>
 const connectionModeOptions = computed<SelectOption[]>(() =>
   CONNECTION_MODES.map(value => ({
     label: t(`mine.devices.connection.mode.${connectionKey(value)}`),
+    value
+  }))
+);
+const runtimeStrategyTypeOptions = computed<SelectOption[]>(() =>
+  (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM'] as StrategyType[]).map(value => ({
+    label: t(`mine.strategy.type.${value.toLowerCase()}`),
     value
   }))
 );
@@ -219,9 +239,21 @@ const columns = computed<DataTableColumns<Device>>(() => [
   {
     title: t('mine.common.action'),
     key: 'actions',
-    width: 230,
+    width: 320,
     render: row =>
       h(NSpace, { size: 12 }, () => [
+        can('device:strategy:view') && row.status !== 'ARCHIVED'
+          ? h(
+              NButton,
+              {
+                text: true,
+                type: 'primary',
+                'data-action': 'device-effective-strategy',
+                onClick: () => openCurrentStrategy(row)
+              },
+              () => t('mine.devices.action.currentStrategy')
+            )
+          : null,
         can('device:connection:view') && row.status !== 'ARCHIVED'
           ? h(
               NButton,
@@ -433,6 +465,35 @@ async function loadConnectionProfile() {
   }
 }
 
+async function openCurrentStrategy(device: Device) {
+  strategyDevice.value = device;
+  currentStrategyType.value = 'ONLINE_STATUS';
+  strategyDrawerVisible.value = true;
+  await loadCurrentStrategy();
+}
+
+async function loadCurrentStrategy() {
+  if (!strategyDevice.value) return;
+  strategyLoading.value = true;
+  strategyProblem.value = null;
+  try {
+    effectiveStrategy.value = await getEffectiveStrategy(strategyDevice.value.id, currentStrategyType.value);
+  } catch (error) {
+    effectiveStrategy.value = null;
+    strategyProblem.value =
+      error instanceof ApiError
+        ? { code: error.code, message: error.message, traceId: error.traceId, details: error.details }
+        : { code: 'SYS-UNKNOWN-001', message: t('mine.common.operationFailed') };
+  } finally {
+    strategyLoading.value = false;
+  }
+}
+
+function onCurrentStrategyTypeChanged(value: StrategyType) {
+  currentStrategyType.value = value;
+  return loadCurrentStrategy();
+}
+
 async function saveConnectionProfile() {
   if (!connectionDevice.value || !connectionForm.host.trim() || connectionForm.port < 1) {
     return window.$message?.warning(t('mine.devices.connection.validation'));
@@ -593,6 +654,7 @@ defineExpose({
   openEdit,
   saveDevice,
   openConnectionConfig,
+  openCurrentStrategy,
   saveConnectionProfile,
   switchConnectionMode,
   runConnectionTest,
@@ -920,6 +982,32 @@ defineExpose({
             </NButton>
           </NSpace>
         </template>
+      </NDrawerContent>
+    </NDrawer>
+
+    <NDrawer v-model:show="strategyDrawerVisible" width="min(760px, 94vw)">
+      <NDrawerContent
+        :title="t('mine.devices.strategy.title', { name: strategyDevice?.name || '' })"
+        closable
+        :native-scrollbar="false"
+      >
+        <NSpace vertical :size="16">
+          <NAlert type="info" :bordered="false">{{ t('mine.devices.strategy.help') }}</NAlert>
+          <NSelect
+            :value="currentStrategyType"
+            data-field="device-strategy-type"
+            :options="runtimeStrategyTypeOptions"
+            :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.strategyType') })"
+            @update:value="onCurrentStrategyTypeChanged"
+          />
+          <EffectiveStrategyPanel
+            :device-name="strategyDevice?.name"
+            :loading="strategyLoading"
+            :effective="effectiveStrategy"
+            :problem="strategyProblem"
+            @refresh="loadCurrentStrategy"
+          />
+        </NSpace>
       </NDrawerContent>
     </NDrawer>
   </NSpace>

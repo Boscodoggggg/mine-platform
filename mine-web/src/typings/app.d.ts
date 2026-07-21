@@ -1331,7 +1331,8 @@ declare namespace App {
           empty: string;
           emptyDescription: string;
           column: Record<'key' | 'name' | 'type' | 'status' | 'updatedAt', string>;
-          action: Record<'create' | 'archive', string>;
+          action: Record<'create' | 'archive' | 'runtimeStrategy', string>;
+          strategy: Record<'title', string>;
           modal: Record<'create' | 'edit', string>;
           field: Record<'key' | 'name' | 'type' | 'status', string>;
           placeholder: Record<'key' | 'type', string>;
@@ -1350,7 +1351,8 @@ declare namespace App {
             'code' | 'name' | 'product' | 'status' | 'accessStatus' | 'lastReceivedAt' | 'updatedAt',
             string
           >;
-          action: Record<'create' | 'archive' | 'connection', string>;
+          action: Record<'create' | 'archive' | 'connection' | 'currentStrategy', string>;
+          strategy: Record<'title' | 'help', string>;
           modal: Record<'create' | 'edit', string>;
           field: Record<'code' | 'name' | 'product' | 'status', string>;
           placeholder: Record<'product' | 'code', string>;

@@ -912,9 +912,58 @@ describe('StrategyWorkbenchPage', () => {
     expect(strategyApi.listRetentionExecutions).toHaveBeenCalledWith(20);
     expect(wrapper.text()).toContain('800');
   });
+
+  it('产品内嵌入口应固定产品并只显示设备运行策略类型', async () => {
+    const wrapper = mountPage(['device:strategy:view'], {
+      fixedProductId: 'product-1',
+      allowedStrategyTypes: ['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM'],
+      embedded: true
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-field="strategy-product"]').exists()).toBe(false);
+    const selector = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'strategy-type');
+    const options = selector?.props('options') as Array<{ value: string }> | undefined;
+    expect(options?.map(option => option.value)).toEqual([
+      'ONLINE_STATUS',
+      'DATA_QUALITY',
+      'ALARM'
+    ]);
+    expect(strategyApi.listStrategyVersions).toHaveBeenCalledWith({
+      productId: 'product-1',
+      strategyType: 'ONLINE_STATUS',
+      limit: 50
+    });
+  });
+
+  it('产品内嵌入口应直接使用固定产品而不受首批产品列表限制', async () => {
+    const wrapper = mountPage(['device:strategy:view'], {
+      fixedProductId: 'product-outside-first-page',
+      allowedStrategyTypes: ['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM'],
+      embedded: true
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-field="strategy-product"]').exists()).toBe(false);
+    expect(strategyApi.listStrategyVersions).toHaveBeenCalledWith({
+      productId: 'product-outside-first-page',
+      strategyType: 'ONLINE_STATUS',
+      limit: 50
+    });
+  });
 });
 
-function mountPage(permissions: string[], props: { fixedStrategyType?: 'RETENTION' } = {}) {
+function mountPage(
+  permissions: string[],
+  props: {
+    fixedStrategyType?: 'RETENTION';
+    fixedProductId?: string;
+    allowedStrategyTypes?: Array<'ONLINE_STATUS' | 'DATA_QUALITY' | 'ALARM'>;
+    embedded?: boolean;
+  } = {}
+) {
   authState.userInfo.buttons = permissions;
   return mount(StrategyWorkbenchPage, {
     props,

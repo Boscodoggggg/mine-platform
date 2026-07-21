@@ -6,6 +6,8 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NDrawer,
+  NDrawerContent,
   NEmpty,
   NFlex,
   NForm,
@@ -25,6 +27,8 @@ import ListActionButton from '@/components/common/list-action-button.vue';
 import ListSearchPanel from '@/components/common/list-search-panel.vue';
 import { archiveProduct, createProduct, getProducts, updateProduct } from '@/modules/device/api/device';
 import type { Product, ProductStatus } from '@/modules/device/api/device';
+import type { StrategyType } from '@/modules/device/api/strategy';
+import StrategyWorkbenchPage from '@/modules/device/pages/strategy/StrategyWorkbenchPage.vue';
 import { getEnabledDictionaryItems } from '@/modules/system/api/dictionary';
 import type { DictionaryItem } from '@/modules/system/api/dictionary';
 import { useAuthStore } from '@/store/modules/auth';
@@ -44,6 +48,9 @@ const query = reactive<{ keyword: string; status: ProductStatus | null; page: nu
   size: 20
 });
 const modalVisible = ref(false);
+const strategyDrawerVisible = ref(false);
+const strategyProduct = ref<Product | null>(null);
+const productStrategyTypes: StrategyType[] = ['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM'];
 const editingId = ref<string | null>(null);
 const productForm = reactive({
   productKey: '',
@@ -83,9 +90,21 @@ const columns = computed<DataTableColumns<Product>>(() => [
   {
     title: t('mine.common.action'),
     key: 'actions',
-    width: 150,
+    width: 230,
     render: row =>
       h(NSpace, { size: 12 }, () => [
+        can('device:strategy:view') && row.status === 'ACTIVE'
+          ? h(
+              NButton,
+              {
+                text: true,
+                type: 'primary',
+                'data-action': 'product-runtime-strategy',
+                onClick: () => openRuntimeStrategy(row)
+              },
+              () => t('mine.products.action.runtimeStrategy')
+            )
+          : null,
         can('device:product:update') && row.status !== 'ARCHIVED'
           ? h(NButton, { text: true, type: 'primary', onClick: () => openEdit(row) }, () => t('mine.common.edit'))
           : null,
@@ -156,6 +175,11 @@ function openEdit(product: Product) {
     version: product.version
   });
   modalVisible.value = true;
+}
+
+function openRuntimeStrategy(product: Product) {
+  strategyProduct.value = product;
+  strategyDrawerVisible.value = true;
 }
 
 async function saveProduct() {
@@ -264,6 +288,7 @@ defineExpose({
   productStatusType,
   openCreate,
   openEdit,
+  openRuntimeStrategy,
   saveProduct
 });
 </script>
@@ -397,5 +422,21 @@ defineExpose({
         </NSpace>
       </template>
     </NModal>
+
+    <NDrawer v-model:show="strategyDrawerVisible" width="min(1440px, 96vw)">
+      <NDrawerContent
+        :title="t('mine.products.strategy.title', { name: strategyProduct?.name || '' })"
+        closable
+        :native-scrollbar="false"
+      >
+        <StrategyWorkbenchPage
+          v-if="strategyProduct"
+          :key="strategyProduct.id"
+          embedded
+          :fixed-product-id="strategyProduct.id"
+          :allowed-strategy-types="productStrategyTypes"
+        />
+      </NDrawerContent>
+    </NDrawer>
   </NSpace>
 </template>

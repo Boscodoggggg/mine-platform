@@ -1508,7 +1508,8 @@ const local: App.I18n.Schema = {
       empty: 'Create a product before onboarding devices',
       emptyDescription: 'Products group similar devices. Product keys cannot be changed after publication.',
       column: { key: 'Product Key', name: 'Product Name', type: 'Device Type', status: 'Status', updatedAt: 'Updated' },
-      action: { create: 'Create Product', archive: 'Archive' },
+      action: { create: 'Create Product', archive: 'Archive', runtimeStrategy: 'Runtime Policies' },
+      strategy: { title: '{name} · Runtime Policies' },
       modal: { create: 'Create Product', edit: 'Edit Product' },
       field: { key: 'Product Key', name: 'Product Name', type: 'Device Type', status: 'Status' },
       placeholder: { key: 'For example, haul-truck', type: 'For example, VEHICLE' },
@@ -1532,7 +1533,11 @@ const local: App.I18n.Schema = {
         lastReceivedAt: 'Last Report',
         updatedAt: 'Updated'
       },
-      action: { create: 'Create Device', archive: 'Archive', connection: 'Connection' },
+      action: { create: 'Create Device', archive: 'Archive', connection: 'Connection', currentStrategy: 'Current Policies' },
+      strategy: {
+        title: '{name} · Current Policies',
+        help: 'This view shows the rules the device actually uses and where they come from. To make changes, publish a product, group, or device policy from Runtime Policies on the product.'
+      },
       modal: { create: 'Create Device', edit: 'Edit Device' },
       field: { code: 'Device Code', name: 'Device Name', product: 'Product', status: 'Status' },
       placeholder: { product: 'Select a published product', code: 'For example, truck-001' },

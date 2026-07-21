@@ -17,10 +17,12 @@ const api = vi.hoisted(() => ({
   updateDevice: vi.fn()
 }));
 const dictionaryApi = vi.hoisted(() => ({ getEnabledDictionaryItems: vi.fn() }));
+const strategyApi = vi.hoisted(() => ({ getEffectiveStrategy: vi.fn() }));
 const authState = vi.hoisted(() => ({ userInfo: { buttons: [] as string[] } }));
 
 vi.mock('@/modules/device/api/device', () => api);
 vi.mock('@/modules/system/api/dictionary', () => dictionaryApi);
+vi.mock('@/modules/device/api/strategy', () => strategyApi);
 vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
 
 const product = {
@@ -71,6 +73,7 @@ describe('DeviceListPage', () => {
     setLocale('zh-CN');
     Object.values(api).forEach(mock => mock.mockReset());
     dictionaryApi.getEnabledDictionaryItems.mockReset();
+    strategyApi.getEffectiveStrategy.mockReset();
     dictionaryApi.getEnabledDictionaryItems.mockResolvedValue([
       dictionaryItem('ENABLED', '启用', 'Enabled', 'primary'),
       dictionaryItem('DISABLED', '停用', 'Disabled', 'warning'),
@@ -132,6 +135,21 @@ describe('DeviceListPage', () => {
           durationMillis: 0
         }
       ]
+    });
+    strategyApi.getEffectiveStrategy.mockResolvedValue({
+      deviceId: 'device-1',
+      strategyType: 'ONLINE_STATUS',
+      values: { offlineThresholdSeconds: 180 },
+      sources: {
+        offlineThresholdSeconds: {
+          scopeType: 'PRODUCT',
+          scopeId: 'product-1',
+          groupPriority: null,
+          strategyVersionId: 'strategy-version-1'
+        }
+      },
+      conflicts: [],
+      valid: true
     });
     window.$message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() } as never;
   });
@@ -399,11 +417,29 @@ describe('DeviceListPage', () => {
       expect.objectContaining({ connectionMode: 'PLATFORM_TO_DEVICE_TCP', version: 1 })
     );
   });
+
+  it('设备行应提供当前策略入口并展示最终生效来源', async () => {
+    const wrapper = mountPage(['device:strategy:view']);
+    await flushPromises();
+
+    expect(wrapper.get('[data-action="device-effective-strategy"]').text()).toBe('当前策略');
+    const page = wrapper.vm as unknown as {
+      openCurrentStrategy: (target: typeof device) => Promise<void>;
+    };
+
+    await page.openCurrentStrategy(device);
+    await flushPromises();
+
+    expect(strategyApi.getEffectiveStrategy).toHaveBeenCalledWith('device-1', 'ONLINE_STATUS');
+    expect(wrapper.text()).toContain('一号运输车 · 当前策略');
+    expect(wrapper.text()).toContain('180 秒');
+    expect(wrapper.text()).toContain('产品默认');
+  });
 });
 
 function mountPage(permissions: string[]) {
   authState.userInfo.buttons = permissions;
-  return mount(DeviceListPage, { global: { plugins: [i18n] } });
+  return mount(DeviceListPage, { global: { plugins: [i18n], stubs: { teleport: true } } });
 }
 
 function dictionaryItem(value: string, labelZh: string, labelEn: string, semanticType: string) {

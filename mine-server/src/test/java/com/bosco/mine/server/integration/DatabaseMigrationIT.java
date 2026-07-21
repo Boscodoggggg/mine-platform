@@ -1066,7 +1066,6 @@ class DatabaseMigrationIT {
                 "device-model-management",
                 "device-monitor",
                 "device-product-list",
-                "device-strategy-workbench",
                 "mine-binding-management",
                 "mine-location-monitor",
                 "mine-location-tag-management",
@@ -1322,30 +1321,42 @@ class DatabaseMigrationIT {
                 """, Long.class)).isEqualTo(5L);
         assertThat(jdbcTemplate.queryForMap("""
                 SELECT parent.component_key AS parent_component_key,
+                       strategy.name,
+                       strategy.type,
                        strategy.path,
+                       strategy.component_key,
                        strategy.permission,
-                       strategy.visible,
-                       strategy.i18n_key
+                       strategy.visible
                 FROM sys_menu strategy
                 JOIN sys_menu parent ON parent.id = strategy.parent_id
-                WHERE strategy.component_key = 'device-strategy-workbench'
-                """)).containsEntry("parent_component_key", null)
-                .containsEntry("path", "/device/strategies")
+                WHERE strategy.id = '019b0000-0000-7000-8000-00000000024b'
+                """)).containsEntry("parent_component_key", "device-product-list")
+                .containsEntry("name", "查看运行策略")
+                .containsEntry("type", "BUTTON")
+                .containsEntry("path", null)
+                .containsEntry("component_key", null)
                 .containsEntry("permission", "device:strategy:view")
-                .containsEntry("visible", true)
-                .containsEntry("i18n_key", "mine.menu.strategies");
+                .containsEntry("visible", false);
         assertThat(jdbcTemplate.queryForList("""
                 SELECT permission
                 FROM sys_menu
                 WHERE parent_id = (
-                    SELECT id FROM sys_menu WHERE component_key = 'device-strategy-workbench'
+                    SELECT id FROM sys_menu WHERE component_key = 'device-product-list'
                 )
+                  AND id IN (
+                    '019b0000-0000-7000-8000-000000000249',
+                    '019b0000-0000-7000-8000-00000000024a',
+                    '019b0000-0000-7000-8000-00000000024b',
+                    '019b0000-0000-7000-8000-00000000024c',
+                    '019b0000-0000-7000-8000-00000000024d'
+                  )
                 ORDER BY permission
                 """, String.class)).containsExactly(
                 "device:group:edit",
                 "device:group:view",
                 "device:strategy:edit",
-                "device:strategy:publish"
+                "device:strategy:publish",
+                "device:strategy:view"
         );
         assertThat(jdbcTemplate.queryForObject("""
                 SELECT COUNT(*)

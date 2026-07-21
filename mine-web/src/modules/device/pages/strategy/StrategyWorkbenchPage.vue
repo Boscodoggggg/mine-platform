@@ -105,6 +105,9 @@ interface RetentionGroupChangePreviewState {
 
 const props = defineProps<{
   fixedStrategyType?: StrategyType;
+  fixedProductId?: string;
+  allowedStrategyTypes?: StrategyType[];
+  embedded?: boolean;
 }>();
 
 const { locale, t } = useI18n();
@@ -197,10 +200,11 @@ const groupOptions = computed<SelectOption[]>(() =>
   }))
 );
 const strategyTypeOptions = computed<SelectOption[]>(() =>
-  (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM', 'RETENTION', 'AGGREGATION'] as StrategyType[]).map(value => ({
-    label: t(`mine.strategy.type.${value.toLowerCase()}`),
-    value
-  }))
+  (props.allowedStrategyTypes ||
+    (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM', 'RETENTION', 'AGGREGATION'] as StrategyType[])).map(value => ({
+      label: t(`mine.strategy.type.${value.toLowerCase()}`),
+      value
+    }))
 );
 const versionOptions = computed<SelectOption[]>(() =>
   versions.value.map(item => ({
@@ -388,7 +392,7 @@ async function loadProducts() {
   try {
     const response = await getProducts({ page: 1, size: 100 });
     products.value = response.items.filter(item => item.status === 'ACTIVE');
-    productId.value = products.value[0]?.id || null;
+    productId.value = props.fixedProductId || products.value[0]?.id || null;
     await loadProductContext();
   } catch (error) {
     captureProblem(error);
@@ -1388,7 +1392,7 @@ function createIdempotencyKey(prefix: string) {
 <template>
   <div>
     <NFlex vertical :size="16">
-      <NPageHeader :subtitle="pageSubtitle">
+      <NPageHeader v-if="!props.embedded" :subtitle="pageSubtitle">
         <template #title>
           <NText
             strong
@@ -1435,10 +1439,11 @@ function createIdempotencyKey(prefix: string) {
                   />
                 </NFormItem>
               </NGi>
-              <NGi>
+              <NGi v-if="!props.fixedProductId">
                 <NFormItem :label="t('mine.strategy.field.product')" :show-feedback="false">
                   <NSelect
                     v-model:value="productId"
+                    data-field="strategy-product"
                     filterable
                     :options="productOptions"
                     :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.product') })"
@@ -1969,9 +1974,10 @@ function createIdempotencyKey(prefix: string) {
                       @update:value="onStrategyTypeChanged"
                     />
                   </NFormItem>
-                  <NFormItem :label="t('mine.strategy.field.product')">
+                  <NFormItem v-if="!props.fixedProductId" :label="t('mine.strategy.field.product')">
                     <NSelect
                       v-model:value="productId"
+                      data-field="strategy-product"
                       filterable
                       :options="productOptions"
                       :placeholder="

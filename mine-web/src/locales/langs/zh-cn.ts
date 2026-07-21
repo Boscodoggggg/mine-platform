@@ -1452,7 +1452,8 @@ const local: App.I18n.Schema = {
       empty: '先创建产品，再接入设备',
       emptyDescription: '产品用于归集同类设备。产品编码发布后不可修改。',
       column: { key: '产品编码', name: '产品名称', type: '设备类型', status: '状态', updatedAt: '更新时间' },
-      action: { create: '创建产品', archive: '归档' },
+      action: { create: '创建产品', archive: '归档', runtimeStrategy: '运行策略' },
+      strategy: { title: '{name} · 运行策略' },
       modal: { create: '创建产品', edit: '编辑产品' },
       field: { key: '产品编码', name: '产品名称', type: '设备类型', status: '状态' },
       placeholder: { key: '例如 haul-truck', type: '例如 VEHICLE' },
@@ -1476,7 +1477,11 @@ const local: App.I18n.Schema = {
         lastReceivedAt: '最后上报',
         updatedAt: '更新时间'
       },
-      action: { create: '创建设备', archive: '归档', connection: '接入配置' },
+      action: { create: '创建设备', archive: '归档', connection: '接入配置', currentStrategy: '当前策略' },
+      strategy: {
+        title: '{name} · 当前策略',
+        help: '这里展示设备最终执行的规则及其来源。需要调整时，请到所属产品的“运行策略”中发布产品、设备组或单设备配置。'
+      },
       modal: { create: '创建设备', edit: '编辑设备' },
       field: { code: '设备编码', name: '设备名称', product: '所属产品', status: '状态' },
       placeholder: { product: '请选择已发布产品', code: '例如 truck-001' },

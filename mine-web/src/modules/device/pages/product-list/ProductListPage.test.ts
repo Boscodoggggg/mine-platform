@@ -16,6 +16,13 @@ const authState = vi.hoisted(() => ({ userInfo: { buttons: [] as string[] } }));
 vi.mock('@/modules/device/api/device', () => api);
 vi.mock('@/modules/system/api/dictionary', () => dictionaryApi);
 vi.mock('@/store/modules/auth', () => ({ useAuthStore: () => authState }));
+vi.mock('@/modules/device/pages/strategy/StrategyWorkbenchPage.vue', () => ({
+  default: {
+    name: 'StrategyWorkbenchPage',
+    props: ['fixedProductId', 'allowedStrategyTypes', 'embedded'],
+    template: '<div data-embedded-strategy-workbench>{{ fixedProductId }}</div>'
+  }
+}));
 
 const product = {
   id: 'product-1',
@@ -134,11 +141,26 @@ describe('ProductListPage', () => {
 
     expect(wrapper.text()).toContain('先创建产品，再接入设备');
   });
+
+  it('产品行应提供运行策略入口并固定当前产品上下文', async () => {
+    const wrapper = mountPage(['device:strategy:view']);
+    await flushPromises();
+
+    const action = wrapper.get('[data-action="product-runtime-strategy"]');
+    expect(action.text()).toBe('运行策略');
+
+    await action.trigger('click');
+    await flushPromises();
+
+    const workbench = wrapper.get('[data-embedded-strategy-workbench]');
+    expect(workbench.text()).toBe('product-1');
+    expect(wrapper.text()).toContain('矿用运输车 · 运行策略');
+  });
 });
 
 function mountPage(permissions: string[]) {
   authState.userInfo.buttons = permissions;
-  return mount(ProductListPage, { global: { plugins: [i18n] } });
+  return mount(ProductListPage, { global: { plugins: [i18n], stubs: { teleport: true } } });
 }
 
 function dictionaryItem(value: string, labelZh: string, labelEn: string, semanticType: string) {
