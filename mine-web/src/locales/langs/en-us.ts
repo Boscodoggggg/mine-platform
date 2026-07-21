@@ -1611,6 +1611,10 @@ const local: App.I18n.Schema = {
       },
       section: {
         context: 'Configuration Context',
+        change: 'This Change',
+        impact: 'Impact Review',
+        confirmation: 'Publish Confirmation',
+        advanced: 'More Management Tools',
         groups: 'Device Groups & Priority',
         members: 'Group Members',
         draft: 'Policy Draft',
@@ -1676,6 +1680,12 @@ const local: App.I18n.Schema = {
         earliestEligibleAt: 'Earliest Eligible Data',
         runtimeInstance: 'Runtime Instance'
       },
+      workflow: {
+        scope: 'Choose Scope',
+        rule: 'Set Rule',
+        impact: 'Review Impact',
+        publish: 'Publish'
+      },
       action: {
         newGroup: 'New Group',
         editGroup: 'Edit Group',
@@ -1709,7 +1719,10 @@ const local: App.I18n.Schema = {
         active: 'Active',
         archived: 'Archived',
         publish: 'Publish',
-        rollback: 'Rollback'
+        rollback: 'Rollback',
+        currentEffective: 'Currently Active',
+        noConflict: 'No Conflict Found for the Selected Device',
+        publishCheck: 'Full Validation on Publish'
       },
       scope: {
         product: 'Product Default',
@@ -1768,6 +1781,7 @@ const local: App.I18n.Schema = {
           'Retention days must be integers within the class range and quality evidence cannot be shorter than raw telemetry',
         retentionPreview: 'Preview the current scope before releasing a data retention policy',
         retentionSaveFirst: 'Save the modified retention draft before previewing or releasing it',
+        onlineSaveFirst: 'Save the modified online-status draft before releasing it',
         aggregationCorrection: 'The correction window must be at least twice the largest bucket: {minimum} seconds',
         aggregationDuplicate: 'A property and bucket-width pair cannot be duplicated',
         aggregationPolicy: 'Configure 1 to 100 unique rules with a valid correction window and fixed bucket width'
@@ -1818,7 +1832,11 @@ const local: App.I18n.Schema = {
         alarmHysteresis:
           'High-value alarms require a recovery threshold no higher than the trigger; low-value alarms require one no lower than the trigger.',
         alarmAtomicOverride:
-          'Alarm rules are released as one ordered set. A group or device override replaces the complete parent rule set; it does not append only this rule.'
+          'Alarm rules are released as one ordered set. A group or device override replaces the complete parent rule set; it does not append only this rule.',
+        onlineMeaning: 'The device is marked offline only after it has stopped reporting for {duration}.',
+        impactLimited:
+          'This view shows the target scope and selected-device change. The server revalidates inheritance and conflicts for every device during publish.',
+        advanced: 'Group maintenance, effective-value sources, and release history are low-frequency tools. Expand them when needed.'
       },
       text: {
         seconds: 'seconds',
@@ -1838,7 +1856,19 @@ const local: App.I18n.Schema = {
         eligibleRows: '{count} eligible rows',
         eligibleRowsAtLeast: '{count}+ eligible rows',
         deletedRows: 'Raw {raw} rows · Quality {quality} rows',
-        noEligibleTime: 'No eligible data'
+        noEligibleTime: 'No eligible data',
+        currentEffective: 'Currently Active',
+        pendingPublish: 'Pending Publish',
+        targetDeviceCount: '{count} Target Devices',
+        validationDeviceCount: '{count} Device Reviewed',
+        currentRule: 'Current Rule',
+        publishedRule: 'Rule after Publish',
+        willChange: 'Will Change',
+        unchanged: 'Unchanged',
+        exactImpactPending: 'Full Impact Validated on Publish',
+        publishObject: '{scope} · {name}',
+        durationMinutes: '{minutes} minutes',
+        durationSeconds: '{seconds} seconds'
       },
       retention: {
         groupChangeImpactTitle: 'Retention Impact of Group Change',

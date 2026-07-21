@@ -260,12 +260,14 @@ describe('StrategyWorkbenchPage', () => {
       size: 100,
       total: 1
     });
-    deviceApi.getDevices.mockResolvedValue({
-      items: [device],
-      page: 1,
-      size: 100,
-      total: 1
-    });
+    deviceApi.getDevices.mockImplementation(({ status }: { status?: string }) =>
+      Promise.resolve({
+        items: status === 'DISABLED' ? [] : [device],
+        page: 1,
+        size: 100,
+        total: status === 'DISABLED' ? 0 : 1
+      })
+    );
     strategyApi.listDeviceGroups.mockResolvedValue({
       items: [group],
       page: 1,
@@ -326,6 +328,7 @@ describe('StrategyWorkbenchPage', () => {
   it('应加载产品、设备组、设备、发布历史和最终有效值', async () => {
     const wrapper = mountPage(['device:group:view', 'device:strategy:view']);
     await flushPromises();
+    await expandGroupManagement(wrapper);
 
     expect(wrapper.text()).toContain('策略工作台');
     expect(wrapper.text()).toContain('矿用运输车');
@@ -334,6 +337,105 @@ describe('StrategyWorkbenchPage', () => {
     expect(wrapper.text()).toContain('180');
     expect(wrapper.text()).toContain('设备组覆盖');
     expect(strategyApi.getEffectiveStrategy).toHaveBeenCalledWith('device-1', 'ONLINE_STATUS');
+  });
+
+  it('应按选择范围、设置规则、核对影响和发布的任务顺序组织页面', async () => {
+    const wrapper = mountPage([
+      'device:group:view',
+      'device:group:edit',
+      'device:strategy:view',
+      'device:strategy:edit',
+      'device:strategy:publish'
+    ]);
+    await flushPromises();
+
+    const steps = wrapper.get('[data-section="strategy-steps"]');
+    expect(steps.text()).toContain('选择范围');
+    expect(steps.text()).toContain('设置规则');
+    expect(steps.text()).toContain('核对影响');
+    expect(steps.text()).toContain('发布');
+
+    expect(wrapper.get('[data-section="strategy-change"]').text()).toContain('本次变更');
+    expect(wrapper.get('[data-section="strategy-change"]').text()).toContain('当前生效');
+    expect(wrapper.get('[data-section="strategy-change"]').text()).toContain('待发布');
+    expect(wrapper.get('[data-section="strategy-impact"]').text()).toContain('目标设备');
+    expect(wrapper.get('[data-section="strategy-impact"]').text()).toContain('1 台');
+    expect(wrapper.get('[data-section="strategy-publish"]').text()).toContain('发布确认');
+    expect(wrapper.get('[data-section="strategy-advanced"]').text()).toContain('设备组与优先级');
+  });
+
+  it('产品默认变更不应把设备组覆盖误报为该设备的发布后规则', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit', 'device:strategy:publish']);
+    await flushPromises();
+
+    const threshold = wrapper
+      .findAllComponents(NInputNumber)
+      .find(component => component.attributes('data-field') === 'online-threshold');
+    threshold?.vm.$emit('update:value', 300);
+    await flushPromises();
+
+    expect(threshold?.props('value')).toBe(300);
+    const impact = wrapper.get('[data-section="strategy-impact"]').text();
+    expect(impact).toContain('当前规则180 秒');
+    expect(impact).toContain('发布后规则180 秒');
+    expect(impact).toContain('保持不变');
+  });
+
+  it('在线状态草稿有未保存修改时必须阻止发布旧版本', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit', 'device:strategy:publish']);
+    await flushPromises();
+    const threshold = wrapper
+      .findAllComponents(NInputNumber)
+      .find(component => component.attributes('data-field') === 'online-threshold');
+    threshold?.vm.$emit('update:value', 300);
+    await wrapper.get('[data-field="publish-reason"] textarea').setValue('延长井下设备离线窗口');
+    await wrapper.get('[data-action="publish-strategy"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.publishStrategy).not.toHaveBeenCalled();
+    expect(window.$message?.warning).toHaveBeenCalledWith(expect.stringContaining('先保存草稿'));
+  });
+
+  it('在线状态说明有未保存修改时也必须阻止发布旧版本', async () => {
+    const wrapper = mountPage(['device:strategy:view', 'device:strategy:edit', 'device:strategy:publish']);
+    await flushPromises();
+    const description = wrapper.get('[data-field="online-description"] textarea');
+    await description.setValue('新的井下弱网说明');
+    await wrapper.get('[data-field="publish-reason"] textarea').setValue('调整在线状态策略说明');
+    await wrapper.get('[data-action="publish-strategy"]').trigger('click');
+    await flushPromises();
+
+    expect(strategyApi.publishStrategy).not.toHaveBeenCalled();
+    expect(window.$message?.warning).toHaveBeenCalledWith(expect.stringContaining('先保存草稿'));
+  });
+
+  it('设备组影响预判应使用已保存成员而不是尚未保存的表单值', async () => {
+    const wrapper = mountPage([
+      'device:group:view',
+      'device:group:edit',
+      'device:strategy:view',
+      'device:strategy:edit',
+      'device:strategy:publish'
+    ]);
+    await flushPromises();
+    await expandGroupManagement(wrapper);
+    const members = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'group-members');
+    members?.vm.$emit('update:value', []);
+    const threshold = wrapper
+      .findAllComponents(NInputNumber)
+      .find(component => component.attributes('data-field') === 'online-threshold');
+    threshold?.vm.$emit('update:value', 300);
+    const scope = wrapper
+      .findAllComponents(NSelect)
+      .find(component => component.attributes('data-field') === 'publish-scope');
+    scope?.vm.$emit('update:value', 'GROUP');
+    await flushPromises();
+
+    const impact = wrapper.get('[data-section="strategy-impact"]').text();
+    expect(impact).toContain('发布后规则300 秒');
+    expect(impact).toContain('将变更');
   });
 
   it('只读人员不应看到设备组维护、草稿编辑、发布和回滚入口', async () => {
@@ -354,6 +456,7 @@ describe('StrategyWorkbenchPage', () => {
       'device:strategy:publish'
     ]);
     await flushPromises();
+    await expandGroupManagement(wrapper);
     const memberSelector = wrapper
       .findAllComponents(NSelect)
       .find(component => component.attributes('data-field') === 'group-members');
@@ -390,6 +493,7 @@ describe('StrategyWorkbenchPage', () => {
       'device:strategy:publish'
     ]);
     await flushPromises();
+    await expandGroupManagement(wrapper);
     await wrapper.get('[data-action="edit-group"]').trigger('click');
     const priorityInput = wrapper
       .findAllComponents(NInputNumber)
@@ -424,6 +528,7 @@ describe('StrategyWorkbenchPage', () => {
       'device:strategy:publish'
     ]);
     await flushPromises();
+    await expandGroupManagement(wrapper);
 
     await wrapper.get('[data-action="archive-group"]').trigger('click');
     await flushPromises();
@@ -815,4 +920,10 @@ function mountPage(permissions: string[], props: { fixedStrategyType?: 'RETENTIO
     props,
     global: { plugins: [i18n], stubs: { teleport: true } }
   });
+}
+
+async function expandGroupManagement(wrapper: ReturnType<typeof mountPage>) {
+  const groupManagement = wrapper.get('[data-section="group-management"]');
+  await groupManagement.get('.n-collapse-item__header-main').trigger('click');
+  await flushPromises();
 }

@@ -1373,6 +1373,10 @@ declare namespace App {
           productionHelp: Record<'online' | 'quality' | 'alarm' | 'retention' | 'aggregation', string>;
           section: Record<
             | 'context'
+            | 'change'
+            | 'impact'
+            | 'confirmation'
+            | 'advanced'
             | 'groups'
             | 'members'
             | 'draft'
@@ -1387,6 +1391,7 @@ declare namespace App {
             | 'retentionExecutions',
             string
           >;
+          workflow: Record<'scope' | 'rule' | 'impact' | 'publish', string>;
           field: Record<
             | 'strategyType'
             | 'product'
@@ -1467,7 +1472,17 @@ declare namespace App {
             string
           >;
           status: Record<
-            'draft' | 'published' | 'valid' | 'invalid' | 'active' | 'archived' | 'publish' | 'rollback',
+            | 'draft'
+            | 'published'
+            | 'valid'
+            | 'invalid'
+            | 'active'
+            | 'archived'
+            | 'publish'
+            | 'rollback'
+            | 'currentEffective'
+            | 'noConflict'
+            | 'publishCheck',
             string
           >;
           scope: Record<'product' | 'group' | 'device', string>;
@@ -1510,6 +1525,7 @@ declare namespace App {
             | 'retentionPolicy'
             | 'retentionPreview'
             | 'retentionSaveFirst'
+            | 'onlineSaveFirst'
             | 'aggregationCorrection'
             | 'aggregationDuplicate'
             | 'aggregationPolicy',
@@ -1540,7 +1556,10 @@ declare namespace App {
             | 'alarmTemplate'
             | 'alarmRules'
             | 'alarmHysteresis'
-            | 'alarmAtomicOverride',
+            | 'alarmAtomicOverride'
+            | 'onlineMeaning'
+            | 'impactLimited'
+            | 'advanced',
             string
           >;
           text: Record<
@@ -1561,7 +1580,19 @@ declare namespace App {
             | 'eligibleRows'
             | 'eligibleRowsAtLeast'
             | 'deletedRows'
-            | 'noEligibleTime',
+            | 'noEligibleTime'
+            | 'currentEffective'
+            | 'pendingPublish'
+            | 'targetDeviceCount'
+            | 'validationDeviceCount'
+            | 'currentRule'
+            | 'publishedRule'
+            | 'willChange'
+            | 'unchanged'
+            | 'exactImpactPending'
+            | 'publishObject'
+            | 'durationMinutes'
+            | 'durationSeconds',
             string
           >;
           qualityField: Record<'required' | 'minimum' | 'maximum', string>;

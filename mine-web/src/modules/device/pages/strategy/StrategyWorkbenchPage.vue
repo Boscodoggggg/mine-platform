@@ -24,6 +24,8 @@ import {
   NListItem,
   NPageHeader,
   NSelect,
+  NStep,
+  NSteps,
   NSpin,
   NTag,
   NText
@@ -118,6 +120,7 @@ const retentionPreviewLoading = ref(false);
 const retentionExecutionsLoading = ref(false);
 const products = ref<Product[]>([]);
 const devices = ref<Device[]>([]);
+const deviceTotal = ref(0);
 const groups = ref<DeviceGroup[]>([]);
 const versions = ref<StrategyVersion[]>([]);
 const releases = ref<StrategyRelease[]>([]);
@@ -127,6 +130,7 @@ const selectedGroupId = ref<string | null>(null);
 const selectedDeviceId = ref<string | null>(null);
 const selectedVersionId = ref<string | null>(null);
 const memberIds = ref<string[]>([]);
+const savedMemberIds = ref<string[]>([]);
 const effective = ref<EffectiveStrategy | null>(null);
 const retentionPreview = ref<RetentionPreview | null>(null);
 const retentionRollbackPreview = ref<RetentionRollbackPreview | null>(null);
@@ -136,6 +140,7 @@ const retentionProblem = ref<StrategyProblem | null>(null);
 const retentionPolicyValid = ref(true);
 const aggregationPolicyValid = ref(true);
 const operationProblem = ref<StrategyProblem | null>(null);
+const publishProblem = ref<StrategyProblem | null>(null);
 const groupMode = ref<'create' | 'edit'>('create');
 const draftMode = ref<'create' | 'edit'>('create');
 const publishIdempotencyKey = ref<string | null>(null);
@@ -185,6 +190,12 @@ const deviceOptions = computed<SelectOption[]>(() =>
   }))
 );
 const memberOptions = computed<SelectOption[]>(() => deviceOptions.value);
+const groupOptions = computed<SelectOption[]>(() =>
+  groups.value.map(item => ({
+    label: `${item.name} (${item.groupKey})`,
+    value: item.id
+  }))
+);
 const strategyTypeOptions = computed<SelectOption[]>(() =>
   (['ONLINE_STATUS', 'DATA_QUALITY', 'ALARM', 'RETENTION', 'AGGREGATION'] as StrategyType[]).map(value => ({
     label: t(`mine.strategy.type.${value.toLowerCase()}`),
@@ -223,6 +234,62 @@ const scopeOptions = computed<SelectOption[]>(() =>
 const selectedGroup = computed(() => groups.value.find(item => item.id === selectedGroupId.value) || null);
 const selectedDevice = computed(() => devices.value.find(item => item.id === selectedDeviceId.value) || null);
 const selectedVersion = computed(() => versions.value.find(item => item.id === selectedVersionId.value) || null);
+const onlineCurrentThreshold = computed(() => numericValue(effective.value?.values || {}, 'offlineThresholdSeconds'));
+const onlineNextThreshold = computed(() => draftForm.threshold);
+const onlineDraftDirty = computed(() => {
+  if (strategyType.value !== 'ONLINE_STATUS' || selectedVersion.value?.status !== 'DRAFT') return false;
+  return (
+    numericValue(selectedVersion.value.values, 'offlineThresholdSeconds') !== draftForm.threshold ||
+    (selectedVersion.value.description || '') !== draftForm.description.trim()
+  );
+});
+const onlineDuration = computed(() =>
+  draftForm.threshold % 60 === 0
+    ? t('mine.strategy.text.durationMinutes', { minutes: draftForm.threshold / 60 })
+    : t('mine.strategy.text.durationSeconds', { seconds: draftForm.threshold })
+);
+const publishTargetCount = computed(() => {
+  if (publishForm.scopeType === 'GROUP') return selectedGroup.value?.memberCount || 0;
+  if (publishForm.scopeType === 'DEVICE') return selectedDeviceId.value ? 1 : 0;
+  return deviceTotal.value;
+});
+const publishTargetName = computed(() => {
+  if (publishForm.scopeType === 'GROUP') return selectedGroup.value?.name || t('mine.common.empty');
+  if (publishForm.scopeType === 'DEVICE') return selectedDevice.value?.name || t('mine.common.empty');
+  return products.value.find(item => item.id === productId.value)?.name || t('mine.common.empty');
+});
+const onlinePreview = computed(() => {
+  const current = onlineCurrentThreshold.value;
+  if (current === null) return { known: false, threshold: null };
+  const source = effective.value?.sources.offlineThresholdSeconds;
+  if (publishForm.scopeType === 'DEVICE') {
+    return { known: Boolean(selectedDeviceId.value), threshold: onlineNextThreshold.value };
+  }
+  if (publishForm.scopeType === 'PRODUCT') {
+    return source?.scopeType && source.scopeType !== 'PRODUCT'
+      ? { known: true, threshold: current }
+      : { known: true, threshold: onlineNextThreshold.value };
+  }
+  if (!selectedGroup.value || !selectedDeviceId.value || !savedMemberIds.value.includes(selectedDeviceId.value)) {
+    return { known: true, threshold: current };
+  }
+  if (source?.scopeType === 'DEVICE') return { known: true, threshold: current };
+  if (source?.scopeType === 'GROUP' && source.scopeId !== selectedGroup.value.id) {
+    const sourcePriority = source.groupPriority ?? 0;
+    if (sourcePriority > selectedGroup.value.priority) return { known: true, threshold: current };
+    if (sourcePriority === selectedGroup.value.priority) return { known: false, threshold: null };
+  }
+  return { known: true, threshold: onlineNextThreshold.value };
+});
+const onlineChangeType = computed(() => {
+  if (!onlinePreview.value.known || onlinePreview.value.threshold === null) return 'unknown';
+  return onlineCurrentThreshold.value === onlinePreview.value.threshold ? 'unchanged' : 'changed';
+});
+const workflowStep = computed(() => {
+  if (!productId.value) return 1;
+  if (!selectedVersion.value || onlineDraftDirty.value) return 2;
+  return publishForm.reason.trim().length >= 4 ? 4 : 3;
+});
 const retentionDraftDirty = computed(() => {
   if (!isRetention.value || selectedVersion.value?.status !== 'DRAFT') return false;
   const saved = retentionPolicyFrom(selectedVersion.value.values);
@@ -244,6 +311,7 @@ watch(
   () => [strategyType.value, selectedVersionId.value, publishForm.scopeType, publishScopeId.value, publishForm.reason],
   () => {
     publishIdempotencyKey.value = null;
+    publishProblem.value = null;
   }
 );
 
@@ -334,6 +402,7 @@ async function onProductChanged() {
   selectedDeviceId.value = null;
   selectedVersionId.value = null;
   memberIds.value = [];
+  savedMemberIds.value = [];
   effective.value = null;
   resetGroupForm();
   resetDraftForm();
@@ -378,12 +447,12 @@ async function loadGroups(preferredId?: string) {
 
 async function loadDevices() {
   if (!productId.value) return;
-  const response = await getDevices({
-    productId: productId.value,
-    page: 1,
-    size: 100
-  });
-  devices.value = response.items.filter(item => item.status !== 'ARCHIVED');
+  const [enabled, disabled] = await Promise.all([
+    getDevices({ productId: productId.value, status: 'ENABLED', page: 1, size: 100 }),
+    getDevices({ productId: productId.value, status: 'DISABLED', page: 1, size: 100 })
+  ]);
+  deviceTotal.value = enabled.total + disabled.total;
+  devices.value = [...new Map([...enabled.items, ...disabled.items].map(item => [item.id, item])).values()];
   selectedDeviceId.value = devices.value.some(item => item.id === selectedDeviceId.value)
     ? selectedDeviceId.value
     : devices.value[0]?.id || null;
@@ -422,10 +491,13 @@ async function selectGroup(groupId: string) {
 async function loadMembers() {
   if (!selectedGroupId.value || !can('device:group:view')) {
     memberIds.value = [];
+    savedMemberIds.value = [];
     return;
   }
   const members = await listDeviceGroupMembers(selectedGroupId.value);
-  memberIds.value = members.map(item => item.id);
+  const nextMemberIds = members.map(item => item.id);
+  memberIds.value = [...nextMemberIds];
+  savedMemberIds.value = nextMemberIds;
 }
 
 async function loadEffective() {
@@ -685,6 +757,9 @@ async function runPublish() {
   }
   if (!publishScopeId.value) return window.$message?.warning(t('mine.strategy.validation.scope'));
   if (publishForm.reason.trim().length < 4) return window.$message?.warning(t('mine.strategy.validation.reason'));
+  if (onlineDraftDirty.value) {
+    return window.$message?.warning(t('mine.strategy.validation.onlineSaveFirst'));
+  }
   if (isRetention.value) {
     if (retentionDraftDirty.value) {
       return window.$message?.warning(t('mine.strategy.validation.retentionSaveFirst'));
@@ -703,7 +778,7 @@ async function runPublish() {
     }
   }
   publishing.value = true;
-  operationProblem.value = null;
+  publishProblem.value = null;
   publishIdempotencyKey.value ||= createIdempotencyKey('publish');
   try {
     await publishStrategy(
@@ -725,7 +800,7 @@ async function runPublish() {
     if (isRetention.value) await loadRetentionExecutions();
   } catch (error) {
     if (isRetention.value) retentionPreview.value = null;
-    captureProblem(error);
+    capturePublishProblem(error);
   } finally {
     publishing.value = false;
   }
@@ -1231,6 +1306,24 @@ function captureProblem(error: unknown) {
   window.$message?.error(t('mine.common.operationFailed'));
 }
 
+function capturePublishProblem(error: unknown) {
+  if (error instanceof ApiError) {
+    publishProblem.value = {
+      code: error.code,
+      message: error.message,
+      traceId: error.traceId,
+      details: error.details
+    };
+    window.$message?.error(error.message);
+    return;
+  }
+  publishProblem.value = {
+    code: 'SYS-UNKNOWN-001',
+    message: t('mine.common.operationFailed')
+  };
+  window.$message?.error(t('mine.common.operationFailed'));
+}
+
 function captureRetentionProblem(error: unknown) {
   if (error instanceof ApiError) {
     retentionProblem.value = {
@@ -1251,6 +1344,22 @@ function captureRetentionProblem(error: unknown) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat(locale.value).format(value);
+}
+
+function formatDetails(details: Record<string, unknown>) {
+  return Object.entries(details)
+    .map(([key, value]) => `${key}: ${formatDetailValue(value)}`)
+    .join(' · ');
+}
+
+function formatDetailValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map(formatDetailValue).join(', ');
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, nested]) => `${key}=${formatDetailValue(nested)}`)
+      .join(', ');
+  }
+  return String(value ?? '');
 }
 
 function eligibleRowsText(impact: RetentionPreview['rawTelemetry']) {
@@ -1302,7 +1411,546 @@ function createIdempotencyKey(prefix: string) {
         {{ t('mine.strategy.help.readonly') }}
       </NAlert>
 
-      <NSpin :show="loading">
+      <NSpin v-if="strategyType === 'ONLINE_STATUS'" :show="loading">
+        <NFlex vertical :size="16">
+          <NSteps :current="workflowStep" size="small" data-section="strategy-steps">
+            <NStep :title="t('mine.strategy.workflow.scope')" />
+            <NStep :title="t('mine.strategy.workflow.rule')" />
+            <NStep :title="t('mine.strategy.workflow.impact')" />
+            <NStep :title="t('mine.strategy.workflow.publish')" />
+          </NSteps>
+
+          <NCard :bordered="false" size="small">
+            <NGrid responsive="screen" cols="1 s:2 l:5" :x-gap="12" :y-gap="8">
+              <NGi>
+                <NFormItem :label="t('mine.strategy.field.strategyType')" :show-feedback="false">
+                  <NSelect
+                    v-model:value="strategyType"
+                    data-field="strategy-type"
+                    :options="strategyTypeOptions"
+                    :placeholder="
+                      t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.strategyType') })
+                    "
+                    @update:value="onStrategyTypeChanged"
+                  />
+                </NFormItem>
+              </NGi>
+              <NGi>
+                <NFormItem :label="t('mine.strategy.field.product')" :show-feedback="false">
+                  <NSelect
+                    v-model:value="productId"
+                    filterable
+                    :options="productOptions"
+                    :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.product') })"
+                    @update:value="onProductChanged"
+                  />
+                </NFormItem>
+              </NGi>
+              <NGi>
+                <NFormItem :label="t('mine.strategy.field.scope')" :show-feedback="false">
+                  <NSelect
+                    v-model:value="publishForm.scopeType"
+                    data-field="publish-scope"
+                    :options="scopeOptions"
+                    :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.scope') })"
+                  />
+                </NFormItem>
+              </NGi>
+              <NGi v-if="publishForm.scopeType === 'GROUP'">
+                <NFormItem :label="t('mine.strategy.field.group')" :show-feedback="false">
+                  <NSelect
+                    v-model:value="selectedGroupId"
+                    filterable
+                    :options="groupOptions"
+                    :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.group') })"
+                    @update:value="loadMembers"
+                  />
+                </NFormItem>
+              </NGi>
+              <NGi>
+                <NFormItem
+                  :label="
+                    publishForm.scopeType === 'DEVICE'
+                      ? t('mine.strategy.field.targetDevices')
+                      : t('mine.strategy.field.device')
+                  "
+                  :show-feedback="false"
+                >
+                  <NSelect
+                    v-model:value="selectedDeviceId"
+                    filterable
+                    :options="deviceOptions"
+                    :placeholder="t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.device') })"
+                    @update:value="loadEffective"
+                  />
+                </NFormItem>
+              </NGi>
+            </NGrid>
+          </NCard>
+
+          <NGrid responsive="screen" cols="1 l:12" :x-gap="16" :y-gap="16">
+            <NGi span="1 l:8" class="min-w-0">
+              <NFlex vertical :size="16">
+                <NCard
+                  :title="t('mine.strategy.section.change')"
+                  :bordered="false"
+                  size="small"
+                  data-section="strategy-change"
+                >
+                  <template #header-extra>
+                    <NFlex align="center">
+                      <NTag v-if="effective?.valid" type="success" :bordered="false" round>
+                        {{ t('mine.strategy.status.currentEffective') }}
+                      </NTag>
+                      <NButton
+                        v-if="can('device:strategy:edit')"
+                        quaternary
+                        type="primary"
+                        size="small"
+                        data-action="new-draft"
+                        @click="startNewDraft"
+                      >
+                        {{ t('mine.strategy.action.newDraft') }}
+                      </NButton>
+                    </NFlex>
+                  </template>
+
+                  <NFlex vertical :size="16">
+                    <NFormItem :label="t('mine.strategy.field.version')" :show-feedback="false">
+                      <NSelect
+                        v-model:value="selectedVersionId"
+                        :options="versionOptions"
+                        :placeholder="
+                          t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.version') })
+                        "
+                        @update:value="syncDraftForm"
+                      />
+                    </NFormItem>
+
+                    <NGrid responsive="screen" cols="1 s:11" :x-gap="12" :y-gap="12" class="items-stretch">
+                      <NGi span="1 s:5">
+                        <NCard embedded size="small" class="h-full">
+                          <NFlex vertical :size="6">
+                            <NText depth="3">{{ t('mine.strategy.text.currentEffective') }}</NText>
+                            <NText class="text-3xl font-semibold">
+                              {{ onlineCurrentThreshold ?? '—' }}
+                              <NText depth="3">{{ t('mine.strategy.text.seconds') }}</NText>
+                            </NText>
+                          </NFlex>
+                        </NCard>
+                      </NGi>
+                      <NGi span="1 s:1">
+                        <NFlex justify="center" align="center" class="h-full">
+                          <NText type="primary" class="text-2xl">→</NText>
+                        </NFlex>
+                      </NGi>
+                      <NGi span="1 s:5">
+                        <NCard embedded size="small" class="h-full">
+                          <NFlex vertical :size="6">
+                            <NText type="primary">{{ t('mine.strategy.text.pendingPublish') }}</NText>
+                            <NInputNumber
+                              v-model:value="draftForm.threshold"
+                              data-field="online-threshold"
+                              :min="30"
+                              :max="86400"
+                              :placeholder="
+                                t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.threshold') })
+                              "
+                              :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                            >
+                              <template #suffix>{{ t('mine.strategy.text.seconds') }}</template>
+                            </NInputNumber>
+                          </NFlex>
+                        </NCard>
+                      </NGi>
+                    </NGrid>
+
+                    <NAlert type="info" :bordered="false">
+                      {{ t('mine.strategy.help.onlineMeaning', { duration: onlineDuration }) }}
+                    </NAlert>
+
+                    <NFormItem :label="t('mine.strategy.field.description')" :show-feedback="false">
+                      <NInput
+                        v-model:value="draftForm.description"
+                        data-field="online-description"
+                        type="textarea"
+                        :disabled="!can('device:strategy:edit') || selectedVersion?.status === 'PUBLISHED'"
+                        :autosize="{ minRows: 2, maxRows: 4 }"
+                        :placeholder="
+                          t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.description') })
+                        "
+                      />
+                    </NFormItem>
+                    <NFlex v-if="can('device:strategy:edit')" justify="end">
+                      <NButton
+                        type="primary"
+                        secondary
+                        :loading="savingDraft"
+                        :disabled="selectedVersion?.status === 'PUBLISHED'"
+                        data-action="save-draft"
+                        @click="saveDraft"
+                      >
+                        {{ t('mine.strategy.action.saveDraft') }}
+                      </NButton>
+                    </NFlex>
+                  </NFlex>
+                </NCard>
+
+                <NCard
+                  :title="t('mine.strategy.section.impact')"
+                  :bordered="false"
+                  size="small"
+                  data-section="strategy-impact"
+                >
+                  <NFlex vertical :size="14">
+                    <NGrid responsive="screen" cols="1 s:3" :x-gap="12" :y-gap="12">
+                      <NGi>
+                        <NCard embedded size="small">
+                          <NFlex vertical :size="4">
+                            <NText depth="3">{{ t('mine.strategy.field.targetDevices') }}</NText>
+                            <NText strong class="text-2xl">
+                              {{
+                                t('mine.strategy.text.affectedDeviceCount', { count: formatNumber(publishTargetCount) })
+                              }}
+                            </NText>
+                          </NFlex>
+                        </NCard>
+                      </NGi>
+                      <NGi>
+                        <NCard embedded size="small">
+                          <NFlex vertical :size="4">
+                            <NText depth="3">{{ t('mine.strategy.field.device') }}</NText>
+                            <NText strong>{{ selectedDevice?.name || t('mine.common.empty') }}</NText>
+                          </NFlex>
+                        </NCard>
+                      </NGi>
+                      <NGi>
+                        <NCard embedded size="small">
+                          <NFlex vertical :size="4">
+                            <NText depth="3">{{ t('mine.strategy.field.status') }}</NText>
+                            <NTag
+                              :type="
+                                onlineChangeType === 'changed'
+                                  ? 'warning'
+                                  : onlineChangeType === 'unchanged'
+                                    ? 'success'
+                                    : 'info'
+                              "
+                              :bordered="false"
+                            >
+                              {{
+                                onlineChangeType === 'changed'
+                                  ? t('mine.strategy.text.willChange')
+                                  : onlineChangeType === 'unchanged'
+                                    ? t('mine.strategy.text.unchanged')
+                                    : t('mine.strategy.text.exactImpactPending')
+                              }}
+                            </NTag>
+                          </NFlex>
+                        </NCard>
+                      </NGi>
+                    </NGrid>
+
+                    <NDescriptions :column="1" label-placement="left" bordered size="small">
+                      <NDescriptionsItem :label="t('mine.strategy.field.device')">
+                        {{ selectedDevice?.name || t('mine.common.empty') }}
+                      </NDescriptionsItem>
+                      <NDescriptionsItem :label="t('mine.strategy.text.currentRule')">
+                        {{ onlineCurrentThreshold ?? '—' }} {{ t('mine.strategy.text.seconds') }}
+                      </NDescriptionsItem>
+                      <NDescriptionsItem :label="t('mine.strategy.text.publishedRule')">
+                        {{ onlinePreview.threshold ?? '—' }} {{ t('mine.strategy.text.seconds') }}
+                      </NDescriptionsItem>
+                      <NDescriptionsItem :label="t('mine.strategy.field.source')">
+                        {{
+                          effective?.sources.offlineThresholdSeconds
+                            ? scopeLabel(effective.sources.offlineThresholdSeconds.scopeType)
+                            : t('mine.strategy.source.unknown')
+                        }}
+                      </NDescriptionsItem>
+                    </NDescriptions>
+                    <NAlert type="info" :bordered="false">{{ t('mine.strategy.help.impactLimited') }}</NAlert>
+                  </NFlex>
+                </NCard>
+              </NFlex>
+            </NGi>
+
+            <NGi span="1 l:4" class="min-w-0">
+              <NCard
+                :title="t('mine.strategy.section.confirmation')"
+                :bordered="false"
+                size="small"
+                data-section="strategy-publish"
+              >
+                <NFlex vertical :size="14">
+                  <NDescriptions :column="1" label-placement="left" bordered size="small">
+                    <NDescriptionsItem :label="t('mine.strategy.field.scope')">
+                      {{
+                        t('mine.strategy.text.publishObject', {
+                          scope: scopeLabel(publishForm.scopeType),
+                          name: publishTargetName
+                        })
+                      }}
+                    </NDescriptionsItem>
+                    <NDescriptionsItem :label="t('mine.strategy.field.targetDevices')">
+                      {{ t('mine.strategy.text.targetDeviceCount', { count: formatNumber(publishTargetCount) }) }}
+                    </NDescriptionsItem>
+                    <NDescriptionsItem :label="t('mine.strategy.field.status')">
+                      <NTag type="info" :bordered="false">{{ t('mine.strategy.status.publishCheck') }}</NTag>
+                    </NDescriptionsItem>
+                  </NDescriptions>
+                  <NAlert v-if="!publishProblem" type="info" :bordered="false">
+                    {{ t('mine.strategy.status.publishCheck') }}
+                  </NAlert>
+                  <NAlert
+                    v-else
+                    :title="
+                      publishProblem.code === 'STRATEGY-409-001'
+                        ? t('mine.strategy.error.conflictTitle')
+                        : t('mine.strategy.error.title')
+                    "
+                    type="error"
+                    :bordered="false"
+                  >
+                    <NFlex vertical :size="4">
+                      <NText>{{ publishProblem.message }}</NText>
+                      <NText code>{{ t('mine.strategy.error.code', { code: publishProblem.code }) }}</NText>
+                      <NText v-if="publishProblem.traceId" depth="3">
+                        {{ t('mine.common.traceId', { traceId: publishProblem.traceId }) }}
+                      </NText>
+                      <NText v-if="publishProblem.details" depth="3">
+                        {{ t('mine.strategy.error.details', { details: formatDetails(publishProblem.details) }) }}
+                      </NText>
+                    </NFlex>
+                  </NAlert>
+                  <NFormItem :label="t('mine.strategy.field.reason')" :show-feedback="false">
+                    <NInput
+                      v-model:value="publishForm.reason"
+                      type="textarea"
+                      :autosize="{ minRows: 3, maxRows: 5 }"
+                      :placeholder="t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.reason') })"
+                      data-field="publish-reason"
+                    />
+                  </NFormItem>
+                  <NButton
+                    v-if="can('device:strategy:publish')"
+                    block
+                    type="primary"
+                    size="large"
+                    :loading="publishing"
+                    data-action="publish-strategy"
+                    @click="runPublish"
+                  >
+                    {{ t('mine.strategy.action.publish') }}
+                  </NButton>
+                </NFlex>
+              </NCard>
+            </NGi>
+          </NGrid>
+
+          <NCard :bordered="false" size="small" data-section="strategy-advanced">
+            <NText depth="3">{{ t('mine.strategy.help.advanced') }}</NText>
+            <NCollapse class="mt-3">
+              <NCollapseItem
+                v-if="can('device:group:view')"
+                name="groups"
+                :title="t('mine.strategy.section.groups')"
+                data-section="group-management"
+              >
+                <NGrid responsive="screen" cols="1 m:2" :x-gap="16" :y-gap="16">
+                  <NGi>
+                    <NFlex vertical :size="10">
+                      <NFlex justify="space-between" align="center">
+                        <NText strong>{{ t('mine.strategy.section.groups') }}</NText>
+                        <NButton
+                          v-if="can('device:group:edit')"
+                          quaternary
+                          type="primary"
+                          size="small"
+                          data-action="new-group"
+                          @click="startCreateGroup"
+                        >
+                          {{ t('mine.strategy.action.newGroup') }}
+                        </NButton>
+                      </NFlex>
+                      <NFlex v-if="groups.length" vertical :size="8">
+                        <NButton
+                          v-for="item in groups"
+                          :key="item.id"
+                          block
+                          :type="item.id === selectedGroupId ? 'primary' : 'default'"
+                          :secondary="item.id === selectedGroupId"
+                          @click="selectGroup(item.id)"
+                        >
+                          <NFlex justify="space-between" class="w-full">
+                            <NText>{{ item.name }}</NText>
+                            <NText depth="3">{{ t('mine.strategy.text.priority', { priority: item.priority }) }}</NText>
+                          </NFlex>
+                        </NButton>
+                      </NFlex>
+                      <NEmpty v-else :description="t('mine.strategy.empty.groups')" />
+
+                      <NForm v-if="can('device:group:edit')" label-placement="top">
+                        <NGrid responsive="screen" cols="1 s:2" :x-gap="12">
+                          <NGi>
+                            <NFormItem :label="t('mine.strategy.field.groupKey')">
+                              <NInput
+                                v-model:value="groupForm.groupKey"
+                                :disabled="groupMode === 'edit'"
+                                :placeholder="
+                                  t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.groupKey') })
+                                "
+                              />
+                            </NFormItem>
+                          </NGi>
+                          <NGi>
+                            <NFormItem :label="t('mine.strategy.field.groupName')">
+                              <NInput
+                                v-model:value="groupForm.name"
+                                :placeholder="
+                                  t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.groupName') })
+                                "
+                              />
+                            </NFormItem>
+                          </NGi>
+                        </NGrid>
+                        <NFormItem :label="t('mine.strategy.field.priority')">
+                          <NInputNumber
+                            v-model:value="groupForm.priority"
+                            data-field="group-priority"
+                            :min="0"
+                            :max="1000"
+                            :placeholder="
+                              t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.priority') })
+                            "
+                          />
+                        </NFormItem>
+                        <NFormItem :label="t('mine.strategy.field.description')">
+                          <NInput
+                            v-model:value="groupForm.description"
+                            type="textarea"
+                            :placeholder="
+                              t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.description') })
+                            "
+                          />
+                        </NFormItem>
+                        <NFlex justify="end">
+                          <NButton
+                            v-if="selectedGroup && groupMode !== 'edit'"
+                            data-action="edit-group"
+                            @click="startEditGroup"
+                          >
+                            {{ t('mine.strategy.action.editGroup') }}
+                          </NButton>
+                          <NButton type="primary" :loading="savingGroup" data-action="save-group" @click="saveGroup">
+                            {{ t('mine.strategy.action.saveGroup') }}
+                          </NButton>
+                        </NFlex>
+                      </NForm>
+                    </NFlex>
+                  </NGi>
+                  <NGi>
+                    <NFlex v-if="selectedGroup" vertical :size="10">
+                      <NFlex justify="space-between" align="center">
+                        <NText strong>{{ t('mine.strategy.section.members') }}</NText>
+                        <NTag :bordered="false">
+                          {{ t('mine.strategy.text.memberCount', { count: selectedGroup.memberCount }) }}
+                        </NTag>
+                      </NFlex>
+                      <NAlert
+                        v-if="retentionGroupChangePreview"
+                        type="warning"
+                        :data-group-change-preview="retentionGroupChangePreview.changeType"
+                      >
+                        {{
+                          t('mine.strategy.retention.groupChangeSummary', {
+                            action: retentionGroupChangeAction(retentionGroupChangePreview.changeType),
+                            observedAt: retentionGroupChangePreview.preview.observedAt,
+                            target: formatNumber(retentionGroupChangePreview.preview.targetDeviceCount),
+                            affected: formatNumber(retentionGroupChangePreview.preview.affectedDeviceCount),
+                            enabled: formatNumber(retentionGroupChangePreview.preview.enabledDeviceCount)
+                          })
+                        }}
+                      </NAlert>
+                      <NSelect
+                        v-model:value="memberIds"
+                        data-field="group-members"
+                        multiple
+                        filterable
+                        :disabled="!can('device:group:edit')"
+                        :options="memberOptions"
+                        :placeholder="
+                          t('mine.strategy.placeholder.select', { field: t('mine.strategy.field.members') })
+                        "
+                      />
+                      <NFlex v-if="can('device:group:edit')" justify="space-between">
+                        <NButton type="error" secondary data-action="archive-group" @click="archiveSelectedGroup">
+                          {{ t('mine.strategy.action.archiveGroup') }}
+                        </NButton>
+                        <NButton
+                          type="primary"
+                          :loading="savingMembers"
+                          data-action="save-members"
+                          @click="saveMembers"
+                        >
+                          {{ t('mine.strategy.action.saveMembers') }}
+                        </NButton>
+                      </NFlex>
+                    </NFlex>
+                  </NGi>
+                </NGrid>
+              </NCollapseItem>
+
+              <NCollapseItem name="effective" :title="t('mine.strategy.section.effective')">
+                <EffectiveStrategyPanel
+                  :device-name="selectedDevice?.name"
+                  :loading="effectiveLoading"
+                  :effective="effective"
+                  :problem="operationProblem"
+                  @refresh="loadEffective"
+                />
+              </NCollapseItem>
+
+              <NCollapseItem name="history" :title="t('mine.strategy.section.history')">
+                <NFlex v-if="can('device:strategy:publish') && releases.length" vertical :size="8">
+                  <NInput
+                    v-model:value="rollbackReason"
+                    type="textarea"
+                    :placeholder="t('mine.strategy.placeholder.enter', { field: t('mine.strategy.field.reason') })"
+                    data-field="rollback-reason"
+                  />
+                </NFlex>
+                <NList v-if="releases.length" hoverable>
+                  <NListItem v-for="item in releases" :key="item.id">
+                    <NFlex justify="space-between" align="center" :wrap="true" class="w-full">
+                      <NFlex vertical :size="3">
+                        <NText strong>{{ t('mine.strategy.text.sequence', { sequence: item.releaseSequence }) }}</NText>
+                        <NText depth="3">
+                          {{ scopeLabel(item.scopeType) }} · {{ releaseActionLabel(item.action) }}
+                        </NText>
+                      </NFlex>
+                      <NButton
+                        v-if="can('device:strategy:publish')"
+                        secondary
+                        type="warning"
+                        size="small"
+                        :loading="rollingBackId === item.id"
+                        data-action="rollback-strategy"
+                        @click="runRollback(item)"
+                      >
+                        {{ t('mine.strategy.action.rollback') }}
+                      </NButton>
+                    </NFlex>
+                  </NListItem>
+                </NList>
+                <NEmpty v-else :description="t('mine.strategy.empty.releases')" />
+              </NCollapseItem>
+            </NCollapse>
+          </NCard>
+        </NFlex>
+      </NSpin>
+
+      <NSpin v-else :show="loading">
         <NGrid responsive="screen" cols="1 m:12 xl:12" :x-gap="16" :y-gap="16">
           <NGi span="1 m:4 xl:3" class="min-w-0">
             <NFlex vertical :size="16">

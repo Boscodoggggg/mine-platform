@@ -1536,6 +1536,10 @@ const local: App.I18n.Schema = {
       },
       section: {
         context: '配置上下文',
+        change: '本次变更',
+        impact: '影响核对',
+        confirmation: '发布确认',
+        advanced: '更多管理功能',
         groups: '设备组与优先级',
         members: '设备组成员',
         draft: '策略草稿',
@@ -1601,6 +1605,12 @@ const local: App.I18n.Schema = {
         earliestEligibleAt: '最早候选数据',
         runtimeInstance: '运行实例'
       },
+      workflow: {
+        scope: '选择范围',
+        rule: '设置规则',
+        impact: '核对影响',
+        publish: '发布'
+      },
       action: {
         newGroup: '新建设备组',
         editGroup: '编辑设备组',
@@ -1634,7 +1644,10 @@ const local: App.I18n.Schema = {
         active: '生效中',
         archived: '已归档',
         publish: '发布',
-        rollback: '回滚'
+        rollback: '回滚',
+        currentEffective: '当前已生效',
+        noConflict: '所选设备未发现策略冲突',
+        publishCheck: '发布时完整校验'
       },
       scope: { product: '产品默认', group: '设备组覆盖', device: '单设备覆盖' },
       source: {
@@ -1686,6 +1699,7 @@ const local: App.I18n.Schema = {
         retentionPolicy: '保留时间必须为等级边界内的整数，质量证据不得短于原始遥测',
         retentionPreview: '发布数据保留策略前，请先取得当前范围的影响预览',
         retentionSaveFirst: '保留策略有未保存修改，请先保存草稿再预览或发布',
+        onlineSaveFirst: '在线状态策略有未保存修改，请先保存草稿再发布',
         aggregationCorrection: '修正窗口不得小于最大桶宽的两倍，当前至少需要 {minimum} 秒',
         aggregationDuplicate: '同一属性和桶宽组合不能重复',
         aggregationPolicy: '请配置 1 至 100 条不重复规则，并确保修正窗口和固定桶宽合法'
@@ -1726,7 +1740,10 @@ const local: App.I18n.Schema = {
         alarmTemplate: '数值规则直接比较遥测属性；质量规则复用数据质量证据。规则编码发布后用于告警归并，请保持稳定。',
         alarmRules: '使用持续时间过滤瞬时毛刺，使用恢复阈值形成迟滞区间，使用冷却窗口限制重复周期。',
         alarmHysteresis: '高值告警的恢复阈值不得高于触发阈值；低值告警的恢复阈值不得低于触发阈值。',
-        alarmAtomicOverride: '告警规则集按顺序整体发布；设备组或单设备覆盖会替换上级的完整规则集，不会只追加当前规则。'
+        alarmAtomicOverride: '告警规则集按顺序整体发布；设备组或单设备覆盖会替换上级的完整规则集，不会只追加当前规则。',
+        onlineMeaning: '设备连续 {duration}未上报数据时，系统才会将其标记为离线。',
+        impactLimited: '当前展示目标范围和所选设备的前后变化；全部设备的继承关系与冲突由服务端在发布事务中再次校验。',
+        advanced: '设备组维护、最终值来源和发布历史属于低频管理功能，需要时再展开。'
       },
       text: {
         seconds: '秒',
@@ -1746,7 +1763,19 @@ const local: App.I18n.Schema = {
         eligibleRows: '{count} 行候选数据',
         eligibleRowsAtLeast: '{count}+ 行候选数据',
         deletedRows: '原始遥测 {raw} 行 · 质量证据 {quality} 行',
-        noEligibleTime: '无候选数据'
+        noEligibleTime: '无候选数据',
+        currentEffective: '当前生效',
+        pendingPublish: '待发布',
+        targetDeviceCount: '目标设备 {count} 台',
+        validationDeviceCount: '已核对设备 {count} 台',
+        currentRule: '当前规则',
+        publishedRule: '发布后规则',
+        willChange: '将变更',
+        unchanged: '保持不变',
+        exactImpactPending: '完整影响待发布校验',
+        publishObject: '{scope} · {name}',
+        durationMinutes: '{minutes} 分钟',
+        durationSeconds: '{seconds} 秒'
       },
       retention: {
         groupChangeImpactTitle: '设备组变更的保留影响',
