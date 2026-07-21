@@ -1236,7 +1236,15 @@ class DatabaseMigrationIT {
                 """, String.class)).containsExactly(
                 "notification:channel:edit",
                 "notification:channel:secret:view",
-                "notification:channel:view"
+                "notification:channel:view",
+                "notification:policy:edit",
+                "notification:policy:publish",
+                "notification:policy:view",
+                "notification:recipient:edit",
+                "notification:recipient:secret:view",
+                "notification:recipient:view",
+                "notification:template:edit",
+                "notification:template:view"
         );
         assertThat(jdbcTemplate.queryForMap("""
                 SELECT channel.path,
@@ -1251,6 +1259,34 @@ class DatabaseMigrationIT {
                 .containsEntry("permission", "notification:channel:view")
                 .containsEntry("visible", true)
                 .containsEntry("parent_path", "/alarm");
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT child.permission
+                FROM sys_menu child
+                JOIN sys_menu parent ON parent.id = child.parent_id
+                WHERE child.permission IN (
+                    'notification:recipient:view',
+                    'notification:recipient:edit',
+                    'notification:recipient:secret:view',
+                    'notification:template:view',
+                    'notification:template:edit',
+                    'notification:policy:view',
+                    'notification:policy:edit',
+                    'notification:policy:publish'
+                )
+                  AND parent.permission = 'notification:channel:view'
+                  AND child.type = 'BUTTON'
+                  AND child.visible = FALSE
+                ORDER BY child.permission
+                """, String.class)).containsExactly(
+                "notification:policy:edit",
+                "notification:policy:publish",
+                "notification:policy:view",
+                "notification:recipient:edit",
+                "notification:recipient:secret:view",
+                "notification:recipient:view",
+                "notification:template:edit",
+                "notification:template:view"
+        );
         assertThat(jdbcTemplate.queryForList("""
                 SELECT permission
                 FROM sys_menu
@@ -2111,6 +2147,83 @@ class DatabaseMigrationIT {
                             "governance:aggregation:view",
                             "governance:retention:view"
                     );
+                }
+            }
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        }
+    }
+
+    @Test
+    void 从六十版升级时既有通知职责角色应获得等价控制面权限但不得自动获得发布权() throws Exception {
+        String schema = "notif_perm_upgrade_"
+                + UUID.randomUUID().toString().replace("-", "");
+        UUID roleId = UUID.randomUUID();
+        try {
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .target("60")
+                    .load()
+                    .migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                statement.execute("""
+                        INSERT INTO sys_role (id, code, name)
+                        VALUES ('%s', 'NOTIFICATION_UPGRADE_TEST', '通知权限升级测试角色')
+                        """.formatted(roleId));
+                statement.execute("""
+                        INSERT INTO sys_role_menu (id, role_id, menu_id)
+                        VALUES
+                            ('%s', '%s', '019b0000-0000-7000-8000-000000000170'),
+                            ('%s', '%s', '019b0000-0000-7000-8000-000000000171'),
+                            ('%s', '%s', '019b0000-0000-7000-8000-000000000172')
+                        """.formatted(
+                        UUID.randomUUID(), roleId,
+                        UUID.randomUUID(), roleId,
+                        UUID.randomUUID(), roleId));
+            }
+
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate();
+
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                try (ResultSet result = statement.executeQuery("""
+                        SELECT menu.permission
+                        FROM sys_role_menu role_menu
+                        JOIN sys_menu menu ON menu.id = role_menu.menu_id
+                        WHERE role_menu.role_id = '%s'
+                        ORDER BY menu.permission
+                        """.formatted(roleId))) {
+                    List<String> permissions = new ArrayList<>();
+                    while (result.next()) {
+                        permissions.add(result.getString("permission"));
+                    }
+                    assertThat(permissions).containsExactly(
+                            "notification:channel:edit",
+                            "notification:channel:secret:view",
+                            "notification:channel:view",
+                            "notification:policy:edit",
+                            "notification:policy:view",
+                            "notification:recipient:edit",
+                            "notification:recipient:secret:view",
+                            "notification:recipient:view",
+                            "notification:template:edit",
+                            "notification:template:view"
+                    );
+                    assertThat(permissions).doesNotContain("notification:policy:publish");
                 }
             }
         } finally {

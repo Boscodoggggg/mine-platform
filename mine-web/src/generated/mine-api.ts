@@ -3101,6 +3101,299 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/recipient-groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询通知接收组
+         * @description 需要 notification:recipient:view 权限。
+         */
+        get: operations["listNotificationRecipientGroups"];
+        put?: never;
+        /**
+         * 创建通知接收组
+         * @description 需要 notification:recipient:edit 权限。
+         */
+        post: operations["createNotificationRecipientGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/recipient-groups/{groupId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+            };
+            cookie?: never;
+        };
+        /** 查询指定通知接收组 */
+        get: operations["getNotificationRecipientGroup"];
+        /** 使用乐观锁修改通知接收组 */
+        put: operations["updateNotificationRecipientGroup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/recipient-groups/{groupId}/recipients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * 查询接收组内脱敏接收对象
+         * @description 响应不返回目标明文、密文或盲索引。
+         */
+        get: operations["listNotificationRecipients"];
+        put?: never;
+        /**
+         * 创建加密通知接收对象
+         * @description 需要 notification:recipient:edit 权限；target 仅在请求中出现。
+         */
+        post: operations["createNotificationRecipient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/recipient-groups/{groupId}/recipients/{recipientId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+                recipientId: components["parameters"]["NotificationRecipientId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 使用乐观锁修改加密通知接收对象
+         * @description target 为空时保留原目标，普通响应仍只返回脱敏值。
+         */
+        put: operations["updateNotificationRecipient"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/recipient-groups/{groupId}/recipients/{recipientId}/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+                recipientId: components["parameters"]["NotificationRecipientId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * 受控读取通知接收目标明文
+         * @description 需要 notification:recipient:secret:view 权限；每次读取写审计且响应禁止缓存。
+         */
+        get: operations["revealNotificationRecipientTarget"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/templates/variables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询安全模板变量目录 */
+        get: operations["listNotificationTemplateVariables"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询安全通知模板 */
+        get: operations["listNotificationTemplates"];
+        put?: never;
+        /**
+         * 创建安全通知模板
+         * @description 仅接受固定变量白名单内的双花括号占位符，不执行任意表达式。
+         */
+        post: operations["createNotificationTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/templates/{templateId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: components["parameters"]["NotificationTemplateId"];
+            };
+            cookie?: never;
+        };
+        /** 查询指定通知模板 */
+        get: operations["getNotificationTemplate"];
+        /** 使用乐观锁修改通知模板 */
+        put: operations["updateNotificationTemplate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询通知升级策略 */
+        get: operations["listNotificationPolicies"];
+        put?: never;
+        /** 创建通知升级策略和第一版草稿 */
+        post: operations["createNotificationPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/policies/{policyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        /** 查询指定通知升级策略 */
+        get: operations["getNotificationPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/policies/{policyId}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 整体修改当前策略草稿
+         * @description 已发布快照不可修改；修改发布策略前必须先派生新草稿。
+         */
+        put: operations["updateNotificationPolicyDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/policies/{policyId}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 从当前发布快照派生新草稿 */
+        post: operations["createNotificationPolicyDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/policies/{policyId}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 发布不可变通知升级策略快照
+         * @description 需要独立 notification:policy:publish 权限；重复发布同一版本幂等返回。
+         */
+        post: operations["publishNotificationPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/policies/{policyId}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 归档通知升级策略 */
+        post: operations["archiveNotificationPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3183,6 +3476,179 @@ export interface components {
             version: number;
             /** Format: date-time */
             revealedAt: string;
+        };
+        /** @enum {string} */
+        NotificationStatus: "ENABLED" | "DISABLED";
+        /** @enum {string} */
+        NotificationRecipientType: "SYSTEM_USER" | "EXTERNAL_CONTACT";
+        NotificationRecipientGroupRequest: {
+            groupCode: string;
+            name: string;
+            description?: string | null;
+            status: components["schemas"]["NotificationStatus"];
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationRecipientGroupResponse: {
+            /** Format: uuid */
+            id: string;
+            groupCode: string;
+            name: string;
+            description: string | null;
+            status: components["schemas"]["NotificationStatus"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationRecipientRequest: {
+            recipientType: components["schemas"]["NotificationRecipientType"];
+            /** Format: uuid */
+            userId?: string | null;
+            displayName: string;
+            channelType: components["schemas"]["NotificationChannelType"];
+            target?: string | null;
+            status: components["schemas"]["NotificationStatus"];
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationRecipientResponse: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            groupId: string;
+            recipientType: components["schemas"]["NotificationRecipientType"];
+            /** Format: uuid */
+            userId: string | null;
+            displayName: string;
+            channelType: components["schemas"]["NotificationChannelType"];
+            targetMasked: string;
+            targetConfigured: boolean;
+            status: components["schemas"]["NotificationStatus"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationRecipientTargetResponse: {
+            /** Format: uuid */
+            recipientId: string;
+            readonly target: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            revealedAt: string;
+        };
+        /** @enum {string} */
+        NotificationEventType: "ALARM_RAISED" | "ALARM_ACKNOWLEDGED" | "ALARM_RECOVERED" | "ALARM_CLOSED" | "TICKET_CREATED" | "TICKET_ESCALATED" | "TICKET_CLOSED";
+        NotificationTemplateRequest: {
+            templateCode: string;
+            name: string;
+            channelType: components["schemas"]["NotificationChannelType"];
+            eventType: components["schemas"]["NotificationEventType"];
+            /** @enum {string} */
+            locale: "zh-CN" | "en-US";
+            subjectTemplate?: string | null;
+            bodyTemplate: string;
+            providerTemplateCode?: string | null;
+            allowedVariables: string[];
+            status: components["schemas"]["NotificationStatus"];
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationTemplateResponse: components["schemas"]["NotificationTemplateRequest"] & {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        NotificationPolicyMatchConditions: {
+            mineIds: string[];
+            ruleKeys: string[];
+        };
+        NotificationPolicyStepRequest: {
+            stepOrder: number;
+            delaySeconds: number;
+            /** Format: uuid */
+            channelId: string;
+            /** Format: uuid */
+            recipientGroupId: string;
+            /** Format: uuid */
+            templateId: string;
+            /** Format: uuid */
+            recoveryTemplateId?: string | null;
+            /** @enum {string} */
+            ticketAction: "NONE" | "CREATE" | "ASSIGN" | "ESCALATE";
+            ticketPriority?: number | null;
+        };
+        NotificationPolicyRequest: {
+            policyCode: string;
+            name: string;
+            description?: string | null;
+            priority: number;
+            matchConditions: components["schemas"]["NotificationPolicyMatchConditions"];
+            severityFilter: ("INFO" | "WARNING" | "CRITICAL")[];
+            stopOnAck: boolean;
+            notifyOnRecovery: boolean;
+            steps: components["schemas"]["NotificationPolicyStepRequest"][];
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationPolicyStepResponse: components["schemas"]["NotificationPolicyStepRequest"] & {
+            /** Format: uuid */
+            id: string;
+        };
+        NotificationPolicyVersionResponse: {
+            /** Format: uuid */
+            id: string;
+            versionNumber: number;
+            /** @enum {string} */
+            state: "DRAFT" | "PUBLISHED" | "RETIRED";
+            matchConditions: components["schemas"]["NotificationPolicyMatchConditions"];
+            severityFilter: ("INFO" | "WARNING" | "CRITICAL")[];
+            stopOnAck: boolean;
+            notifyOnRecovery: boolean;
+            publicationReason: string | null;
+            /** Format: date-time */
+            publishedAt: string | null;
+            steps: components["schemas"]["NotificationPolicyStepResponse"][];
+        };
+        NotificationPolicyResponse: {
+            /** Format: uuid */
+            id: string;
+            policyCode: string;
+            name: string;
+            description: string | null;
+            priority: number;
+            /** @enum {string} */
+            status: "ACTIVE" | "ARCHIVED";
+            draft: components["schemas"]["NotificationPolicyVersionResponse"] | null;
+            published: components["schemas"]["NotificationPolicyVersionResponse"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            archivedAt: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationPolicyActionRequest: {
+            /** Format: int64 */
+            version: number;
+        };
+        NotificationPolicyPublishRequest: {
+            /** Format: uuid */
+            versionId: string;
+            publicationReason: string;
+            /** Format: int64 */
+            version: number;
         };
         /** @enum {string} */
         MineArchiveStatus: "ACTIVE" | "ARCHIVED";
@@ -6753,6 +7219,10 @@ export interface components {
         Keyword: string;
         Page: number;
         PageSize: number;
+        NotificationRecipientGroupId: string;
+        NotificationRecipientId: string;
+        NotificationTemplateId: string;
+        NotificationPolicyId: string;
     };
     requestBodies: never;
     headers: never;
@@ -13454,6 +13924,632 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotificationChannelNotFound"];
+        };
+    };
+    listNotificationRecipientGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 通知接收组列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRecipientGroupResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createNotificationRecipientGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationRecipientGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建的通知接收组。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRecipientGroupResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getNotificationRecipientGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 通知接收组详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRecipientGroupResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知接收组不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateNotificationRecipientGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationRecipientGroupRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的通知接收组。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRecipientGroupResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知接收组不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listNotificationRecipients: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 脱敏接收对象列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRecipientResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知接收组不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createNotificationRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationRecipientRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建的脱敏接收对象。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRecipientResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知接收组不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateNotificationRecipient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+                recipientId: components["parameters"]["NotificationRecipientId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationRecipientRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的脱敏接收对象。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRecipientResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 接收组或接收对象不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    revealNotificationRecipientTarget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["NotificationRecipientGroupId"];
+                recipientId: components["parameters"]["NotificationRecipientId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 与接收对象当前版本绑定的真实目标。 */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationRecipientTargetResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 接收组或接收对象不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listNotificationTemplateVariables: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 可在双花括号占位符中使用的固定变量编码。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listNotificationTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 通知模板列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplateResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createNotificationTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建的通知模板。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getNotificationTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: components["parameters"]["NotificationTemplateId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 通知模板详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplateResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知模板不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateNotificationTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                templateId: components["parameters"]["NotificationTemplateId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationTemplateRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的通知模板。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationTemplateResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知模板不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listNotificationPolicies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 包含当前草稿和当前发布快照的策略列表。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPolicyResponse"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createNotificationPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description 已创建的策略与草稿。 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPolicyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getNotificationPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 通知升级策略详情。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPolicyResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知升级策略不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    updateNotificationPolicyDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description 修改后的策略与草稿。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPolicyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知升级策略不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createNotificationPolicyDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPolicyActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 包含新草稿的策略。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPolicyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知升级策略不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishNotificationPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPolicyPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description 已发布的策略快照。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPolicyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 策略或草稿版本不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveNotificationPolicy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                policyId: components["parameters"]["NotificationPolicyId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationPolicyActionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已归档的通知升级策略。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPolicyResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 通知升级策略不存在。 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Conflict"];
         };
     };
 }

@@ -4579,6 +4579,318 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotificationChannelNotFound' }
+  /notifications/recipient-groups:
+    get:
+      tags: [NotificationConfiguration]
+      operationId: listNotificationRecipientGroups
+      summary: 查询通知接收组
+      description: 需要 notification:recipient:view 权限。
+      responses:
+        '200':
+          description: 通知接收组列表。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NotificationRecipientGroupResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [NotificationConfiguration]
+      operationId: createNotificationRecipientGroup
+      summary: 创建通知接收组
+      description: 需要 notification:recipient:edit 权限。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationRecipientGroupRequest' }
+      responses:
+        '201': { description: 已创建的通知接收组。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationRecipientGroupResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/recipient-groups/{groupId}:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationRecipientGroupId' }
+    get:
+      tags: [NotificationConfiguration]
+      operationId: getNotificationRecipientGroup
+      summary: 查询指定通知接收组
+      responses:
+        '200': { description: 通知接收组详情。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationRecipientGroupResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知接收组不存在。 }
+    put:
+      tags: [NotificationConfiguration]
+      operationId: updateNotificationRecipientGroup
+      summary: 使用乐观锁修改通知接收组
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationRecipientGroupRequest' }
+      responses:
+        '200': { description: 修改后的通知接收组。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationRecipientGroupResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知接收组不存在。 }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/recipient-groups/{groupId}/recipients:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationRecipientGroupId' }
+    get:
+      tags: [NotificationConfiguration]
+      operationId: listNotificationRecipients
+      summary: 查询接收组内脱敏接收对象
+      description: 响应不返回目标明文、密文或盲索引。
+      responses:
+        '200':
+          description: 脱敏接收对象列表。
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NotificationRecipientResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知接收组不存在。 }
+    post:
+      tags: [NotificationConfiguration]
+      operationId: createNotificationRecipient
+      summary: 创建加密通知接收对象
+      description: 需要 notification:recipient:edit 权限；target 仅在请求中出现。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationRecipientRequest' }
+      responses:
+        '201': { description: 已创建的脱敏接收对象。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationRecipientResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知接收组不存在。 }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/recipient-groups/{groupId}/recipients/{recipientId}:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationRecipientGroupId' }
+      - { $ref: '#/components/parameters/NotificationRecipientId' }
+    put:
+      tags: [NotificationConfiguration]
+      operationId: updateNotificationRecipient
+      summary: 使用乐观锁修改加密通知接收对象
+      description: target 为空时保留原目标，普通响应仍只返回脱敏值。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationRecipientRequest' }
+      responses:
+        '200': { description: 修改后的脱敏接收对象。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationRecipientResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 接收组或接收对象不存在。 }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/recipient-groups/{groupId}/recipients/{recipientId}/target:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationRecipientGroupId' }
+      - { $ref: '#/components/parameters/NotificationRecipientId' }
+    get:
+      tags: [NotificationConfiguration]
+      operationId: revealNotificationRecipientTarget
+      summary: 受控读取通知接收目标明文
+      description: 需要 notification:recipient:secret:view 权限；每次读取写审计且响应禁止缓存。
+      responses:
+        '200':
+          description: 与接收对象当前版本绑定的真实目标。
+          headers:
+            Cache-Control:
+              schema: { type: string, example: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationRecipientTargetResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 接收组或接收对象不存在。 }
+  /notifications/templates/variables:
+    get:
+      tags: [NotificationConfiguration]
+      operationId: listNotificationTemplateVariables
+      summary: 查询安全模板变量目录
+      responses:
+        '200':
+          description: 可在双花括号占位符中使用的固定变量编码。
+          content:
+            application/json:
+              schema: { type: array, items: { type: string } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /notifications/templates:
+    get:
+      tags: [NotificationConfiguration]
+      operationId: listNotificationTemplates
+      summary: 查询安全通知模板
+      responses:
+        '200':
+          description: 通知模板列表。
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/NotificationTemplateResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [NotificationConfiguration]
+      operationId: createNotificationTemplate
+      summary: 创建安全通知模板
+      description: 仅接受固定变量白名单内的双花括号占位符，不执行任意表达式。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotificationTemplateRequest' } } }
+      responses:
+        '201': { description: 已创建的通知模板。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationTemplateResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/templates/{templateId}:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationTemplateId' }
+    get:
+      tags: [NotificationConfiguration]
+      operationId: getNotificationTemplate
+      summary: 查询指定通知模板
+      responses:
+        '200': { description: 通知模板详情。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationTemplateResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知模板不存在。 }
+    put:
+      tags: [NotificationConfiguration]
+      operationId: updateNotificationTemplate
+      summary: 使用乐观锁修改通知模板
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotificationTemplateRequest' } } }
+      responses:
+        '200': { description: 修改后的通知模板。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationTemplateResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知模板不存在。 }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/policies:
+    get:
+      tags: [NotificationConfiguration]
+      operationId: listNotificationPolicies
+      summary: 查询通知升级策略
+      responses:
+        '200':
+          description: 包含当前草稿和当前发布快照的策略列表。
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/NotificationPolicyResponse' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [NotificationConfiguration]
+      operationId: createNotificationPolicy
+      summary: 创建通知升级策略和第一版草稿
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyRequest' } } }
+      responses:
+        '201': { description: 已创建的策略与草稿。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/policies/{policyId}:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationPolicyId' }
+    get:
+      tags: [NotificationConfiguration]
+      operationId: getNotificationPolicy
+      summary: 查询指定通知升级策略
+      responses:
+        '200': { description: 通知升级策略详情。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyResponse' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知升级策略不存在。 }
+  /notifications/policies/{policyId}/draft:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationPolicyId' }
+    put:
+      tags: [NotificationConfiguration]
+      operationId: updateNotificationPolicyDraft
+      summary: 整体修改当前策略草稿
+      description: 已发布快照不可修改；修改发布策略前必须先派生新草稿。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyRequest' } } }
+      responses:
+        '200': { description: 修改后的策略与草稿。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知升级策略不存在。 }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/policies/{policyId}/drafts:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationPolicyId' }
+    post:
+      tags: [NotificationConfiguration]
+      operationId: createNotificationPolicyDraft
+      summary: 从当前发布快照派生新草稿
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyActionRequest' } } }
+      responses:
+        '200': { description: 包含新草稿的策略。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知升级策略不存在。 }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/policies/{policyId}/publish:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationPolicyId' }
+    post:
+      tags: [NotificationConfiguration]
+      operationId: publishNotificationPolicy
+      summary: 发布不可变通知升级策略快照
+      description: 需要独立 notification:policy:publish 权限；重复发布同一版本幂等返回。
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyPublishRequest' } } }
+      responses:
+        '200': { description: 已发布的策略快照。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 策略或草稿版本不存在。 }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/policies/{policyId}/archive:
+    parameters:
+      - { $ref: '#/components/parameters/NotificationPolicyId' }
+    post:
+      tags: [NotificationConfiguration]
+      operationId: archiveNotificationPolicy
+      summary: 归档通知升级策略
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyActionRequest' } } }
+      responses:
+        '200': { description: 已归档的通知升级策略。, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPolicyResponse' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 通知升级策略不存在。 }
+        '409': { $ref: '#/components/responses/Conflict' }
 
 components:
   securitySchemes:
@@ -4766,6 +5078,26 @@ components:
         minimum: 1
         maximum: 100
         default: 20
+    NotificationRecipientGroupId:
+      name: groupId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    NotificationRecipientId:
+      name: recipientId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    NotificationTemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    NotificationPolicyId:
+      name: policyId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
   schemas:
     NotificationProviderCode:
       type: string
@@ -4874,6 +5206,195 @@ components:
           additionalProperties: { type: string, maxLength: 8192 }
         version: { type: integer, format: int64, minimum: 0 }
         revealedAt: { type: string, format: date-time }
+    NotificationStatus:
+      type: string
+      enum: [ENABLED, DISABLED]
+    NotificationRecipientType:
+      type: string
+      enum: [SYSTEM_USER, EXTERNAL_CONTACT]
+    NotificationRecipientGroupRequest:
+      type: object
+      additionalProperties: false
+      required: [groupCode, name, status, version]
+      properties:
+        groupCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationRecipientGroupResponse:
+      type: object
+      additionalProperties: false
+      required: [id, groupCode, name, description, status, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        groupCode: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationRecipientRequest:
+      type: object
+      additionalProperties: false
+      required: [recipientType, displayName, channelType, status, version]
+      properties:
+        recipientType: { $ref: '#/components/schemas/NotificationRecipientType' }
+        userId: { type: [string, 'null'], format: uuid }
+        displayName: { type: string, minLength: 1, maxLength: 128 }
+        channelType: { $ref: '#/components/schemas/NotificationChannelType' }
+        target: { type: [string, 'null'], maxLength: 2048, writeOnly: true }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationRecipientResponse:
+      type: object
+      additionalProperties: false
+      required: [id, groupId, recipientType, userId, displayName, channelType, targetMasked, targetConfigured, status, createdAt, updatedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        recipientType: { $ref: '#/components/schemas/NotificationRecipientType' }
+        userId: { type: [string, 'null'], format: uuid }
+        displayName: { type: string }
+        channelType: { $ref: '#/components/schemas/NotificationChannelType' }
+        targetMasked: { type: string }
+        targetConfigured: { type: boolean }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationRecipientTargetResponse:
+      type: object
+      additionalProperties: false
+      required: [recipientId, target, version, revealedAt]
+      properties:
+        recipientId: { type: string, format: uuid }
+        target: { type: string, readOnly: true }
+        version: { type: integer, format: int64, minimum: 0 }
+        revealedAt: { type: string, format: date-time }
+    NotificationEventType:
+      type: string
+      enum: [ALARM_RAISED, ALARM_ACKNOWLEDGED, ALARM_RECOVERED, ALARM_CLOSED, TICKET_CREATED, TICKET_ESCALATED, TICKET_CLOSED]
+    NotificationTemplateRequest:
+      type: object
+      additionalProperties: false
+      required: [templateCode, name, channelType, eventType, locale, bodyTemplate, allowedVariables, status, version]
+      properties:
+        templateCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        channelType: { $ref: '#/components/schemas/NotificationChannelType' }
+        eventType: { $ref: '#/components/schemas/NotificationEventType' }
+        locale: { type: string, enum: [zh-CN, en-US] }
+        subjectTemplate: { type: [string, 'null'], maxLength: 1000 }
+        bodyTemplate: { type: string, minLength: 1, maxLength: 16384 }
+        providerTemplateCode: { type: [string, 'null'], maxLength: 128 }
+        allowedVariables: { type: array, uniqueItems: true, maxItems: 64, items: { type: string } }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationTemplateResponse:
+      allOf:
+        - { $ref: '#/components/schemas/NotificationTemplateRequest' }
+        - type: object
+          required: [id, createdAt, updatedAt]
+          properties:
+            id: { type: string, format: uuid }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    NotificationPolicyMatchConditions:
+      type: object
+      additionalProperties: false
+      required: [mineIds, ruleKeys]
+      properties:
+        mineIds: { type: array, uniqueItems: true, maxItems: 100, items: { type: string, format: uuid } }
+        ruleKeys: { type: array, uniqueItems: true, maxItems: 100, items: { type: string, pattern: '^[a-z][a-z0-9._-]{0,127}$' } }
+    NotificationPolicyStepRequest:
+      type: object
+      additionalProperties: false
+      required: [stepOrder, delaySeconds, channelId, recipientGroupId, templateId, ticketAction]
+      properties:
+        stepOrder: { type: integer, minimum: 0, maximum: 19 }
+        delaySeconds: { type: integer, minimum: 0, maximum: 604800 }
+        channelId: { type: string, format: uuid }
+        recipientGroupId: { type: string, format: uuid }
+        templateId: { type: string, format: uuid }
+        recoveryTemplateId: { type: [string, 'null'], format: uuid }
+        ticketAction: { type: string, enum: [NONE, CREATE, ASSIGN, ESCALATE] }
+        ticketPriority: { type: [integer, 'null'], minimum: 1, maximum: 100 }
+    NotificationPolicyRequest:
+      type: object
+      additionalProperties: false
+      required: [policyCode, name, priority, matchConditions, severityFilter, stopOnAck, notifyOnRecovery, steps, version]
+      properties:
+        policyCode: { type: string, pattern: '^[a-z][a-z0-9-]{1,63}$' }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        priority: { type: integer, minimum: 0, maximum: 1000 }
+        matchConditions: { $ref: '#/components/schemas/NotificationPolicyMatchConditions' }
+        severityFilter: { type: array, uniqueItems: true, minItems: 1, maxItems: 3, items: { type: string, enum: [INFO, WARNING, CRITICAL] } }
+        stopOnAck: { type: boolean }
+        notifyOnRecovery: { type: boolean }
+        steps: { type: array, minItems: 1, maxItems: 20, items: { $ref: '#/components/schemas/NotificationPolicyStepRequest' } }
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationPolicyStepResponse:
+      allOf:
+        - { $ref: '#/components/schemas/NotificationPolicyStepRequest' }
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+    NotificationPolicyVersionResponse:
+      type: object
+      additionalProperties: false
+      required: [id, versionNumber, state, matchConditions, severityFilter, stopOnAck, notifyOnRecovery, publicationReason, publishedAt, steps]
+      properties:
+        id: { type: string, format: uuid }
+        versionNumber: { type: integer, minimum: 1 }
+        state: { type: string, enum: [DRAFT, PUBLISHED, RETIRED] }
+        matchConditions: { $ref: '#/components/schemas/NotificationPolicyMatchConditions' }
+        severityFilter: { type: array, items: { type: string, enum: [INFO, WARNING, CRITICAL] } }
+        stopOnAck: { type: boolean }
+        notifyOnRecovery: { type: boolean }
+        publicationReason: { type: [string, 'null'], maxLength: 500 }
+        publishedAt: { type: [string, 'null'], format: date-time }
+        steps: { type: array, items: { $ref: '#/components/schemas/NotificationPolicyStepResponse' } }
+    NotificationPolicyResponse:
+      type: object
+      additionalProperties: false
+      required: [id, policyCode, name, description, priority, status, draft, published, createdAt, updatedAt, archivedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        policyCode: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        priority: { type: integer, minimum: 0, maximum: 1000 }
+        status: { type: string, enum: [ACTIVE, ARCHIVED] }
+        draft:
+          oneOf:
+            - { $ref: '#/components/schemas/NotificationPolicyVersionResponse' }
+            - { type: 'null' }
+        published:
+          oneOf:
+            - { $ref: '#/components/schemas/NotificationPolicyVersionResponse' }
+            - { type: 'null' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        archivedAt: { type: [string, 'null'], format: date-time }
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationPolicyActionRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+    NotificationPolicyPublishRequest:
+      type: object
+      additionalProperties: false
+      required: [versionId, publicationReason, version]
+      properties:
+        versionId: { type: string, format: uuid }
+        publicationReason: { type: string, minLength: 1, maxLength: 500 }
+        version: { type: integer, format: int64, minimum: 0 }
     MineArchiveStatus:
       type: string
       enum: [ACTIVE, ARCHIVED]
