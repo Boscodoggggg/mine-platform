@@ -45,6 +45,15 @@ public interface NotificationSecretCipher {
     );
 
     /**
+     * 为已完成业务标准化的敏感值生成密钥化盲索引。
+     *
+     * @param purpose 敏感值用途
+     * @param normalizedValue 已完成大小写、空白和格式标准化的值
+     * @return 不可逆且带算法标识的稳定摘要
+     */
+    String blindIndex(SecretPurpose purpose, String normalizedValue);
+
+    /**
      * 区分渠道凭据和接收目标，防止合法密文跨用途替换。
      */
     enum SecretPurpose {

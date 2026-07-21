@@ -63,6 +63,46 @@ class AesGcmNotificationSecretCipherTest {
     }
 
     @Test
+    void 接收目标盲索引必须稳定且使用密钥和用途域隔离() {
+        AesGcmNotificationSecretCipher firstKey =
+                new AesGcmNotificationSecretCipher(key((byte) 31));
+        AesGcmNotificationSecretCipher secondKey =
+                new AesGcmNotificationSecretCipher(key((byte) 32));
+        String normalizedTarget = "operator@example.com";
+
+        String first = firstKey.blindIndex(
+                NotificationSecretCipher.SecretPurpose.RECIPIENT_TARGET, normalizedTarget);
+        String repeated = firstKey.blindIndex(
+                NotificationSecretCipher.SecretPurpose.RECIPIENT_TARGET, normalizedTarget);
+        String otherKey = secondKey.blindIndex(
+                NotificationSecretCipher.SecretPurpose.RECIPIENT_TARGET, normalizedTarget);
+        String otherPurpose = firstKey.blindIndex(
+                NotificationSecretCipher.SecretPurpose.CHANNEL_CREDENTIAL, normalizedTarget);
+
+        assertThat(first)
+                .isEqualTo(repeated)
+                .matches("sha256:[0-9a-f]{64}")
+                .doesNotContain(normalizedTarget);
+        assertThat(otherKey).isNotEqualTo(first);
+        assertThat(otherPurpose).isNotEqualTo(first);
+    }
+
+    @Test
+    void 接收目标盲索引必须拒绝空值和超长值且不得泄露明文() {
+        AesGcmNotificationSecretCipher cipher =
+                new AesGcmNotificationSecretCipher(key((byte) 33));
+        String oversized = "x".repeat(32 * 1024 + 1);
+
+        assertThatThrownBy(() -> cipher.blindIndex(
+                NotificationSecretCipher.SecretPurpose.RECIPIENT_TARGET, ""))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> cipher.blindIndex(
+                NotificationSecretCipher.SecretPurpose.RECIPIENT_TARGET, oversized))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageNotContaining(oversized);
+    }
+
+    @Test
     void 密文必须绑定所有者用途和配置版本() {
         AesGcmNotificationSecretCipher cipher =
                 new AesGcmNotificationSecretCipher(key((byte) 11));
