@@ -23,6 +23,8 @@ echo "[3/5] Shell 与 Docker Compose 配置"
 find "${ROOT_DIR}/scripts" "${ROOT_DIR}/deploy/scripts" "${ROOT_DIR}/deploy/tests" \
   -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
 docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
+bash "${ROOT_DIR}/deploy/tests/standalone-backup.sh"
+bash "${ROOT_DIR}/deploy/tests/standalone-restore.sh"
 
 echo "[4/5] Prometheus、Loki 与 Alloy 配置"
 docker run --rm --entrypoint /bin/promtool \

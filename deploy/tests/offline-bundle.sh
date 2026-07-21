@@ -25,7 +25,7 @@ work_dir="$(mktemp -d)"
 trap 'rm -rf "${work_dir}"' EXIT
 fixture="${work_dir}/fixture"
 fake_bin="${work_dir}/bin"
-mkdir -p "${fixture}"/{deploy/{compose,config/gateway,env,scripts,tests,secrets.example},mine-server/target,mine-gateway/target,mine-telemetry/target,mine-web/dist,target/sbom} "${fake_bin}"
+mkdir -p "${fixture}"/{deploy/{compose,config/gateway,env,scripts/lib,tests,secrets.example},mine-server/target,mine-gateway/target,mine-telemetry/target,mine-web/dist,target/sbom} "${fake_bin}"
 
 printf 'license\n' > "${fixture}/LICENSE"
 printf 'notice\n' > "${fixture}/NOTICE"
@@ -37,10 +37,24 @@ printf '{"version":1,"devices":[]}\n' > "${fixture}/deploy/config/gateway/device
 printf '#!/usr/bin/env bash\necho "preflight profile=${MINE_PREFLIGHT_PROFILE:-}" >> "${FAKE_DOCKER_LOG}"\n' > "${fixture}/deploy/scripts/preflight.sh"
 printf '#!/usr/bin/env bash\necho "health project=${MINE_COMPOSE_PROJECT_NAME:-}" >> "${FAKE_DOCKER_LOG}"\n' > "${fixture}/deploy/scripts/health-check.sh"
 cp "${BUILD_SCRIPT}" "${INSTALL_SCRIPT}" "${fixture}/deploy/scripts/"
+cp "${ROOT_DIR}/deploy/scripts/backup-standalone.sh" \
+  "${ROOT_DIR}/deploy/scripts/restore-standalone.sh" \
+  "${fixture}/deploy/scripts/"
+cp "${ROOT_DIR}/deploy/scripts/lib/standalone-recovery-common.sh" \
+  "${fixture}/deploy/scripts/lib/"
+cp "${ROOT_DIR}/deploy/tests/standalone-backup.sh" \
+  "${ROOT_DIR}/deploy/tests/standalone-restore.sh" \
+  "${fixture}/deploy/tests/"
 printf '#!/usr/bin/env bash\n' > "${fixture}/deploy/tests/standalone-smoke.sh"
 printf '#!/usr/bin/env bash\necho "observability project=${MINE_COMPOSE_PROJECT_NAME:-}" >> "${FAKE_DOCKER_LOG}"\n' > "${fixture}/deploy/tests/observability-smoke.sh"
 chmod +x "${fixture}/deploy/scripts/preflight.sh" "${fixture}/deploy/scripts/health-check.sh" \
-  "${fixture}/deploy/tests/standalone-smoke.sh" "${fixture}/deploy/tests/observability-smoke.sh"
+  "${fixture}/deploy/scripts/backup-standalone.sh" \
+  "${fixture}/deploy/scripts/restore-standalone.sh" \
+  "${fixture}/deploy/scripts/lib/standalone-recovery-common.sh" \
+  "${fixture}/deploy/tests/standalone-smoke.sh" \
+  "${fixture}/deploy/tests/observability-smoke.sh" \
+  "${fixture}/deploy/tests/standalone-backup.sh" \
+  "${fixture}/deploy/tests/standalone-restore.sh"
 printf 'server\n' > "${fixture}/mine-server/target/mine-server-0.1.0-SNAPSHOT.jar"
 printf 'gateway\n' > "${fixture}/mine-gateway/target/mine-gateway-0.1.0-SNAPSHOT.jar"
 printf 'telemetry\n' > "${fixture}/mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar"
@@ -95,6 +109,19 @@ bundle="${work_dir}/extract/mine-platform-0.1.0-test"
 [[ -s "${bundle}/sbom/backend.json" && -s "${bundle}/sbom/frontend.json" ]] || fail "离线包缺少 SBOM"
 [[ ! -e "${bundle}/deploy/secrets" ]] || fail "离线包不得包含 secret"
 [[ ! -e "${bundle}/deploy/env/site.env" ]] || fail "离线包只能包含环境变量示例，不能包含现场环境文件"
+recovery_assets=(
+  deploy/scripts/backup-standalone.sh
+  deploy/scripts/restore-standalone.sh
+  deploy/scripts/lib/standalone-recovery-common.sh
+  deploy/tests/standalone-backup.sh
+  deploy/tests/standalone-restore.sh
+)
+for relative in "${recovery_assets[@]}"; do
+  [[ -x "${bundle}/${relative}" ]] || fail "离线包缺少可执行恢复资产 ${relative}"
+  awk -v path="./${relative}" '$2 == path {found = 1} END {exit !found}' \
+    "${bundle}/manifests/checksums.sha256" \
+    || fail "离线包校验和未覆盖恢复资产 ${relative}"
+done
 
 : > "${FAKE_DOCKER_LOG}"
 if "${bundle}/deploy/scripts/install-offline.sh" --bundle-dir "${bundle}" >/dev/null 2>&1; then

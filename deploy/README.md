@@ -48,7 +48,7 @@ deploy/scripts/build-offline-bundle.sh \
   --output-dir target/offline
 ~~~
 
-打包脚本只使用本地镜像；任一基线镜像缺失都会失败，不会在打包过程中隐式拉取。输出为 `mine-platform-<version>.tar` 和对应 `.sha256`。
+打包脚本只使用本地镜像；任一基线镜像缺失都会失败，不会在打包过程中隐式拉取。输出为 `mine-platform-<version>.tar` 和对应 `.sha256`。离线包同时交付 `backup-standalone.sh`、`restore-standalone.sh`、共享校验库和对应自动化契约；它不包含任何现场备份、环境文件、secret 或私钥。备份恢复只支持同发行版本、同镜像 ID 的四个事实卷，且恢复只写不存在的新卷，不自动启动服务。
 
 ## 4. 初始化配置与 secret
 
