@@ -22,6 +22,12 @@ grep -Fq "worker-src 'self' blob:" "${nginx_config}" \
   || { echo "FAIL: Cesium Worker 只能从同源静态资源或受控 blob 启动" >&2; exit 1; }
 grep -Fq "object-src 'none'" "${nginx_config}" \
   || { echo "FAIL: Web 安全策略必须禁止插件对象执行" >&2; exit 1; }
+grep -Fq 'resolver 127.0.0.11 valid=10s ipv6=off;' "${nginx_config}" \
+  || { echo "FAIL: Nginx 必须通过 Docker DNS 动态解析后端服务" >&2; exit 1; }
+grep -Fq 'server mine-server:8080 resolve;' "${nginx_config}" \
+  || { echo "FAIL: Nginx 后端节点必须在容器重建后自动更新地址" >&2; exit 1; }
+grep -Fq 'zone mine_server 64k;' "${nginx_config}" \
+  || { echo "FAIL: Nginx 动态上游必须使用共享内存区保存解析结果" >&2; exit 1; }
 
 MINE_GATEWAY_TCP_ENABLED=false docker compose --profile observability --env-file "${ENV_FILE}" \
   -f "${COMPOSE_FILE}" config --format json >"${rendered_tcp_disabled}"
