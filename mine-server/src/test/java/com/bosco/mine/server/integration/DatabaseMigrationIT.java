@@ -17,12 +17,13 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -1796,6 +1797,110 @@ class DatabaseMigrationIT {
                             "governance:aggregation:view",
                             "governance:retention:view"
                     );
+                }
+            }
+        } finally {
+            jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+        }
+    }
+
+    @Test
+    void 从现场旧二十九版升级时必须保留预览凭证并补齐激活类型() throws Exception {
+        String schema = "retention_v29_upgrade_"
+                + UUID.randomUUID().toString().replace("-", "");
+        UUID productId = UUID.randomUUID();
+        UUID strategyVersionId = UUID.randomUUID();
+        UUID evidenceId = UUID.randomUUID();
+        String legacyMigration;
+        try (var input = getClass().getResourceAsStream(
+                "/db/legacy/V29__bind_retention_preview_evidence.sql")) {
+            assertThat(input).isNotNull();
+            legacyMigration = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        try {
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .target("28")
+                    .load()
+                    .migrate();
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                statement.execute(legacyMigration);
+                statement.execute("""
+                        INSERT INTO flyway_schema_history (
+                            installed_rank, version, description, type, script,
+                            checksum, installed_by, execution_time, success
+                        ) VALUES (
+                            29, '29', 'bind retention preview evidence', 'SQL',
+                            'V29__bind_retention_preview_evidence.sql', -1334207752,
+                            CURRENT_USER, 0, TRUE
+                        )
+                        """);
+                statement.execute("""
+                        INSERT INTO dev_product (id, product_key, name, device_type, status)
+                        VALUES ('%s', 'legacy-retention-product', '旧版保留产品', 'SENSOR', 'ACTIVE')
+                        """.formatted(productId));
+                statement.execute("""
+                        INSERT INTO dev_strategy_version (
+                            id, product_id, strategy_type, version_number, values_json
+                        ) VALUES (
+                            '%s', '%s', 'RETENTION', 1,
+                            '{"policy":{"enabled":true,"rawTelemetryDays":90}}'::JSONB
+                        )
+                        """.formatted(strategyVersionId, productId));
+                statement.execute("""
+                        INSERT INTO dev_retention_preview_evidence (
+                            id, strategy_version_id, product_id, scope_type, scope_id,
+                            group_priority, candidate_hash, resolution_hash,
+                            observed_at, expires_at
+                        ) VALUES (
+                            '%s', '%s', '%s', 'PRODUCT', '%s', NULL,
+                            'sha256:%s', 'sha256:%s',
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP + INTERVAL '15 minutes'
+                        )
+                        """.formatted(
+                        evidenceId, strategyVersionId, productId, productId,
+                        "a".repeat(64), "b".repeat(64)));
+            }
+
+            Flyway.configure()
+                    .dataSource(POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword())
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate();
+
+            try (Connection connection = DriverManager.getConnection(
+                    POSTGRESQL.getJdbcUrl(), POSTGRESQL.getUsername(), POSTGRESQL.getPassword());
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path TO " + schema);
+                try (ResultSet result = statement.executeQuery("""
+                        SELECT activation_type, change_type, group_version
+                        FROM dev_retention_preview_evidence
+                        WHERE id = '%s'
+                        """.formatted(evidenceId))) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getString("activation_type")).isEqualTo("STRATEGY_RELEASE");
+                    assertThat(result.getString("change_type")).isNull();
+                    assertThat(result.getObject("group_version")).isNull();
+                    assertThat(result.next()).isFalse();
+                }
+                try (ResultSet result = statement.executeQuery("""
+                        SELECT COUNT(*)
+                        FROM pg_attribute
+                        WHERE attrelid = 'dev_retention_preview_evidence'::regclass
+                          AND attnum > 0
+                          AND NOT attisdropped
+                          AND COALESCE(col_description(attrelid, attnum), '') = ''
+                        """)) {
+                    assertThat(result.next()).isTrue();
+                    assertThat(result.getLong(1)).isZero();
                 }
             }
         } finally {
