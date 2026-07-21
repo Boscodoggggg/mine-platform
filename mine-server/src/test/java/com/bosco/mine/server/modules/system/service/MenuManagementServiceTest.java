@@ -59,6 +59,7 @@ class MenuManagementServiceTest {
                         "retention-governance",
                         "aggregation-governance",
                         "alarm-center",
+                        "notification-channel-management",
                         "mine-site-archive",
                         "mine-vehicle-management",
                         "mine-person-management",

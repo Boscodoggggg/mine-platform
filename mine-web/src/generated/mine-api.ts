@@ -2975,6 +2975,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/channels/{channelId}/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * 受控读取通知渠道真实敏感配置
+         * @description 需要 notification:channel:secret:view 权限。每次成功读取都会写入独立操作审计，
+         *     响应禁止浏览器和代理缓存；列表与普通详情接口仍不返回任何明文或密文。
+         */
+        get: operations["revealNotificationChannelSecrets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3045,6 +3068,18 @@ export interface components {
             updatedAt: string;
             /** Format: int64 */
             version: number;
+        };
+        NotificationChannelSecretsResponse: {
+            /** Format: uuid */
+            channelId: string;
+            provider: components["schemas"]["NotificationProviderCode"];
+            readonly secrets: {
+                [key: string]: string;
+            };
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            revealedAt: string;
         };
         /** @enum {string} */
         MineArchiveStatus: "ACTIVE" | "ARCHIVED";
@@ -13015,6 +13050,32 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotificationChannelNotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    revealNotificationChannelSecrets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channelId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 与当前渠道版本绑定的真实敏感配置。 */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationChannelSecretsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotificationChannelNotFound"];
         };
     };
 }

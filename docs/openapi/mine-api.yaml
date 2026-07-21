@@ -4399,6 +4399,31 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotificationChannelNotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /notifications/channels/{channelId}/secrets:
+    parameters:
+      - name: channelId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [NotificationConfiguration]
+      operationId: revealNotificationChannelSecrets
+      summary: 受控读取通知渠道真实敏感配置
+      description: |
+        需要 notification:channel:secret:view 权限。每次成功读取都会写入独立操作审计，
+        响应禁止浏览器和代理缓存；列表与普通详情接口仍不返回任何明文或密文。
+      responses:
+        '200':
+          description: 与当前渠道版本绑定的真实敏感配置。
+          headers:
+            Cache-Control:
+              schema: { type: string, example: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationChannelSecretsResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotificationChannelNotFound' }
 
 components:
   securitySchemes:
@@ -4680,6 +4705,20 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         version: { type: integer, format: int64, minimum: 0 }
+    NotificationChannelSecretsResponse:
+      type: object
+      additionalProperties: false
+      required: [channelId, provider, secrets, version, revealedAt]
+      properties:
+        channelId: { type: string, format: uuid }
+        provider: { $ref: '#/components/schemas/NotificationProviderCode' }
+        secrets:
+          type: object
+          readOnly: true
+          maxProperties: 128
+          additionalProperties: { type: string, maxLength: 8192 }
+        version: { type: integer, format: int64, minimum: 0 }
+        revealedAt: { type: string, format: date-time }
     MineArchiveStatus:
       type: string
       enum: [ACTIVE, ARCHIVED]

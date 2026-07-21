@@ -26,7 +26,8 @@ class NotificationChannelOpenApiTest {
         Map<String, Object> paths = map(root.get("paths"));
         assertThat(paths).containsKeys(
                 "/notifications/providers", "/notifications/channels",
-                "/notifications/channels/{channelId}");
+                "/notifications/channels/{channelId}",
+                "/notifications/channels/{channelId}/secrets");
         Map<String, Object> schemas = map(map(root.get("components")).get("schemas"));
         assertThat(list(map(schemas.get("NotificationProviderCode")).get("enum")))
                 .containsExactly(
@@ -41,6 +42,13 @@ class NotificationChannelOpenApiTest {
         assertThat(responseProperties)
                 .containsKey("secretConfigured")
                 .doesNotContainKeys("secrets", "secretCiphertext");
+        Map<String, Object> secretResponse = map(
+                schemas.get("NotificationChannelSecretsResponse"));
+        Map<String, Object> secretProperties = map(secretResponse.get("properties"));
+        assertThat(secretProperties).containsKeys(
+                "channelId", "provider", "secrets", "version", "revealedAt");
+        assertThat(map(secretProperties.get("secrets")))
+                .containsEntry("readOnly", true);
     }
 
     private Path contractPath() {
