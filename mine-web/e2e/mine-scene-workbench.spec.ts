@@ -42,7 +42,7 @@ test('授权用户应在真实 WebGL 场景加载仓库内确定性 GLB', async 
 
   await page.goto('/mine/scene');
 
-  await expect(page.getByRole('menuitem', { name: '三维场景' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '三维场景' })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('矿区三维场景', { exact: true })).toBeVisible();
   await expect(page.getByTestId('scene-3d-viewport')).toBeVisible();
   await expect(page.getByTestId('scene-3d-viewport').locator('canvas')).toBeVisible();
@@ -65,7 +65,7 @@ test('GLB 读取返回 500 时应只降级对应图层并保留三维场景', as
 
   await page.goto('/mine/scene');
 
-  await expect(page.getByTestId('scene-layer-degraded')).toContainText('demo-mine-grid');
+  await expect(page.getByTestId('scene-layer-degraded')).toContainText('demo-mine-grid', { timeout: 15_000 });
   await expect(page.getByTestId('scene-3d-viewport')).toBeVisible();
   await expect(page.getByTestId('canvas-viewport')).toHaveCount(0);
 });

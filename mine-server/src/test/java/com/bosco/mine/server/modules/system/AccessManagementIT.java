@@ -12,6 +12,9 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -39,6 +42,16 @@ class AccessManagementIT {
             .withDatabaseName("mine")
             .withUsername("mine")
             .withPassword("mine-test-password");
+
+    @Container
+    static final GenericContainer<?> REDIS = new GenericContainer<>("redis:8.2-alpine")
+            .withExposedPorts(6379);
+
+    @DynamicPropertySource
+    static void 注册Redis动态配置(DynamicPropertyRegistry registry) {
+        registry.add("spring.data.redis.host", REDIS::getHost);
+        registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
+    }
 
     @Autowired
     private AccessManagementService service;

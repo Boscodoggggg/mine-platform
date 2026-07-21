@@ -503,12 +503,14 @@ function showError(error: unknown) {
             </template>
             <NAlert v-if="currentProtocol" type="info" :bordered="false">
               {{
-                currentProtocol.parserType === 'CONFIGURATION'
+                currentProtocol.parserType !== 'JAVA_PLUGIN'
                   ? t('mine.models.binding.configuration')
                   : t('mine.models.binding.plugin', {
                     plugin: currentProtocol.pluginKey,
                     version: currentProtocol.pluginVersion,
-                    routing: t(`mine.models.routing.${currentProtocol.routingMode.toLowerCase()}`)
+                    routing: t(
+                      `mine.models.routing.${(currentProtocol.routingMode || 'TRUSTED_IDENTITY').toLowerCase()}`
+                    )
                   })
               }}
             </NAlert>
