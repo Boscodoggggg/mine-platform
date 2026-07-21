@@ -120,7 +120,14 @@ class DatabaseMigrationIT {
             "sys_inbox_event",
             "cmd_instance",
             "alarm_event",
-            "alarm_acknowledgement"
+            "alarm_acknowledgement",
+            "notification_channel",
+            "notification_recipient_group",
+            "notification_recipient",
+            "notification_template",
+            "notification_policy",
+            "notification_policy_version",
+            "notification_policy_step"
     );
 
     @Container
@@ -777,6 +784,76 @@ class DatabaseMigrationIT {
                 "idx_alarm_event_rule_time",
                 "idx_alarm_event_status_time"
         );
+    }
+
+    @Test
+    void 通知配置控制面必须只保存密文并具备完整中文注释和发布约束() {
+        List<String> tables = List.of(
+                "notification_channel",
+                "notification_recipient_group",
+                "notification_recipient",
+                "notification_template",
+                "notification_policy",
+                "notification_policy_version",
+                "notification_policy_step"
+        );
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT obj_description(class.oid, 'pg_class')
+                FROM pg_class class
+                WHERE class.relname IN (
+                    'notification_channel', 'notification_recipient_group',
+                    'notification_recipient', 'notification_template',
+                    'notification_policy', 'notification_policy_version',
+                    'notification_policy_step'
+                )
+                ORDER BY class.relname
+                """, String.class))
+                .hasSize(tables.size())
+                .allMatch(comment -> comment != null && comment.matches(".*[\\u4e00-\\u9fff].*"));
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*)
+                FROM pg_attribute attribute
+                JOIN pg_class class ON class.oid = attribute.attrelid
+                WHERE class.relname IN (
+                    'notification_channel', 'notification_recipient_group',
+                    'notification_recipient', 'notification_template',
+                    'notification_policy', 'notification_policy_version',
+                    'notification_policy_step'
+                )
+                  AND attribute.attnum > 0
+                  AND NOT attribute.attisdropped
+                  AND COALESCE(col_description(attribute.attrelid, attribute.attnum), '') = ''
+                """, Long.class)).isZero();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name IN ('notification_channel', 'notification_recipient')
+                  AND column_name IN ('secret', 'secret_value', 'target', 'target_value')
+                """, String.class)).isEmpty();
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name IN ('notification_channel', 'notification_recipient')
+                  AND column_name IN ('secret_ciphertext', 'target_ciphertext', 'target_digest')
+                ORDER BY column_name
+                """, String.class)).containsExactly(
+                "secret_ciphertext", "target_ciphertext", "target_digest");
+        assertThat(constraintColumns("uk_notification_channel_code"))
+                .containsExactly("channel_code");
+        assertThat(constraintColumns("uk_notification_recipient_target"))
+                .containsExactly("group_id", "channel_type", "target_digest");
+        assertThat(constraintColumns("uk_notification_policy_version"))
+                .containsExactly("policy_id", "version_number");
+        assertThat(constraintColumns("uk_notification_policy_step_order"))
+                .containsExactly("policy_version_id", "step_order");
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename = 'notification_policy_version'
+                """, String.class)).contains("uk_notification_policy_single_published");
     }
 
     @Test
