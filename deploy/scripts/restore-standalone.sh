@@ -50,7 +50,7 @@ elif [[ -n "${ROOT_RELEASE_VERSION}" && "${EXPECTED_RELEASE_VERSION}" != "${ROOT
 fi
 recovery_require_version "${EXPECTED_RELEASE_VERSION}"
 
-for command in docker jq tar awk sort mktemp dirname basename rm; do
+for command in docker jq tar awk sort mktemp dirname basename rm grep; do
   recovery_require_command "${command}"
 done
 if ! command -v sha256sum >/dev/null 2>&1; then
@@ -62,9 +62,19 @@ ARCHIVE="${ARCHIVE_DIR}/$(basename "${ARCHIVE}")"
 EXTERNAL_CHECKSUM="${ARCHIVE}.sha256"
 [[ -f "${EXTERNAL_CHECKSUM}" ]] || recovery_fail "缺少外部校验和 ${EXTERNAL_CHECKSUM}"
 
-checksum_record="$(awk 'NF == 2 {print $1 "|" $2}' "${EXTERNAL_CHECKSUM}")"
-[[ -n "${checksum_record}" && "${checksum_record}" != *$'\n'* ]] \
-  || recovery_fail "外部校验和文件格式无效"
+if ! checksum_record="$(awk '
+  NF != 2 { invalid = 1 }
+  { line_count += 1 }
+  NF == 2 { record = $1 "|" $2 }
+  END {
+    if (invalid || line_count != 1) {
+      exit 1
+    }
+    print record
+  }
+' "${EXTERNAL_CHECKSUM}")"; then
+  recovery_fail "外部校验和文件格式无效"
+fi
 external_hash="${checksum_record%%|*}"
 external_name="${checksum_record#*|}"
 [[ "${external_hash}" =~ ^[a-f0-9]{64}$ ]] || recovery_fail "外部 SHA-256 格式无效"
@@ -99,6 +109,13 @@ while IFS= read -r entry || [[ -n "${entry}" ]]; do
     || recovery_fail "备份归档必须只有与确认 ID 匹配的单一根目录"
 done < "${TAR_LIST}"
 
+TAR_VERBOSE_LIST="${WORK_DIR}/archive.verbose.list"
+tar -tvf "${ARCHIVE}" > "${TAR_VERBOSE_LIST}"
+awk '
+  substr($0, 1, 1) != "-" && substr($0, 1, 1) != "d" { invalid = 1 }
+  END { exit invalid }
+' "${TAR_VERBOSE_LIST}" || recovery_fail "备份归档包含链接或特殊文件条目"
+
 EXTRACT_DIR="${WORK_DIR}/extracted"
 mkdir -p "${EXTRACT_DIR}"
 tar -xf "${ARCHIVE}" -C "${EXTRACT_DIR}"
@@ -115,7 +132,7 @@ checksum_paths=(
   volumes/rabbitmq_data.tar
   volumes/rustfs_data.tar
 )
-[[ "$(awk 'NF == 2 {count += 1} END {print count + 0}' "${INTERNAL_CHECKSUM}")" == "5" ]] \
+awk 'NF != 2 { invalid = 1 } END { exit invalid || NR != 5 }' "${INTERNAL_CHECKSUM}" \
   || recovery_fail "内部校验和必须精确覆盖 manifest 和四个事实卷"
 for relative_path in "${checksum_paths[@]}"; do
   expected_internal_hash="$(awk -v path="${relative_path}" '$2 == path {print $1}' "${INTERNAL_CHECKSUM}")"
@@ -173,17 +190,14 @@ for service in "${services[@]}"; do
   target_images+=("${target_image}")
 done
 
+EXISTING_VOLUMES="${WORK_DIR}/existing-volumes.list"
+docker volume ls --quiet > "${EXISTING_VOLUMES}" \
+  || recovery_fail "无法读取 Docker 卷清单，拒绝恢复"
 for logical_name in "${logical_volumes[@]}"; do
   target_volume="${PROJECT_NAME}_${logical_name}"
-  set +e
-  docker volume inspect "${target_volume}" --format '{{.Driver}}' > "${WORK_DIR}/volume-inspect.out" 2>&1
-  inspect_status=$?
-  set -e
-  if [[ "${inspect_status}" -eq 0 ]]; then
+  if grep -Fxq -- "${target_volume}" "${EXISTING_VOLUMES}"; then
     recovery_fail "目标卷已存在，拒绝覆盖：${target_volume}"
   fi
-  [[ "${inspect_status}" -eq 1 ]] \
-    || recovery_fail "无法确认目标卷不存在：${target_volume}"
 done
 
 HELPER_IMAGE="${target_images[0]}"

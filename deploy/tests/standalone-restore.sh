@@ -78,6 +78,9 @@ elif [[ "${1:-}" == "volume" && "${2:-}" == "inspect" ]]; then
   else
     exit 1
   fi
+elif [[ "${1:-}" == "volume" && "${2:-}" == "ls" ]]; then
+  [[ "${FAKE_VOLUME_LIST_ERROR:-}" != "true" ]] || exit 1
+  [[ -z "${FAKE_EXISTING_VOLUME:-}" ]] || printf '%s\n' "${FAKE_EXISTING_VOLUME}"
 elif [[ "${1:-}" == "volume" && "${2:-}" == "create" ]]; then
   printf '%s\n' "${*: -1}"
 elif [[ "${1:-}" == "run" ]]; then
@@ -108,6 +111,8 @@ set -euo pipefail
 echo "$*" >> "${FAKE_TAR_LOG}"
 if [[ "${1:-}" == "-tf" && -n "${FAKE_TAR_LIST:-}" ]]; then
   printf '%s\n' "${FAKE_TAR_LIST}"
+elif [[ "${1:-}" == "-tvf" && -n "${FAKE_TAR_VERBOSE_LIST:-}" ]]; then
+  printf '%s\n' "${FAKE_TAR_VERBOSE_LIST}"
 else
   /usr/bin/tar "$@"
 fi
@@ -179,6 +184,9 @@ make_variant() {
       mv "${backup_root}/manifest.json.tmp" "${backup_root}/manifest.json"
       rebuild_internal_checksum "${backup_root}"
       ;;
+    internal-checksum-extra)
+      printf 'unexpected-line\n' >> "${backup_root}/manifests/checksums.sha256"
+      ;;
     *) fail "未知 fixture 变更 ${mutation}" ;;
   esac
 
@@ -190,9 +198,14 @@ make_variant() {
 corrupt_internal_archive="$(make_variant corrupt-internal corrupt-internal)"
 schema_archive="$(make_variant invalid-schema schema)"
 volume_set_archive="$(make_variant invalid-volume-set volume-set)"
+internal_extra_archive="$(make_variant internal-checksum-extra internal-checksum-extra)"
 external_corrupt_archive="${output_dir}/external-corrupt.tar"
 cp "${valid_archive}" "${external_corrupt_archive}"
 printf '%064d  %s\n' 0 "$(basename "${external_corrupt_archive}")" > "${external_corrupt_archive}.sha256"
+external_extra_archive="${output_dir}/external-checksum-extra.tar"
+cp "${valid_archive}" "${external_extra_archive}"
+write_external_checksum "${external_extra_archive}"
+printf 'unexpected-line\n' >> "${external_extra_archive}.sha256"
 
 restore_command=(
   "${RESTORE_SCRIPT}"
@@ -231,7 +244,8 @@ run_expect_failure "错误 backupId 仍被接受" \
   --expected-release-version 0.1.0-test --confirm-backup-id 20260720T220000Z-deadbeef
 assert_no_volume_create "错误 backupId 时不应创建卷"
 
-for archive in "${external_corrupt_archive}" "${corrupt_internal_archive}" "${schema_archive}" "${volume_set_archive}"; do
+for archive in "${external_corrupt_archive}" "${external_extra_archive}" "${corrupt_internal_archive}" \
+  "${schema_archive}" "${volume_set_archive}" "${internal_extra_archive}"; do
   : > "${FAKE_DOCKER_LOG}"
   run_expect_failure "损坏或非法备份仍然恢复成功：$(basename "${archive}")" \
     "${RESTORE_SCRIPT}" --archive "${archive}" \
@@ -239,6 +253,12 @@ for archive in "${external_corrupt_archive}" "${corrupt_internal_archive}" "${sc
     --expected-release-version 0.1.0-test --confirm-backup-id "${MINE_BACKUP_ID}"
   assert_no_volume_create "损坏或非法备份不应创建卷"
 done
+
+: > "${FAKE_DOCKER_LOG}"
+: > "${FAKE_TAR_LOG}"
+FAKE_TAR_VERBOSE_LIST='lrwxr-xr-x 0 root root 0 Jul 21 00:00 unsafe-link -> /tmp' \
+  run_expect_failure "外层 tar 的链接条目仍被接受" "${restore_command[@]}"
+assert_no_volume_create "外层 tar 包含链接时不应创建卷"
 
 : > "${FAKE_DOCKER_LOG}"
 run_expect_failure "发行版本不一致时恢复仍然成功" \
@@ -274,7 +294,7 @@ FAKE_EXISTING_VOLUME=mine-restore_rabbitmq_data run_expect_failure "目标卷已
 assert_no_volume_create "任一目标卷已存在时不应创建任何卷"
 
 : > "${FAKE_DOCKER_LOG}"
-FAKE_VOLUME_INSPECT_ERROR=mine-restore_postgres_data run_expect_failure "卷检查异常被当作不存在" "${restore_command[@]}"
+FAKE_VOLUME_LIST_ERROR=true run_expect_failure "卷清单查询异常被当作不存在" "${restore_command[@]}"
 assert_no_volume_create "卷检查异常时不应创建卷"
 
 : > "${FAKE_DOCKER_LOG}"

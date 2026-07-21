@@ -18,7 +18,7 @@
 | 源卷安全 | 源卷只读挂载，helper 容器固定 `--network none` | 通过 |
 | 可追溯 manifest | 记录 schema、backupId、UTC 时间、发行版本、源项目、Compose 摘要、镜像引用/ID 和固定卷清单 | 通过 |
 | 完整性 | 外部 SHA-256 保护最终 tar，内部 SHA-256 精确保护 manifest 和四个卷归档 | 通过 |
-| 归档路径安全 | 创建卷前拒绝绝对路径、空路径段、`.`/`..` 和第二个顶层目录 | 通过 |
+| 归档路径安全 | 创建卷前拒绝绝对路径、空路径段、`.`/`..`、第二个顶层目录、链接和特殊文件条目 | 通过 |
 | 同版本门禁 | 确认 ID、发行版本、目标镜像引用和本地镜像 ID 必须全部精确匹配 | 通过 |
 | 拒绝覆盖 | 任一目标卷已存在即在创建卷前失败；Docker 查询异常不视为“不存在” | 通过 |
 | 失败保留 | 恢复失败时保留已创建的新卷并打印清单，不自动删除 | 通过 |
@@ -35,17 +35,28 @@ bash deploy/tests/standalone-restore.sh
 bash deploy/tests/offline-bundle.sh
 bash deploy/tests/compose-config.sh
 find scripts deploy/scripts deploy/tests -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+./mvnw -B -ntp test
+pnpm --dir mine-web check:ui-governance
+pnpm --dir mine-web typecheck
+pnpm --dir mine-web lint:check
+pnpm --dir mine-web test:unit
+pnpm --dir mine-web build
+bash deploy/tests/prometheus-rules.sh
 ```
 
 最终执行结果：
 
 - Standalone 冷备份安全契约 7 项通过。
-- Standalone 恢复先验证、拒绝覆盖和不自动启动契约 16 项通过。
+- Standalone 恢复先验证、拒绝覆盖和不自动启动契约 19 项通过；额外覆盖校验文件无效行、外层 tar 链接/特殊文件和 Docker 卷清单查询失败。
 - 离线包资产、可执行权限和总 SHA-256 清单校验通过。
 - Standalone Compose 配置契约通过。
 - `scripts/`、`deploy/scripts/` 和 `deploy/tests/` 下全部 Shell 脚本语法检查通过。
+- Maven 12 个 Reactor 模块全部成功；本次重新生成的 Surefire 报告共 1052 项测试通过，失败、错误和跳过均为 0。
+- 前端 UI 治理 49 项通过，类型检查通过；静态检查覆盖 408 个文件、141 条规则，警告和错误均为 0。
+- Vitest 70 个测试文件共 437 项通过；生产构建通过。
+- Prometheus 共 54 条规则通过语法和行为检查。
 
-仓库级后端、前端与 Prometheus 完整门禁在最终收口阶段重新执行，结果应以本报告后续修订和当次 CI 制品为准，不复用旧阶段测试数量。
+测试数量来自本次最终生命周期生成的 Surefire/Vitest 输出，不复用旧阶段数字。当前切片没有修改数据库、Java 或业务前端生产代码，因此按计划未重复执行容器集成和页面 E2E；真实恢复继续保持延期。
 
 ## 4. 关键不变量
 
