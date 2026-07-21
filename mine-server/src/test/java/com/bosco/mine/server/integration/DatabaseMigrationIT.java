@@ -918,6 +918,15 @@ class DatabaseMigrationIT {
         assertThat(constraintColumns("uk_notification_policy_step_order"))
                 .containsExactly("policy_version_id", "step_order");
         assertThat(jdbcTemplate.queryForList("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'notification_policy_step'
+                  AND column_name = 'recovery_template_id'
+                """, String.class)).containsExactly("recovery_template_id");
+        assertThat(constraintColumns("fk_notification_policy_step_recovery_template"))
+                .containsExactly("recovery_template_id");
+        assertThat(jdbcTemplate.queryForList("""
                 SELECT indexname
                 FROM pg_indexes
                 WHERE schemaname = 'public'
