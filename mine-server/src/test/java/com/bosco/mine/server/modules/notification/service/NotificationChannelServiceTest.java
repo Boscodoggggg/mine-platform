@@ -8,6 +8,7 @@ import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryRe
 import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryResult;
 import com.bosco.mine.server.modules.notification.dto.NotificationChannelRequest;
 import com.bosco.mine.server.modules.notification.dto.NotificationChannelResponse;
+import com.bosco.mine.server.modules.notification.dto.NotificationChannelSecretsResponse;
 import com.bosco.mine.server.modules.notification.model.NotificationChannel;
 import com.bosco.mine.server.modules.notification.provider.NotificationProviderDefinition;
 import com.bosco.mine.server.modules.notification.provider.NotificationProviderRegistry;
@@ -165,6 +166,44 @@ class NotificationChannelServiceTest {
                 .containsKey("allowedHosts")
                 .doesNotContainKey("endpointUrl");
         assertThat(response.toString()).doesNotContain("hooks.example.com/secret");
+    }
+
+    @Test
+    void 显式读取渠道凭据必须解密真实值并写入无敏感值审计() {
+        UUID channelId = UUID.randomUUID();
+        NotificationChannel existing = channel(
+                channelId, "critical-email", "ENABLED", "v1:nonce:ciphertext", 3);
+        when(mapper.findById(channelId)).thenReturn(Optional.of(existing));
+        when(cipher.decrypt(
+                channelId,
+                NotificationSecretCipher.SecretPurpose.CHANNEL_CREDENTIAL,
+                3,
+                "v1:nonce:ciphertext"
+        )).thenReturn("{\"username\":\"mine-admin\",\"password\":\"mail-secret\"}");
+
+        NotificationChannelSecretsResponse response = service.readSecrets(channelId);
+
+        assertThat(response.channelId()).isEqualTo(channelId);
+        assertThat(response.provider()).isEqualTo("smtp");
+        assertThat(response.version()).isEqualTo(3);
+        assertThat(response.secrets()).containsExactlyInAnyOrderEntriesOf(Map.of(
+                "username", "mine-admin",
+                "password", "mail-secret"
+        ));
+        assertThat(response.toString()).doesNotContain("mine-admin", "mail-secret");
+        verify(auditService).recordSuccess(
+                "NOTIFICATION",
+                "READ_NOTIFICATION_CHANNEL_SECRETS",
+                "notification:channel:secret:view",
+                "NOTIFICATION_CHANNEL",
+                channelId,
+                Map.of(),
+                Map.of(
+                        "provider", "smtp",
+                        "secretKeys", List.of("password", "username"),
+                        "result", "GRANTED"
+                )
+        );
     }
 
     private NotificationChannelRequest request(

@@ -7,6 +7,7 @@ import com.bosco.mine.common.id.IdGenerator;
 import com.bosco.mine.server.modules.notification.adapter.NotificationAdapterKey;
 import com.bosco.mine.server.modules.notification.dto.NotificationChannelRequest;
 import com.bosco.mine.server.modules.notification.dto.NotificationChannelResponse;
+import com.bosco.mine.server.modules.notification.dto.NotificationChannelSecretsResponse;
 import com.bosco.mine.server.modules.notification.model.NotificationChannel;
 import com.bosco.mine.server.modules.notification.provider.NotificationProviderDefinition;
 import com.bosco.mine.server.modules.notification.provider.NotificationProviderRegistry;
@@ -105,6 +106,34 @@ public class NotificationChannelService {
     @Transactional(readOnly = true)
     public NotificationChannelResponse get(UUID id) {
         return toResponse(requireChannel(id));
+    }
+
+    /**
+     * 显式解密指定渠道凭据并写入独立读取审计。
+     *
+     * @param id 渠道标识
+     * @return 仅供敏感权限接口返回的明文凭据
+     */
+    @Transactional
+    public NotificationChannelSecretsResponse readSecrets(UUID id) {
+        NotificationChannel channel = requireChannel(id);
+        Map<String, String> secrets = decrypt(channel);
+        List<String> secretKeys = secrets.keySet().stream().sorted().toList();
+        auditService.recordSuccess(
+                "NOTIFICATION",
+                "READ_NOTIFICATION_CHANNEL_SECRETS",
+                "notification:channel:secret:view",
+                "NOTIFICATION_CHANNEL",
+                channel.id(),
+                Map.of(),
+                Map.of(
+                        "provider", channel.provider(),
+                        "secretKeys", secretKeys,
+                        "result", "GRANTED"
+                )
+        );
+        return new NotificationChannelSecretsResponse(
+                channel.id(), channel.provider(), secrets, channel.version(), Instant.now());
     }
 
     /**

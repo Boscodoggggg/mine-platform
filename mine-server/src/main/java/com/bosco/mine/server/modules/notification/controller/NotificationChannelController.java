@@ -3,10 +3,13 @@ package com.bosco.mine.server.modules.notification.controller;
 import cn.dev33.satoken.annotation.SaCheckPermission;
 import com.bosco.mine.server.modules.notification.dto.NotificationChannelRequest;
 import com.bosco.mine.server.modules.notification.dto.NotificationChannelResponse;
+import com.bosco.mine.server.modules.notification.dto.NotificationChannelSecretsResponse;
 import com.bosco.mine.server.modules.notification.provider.NotificationProviderDefinition;
 import com.bosco.mine.server.modules.notification.service.NotificationChannelService;
 import jakarta.validation.Valid;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -63,6 +66,22 @@ public class NotificationChannelController {
     @SaCheckPermission("notification:channel:view")
     public NotificationChannelResponse get(@PathVariable("channelId") UUID id) {
         return service.get(id);
+    }
+
+    /**
+     * 显式解密并返回指定渠道的真实敏感凭据。
+     *
+     * @param id 渠道标识
+     * @return 禁止缓存的明文凭据响应
+     */
+    @GetMapping("/channels/{channelId}/secrets")
+    @SaCheckPermission("notification:channel:secret:view")
+    public ResponseEntity<NotificationChannelSecretsResponse> secrets(
+            @PathVariable("channelId") UUID id
+    ) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(service.readSecrets(id));
     }
 
     /**
