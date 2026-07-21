@@ -44,6 +44,25 @@ class AesGcmNotificationSecretCipherTest {
     }
 
     @Test
+    void 合法Provider聚合凭据必须能在统一上限内加解密() {
+        AesGcmNotificationSecretCipher cipher =
+                new AesGcmNotificationSecretCipher(key((byte) 9));
+        UUID channelId = UUID.randomUUID();
+        String aggregateCredentials = "{\"endpointUrl\":\"https://hooks.example.com/"
+                + "x".repeat(2_000) + "\",\"bearerToken\":\""
+                + "y".repeat(8_000) + "\",\"signingSecret\":\""
+                + "z".repeat(4_000) + "\"}";
+
+        String encrypted = cipher.encrypt(channelId,
+                NotificationSecretCipher.SecretPurpose.CHANNEL_CREDENTIAL,
+                0, aggregateCredentials);
+
+        assertThat(cipher.decrypt(channelId,
+                NotificationSecretCipher.SecretPurpose.CHANNEL_CREDENTIAL,
+                0, encrypted)).isEqualTo(aggregateCredentials);
+    }
+
+    @Test
     void 密文必须绑定所有者用途和配置版本() {
         AesGcmNotificationSecretCipher cipher =
                 new AesGcmNotificationSecretCipher(key((byte) 11));

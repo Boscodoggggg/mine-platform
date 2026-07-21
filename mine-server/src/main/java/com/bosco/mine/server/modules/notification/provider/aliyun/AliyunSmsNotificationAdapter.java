@@ -25,7 +25,7 @@ public class AliyunSmsNotificationAdapter implements NotificationChannelAdapter 
             new NotificationAdapterKey(NotificationChannelType.SMS, "aliyun-sms");
     private static final NotificationProviderDefinition DEFINITION =
             new NotificationProviderDefinition(
-                    KEY, "mine.notification.provider.aliyun-sms", true,
+                    KEY, "mine.notification.provider.aliyun-sms", false,
                     List.of(
                             NotificationProviderSupport.stringField("endpoint", true, 253, ENDPOINT),
                             NotificationProviderSupport.stringField("regionId", true, 64, "cn-hangzhou"),
@@ -117,6 +117,6 @@ public class AliyunSmsNotificationAdapter implements NotificationChannelAdapter 
     }
 
     private String outId(NotificationDeliveryRequest request) {
-        return request.deliveryId().toString().replace("-", "").substring(0, 15);
+        return AliyunProviderResults.outId(request.deliveryId());
     }
 }

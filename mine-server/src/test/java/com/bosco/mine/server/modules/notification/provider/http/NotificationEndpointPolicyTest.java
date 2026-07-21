@@ -3,7 +3,6 @@ package com.bosco.mine.server.modules.notification.provider.http;
 import org.junit.jupiter.api.Test;
 
 import java.net.InetAddress;
-import java.net.URI;
 import java.util.List;
 import java.util.Set;
 
@@ -17,9 +16,12 @@ class NotificationEndpointPolicyTest {
         NotificationEndpointPolicy policy = new NotificationEndpointPolicy(
                 host -> List.of(InetAddress.getByName("8.8.8.8")));
 
-        URI endpoint = policy.validate("https://hooks.example.com/mine", Set.of("hooks.example.com"));
+        NotificationEndpointPolicy.ValidatedEndpoint endpoint = policy.validate(
+                "https://hooks.example.com/mine", Set.of("hooks.example.com"));
 
-        assertThat(endpoint).isEqualTo(URI.create("https://hooks.example.com/mine"));
+        assertThat(endpoint.uri()).isEqualTo(java.net.URI.create("https://hooks.example.com/mine"));
+        assertThat(endpoint.addresses()).extracting(InetAddress::getHostAddress)
+                .containsExactly("8.8.8.8");
         assertThatThrownBy(() -> policy.validate(
                 "http://hooks.example.com/mine", Set.of("hooks.example.com")))
                 .isInstanceOf(IllegalArgumentException.class);

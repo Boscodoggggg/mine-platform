@@ -57,6 +57,16 @@ public interface AliyunVoiceGateway {
             Objects.requireNonNull(ttsParamJson, "阿里云语音 TTS 参数不能为空");
             Objects.requireNonNull(outId, "阿里云语音外部流水不能为空");
         }
+
+        /** 返回不包含密钥、手机号和 TTS 参数的安全日志摘要。 */
+        @Override
+        public String toString() {
+            return "Command[endpoint=" + endpoint
+                    + ", regionId=" + regionId
+                    + ", outId=" + outId
+                    + ", connectTimeoutMs=" + connectTimeoutMs
+                    + ", readTimeoutMs=" + readTimeoutMs + "]";
+        }
     }
 
     /** 阿里云语音业务响应。 */

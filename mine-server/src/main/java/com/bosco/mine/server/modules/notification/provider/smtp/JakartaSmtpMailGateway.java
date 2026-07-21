@@ -43,7 +43,7 @@ public class JakartaSmtpMailGateway implements SmtpMailGateway {
         }
     }
 
-    private Properties properties(Command command, String protocol) {
+    Properties properties(Command command, String protocol) {
         Properties properties = new Properties();
         String prefix = "mail." + protocol + ".";
         properties.setProperty(prefix + "auth", String.valueOf(command.username() != null));
@@ -53,9 +53,11 @@ public class JakartaSmtpMailGateway implements SmtpMailGateway {
         if (command.securityMode() == SecurityMode.STARTTLS) {
             properties.setProperty("mail.smtp.starttls.enable", "true");
             properties.setProperty("mail.smtp.starttls.required", "true");
+            properties.setProperty("mail.smtp.ssl.checkserveridentity", "true");
         }
         if (command.securityMode() == SecurityMode.SMTPS) {
             properties.setProperty("mail.smtps.ssl.enable", "true");
+            properties.setProperty("mail.smtps.ssl.checkserveridentity", "true");
         }
         return properties;
     }

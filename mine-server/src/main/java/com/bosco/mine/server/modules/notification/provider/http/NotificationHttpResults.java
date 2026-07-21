@@ -18,7 +18,10 @@ public final class NotificationHttpResults {
         if (statusCode >= 200 && statusCode < 300) {
             return null;
         }
-        if (statusCode == 408 || statusCode == 425 || statusCode == 429 || statusCode >= 500) {
+        if (statusCode >= 500) {
+            return NotificationDeliveryResult.unknown("HTTP_DELIVERY_UNCERTAIN");
+        }
+        if (statusCode == 408 || statusCode == 425 || statusCode == 429) {
             String code = statusCode == 429 ? "HTTP_RATE_LIMITED" : "HTTP_TEMPORARY_FAILURE";
             return NotificationDeliveryResult.retryableFailure(
                     code, Instant.now().plus(60, ChronoUnit.SECONDS));

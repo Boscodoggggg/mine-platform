@@ -1,6 +1,5 @@
 package com.bosco.mine.server.modules.notification.provider.http;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
@@ -24,7 +23,7 @@ public interface NotificationHttpTransport {
      * @param readTimeout 读取超时
      */
     record Request(
-            URI endpoint,
+            NotificationEndpointPolicy.ValidatedEndpoint endpoint,
             Map<String, String> headers,
             String body,
             Duration connectTimeout,
@@ -37,6 +36,14 @@ public interface NotificationHttpTransport {
             Objects.requireNonNull(body, "通知 HTTP 正文不能为空");
             Objects.requireNonNull(connectTimeout, "通知 HTTP 连接超时不能为空");
             Objects.requireNonNull(readTimeout, "通知 HTTP 读取超时不能为空");
+        }
+
+        /** 返回不含路径、查询和凭据的安全日志摘要。 */
+        @Override
+        public String toString() {
+            return "Request[endpointHost=" + endpoint.uri().getHost()
+                    + ", connectTimeout=" + connectTimeout
+                    + ", readTimeout=" + readTimeout + "]";
         }
     }
 
@@ -55,6 +62,14 @@ public interface NotificationHttpTransport {
             }
             body = body == null ? "" : body;
             headers = Map.copyOf(Objects.requireNonNull(headers, "通知 HTTP 响应头不能为空"));
+        }
+
+        /** 返回不包含响应正文和请求标识响应头的安全日志摘要。 */
+        @Override
+        public String toString() {
+            return "Response[statusCode=" + statusCode
+                    + ", bodyLength=" + body.length()
+                    + ", headerCount=" + headers.size() + "]";
         }
     }
 

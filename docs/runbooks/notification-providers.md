@@ -10,7 +10,7 @@
 | `wecom-robot` | ENTERPRISE_IM | 无 | `webhookUrl` | 企业微信机器人受理，状态为 `SUBMITTED` |
 | `dingtalk-robot` | ENTERPRISE_IM | 无 | `webhookUrl`、可选 `signingSecret` | 钉钉机器人受理，状态为 `SUBMITTED` |
 | `feishu-robot` | ENTERPRISE_IM | 无 | `webhookUrl`、可选 `signingSecret` | 飞书机器人受理，状态为 `SUBMITTED` |
-| `generic-webhook` | WEBHOOK | `endpointUrl`、`allowedHosts`、可选 `signatureHeader` | 可选 `signingSecret`、`bearerToken` | HTTP 2xx，状态为 `SUBMITTED` |
+| `generic-webhook` | WEBHOOK | `allowedHosts`、可选 `signatureHeader` | `endpointUrl`、可选 `signingSecret`、`bearerToken` | HTTP 2xx，状态为 `SUBMITTED` |
 | `aliyun-sms` | SMS | `endpoint`、`regionId`、`signName`、`templateCode` | `accessKeyId`、`accessKeySecret` | `SendSms` 返回 `OK` 并保存 `BizId`，状态为 `SUBMITTED` |
 | `aliyun-voice` | VOICE | `endpoint`、`regionId`、`calledShowNumber`、`ttsCode`、`playTimes`、`volume`、`speed` | `accessKeyId`、`accessKeySecret` | `SingleCallByTts` 返回 `OK` 并保存 `CallId`，状态为 `SUBMITTED` |
 
@@ -27,7 +27,7 @@ openssl rand -base64 32 > deploy/secrets/mine_notification_data_key
 chmod 600 deploy/secrets/mine_notification_data_key
 ```
 
-Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用通过 `MINE_NOTIFICATION_DATA_KEY_FILE` 读取。密钥用于 AES-256-GCM，渠道标识、凭据用途和乐观锁版本共同参与 AAD；相同明文不会产生相同密文。
+Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用通过 `MINE_NOTIFICATION_DATA_KEY_FILE` 读取。密钥用于 AES-256-GCM，渠道标识、凭据用途和乐观锁版本共同参与 AAD；相同明文不会产生相同密文。应用启动时会使用数据库密钥身份哨兵验证当前密钥，密钥缺失、格式错误或与既有数据不匹配时直接阻止实例进入健康状态。升级时，启动门禁会把旧版通用 Webhook 的 `configuration.endpointUrl` 原子迁入凭据密文并提升渠道版本；记录无法安全迁移时阻断启动，避免继续暴露明文地址。
 
 禁止把密钥写入环境变量、Git、镜像、数据库、日志或工单。密钥文件必须纳入现场受控备份。当前版本尚未提供在线密钥轮换作业，轮换前必须先实现并演练批量重加密；直接替换会导致历史渠道凭据无法解密。
 
@@ -39,13 +39,15 @@ Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用
 - `POST /api/v1/notifications/channels`：创建渠道。
 - `PUT /api/v1/notifications/channels/{channelId}`：按 `version` 乐观更新渠道。
 
-查看需要 `notification:channel:view`，修改需要 `notification:channel:edit`。请求中的 `secrets` 为只写字段；响应仅返回 `secretConfigured`，不得返回明文、密文或脱敏后仍可复原的内容。禁用渠道可以保存不完整草稿，启用前必须满足 Provider 必填配置。
+查看需要 `notification:channel:view`，修改需要 `notification:channel:edit`。请求中的 `secrets` 为只写字段；响应仅返回 `secretConfigured`，不得返回明文、密文或脱敏后仍可复原的内容。服务端还会依据 Provider 元数据从响应配置中剔除误存的敏感字段。禁用渠道可以保存不完整草稿，启用前必须满足 Provider 必填配置。
 
 ## 4. 网络与重复发送边界
 
 - 官方机器人只允许 HTTPS 官方域名；不跟随 HTTP 重定向。
-- 通用 Webhook 必须配置精确 DNS 主机白名单，并阻断环回、链路本地、私网、共享地址和云元数据地址。
+- 通用 Webhook 的完整 URL 按凭据加密保存；必须配置精确 DNS 主机白名单，并阻断环回、链路本地、私网、共享地址和云元数据地址。
+- HTTP 请求固定使用校验阶段解析出的地址建立连接，TLS 仍校验原始主机名，避免 DNS 重绑定绕过；响应正文最多读取 64 KiB。
 - 通用 Webhook 可对原始 JSON 正文生成 `HMAC-SHA256`，也可发送 Bearer 凭据；禁止换行控制字符进入请求头。
+- 单个渠道的完整凭据 JSON 最大为 32 KiB，超过上限会在加密和落库前拒绝。
 - 阿里云 SDK 关闭自动重试并有界复用客户端。没有获得可判定业务响应时返回 `UNKNOWN`，工作器后续不得盲目重发可能计费的短信或电话。
 - SMTP 连接失败可重试；认证或收件地址错误为永久失败；发送阶段无法判断是否提交时返回 `UNKNOWN`。
 - `SUBMITTED` 只代表供应商或邮件服务器受理，不代表最终终端送达。只有后续可信异步回执可以把短信或语音更新为 `DELIVERED`。

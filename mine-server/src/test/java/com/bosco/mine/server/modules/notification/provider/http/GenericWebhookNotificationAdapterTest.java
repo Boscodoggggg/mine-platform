@@ -28,9 +28,9 @@ class GenericWebhookNotificationAdapterTest {
                 new NotificationEndpointPolicy(host -> List.of(InetAddress.getByName("8.8.8.8"))),
                 JsonMapper.builder().build());
         NotificationDeliveryRequest request = request(Map.of(
-                "endpointUrl", "https://hooks.example.com/alarm",
                 "allowedHosts", List.of("hooks.example.com"),
                 "signatureHeader", "X-Mine-Signature"), Map.of(
+                "endpointUrl", "https://hooks.example.com/alarm",
                 "signingSecret", "hook-secret",
                 "bearerToken", "bearer-secret"));
 
@@ -55,8 +55,8 @@ class GenericWebhookNotificationAdapterTest {
                 JsonMapper.builder().build());
 
         assertThatThrownBy(() -> adapter.validateConfiguration(Map.of(
-                "endpointUrl", "https://evil.example.com/hook",
-                "allowedHosts", List.of("hooks.example.com")), Map.of()))
+                "allowedHosts", List.of("hooks.example.com")),
+                Map.of("endpointUrl", "https://evil.example.com/hook")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -68,9 +68,9 @@ class GenericWebhookNotificationAdapterTest {
                 JsonMapper.builder().build());
 
         assertThatThrownBy(() -> adapter.validateConfiguration(Map.of(
-                "endpointUrl", "https://hooks.example.com/hook",
                 "allowedHosts", List.of("hooks.example.com")),
-                Map.of("bearerToken", "token\r\nX-Evil: true")))
+                Map.of("endpointUrl", "https://hooks.example.com/hook",
+                        "bearerToken", "token\r\nX-Evil: true")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

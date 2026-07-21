@@ -2,6 +2,12 @@ package com.bosco.mine.server.integration;
 
 import com.bosco.mine.server.MineServerApplication;
 import com.bosco.mine.server.modules.aggregation.repository.AggregationRecomputeRepository;
+import com.bosco.mine.server.modules.notification.adapter.NotificationChannelType;
+import com.bosco.mine.server.modules.notification.model.NotificationChannel;
+import com.bosco.mine.server.modules.notification.provider.NotificationProviderRegistry;
+import com.bosco.mine.server.modules.notification.repository.NotificationChannelMapper;
+import com.bosco.mine.server.modules.notification.security.NotificationLegacySecretMigrator;
+import com.bosco.mine.server.modules.notification.security.NotificationSecretCipher;
 import com.bosco.mine.server.modules.strategy.repository.RetentionPreviewEvidenceMapper;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
@@ -127,7 +133,8 @@ class DatabaseMigrationIT {
             "notification_template",
             "notification_policy",
             "notification_policy_version",
-            "notification_policy_step"
+            "notification_policy_step",
+            "notification_secret_key_guard"
     );
 
     @Container
@@ -148,6 +155,18 @@ class DatabaseMigrationIT {
 
     @Autowired
     private AggregationRecomputeRepository aggregationRecomputeRepository;
+
+    @Autowired
+    private NotificationChannelMapper notificationChannelMapper;
+
+    @Autowired
+    private NotificationProviderRegistry notificationProviderRegistry;
+
+    @Autowired
+    private NotificationLegacySecretMigrator notificationLegacySecretMigrator;
+
+    @Autowired
+    private NotificationSecretCipher notificationSecretCipher;
 
     @Autowired
     private PlatformTransactionManager transactionManager;
@@ -795,7 +814,8 @@ class DatabaseMigrationIT {
                 "notification_template",
                 "notification_policy",
                 "notification_policy_version",
-                "notification_policy_step"
+                "notification_policy_step",
+                "notification_secret_key_guard"
         );
         assertThat(jdbcTemplate.queryForList("""
                 SELECT obj_description(class.oid, 'pg_class')
@@ -804,7 +824,7 @@ class DatabaseMigrationIT {
                     'notification_channel', 'notification_recipient_group',
                     'notification_recipient', 'notification_template',
                     'notification_policy', 'notification_policy_version',
-                    'notification_policy_step'
+                    'notification_policy_step', 'notification_secret_key_guard'
                 )
                 ORDER BY class.relname
                 """, String.class))
@@ -818,7 +838,7 @@ class DatabaseMigrationIT {
                     'notification_channel', 'notification_recipient_group',
                     'notification_recipient', 'notification_template',
                     'notification_policy', 'notification_policy_version',
-                    'notification_policy_step'
+                    'notification_policy_step', 'notification_secret_key_guard'
                 )
                   AND attribute.attnum > 0
                   AND NOT attribute.attisdropped
@@ -854,6 +874,126 @@ class DatabaseMigrationIT {
                 WHERE schemaname = 'public'
                   AND tablename = 'notification_policy_version'
                 """, String.class)).contains("uk_notification_policy_single_published");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT character_maximum_length
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'notification_channel'
+                  AND column_name = 'secret_ciphertext'
+                """, Integer.class)).isEqualTo(65536);
+    }
+
+    @Test
+    void 内置通知Provider必须由Spring完整注册且渠道Mapper支持真实乐观锁更新() {
+        assertThat(notificationProviderRegistry.catalog())
+                .extracting(definition -> definition.key().provider())
+                .containsExactly(
+                        "aliyun-sms",
+                        "aliyun-voice",
+                        "dingtalk-robot",
+                        "feishu-robot",
+                        "generic-webhook",
+                        "smtp",
+                        "wecom-robot"
+                );
+
+        UUID channelId = UUID.randomUUID();
+        String channelCode = "it-smtp-" + channelId.toString().substring(0, 8);
+        NotificationChannel initial = new NotificationChannel(
+                channelId,
+                channelCode,
+                "数据库集成测试邮件渠道",
+                NotificationChannelType.EMAIL,
+                "smtp",
+                "DISABLED",
+                "{\"host\":\"smtp.example.com\"}",
+                "v1:AAAAAAAAAAAAAAAA:AAAAAAAAAAAAAAAAAAAAAA",
+                3000,
+                5000,
+                null,
+                null,
+                null,
+                0
+        );
+
+        try {
+            assertThat(notificationChannelMapper.insert(initial, null)).isOne();
+            NotificationChannel stored = notificationChannelMapper.findByCode(channelCode)
+                    .orElseThrow();
+            assertThat(stored.id()).isEqualTo(channelId);
+            assertThat(stored.configurationJson()).contains("smtp.example.com");
+            assertThat(stored.secretCiphertext()).startsWith("v1:");
+
+            NotificationChannel updated = new NotificationChannel(
+                    channelId,
+                    channelCode,
+                    "数据库集成测试邮件渠道-已更新",
+                    NotificationChannelType.EMAIL,
+                    "smtp",
+                    "DISABLED",
+                    "{\"host\":\"mail.example.com\"}",
+                    stored.secretCiphertext(),
+                    4000,
+                    6000,
+                    null,
+                    stored.createdAt(),
+                    stored.updatedAt(),
+                    stored.version()
+            );
+            assertThat(notificationChannelMapper.update(updated, stored.version(), null)).isOne();
+            assertThat(notificationChannelMapper.update(updated, stored.version(), null)).isZero();
+            assertThat(notificationChannelMapper.findById(channelId).orElseThrow().version())
+                    .isEqualTo(stored.version() + 1);
+        } finally {
+            jdbcTemplate.update("DELETE FROM notification_channel WHERE id = ?", channelId);
+        }
+    }
+
+    @Test
+    void 历史Webhook明文端点必须在启动迁移中移入认证密文() {
+        UUID channelId = UUID.randomUUID();
+        String channelCode = "it-webhook-" + channelId.toString().substring(0, 8);
+        NotificationChannel legacy = new NotificationChannel(
+                channelId,
+                channelCode,
+                "历史 Webhook 迁移测试渠道",
+                NotificationChannelType.WEBHOOK,
+                "generic-webhook",
+                "DISABLED",
+                "{\"allowedHosts\":[\"hooks.example.com\"],"
+                        + "\"endpointUrl\":\"https://hooks.example.com/secret-token\"}",
+                null,
+                3000,
+                5000,
+                null,
+                null,
+                null,
+                0
+        );
+
+        try {
+            assertThat(notificationChannelMapper.insert(legacy, null)).isOne();
+
+            notificationLegacySecretMigrator.migrate();
+
+            NotificationChannel migrated = notificationChannelMapper.findById(channelId)
+                    .orElseThrow();
+            assertThat(migrated.configurationJson())
+                    .contains("hooks.example.com")
+                    .doesNotContain("endpointUrl", "secret-token");
+            assertThat(migrated.version()).isOne();
+            assertThat(migrated.secretCiphertext())
+                    .startsWith("v1:")
+                    .doesNotContain("secret-token");
+            assertThat(notificationSecretCipher.decrypt(
+                    channelId,
+                    NotificationSecretCipher.SecretPurpose.CHANNEL_CREDENTIAL,
+                    migrated.version(),
+                    migrated.secretCiphertext()
+            )).contains("endpointUrl", "https://hooks.example.com/secret-token");
+        } finally {
+            jdbcTemplate.update("DELETE FROM notification_channel WHERE id = ?", channelId);
+        }
     }
 
     @Test
@@ -1025,6 +1165,15 @@ class DatabaseMigrationIT {
                 "alarm:event:ack",
                 "alarm:event:close",
                 "alarm:event:view"
+        );
+        assertThat(jdbcTemplate.queryForList("""
+                SELECT permission
+                FROM sys_menu
+                WHERE permission LIKE 'notification:%'
+                ORDER BY permission
+                """, String.class)).containsExactly(
+                "notification:channel:edit",
+                "notification:channel:view"
         );
         assertThat(jdbcTemplate.queryForList("""
                 SELECT permission

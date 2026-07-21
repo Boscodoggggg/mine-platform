@@ -3,6 +3,7 @@ package com.bosco.mine.server.modules.notification.provider.im;
 import com.bosco.mine.server.modules.notification.adapter.NotificationAdapterKey;
 import com.bosco.mine.server.modules.notification.adapter.NotificationChannelType;
 import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryRequest;
+import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryResult;
 import com.bosco.mine.server.modules.notification.provider.NotificationProviderSupport;
 import com.bosco.mine.server.modules.notification.provider.http.NotificationEndpointPolicy;
 import com.bosco.mine.server.modules.notification.provider.http.NotificationHttpTransport;
@@ -75,10 +76,20 @@ public class FeishuRobotNotificationAdapter extends AbstractRobotNotificationAda
 
     /** {@inheritDoc} */
     @Override
-    protected boolean providerAccepted(String responseBody) {
+    protected NotificationDeliveryResult providerResult(String responseBody) {
         JsonNode root = readTree(responseBody);
-        return root.has("code") ? root.path("code").asInt(-1) == 0
-                : root.path("StatusCode").asInt(-1) == 0;
+        JsonNode codeNode = root.has("code") ? root.path("code") : root.path("StatusCode");
+        if (codeNode.isMissingNode() || !codeNode.canConvertToInt()) {
+            return uncertain();
+        }
+        int code = codeNode.asInt();
+        if (code == 0) {
+            return NotificationDeliveryResult.submitted(null);
+        }
+        return switch (code) {
+            case 11232, 11233, 11247, 230020, 99991400 -> rateLimited();
+            default -> rejected();
+        };
     }
 
     /** {@inheritDoc} */

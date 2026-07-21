@@ -20,6 +20,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +33,8 @@ import java.util.UUID;
  */
 @Service
 public class NotificationChannelService {
+
+    private static final int MAX_CREDENTIAL_JSON_BYTES = 32 * 1024;
 
     private static final ErrorCode CHANNEL_NOT_FOUND =
             new ErrorCode("NOTIFICATION-404-001", "通知渠道不存在");
@@ -122,7 +125,7 @@ public class NotificationChannelService {
         UUID id = idGenerator.next();
         long version = 0;
         Instant now = Instant.now();
-        String secretCiphertext = encrypt(id, version, credentials);
+        String secretCiphertext = encrypt(id, version, request.provider(), credentials);
         NotificationChannel channel = new NotificationChannel(
                 id, request.channelCode(), request.name().strip(), request.channelType(),
                 request.provider(), request.status(), writeJson(configuration), secretCiphertext,
@@ -166,7 +169,7 @@ public class NotificationChannelService {
         mergeSecrets(credentials, request.secrets());
         validate(key, configuration, credentials, request.status());
         long nextVersion = existing.version() + 1;
-        String secretCiphertext = encrypt(id, nextVersion, credentials);
+        String secretCiphertext = encrypt(id, nextVersion, request.provider(), credentials);
         NotificationChannel candidate = new NotificationChannel(
                 id, existing.channelCode(), request.name().strip(), request.channelType(),
                 request.provider(), request.status(), writeJson(configuration), secretCiphertext,
@@ -210,7 +213,10 @@ public class NotificationChannelService {
     }
 
     private Map<String, Object> normalizedConfiguration(Map<String, Object> source) {
-        return new LinkedHashMap<>(Optional.ofNullable(source).orElse(Map.of()));
+        Map<String, Object> result = new LinkedHashMap<>(
+                Optional.ofNullable(source).orElse(Map.of()));
+        result.values().removeIf(java.util.Objects::isNull);
+        return result;
     }
 
     private Map<String, String> normalizedSecrets(Map<String, String> source) {
@@ -229,12 +235,21 @@ public class NotificationChannelService {
         });
     }
 
-    private String encrypt(UUID id, long version, Map<String, String> credentials) {
+    private String encrypt(
+            UUID id,
+            long version,
+            String provider,
+            Map<String, String> credentials
+    ) {
         if (credentials.isEmpty()) {
             return null;
         }
+        String plaintext = writeJson(credentials);
+        if (plaintext.getBytes(StandardCharsets.UTF_8).length > MAX_CREDENTIAL_JSON_BYTES) {
+            throw invalidConfiguration(provider, "CREDENTIALS_TOO_LARGE");
+        }
         return cipher.encrypt(id, NotificationSecretCipher.SecretPurpose.CHANNEL_CREDENTIAL,
-                version, writeJson(credentials));
+                version, plaintext);
     }
 
     private Map<String, String> decrypt(NotificationChannel channel) {
@@ -259,10 +274,21 @@ public class NotificationChannelService {
     private NotificationChannelResponse toResponse(NotificationChannel channel) {
         return new NotificationChannelResponse(
                 channel.id(), channel.channelCode(), channel.name(), channel.channelType(),
-                channel.provider(), channel.status(), Map.copyOf(readConfiguration(channel)),
+                channel.provider(), channel.status(), safeConfiguration(channel),
                 channel.secretCiphertext() != null && !channel.secretCiphertext().isBlank(),
                 channel.connectTimeoutMs(), channel.readTimeoutMs(), channel.lastVerifiedAt(),
                 channel.createdAt(), channel.updatedAt(), channel.version());
+    }
+
+    private Map<String, Object> safeConfiguration(NotificationChannel channel) {
+        Map<String, Object> configuration = new LinkedHashMap<>(readConfiguration(channel));
+        registry.catalog().stream()
+                .filter(definition -> definition.key().channelType() == channel.channelType()
+                        && definition.key().provider().equals(channel.provider()))
+                .findFirst()
+                .ifPresent(definition -> definition.secretFields().forEach(
+                        field -> configuration.remove(field.key())));
+        return Map.copyOf(configuration);
     }
 
     private Map<String, Object> readConfiguration(NotificationChannel channel) {

@@ -13,8 +13,8 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -73,7 +73,7 @@ abstract class AbstractRobotNotificationAdapter implements NotificationChannelAd
     @Override
     public final NotificationDeliveryResult deliver(NotificationDeliveryRequest request) {
         try {
-            URI endpoint = endpoint(request);
+            NotificationEndpointPolicy.ValidatedEndpoint endpoint = endpoint(request);
             String body = json(payload(request));
             if (body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > maxBodyBytes()) {
                 return NotificationDeliveryResult.permanentFailure("ROBOT_PAYLOAD_TOO_LARGE");
@@ -87,9 +87,7 @@ abstract class AbstractRobotNotificationAdapter implements NotificationChannelAd
             if (failure != null) {
                 return failure;
             }
-            return providerAccepted(response.body())
-                    ? NotificationDeliveryResult.submitted(null)
-                    : NotificationDeliveryResult.permanentFailure("ROBOT_REQUEST_REJECTED");
+            return providerResult(response.body());
         } catch (NotificationHttpTransport.TransportException exception) {
             return NotificationHttpResults.transportFailure(exception);
         }
@@ -99,7 +97,9 @@ abstract class AbstractRobotNotificationAdapter implements NotificationChannelAd
     protected abstract String officialHost();
 
     /** 生成供应商请求端点。 */
-    protected URI endpoint(NotificationDeliveryRequest request) {
+    protected NotificationEndpointPolicy.ValidatedEndpoint endpoint(
+            NotificationDeliveryRequest request
+    ) {
         return endpointPolicy.validate(NotificationProviderSupport.requiredCredential(
                 request, "webhookUrl"), Set.of(officialHost()));
     }
@@ -107,8 +107,24 @@ abstract class AbstractRobotNotificationAdapter implements NotificationChannelAd
     /** 生成供应商 JSON 对象。 */
     protected abstract Map<String, Object> payload(NotificationDeliveryRequest request);
 
-    /** 判断供应商业务响应是否受理。 */
-    protected abstract boolean providerAccepted(String responseBody);
+    /** 将供应商业务响应映射为稳定四态结果。 */
+    protected abstract NotificationDeliveryResult providerResult(String responseBody);
+
+    /** 返回机器人业务限流的可重试结果。 */
+    protected NotificationDeliveryResult rateLimited() {
+        return NotificationDeliveryResult.retryableFailure(
+                "ROBOT_RATE_LIMITED", Instant.now().plusSeconds(60));
+    }
+
+    /** 返回机器人明确拒绝请求的永久失败结果。 */
+    protected NotificationDeliveryResult rejected() {
+        return NotificationDeliveryResult.permanentFailure("ROBOT_REQUEST_REJECTED");
+    }
+
+    /** 返回无法确认供应商是否受理的结果。 */
+    protected NotificationDeliveryResult uncertain() {
+        return NotificationDeliveryResult.unknown("ROBOT_DELIVERY_UNCERTAIN");
+    }
 
     /** 返回供应商正文最大字节数。 */
     protected int maxBodyBytes() {

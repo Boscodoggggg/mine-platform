@@ -21,6 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.net.InetAddress;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,6 +72,21 @@ class NotificationProviderRegistryTest {
                 Map.of("password", "secret"), true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("unknown");
+    }
+
+    @Test
+    void 显式空值必须按缺失字段处理而不是触发内部异常() {
+        NotificationProviderRegistry registry = new NotificationProviderRegistry(List.of(
+                new SmtpNotificationAdapter(command -> { })));
+        Map<String, Object> configuration = new LinkedHashMap<>();
+        configuration.put("host", "mail.mine.local");
+        configuration.put("port", 587);
+        configuration.put("securityMode", "STARTTLS");
+        configuration.put("fromAddress", "alarm@example.com");
+        configuration.put("fromName", null);
+
+        registry.validate(new NotificationAdapterKey(NotificationChannelType.EMAIL, "smtp"),
+                configuration, Map.of(), true);
     }
 
     @Test

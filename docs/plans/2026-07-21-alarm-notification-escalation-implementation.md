@@ -6,7 +6,7 @@
 
 **Architecture:** 在 `mine-server` 内建立独立通知领域、版本化控制面和数据库租约工作器，通过稳定 SDK 接入不同供应商。告警入库事务原子创建通知事件和首批投递，外部调用、异步回执、升级步骤和事件单分别使用幂等账本收敛；模块边界允许后续拆成独立服务。
 
-**Tech Stack:** Java 21、Spring Boot 4、PostgreSQL、Flyway、MyBatis/JdbcTemplate、AES-256-GCM、Jakarta Mail、JDK HTTP Client、Vue 3、Naive UI、UnoCSS、Vue I18n、Vitest、Testcontainers。
+**Tech Stack:** Java 21、Spring Boot 4、PostgreSQL、Flyway、MyBatis/JdbcTemplate、AES-256-GCM、Jakarta Mail、Apache HttpClient 5、Vue 3、Naive UI、UnoCSS、Vue I18n、Vitest、Testcontainers。
 
 ---
 

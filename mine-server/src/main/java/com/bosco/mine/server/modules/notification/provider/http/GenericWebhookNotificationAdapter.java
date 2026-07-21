@@ -11,7 +11,6 @@ import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -30,11 +29,11 @@ public class GenericWebhookNotificationAdapter implements NotificationChannelAda
             new NotificationProviderDefinition(
                     KEY, "mine.notification.provider.generic-webhook", false,
                     List.of(
-                            NotificationProviderSupport.stringField("endpointUrl", true, 2048, null),
                             NotificationProviderSupport.stringListField("allowedHosts", true, 32),
                             NotificationProviderSupport.stringField(
                                     "signatureHeader", false, 128, "X-Mine-Signature")),
                     List.of(
+                            NotificationProviderSupport.secretField("endpointUrl", true, 2048),
                             NotificationProviderSupport.secretField("signingSecret", false, 4096),
                             NotificationProviderSupport.secretField("bearerToken", false, 8192)));
 
@@ -77,7 +76,7 @@ public class GenericWebhookNotificationAdapter implements NotificationChannelAda
             Map<String, Object> configuration,
             Map<String, String> credentials
     ) {
-        endpoint(configuration);
+        endpoint(configuration, credentials);
         String header = NotificationProviderSupport.optionalString(configuration, "signatureHeader");
         if (header != null && !header.matches("^[A-Za-z][A-Za-z0-9-]{0,127}$")) {
             throw new IllegalArgumentException("Webhook 签名请求头名称不合法");
@@ -91,7 +90,8 @@ public class GenericWebhookNotificationAdapter implements NotificationChannelAda
     /** {@inheritDoc} */
     @Override
     public NotificationDeliveryResult deliver(NotificationDeliveryRequest request) {
-        URI endpoint = endpoint(request.configuration());
+        NotificationEndpointPolicy.ValidatedEndpoint endpoint = endpoint(
+                request.configuration(), request.credentials());
         String body = body(request);
         Map<String, String> headers = new LinkedHashMap<>();
         String signingSecret = NotificationProviderSupport.optionalString(
@@ -120,8 +120,11 @@ public class GenericWebhookNotificationAdapter implements NotificationChannelAda
         }
     }
 
-    private URI endpoint(Map<String, ?> configuration) {
-        String endpointUrl = NotificationProviderSupport.requiredString(configuration, "endpointUrl");
+    private NotificationEndpointPolicy.ValidatedEndpoint endpoint(
+            Map<String, ?> configuration,
+            Map<String, ?> credentials
+    ) {
+        String endpointUrl = NotificationProviderSupport.requiredString(credentials, "endpointUrl");
         List<String> allowedHosts = NotificationProviderSupport.stringList(
                 configuration, "allowedHosts");
         if (allowedHosts.isEmpty()) {

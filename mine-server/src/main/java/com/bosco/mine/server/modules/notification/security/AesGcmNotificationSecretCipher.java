@@ -31,8 +31,8 @@ public class AesGcmNotificationSecretCipher implements NotificationSecretCipher 
     private static final int KEY_BYTES = 32;
     private static final int NONCE_BYTES = 12;
     private static final int TAG_BITS = 128;
-    private static final int MAX_PLAINTEXT_BYTES = 4096;
-    private static final int MAX_CIPHERTEXT_LENGTH = 8192;
+    private static final int MAX_PLAINTEXT_BYTES = 32 * 1024;
+    private static final int MAX_CIPHERTEXT_LENGTH = 64 * 1024;
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
 

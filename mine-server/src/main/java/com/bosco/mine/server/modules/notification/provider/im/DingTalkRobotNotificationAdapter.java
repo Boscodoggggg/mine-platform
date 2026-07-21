@@ -3,14 +3,15 @@ package com.bosco.mine.server.modules.notification.provider.im;
 import com.bosco.mine.server.modules.notification.adapter.NotificationAdapterKey;
 import com.bosco.mine.server.modules.notification.adapter.NotificationChannelType;
 import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryRequest;
+import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryResult;
 import com.bosco.mine.server.modules.notification.provider.NotificationProviderSupport;
 import com.bosco.mine.server.modules.notification.provider.http.NotificationEndpointPolicy;
 import com.bosco.mine.server.modules.notification.provider.http.NotificationHttpTransport;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 
-import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -59,8 +60,10 @@ public class DingTalkRobotNotificationAdapter extends AbstractRobotNotificationA
 
     /** {@inheritDoc} */
     @Override
-    protected URI endpoint(NotificationDeliveryRequest request) {
-        URI base = super.endpoint(request);
+    protected NotificationEndpointPolicy.ValidatedEndpoint endpoint(
+            NotificationDeliveryRequest request
+    ) {
+        NotificationEndpointPolicy.ValidatedEndpoint base = super.endpoint(request);
         String secret = NotificationProviderSupport.optionalString(
                 request.credentials(), "signingSecret");
         if (secret == null) {
@@ -69,9 +72,11 @@ public class DingTalkRobotNotificationAdapter extends AbstractRobotNotificationA
         long timestamp = clock.instant().toEpochMilli();
         String sign = NotificationProviderSupport.hmacBase64(
                 timestamp + "\n" + secret, secret);
-        String separator = base.getRawQuery() == null ? "?" : "&";
-        return URI.create(base + separator + "timestamp=" + timestamp + "&sign="
-                + URLEncoder.encode(sign, StandardCharsets.UTF_8));
+        String separator = base.uri().getRawQuery() == null ? "?" : "&";
+        return new NotificationEndpointPolicy.ValidatedEndpoint(
+                java.net.URI.create(base.uri() + separator + "timestamp=" + timestamp + "&sign="
+                        + URLEncoder.encode(sign, StandardCharsets.UTF_8)),
+                base.addresses());
     }
 
     /** {@inheritDoc} */
@@ -82,7 +87,15 @@ public class DingTalkRobotNotificationAdapter extends AbstractRobotNotificationA
 
     /** {@inheritDoc} */
     @Override
-    protected boolean providerAccepted(String responseBody) {
-        return readTree(responseBody).path("errcode").asInt(-1) == 0;
+    protected NotificationDeliveryResult providerResult(String responseBody) {
+        JsonNode root = readTree(responseBody);
+        if (!root.has("errcode") || !root.path("errcode").canConvertToInt()) {
+            return uncertain();
+        }
+        int code = root.path("errcode").asInt();
+        if (code == 0) {
+            return NotificationDeliveryResult.submitted(null);
+        }
+        return code == 130101 ? rateLimited() : rejected();
     }
 }

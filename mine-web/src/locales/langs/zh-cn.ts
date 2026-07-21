@@ -51,6 +51,17 @@ const local: App.I18n.Schema = {
     }
   },
   mine: {
+    notification: {
+      provider: {
+        smtp: 'SMTP 邮件',
+        'wecom-robot': '企业微信机器人',
+        'dingtalk-robot': '钉钉机器人',
+        'feishu-robot': '飞书机器人',
+        'generic-webhook': '通用 Webhook',
+        'aliyun-sms': '阿里云短信',
+        'aliyun-voice': '阿里云语音'
+      }
+    },
     menu: {
       system: '系统管理',
       users: '用户管理',

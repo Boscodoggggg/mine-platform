@@ -91,6 +91,15 @@ public record NotificationDeliveryRequest(
                 configuration, credentials, 3_000, 5_000);
     }
 
+    /** 返回不包含目标、正文、配置和凭据的安全日志摘要。 */
+    @Override
+    public String toString() {
+        return "NotificationDeliveryRequest[deliveryId=" + deliveryId
+                + ", idempotencyKey=" + idempotencyKey
+                + ", connectTimeoutMs=" + connectTimeoutMs
+                + ", readTimeoutMs=" + readTimeoutMs + "]";
+    }
+
     private static String requireText(String value, int maxLength, String label) {
         if (value == null || value.isBlank() || value.length() > maxLength) {
             throw new IllegalArgumentException(label + "不能为空且长度不能超过 " + maxLength);

@@ -49,6 +49,8 @@ class NotificationAdapterContractTest {
                 .isEqualTo(List.of("critical"));
         assertThat(request.configuration()).containsEntry("timeoutSeconds", 3);
         assertThat(request.credentials()).containsEntry("password", "secret");
+        assertThat(request.toString()).doesNotContain(
+                "13800000000", "严重告警", "矿卡温度超过阈值", "secret");
         assertThatThrownBy(() -> request.templateVariables().put("x", "y"))
                 .isInstanceOf(UnsupportedOperationException.class);
     }

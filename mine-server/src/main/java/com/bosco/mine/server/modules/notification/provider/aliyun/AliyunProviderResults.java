@@ -5,6 +5,7 @@ import com.bosco.mine.server.modules.notification.adapter.NotificationDeliveryRe
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * 将阿里云业务响应码转换为平台稳定低基数结果。
@@ -29,5 +30,11 @@ final class AliyunProviderResults {
                     "ALIYUN_RATE_LIMITED", Instant.now().plus(60, ChronoUnit.SECONDS));
         }
         return NotificationDeliveryResult.permanentFailure("ALIYUN_REJECTED");
+    }
+
+    /** 使用 UUID 随机尾部生成十五位稳定外部流水号。 */
+    static String outId(UUID deliveryId) {
+        String compact = deliveryId.toString().replace("-", "");
+        return compact.substring(compact.length() - 15);
     }
 }

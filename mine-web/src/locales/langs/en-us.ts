@@ -51,6 +51,17 @@ const local: App.I18n.Schema = {
     }
   },
   mine: {
+    notification: {
+      provider: {
+        smtp: 'SMTP Email',
+        'wecom-robot': 'WeCom Robot',
+        'dingtalk-robot': 'DingTalk Robot',
+        'feishu-robot': 'Feishu Robot',
+        'generic-webhook': 'Generic Webhook',
+        'aliyun-sms': 'Alibaba Cloud SMS',
+        'aliyun-voice': 'Alibaba Cloud Voice'
+      }
+    },
     menu: {
       system: 'System Management',
       users: 'User Management',

@@ -6,7 +6,7 @@
 
 **Architecture:** Provider 由编译期 Spring Bean 注册表封闭管理，渠道的非敏感配置与 AES-256-GCM 加密 secrets 分库存储。外部调用通过可替换传输边界测试，SMTP 使用 Jakarta Mail，阿里云使用官方 SDK，所有供应商成功受理统一返回 `SUBMITTED`。
 
-**Tech Stack:** Java 21、Spring Boot 4、MyBatis、PostgreSQL、AES-256-GCM、Jakarta Mail、JDK HTTP Client、Alibaba Cloud Java SDK、JUnit 5、Mockito、Testcontainers。
+**Tech Stack:** Java 21、Spring Boot 4、MyBatis、PostgreSQL、AES-256-GCM、Jakarta Mail、Apache HttpClient 5、Alibaba Cloud Java SDK、JUnit 5、Mockito、Testcontainers。
 
 ---
 
@@ -64,7 +64,7 @@
 
 1. 先写失败测试：七种固定 Provider、HTTP 正文与签名、HTTPS/主机/地址阻断、SMTP 参数、阿里云请求映射、受理标识和错误分类。
 2. 运行定向测试并确认 RED。
-3. 实现 JDK HTTP 传输和 SSRF 防护；实现企业微信、钉钉、飞书与通用 Webhook。
+3. 实现固定 DNS 解析结果、TLS 原始主机名校验的 Apache HttpClient 5 传输和 SSRF 防护；实现企业微信、钉钉、飞书与通用 Webhook。
 4. 实现 Jakarta Mail SMTP Provider。
 5. 使用阿里云官方 SDK 实现短信和语音客户端；成功分别保存 `BizId` 和 `CallId`。
 6. 运行 Provider、渠道服务、数据库迁移和 `mine-server` 全量单元测试。

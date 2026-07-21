@@ -36,4 +36,13 @@ public record NotificationChannelRequest(
         @Min(100) @Max(60000) int readTimeoutMs,
         @Min(0) long version
 ) {
+    /** 返回不包含配置值和只写凭据的安全日志摘要。 */
+    @Override
+    public String toString() {
+        return "NotificationChannelRequest[channelCode=" + channelCode
+                + ", channelType=" + channelType
+                + ", provider=" + provider
+                + ", status=" + status
+                + ", version=" + version + "]";
+    }
 }

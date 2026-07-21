@@ -89,6 +89,8 @@ public class NotificationProviderRegistry {
                 configuration, "通知 Provider 配置不能为空"));
         Map<String, String> safeCredentials = new LinkedHashMap<>(Objects.requireNonNull(
                 credentials, "通知 Provider 凭据不能为空"));
+        safeConfiguration.values().removeIf(Objects::isNull);
+        safeCredentials.values().removeIf(Objects::isNull);
         NotificationProviderDefinition definition = adapter.definition();
         validateFields(definition.configurationFields(), safeConfiguration, enabled, false);
         validateFields(definition.secretFields(), safeCredentials, enabled, true);

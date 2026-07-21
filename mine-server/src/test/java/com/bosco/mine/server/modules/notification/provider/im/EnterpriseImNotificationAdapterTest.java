@@ -56,11 +56,11 @@ class EnterpriseImNotificationAdapterTest {
 
         long timestamp = NOW.toEpochMilli();
         String expected = hmacBase64(timestamp + "\n" + secret, secret);
-        assertThat(transport.request.endpoint().getQuery())
+        assertThat(transport.request.endpoint().uri().getQuery())
                 .contains("timestamp=" + timestamp)
                 .contains("sign=");
         assertThat(java.net.URLDecoder.decode(
-                transport.request.endpoint().getRawQuery(), StandardCharsets.UTF_8))
+                transport.request.endpoint().uri().getRawQuery(), StandardCharsets.UTF_8))
                 .contains("sign=" + expected);
     }
 
@@ -94,6 +94,42 @@ class EnterpriseImNotificationAdapterTest {
 
         assertThat(result.outcome()).isEqualTo(NotificationDeliveryResult.Outcome.RETRYABLE_FAILURE);
         assertThat(result.errorCode()).isEqualTo("HTTP_RATE_LIMITED");
+    }
+
+    @Test
+    void 业务限流必须可重试而明确业务拒绝必须永久失败() throws Exception {
+        DingTalkRobotNotificationAdapter limited = new DingTalkRobotNotificationAdapter(
+                new RecordingTransport(200, "{\"errcode\":130101,\"errmsg\":\"send too fast\"}"),
+                policy(), JsonMapper.builder().build(), fixedClock());
+        DingTalkRobotNotificationAdapter rejected = new DingTalkRobotNotificationAdapter(
+                new RecordingTransport(200, "{\"errcode\":310000,\"errmsg\":\"keywords not in content\"}"),
+                policy(), JsonMapper.builder().build(), fixedClock());
+
+        NotificationDeliveryResult limitedResult = limited.deliver(request(
+                Map.of(), Map.of("webhookUrl", "https://oapi.dingtalk.com/robot/send")));
+        NotificationDeliveryResult rejectedResult = rejected.deliver(request(
+                Map.of(), Map.of("webhookUrl", "https://oapi.dingtalk.com/robot/send")));
+
+        assertThat(limitedResult.outcome())
+                .isEqualTo(NotificationDeliveryResult.Outcome.RETRYABLE_FAILURE);
+        assertThat(rejectedResult.outcome())
+                .isEqualTo(NotificationDeliveryResult.Outcome.PERMANENT_FAILURE);
+    }
+
+    @Test
+    void 畸形和服务器错误响应均不得被误判为永久失败或盲目重试() throws Exception {
+        WeComRobotNotificationAdapter malformed = new WeComRobotNotificationAdapter(
+                new RecordingTransport(200, "not-json"), policy(), JsonMapper.builder().build());
+        WeComRobotNotificationAdapter serverError = new WeComRobotNotificationAdapter(
+                new RecordingTransport(503, "{}"), policy(), JsonMapper.builder().build());
+
+        NotificationDeliveryResult malformedResult = malformed.deliver(request(
+                Map.of(), Map.of("webhookUrl", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send")));
+        NotificationDeliveryResult serverErrorResult = serverError.deliver(request(
+                Map.of(), Map.of("webhookUrl", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send")));
+
+        assertThat(malformedResult.outcome()).isEqualTo(NotificationDeliveryResult.Outcome.UNKNOWN);
+        assertThat(serverErrorResult.outcome()).isEqualTo(NotificationDeliveryResult.Outcome.UNKNOWN);
     }
 
     private static NotificationDeliveryRequest request(

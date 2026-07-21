@@ -29,6 +29,7 @@ class AliyunNotificationAdapterTest {
         assertThat(gateway.command.signName()).isEqualTo("智慧矿山");
         assertThat(gateway.command.templateCode()).isEqualTo("SMS_123");
         assertThat(gateway.command.templateParamJson()).contains("alarmId", "42");
+        assertThat(gateway.command.outId()).isEqualTo("000000000000004");
         assertThat(result.providerMessageId()).isEqualTo("biz-123");
         assertThat(result.outcome()).isEqualTo(NotificationDeliveryResult.Outcome.SUBMITTED);
     }
@@ -51,6 +52,8 @@ class AliyunNotificationAdapterTest {
         assertThat(gateway.command.ttsCode()).isEqualTo("TTS_123");
         assertThat(gateway.command.ttsParamJson()).contains("alarmId", "42");
         assertThat(gateway.command.outId()).hasSize(15);
+        assertThat(gateway.command.toString())
+                .doesNotContain("13800138000", "ak", "sk", "alarmId");
         assertThat(result.providerMessageId()).isEqualTo("call-123");
     }
 

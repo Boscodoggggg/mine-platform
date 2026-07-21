@@ -363,6 +363,18 @@ declare namespace App {
         };
       };
       mine: {
+        notification: {
+          provider: Record<
+            | 'smtp'
+            | 'wecom-robot'
+            | 'dingtalk-robot'
+            | 'feishu-robot'
+            | 'generic-webhook'
+            | 'aliyun-sms'
+            | 'aliyun-voice',
+            string
+          >;
+        };
         menu: Record<
           | 'system'
           | 'users'

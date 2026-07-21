@@ -39,4 +39,14 @@ public record NotificationChannel(
         Instant updatedAt,
         long version
 ) {
+    /** 返回不包含配置 JSON 和凭据密文的安全日志摘要。 */
+    @Override
+    public String toString() {
+        return "NotificationChannel[id=" + id
+                + ", channelCode=" + channelCode
+                + ", channelType=" + channelType
+                + ", provider=" + provider
+                + ", status=" + status
+                + ", version=" + version + "]";
+    }
 }

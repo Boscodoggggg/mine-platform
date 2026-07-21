@@ -8,6 +8,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
@@ -40,7 +41,7 @@ public class NotificationEndpointPolicy {
      * @param allowedHosts 精确主机白名单
      * @return 已校验 URI
      */
-    public URI validate(String endpointUrl, Set<String> allowedHosts) {
+    public ValidatedEndpoint validate(String endpointUrl, Set<String> allowedHosts) {
         Objects.requireNonNull(allowedHosts, "通知端点白名单不能为空");
         URI endpoint = parse(endpointUrl);
         String host = normalizeHost(endpoint.getHost());
@@ -50,14 +51,14 @@ public class NotificationEndpointPolicy {
             throw new IllegalArgumentException("通知端点主机不在精确白名单内");
         }
         try {
-            var addresses = resolver.resolve(host);
+            List<InetAddress> addresses = resolver.resolve(host);
             if (addresses.isEmpty() || addresses.stream().anyMatch(this::isBlocked)) {
                 throw new IllegalArgumentException("通知端点解析到受保护网络地址");
             }
+            return new ValidatedEndpoint(endpoint, addresses);
         } catch (UnknownHostException exception) {
             throw new IllegalArgumentException("通知端点主机无法解析", exception);
         }
-        return endpoint;
     }
 
     private URI parse(String endpointUrl) {
@@ -110,5 +111,32 @@ public class NotificationEndpointPolicy {
         }
         return bytes.length == 16 && (Byte.toUnsignedInt(bytes[0]) & 0xfe) == 0xfc
                 || Arrays.equals(bytes, new byte[bytes.length]);
+    }
+
+    /**
+     * 安全策略校验后携带固定解析地址的端点，传输层不得再次查询 DNS。
+     *
+     * @param uri 原始主机名 HTTPS 地址，用于 TLS SNI 和证书主机名校验
+     * @param addresses 策略校验通过的固定公网地址
+     */
+    public record ValidatedEndpoint(URI uri, List<InetAddress> addresses) {
+        /** 校验并冻结端点快照。 */
+        public ValidatedEndpoint {
+            Objects.requireNonNull(uri, "通知端点 URI 不能为空");
+            addresses = List.copyOf(Objects.requireNonNull(
+                    addresses, "通知端点固定地址不能为空"));
+            if (uri.getHost() == null || addresses.isEmpty()) {
+                throw new IllegalArgumentException("通知端点固定地址不完整");
+            }
+        }
+
+        /** 返回不包含路径和查询参数的安全日志摘要。 */
+        @Override
+        public String toString() {
+            return "ValidatedEndpoint[scheme=" + uri.getScheme()
+                    + ", host=" + uri.getHost()
+                    + ", port=" + uri.getPort()
+                    + ", addressCount=" + addresses.size() + "]";
+        }
     }
 }

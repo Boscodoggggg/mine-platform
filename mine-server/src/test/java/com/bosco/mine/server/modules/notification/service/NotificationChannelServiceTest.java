@@ -49,7 +49,7 @@ class NotificationChannelServiceTest {
         mapper = mock(NotificationChannelMapper.class);
         cipher = mock(NotificationSecretCipher.class);
         auditService = mock(OperationAuditService.class);
-        registry = new NotificationProviderRegistry(List.of(smtpAdapter()));
+        registry = new NotificationProviderRegistry(List.of(smtpAdapter(), webhookAdapter()));
         service = new NotificationChannelService(
                 mapper, registry, cipher, auditService, new ObjectMapper());
     }
@@ -127,6 +127,46 @@ class NotificationChannelServiceTest {
                 .hasMessageContaining("刷新");
     }
 
+    @Test
+    void 聚合凭据超过加密上限必须返回稳定配置错误() {
+        when(mapper.findByCode("oversized-email")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.create(request(
+                "oversized-email", "ENABLED", Map.of("password", "x".repeat(32 * 1024)), 0)))
+                .isInstanceOf(MineException.class)
+                .hasMessageContaining("配置不合法");
+    }
+
+    @Test
+    void 响应必须兜底移除误放在非敏感配置中的Provider凭据字段() {
+        UUID channelId = UUID.randomUUID();
+        Instant now = Instant.parse("2026-07-21T00:00:00Z");
+        when(mapper.findById(channelId)).thenReturn(Optional.of(new NotificationChannel(
+                channelId,
+                "legacy-webhook",
+                "历史 Webhook",
+                NotificationChannelType.WEBHOOK,
+                "generic-webhook",
+                "DISABLED",
+                "{\"allowedHosts\":[\"hooks.example.com\"],"
+                        + "\"endpointUrl\":\"https://hooks.example.com/secret\"}",
+                null,
+                3000,
+                5000,
+                null,
+                now,
+                now,
+                0
+        )));
+
+        NotificationChannelResponse response = service.get(channelId);
+
+        assertThat(response.configuration())
+                .containsKey("allowedHosts")
+                .doesNotContainKey("endpointUrl");
+        assertThat(response.toString()).doesNotContain("hooks.example.com/secret");
+    }
+
     private NotificationChannelRequest request(
             String code,
             String status,
@@ -163,7 +203,44 @@ class NotificationChannelServiceTest {
                         true, 255, null, List.of())),
                 List.of(new NotificationProviderDefinition.Field(
                         "password", NotificationProviderDefinition.FieldType.SECRET,
-                        true, 512, null, List.of()))
+                        true, 32768, null, List.of()))
+        );
+        return new NotificationChannelAdapter() {
+            @Override
+            public NotificationAdapterKey key() {
+                return definition.key();
+            }
+
+            @Override
+            public NotificationProviderDefinition definition() {
+                return definition;
+            }
+
+            @Override
+            public void validateConfiguration(
+                    Map<String, Object> configuration,
+                    Map<String, String> credentials
+            ) {
+                // 测试适配器不增加通用字段以外的约束。
+            }
+
+            @Override
+            public NotificationDeliveryResult deliver(NotificationDeliveryRequest request) {
+                return NotificationDeliveryResult.submitted(null);
+            }
+        };
+    }
+
+    private NotificationChannelAdapter webhookAdapter() {
+        NotificationProviderDefinition definition = new NotificationProviderDefinition(
+                new NotificationAdapterKey(NotificationChannelType.WEBHOOK, "generic-webhook"),
+                "mine.notification.provider.generic-webhook", false,
+                List.of(new NotificationProviderDefinition.Field(
+                        "allowedHosts", NotificationProviderDefinition.FieldType.STRING_LIST,
+                        true, 32, null, List.of())),
+                List.of(new NotificationProviderDefinition.Field(
+                        "endpointUrl", NotificationProviderDefinition.FieldType.SECRET,
+                        true, 2048, null, List.of()))
         );
         return new NotificationChannelAdapter() {
             @Override

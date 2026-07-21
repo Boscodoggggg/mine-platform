@@ -53,6 +53,16 @@ public interface SmtpMailGateway {
             Objects.requireNonNull(subject, "SMTP 标题不能为空");
             Objects.requireNonNull(body, "SMTP 正文不能为空");
         }
+
+        /** 返回不包含认证信息、地址和邮件正文的安全日志摘要。 */
+        @Override
+        public String toString() {
+            return "Command[host=" + host
+                    + ", port=" + port
+                    + ", securityMode=" + securityMode
+                    + ", connectTimeoutMs=" + connectTimeoutMs
+                    + ", readTimeoutMs=" + readTimeoutMs + "]";
+        }
     }
 
     /** SMTP 连接安全模式。 */

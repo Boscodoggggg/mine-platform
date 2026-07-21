@@ -25,7 +25,7 @@ public class AliyunVoiceNotificationAdapter implements NotificationChannelAdapte
             new NotificationAdapterKey(NotificationChannelType.VOICE, "aliyun-voice");
     private static final NotificationProviderDefinition DEFINITION =
             new NotificationProviderDefinition(
-                    KEY, "mine.notification.provider.aliyun-voice", true,
+                    KEY, "mine.notification.provider.aliyun-voice", false,
                     List.of(
                             NotificationProviderSupport.stringField("endpoint", true, 253, ENDPOINT),
                             NotificationProviderSupport.stringField("regionId", true, 64, "cn-hangzhou"),
@@ -105,7 +105,7 @@ public class AliyunVoiceNotificationAdapter implements NotificationChannelAdapte
                     NotificationProviderSupport.integer(request.configuration(), "playTimes", 1),
                     NotificationProviderSupport.integer(request.configuration(), "volume", 100),
                     NotificationProviderSupport.integer(request.configuration(), "speed", 0),
-                    request.deliveryId().toString().replace("-", "").substring(0, 15),
+                    AliyunProviderResults.outId(request.deliveryId()),
                     request.connectTimeoutMs(), request.readTimeoutMs()));
             return AliyunProviderResults.from(response.code(), response.callId());
         } catch (AliyunGatewayException exception) {
