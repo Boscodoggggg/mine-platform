@@ -421,7 +421,7 @@ services:
           memory: 1g
 
   rabbitmq:
-    image: ${MINE_RABBITMQ_IMAGE:-rabbitmq:4.1.8-management}
+    image: ${MINE_RABBITMQ_IMAGE:-rabbitmq:4.3.0-management}
     hostname: rabbitmq
     restart: unless-stopped
     init: true
