@@ -61,6 +61,11 @@ for issue_form in bug_report.yml feature_request.yml; do
   grep -Eq '^body:' "${issue_path}" || fail "${issue_form} 缺少 body"
 done
 
+grep -Fq 'build-tests/community-health.sh' "${ROOT_DIR}/scripts/verify.sh" \
+  || fail "主验证脚本未执行开源社区健康检查"
+grep -Fq 'build-tests/community-health.sh' "${ROOT_DIR}/.github/workflows/ci.yml" \
+  || fail "GitHub Actions 未执行开源社区健康检查"
+
 community_files=(
   README.md
   README.zh-CN.md

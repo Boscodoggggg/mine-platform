@@ -87,9 +87,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - name: 校验开源社区健康文件
+        run: bash build-tests/community-health.sh
       - name: 校验 Shell 与 Compose
         run: |
-          find scripts deploy/scripts deploy/tests -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          find build-tests scripts deploy/scripts deploy/tests -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
           docker compose --profile observability \
             --env-file deploy/env/standalone.env.example \
             -f deploy/compose/compose-standalone.yml config --quiet
