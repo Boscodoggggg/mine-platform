@@ -190,6 +190,16 @@ docker compose --env-file deploy/env/standalone.env \
 
 不要在生产环境执行 `down -v`，它会删除 PostgreSQL、TimescaleDB、RabbitMQ、Redis 和 RustFS 数据卷。确需销毁测试环境时，必须先确认没有生产数据并完成备份。
 
+### 6.1 同版本冷备份与新卷恢复
+
+离线包中的 `deploy/scripts/backup-standalone.sh` 只允许在全部 Compose 服务停止后归档四个事实卷；
+`deploy/scripts/restore-standalone.sh` 会先验证外部/内部 SHA-256、manifest、backupId、发行版本、镜像引用/ID 和全部目标卷，
+再恢复到新项目的四个不存在卷。两者都不会自动停止、启动或删除服务和卷，也不包含环境文件、secret 或 TLS 材料。
+
+完整的停写审批、命令、异地保留、分阶段启动、数据对账和失败卷人工清理边界见
+[Standalone 同版本冷备份与恢复运行手册](../docs/runbooks/standalone-backup-restore.md)。禁止在线归档、跳过校验、覆盖已有卷或执行
+`down -v`；该冷备底座不替代 WAL/PITR、RPO/RTO 和真实恢复演练。
+
 ## 7. 配置变更边界
 
 以下配置修改后通常需要重建容器：端口、数据库连接、JVM、镜像、证书和基础设施资源限制。

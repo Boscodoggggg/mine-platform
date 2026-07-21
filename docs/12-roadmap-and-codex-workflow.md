@@ -189,6 +189,20 @@ Phase 2 仍保留弱网策略消费者、派生指标、MQTT Binary 和真实厂
 
 10-testing-quality-gates.md 的现场上线门禁全部通过并形成报告。
 
+### 当前实施状态（2026-07-21）
+
+| 能力 | 状态 | 说明 |
+|---|---|---|
+| Standalone 同版本冷备份与新卷恢复 | `AUTOMATED PASS` | 四个事实卷、双层 SHA-256、manifest、tar 路径、版本/镜像门禁、拒绝覆盖、离线交付和不自动启动已覆盖 |
+| 持续 WAL、基础备份和 PITR | `DEFERRED` | 当前冷备有完整停机窗口，不能满足既定生产 RPO |
+| 真实 Docker 卷、加密介质和跨主机恢复 | `DEFERRED` | 等待现场主机、真实数据量、权限模型和恢复演练窗口 |
+| 共享 S3、五节点、HA 和跨版本恢复 | `DEFERRED` | 需要目标拓扑、升级矩阵和故障切换证据 |
+| RPO/RTO、季度演练和 24/72 小时长稳 | `DEFERRED` | 必须以客户环境实测报告放行 |
+
+操作边界见 [Standalone 同版本冷备份与恢复运行手册](runbooks/standalone-backup-restore.md)，自动化证据见
+[Phase 4 Standalone 同版本冷备恢复验收报告](reports/phase-4-standalone-recovery-acceptance.md)。下一工程切片优先在“可回滚升级编排”与
+“持续 WAL/基础备份”中择一推进；两者都不能复用本冷备结论替代真实恢复演练。
+
 ## 7. 每个功能的完成定义
 
 一个功能只有同时满足以下条件才算完成：

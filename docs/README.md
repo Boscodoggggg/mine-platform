@@ -73,6 +73,8 @@ Phase 3 的 [班次、作业单与生产运营自动化验收报告](reports/pha
 值班操作、对账、故障处置和安全停启遵循 [矿区生产运营运行手册](runbooks/mine-production-operation-runtime.md)。
 Phase 3 的 [三维场景自动化验收报告](reports/phase-3-scene-acceptance.md) 已覆盖安全内容寻址资源、场景草稿/发布/默认、完整运行快照、Cesium 离线懒加载、位置/空间/告警/运营叠加、确定性 GLB 和二维独立降级；
 上传、发布、告警、对象对账、备份边界和回退遵循 [矿区三维场景运行与安全回退手册](runbooks/mine-scene-runtime.md)。Phase 3 仓库自动化范围已收口，下一阶段进入 Phase 4 商用加固；真实 UWB、模型/坐标/围栏和运营参数标定、GPU/浏览器、共享 S3、真实吨位、容量、HA、备份恢复、弱网和长稳均为 `DEFERRED` 生产阻断项。
+Phase 4 的 [Standalone 同版本冷备恢复自动化验收报告](reports/phase-4-standalone-recovery-acceptance.md) 已覆盖四个事实卷、双层校验和、manifest、版本/镜像门禁、新卷恢复和离线交付；停写、备份、异地复制、恢复、启动与对账遵循
+[Standalone 同版本冷备份与恢复运行手册](runbooks/standalone-backup-restore.md)。该结论仅为仓库自动化底座，真实 Docker 卷、加密介质、跨主机、WAL/PITR、RPO/RTO、共享 S3、五节点、跨版本和长稳仍为 `DEFERRED`，不得宣称备份恢复已经生产通过。
 现场执行必须遵循 [MQTT 真实设备现场接入与 24 小时验收手册](runbooks/device-onboarding.md)，并按
 [Phase 1 真实设备验收记录契约](contracts/phase-1-device-acceptance-v1.schema.json) 留存结构化证据。
 

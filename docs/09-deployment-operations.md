@@ -309,6 +309,16 @@ TCP 二进制监听器在应用默认配置中关闭，Standalone Compose 为可
 - Redis：不作为必须恢复的数据真相，可保留 RDB/AOF 加速但不计入核心 RPO。
 - 配置包：数据库备份外，支持脱敏导出。
 
+### 12.1 当前已实现的 Standalone 冷恢复底座
+
+仓库已提供 `deploy/scripts/backup-standalone.sh` 和 `deploy/scripts/restore-standalone.sh`，对单机 Compose 的
+`postgres_data`、`timescale_data`、`rabbitmq_data`、`rustfs_data` 四个事实卷执行同发行版本、同镜像 ID 的冷备份与新卷恢复。
+自动化已经覆盖全服务停机、源卷只读、无网络 helper、外部/内部 SHA-256、manifest、tar 路径、版本/镜像门禁、目标卷拒绝覆盖、
+失败保留和不自动启动。详细操作与边界见 [Standalone 同版本冷备份与恢复运行手册](runbooks/standalone-backup-restore.md)。
+
+该能力是可重复恢复的安全底座，不是现有 RPO/RTO 的达标证明。持续 WAL 归档、每日基础备份、PITR、共享对象存储恢复、五节点恢复和
+真实数据演练仍未实现生产闭环；未形成这些证据前，生产状态保持 `PRODUCTION NOT RELEASED`。
+
 保留建议：
 
 - 7 个日备份。
