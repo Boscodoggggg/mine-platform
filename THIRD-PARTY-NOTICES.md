@@ -17,5 +17,6 @@
 | Testcontainers | 2.0.5 | 使用真实 PostgreSQL 进行集成测试 | MIT |
 | Eclipse Paho Java Client | 1.2.5 | MQTT 3.1.1 设备模拟与 Broker 权限验证 | EPL-2.0 / EDL-1.0 |
 | SnakeYAML | 2.6 | 读取设备模拟器场景配置 | Apache-2.0 |
+| zip.js | 2.8.31 | 将前端生产构建目录压缩为 ZIP 发行制品 | BSD-3-Clause |
 
 项目自身采用 Apache License 2.0。第三方软件的版权和许可证不因被本项目引用而发生改变。

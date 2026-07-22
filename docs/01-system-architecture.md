@@ -141,7 +141,7 @@ Compose 私有化部署的服务数量有限，服务地址稳定，不需要动
 
 单机：
 
-- 所有组件由 compose-standalone.yml 部署。
+- 所有组件由 `deploy/docker-compose.yml` 部署。
 - 不启用 Keepalived、数据库备库、Redis Sentinel 和 RabbitMQ 集群。
 - 明确标识“非高可用生产模式”。
 

@@ -2,7 +2,7 @@
 
 ## 1. 适用范围与结论边界
 
-本手册适用于单机 Compose 部署的同发行版本、同镜像 ID 冷备份与恢复。操作窗口内必须停止全部平台服务，恢复目标必须使用新的 Compose 项目名和不存在的新卷。脚本不会停止或启动服务，不会覆盖、删除任何已有卷，也不会打包环境文件、secret 或 TLS 私钥。
+本手册适用于单机 Compose 部署的同发行版本、同镜像 ID 冷备份与恢复。操作窗口内必须停止全部平台服务，恢复目标必须使用新的 Compose 项目名和不存在的新卷。脚本不会停止或启动服务，不会覆盖、删除任何已有卷，也不会打包 `deploy/.env`、证书或 TLS 私钥。
 
 冷备份只覆盖四个事实卷：
 
@@ -17,8 +17,8 @@
 
 - Redis、Prometheus、Grafana、Loki 和 Alloy 数据卷。
 - 场景上传暂存、Gateway 本地缓存及其他可重建临时目录。
-- `deploy/env/standalone.env`、`deploy/secrets/`、TLS 证书和私钥。
-- 应用镜像和离线安装包；它们必须由发行制品库按摘要独立保管。
+- `deploy/.env`、`deploy/certs/` 中的 TLS 证书和私钥。
+- 应用 JAR、前端 dist、基础镜像和离线安装包；它们必须由发行制品库按摘要独立保管。
 
 这套能力用于建立可校验、默认不覆盖的灾难恢复底座，不等于持续 WAL 归档、PITR 或热备。全服务停机至归档完成之间发生的写入不可被捕获，因此当前冷备本身不满足 [部署与运维设计](../09-deployment-operations.md) 中既定的生产 RPO 目标。
 
@@ -31,7 +31,7 @@
 1. 已批准的停写和维护窗口，设备上行、命令下发、策略发布、文件上传及后台任务均已停止。
 2. 与运行实例匹配的不可变离线发行包和四项基础服务镜像。
 3. 主机外、访问受控且静态加密的目标目录；可移动介质还需确认传输与保管责任人。
-4. 与恢复点匹配、独立托管的环境文件、secret、TLS 材料及其版本记录。不得从备份归档中补造凭据。
+4. 与恢复点匹配、独立托管的 `deploy/.env`、TLS 材料及其版本记录。不得从备份归档中补造凭据。
 5. 足够的源卷读取空间、临时空间和备份目标空间，且维护窗口允许完整停止平台。
 
 ## 3. 创建冷备份
@@ -39,11 +39,11 @@
 以下示例均在发行包根目录执行。先固定参数，禁止把生产备份写入 Web 根目录、Git 工作树或未加密的普通用户目录：
 
 ```bash
-ENV_FILE=deploy/env/standalone.env
+ENV_FILE=deploy/.env
 SOURCE_PROJECT=mine-standalone
 RELEASE_VERSION=<release-version>
 BACKUP_DIR=/mnt/encrypted-mine-backup
-COMPOSE_FILE=deploy/compose/compose-standalone.yml
+COMPOSE_FILE=deploy/docker-compose.yml
 ```
 
 ### 3.1 停写、停止服务并复核
@@ -114,14 +114,14 @@ ARCHIVE=/mnt/encrypted-mine-backup/mine-standalone-backup-<releaseVersion>-<back
 - 当前发行根目录和四项本地镜像与 manifest 记录一致；不得跨 PostgreSQL/TimescaleDB major 或跨发行版本恢复。
 - 使用新的目标项目名，例如 `mine-restore-20260721`。四个 `${TARGET_PROJECT}_<logicalName>` 目标卷必须全部不存在。
 - 目标项目没有任何运行服务；同机恢复时源项目也保持停止，避免错误连接和双写。
-- 已从独立安全存储准备与恢复点匹配的环境文件、secret 和 TLS 材料，并限制文件权限。备份归档不包含这些材料。
+- 已从独立安全存储准备与恢复点匹配的 `deploy/.env` 和 TLS 材料，并限制文件权限。备份归档不包含这些材料。
 
 先只读核查目标状态：
 
 ```bash
 TARGET_PROJECT=mine-restore-20260721
 RESTORE_ENV=/secure/config/standalone.env
-COMPOSE_FILE=deploy/compose/compose-standalone.yml
+COMPOSE_FILE=deploy/docker-compose.yml
 
 docker compose -p "${TARGET_PROJECT}" \
   --env-file "${RESTORE_ENV}" -f "${COMPOSE_FILE}" ps --all
@@ -192,7 +192,7 @@ MINE_ENV_FILE="${RESTORE_ENV}" \
 - 禁止跨发行版本、跨 PostgreSQL/TimescaleDB major 直接挂卷或恢复。
 - 禁止在生产环境执行 `docker compose down -v`。
 - 禁止覆盖、清空、复用已有目标卷；禁止脚本或值班任务自动删除旧卷、失败卷和历史备份。
-- 禁止把归档、环境文件、secret、证书或私钥放入 Web 可访问目录、Git、工单附件或普通聊天工具。
+- 禁止把归档、`deploy/.env`、证书或私钥放入 Web 可访问目录、Git、工单附件或普通聊天工具。
 - 禁止把这套冷备当作 WAL/PITR、连续备份、高可用或既定 RPO/RTO 已达标的证据。
 
 ## 7. 当前未覆盖的生产门禁

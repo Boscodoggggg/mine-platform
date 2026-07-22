@@ -29,8 +29,8 @@ jar tf mine-gateway/target/mine-gateway-0.1.0-SNAPSHOT.jar \
   | grep 'BOOT-INF/lib/mine-protocol-example-haul-truck-'
 bash deploy/tests/compose-config.sh
 docker compose --profile observability \
-  --env-file deploy/env/standalone.env.example \
-  -f deploy/compose/compose-standalone.yml config --quiet
+  --env-file deploy/.env.example \
+  -f deploy/docker-compose.yml config --quiet
 ~~~
 
 启用前逐项确认：
@@ -94,11 +94,11 @@ MINE_GATEWAY_TCP_TLS_ENABLED=false
 完成身份快照后启动依赖和 Gateway：
 
 ~~~bash
-docker compose --env-file deploy/env/standalone.env.example \
-  -f deploy/compose/compose-standalone.yml up -d \
+docker compose --env-file deploy/.env.example \
+  -f deploy/docker-compose.yml up -d \
   rabbitmq mine-server mine-gateway-cache-init mine-gateway mine-telemetry
-docker compose --env-file deploy/env/standalone.env.example \
-  -f deploy/compose/compose-standalone.yml ps mine-gateway
+docker compose --env-file deploy/.env.example \
+  -f deploy/docker-compose.yml ps mine-gateway
 ~~~
 
 ### 5.2 设备模拟器
@@ -128,7 +128,7 @@ java -jar mine-device-simulator-app/target/mine-device-simulator-app-0.1.0-SNAPS
 
 ### 5.3 TLS 非现场验证
 
-把 PEM 证书和私钥放到现场 secret 目录的 `tls.crt`、`tls.key`，设置 `MINE_GATEWAY_TCP_TLS_ENABLED=true` 后重启 Gateway。
+把 PEM 证书和私钥放到 `deploy/certs/tls.crt`、`deploy/certs/tls.key`，设置私钥权限为 `0600`，再在 `deploy/.env` 中设置 `MINE_GATEWAY_TCP_TLS_ENABLED=true` 后重启 Gateway。
 模拟器 TCP Client 使用 JVM 默认信任库；自签名实验环境需把证书导入一个隔离信任库并通过 JVM 参数传入，不得修改操作系统或
 生产全局信任库。生产必须使用受控 CA、证书到期告警和轮换记录。
 
@@ -178,7 +178,7 @@ sum by (protocol) (increase(mine_gateway_tcp_acknowledgements[15m]))
 1. 先在防火墙或负载均衡停止新连接，避免滚动期间旧实例继续接收。
 2. 观察活动连接收敛；必要时通知设备按退避策略重连，不制造同时重连风暴。
 3. 为全部 Gateway 实例设置 `MINE_GATEWAY_TCP_ENABLED=false` 并重新创建容器；Standalone 可执行
-   `MINE_GATEWAY_TCP_ENABLED=false docker compose --env-file deploy/env/standalone.env.example -f deploy/compose/compose-standalone.yml up -d mine-gateway`；
+   `MINE_GATEWAY_TCP_ENABLED=false docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml up -d mine-gateway`；
    只替换部分实例不算暂停完成。
 4. 保留指标、脱敏日志、身份快照版本、插件镜像 digest 和 RabbitMQ 证据，不清零计数。
 
@@ -197,7 +197,7 @@ sum by (protocol) (increase(mine_gateway_tcp_acknowledgements[15m]))
 
 ### 8.4 回退
 
-回退到上一不可变镜像、产品配置包和与其匹配的完整身份快照，恢复原入口模式、端口和 TLS secret 引用。Gateway 关闭会断开会话；未获得 ACK 的设备应按
+回退到上一已校验 Gateway JAR、产品配置包和与其匹配的完整身份快照，恢复原入口模式、端口和 TLS 证书目录挂载。Gateway 关闭会断开会话；未获得 ACK 的设备应按
 原 `bootId + sequence` 重传。回退完成后验证 publisher confirm、ACK 和重复遥测幂等，不回滚数据库迁移、不删除遥测或审计证据。
 
 ## 9. 尚未完成的生产门禁

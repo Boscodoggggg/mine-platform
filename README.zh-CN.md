@@ -125,12 +125,14 @@ flowchart LR
 git clone https://github.com/Boscodoggggg/mine-platform.git
 cd mine-platform
 
-./mvnw -B -ntp test
+./mvnw -B -ntp package
 pnpm --dir mine-web install --frozen-lockfile
 pnpm --dir mine-web typecheck
 pnpm --dir mine-web test:unit
 pnpm --dir mine-web build
 ```
+
+标准构建命令会自动生成 `release/mine-server.jar`、`release/mine-gateway.jar`、`release/mine-telemetry.jar` 和 `release/mine-web.zip`，无需再执行单独的打包脚本。
 
 运行包含部署契约和 SBOM 的完整仓库门禁：
 
@@ -142,7 +144,7 @@ bash scripts/verify.sh
 
 单机生产形态基线包含三个应用服务、RabbitMQ、PostgreSQL、TimescaleDB、Redis、RustFS、HTTPS/MQTTS 入口以及可选的可观测组件。
 
-按照 [Standalone 部署文档](deploy/README.md) 创建本地 secret、执行前置检查并启动。真实矿区严禁继续使用示例凭据或开发证书。
+按照 [Standalone 部署文档](deploy/README.md) 把构建制品准备到 `deploy/`，复制并填写 `deploy/.env`、挂载现场证书后启动。真实矿区严禁继续使用示例凭据或开发证书。
 
 ### 3. 模拟矿山设备
 

@@ -18,9 +18,9 @@ trap 'rm -rf "${work_dir}"' EXIT
 fixture="${work_dir}/fixture"
 fake_bin="${work_dir}/bin"
 output_dir="${work_dir}/output"
-mkdir -p "${fixture}/deploy/compose" "${fixture}/deploy/env" "${fake_bin}" "${output_dir}"
+mkdir -p "${fixture}/deploy" "${fake_bin}" "${output_dir}"
 
-cat > "${fixture}/deploy/compose/compose-standalone.yml" <<'YAML'
+cat > "${fixture}/deploy/docker-compose.yml" <<'YAML'
 services:
   postgres:
     image: example/postgres:18
@@ -36,7 +36,7 @@ volumes:
   rabbitmq_data: {}
   rustfs_data: {}
 YAML
-printf 'MINE_TEST=true\n' > "${fixture}/deploy/env/standalone.env"
+printf 'MINE_TEST=true\n' > "${fixture}/deploy/.env"
 printf '0.1.0-test\n' > "${fixture}/VERSION"
 
 cat > "${fake_bin}/docker" <<'FAKE_DOCKER'
@@ -127,7 +127,7 @@ export MINE_BACKUP_ID="20260720T220000Z-a1b2c3d4"
 export MINE_BACKUP_CREATED_AT="2026-07-20T22:00:00Z"
 
 "${BACKUP_SCRIPT}" \
-  --env-file "${fixture}/deploy/env/standalone.env" \
+  --env-file "${fixture}/deploy/.env" \
   --project-name mine-source \
   --release-version 0.1.0-test \
   --output-dir "${output_dir}" \
@@ -210,7 +210,7 @@ printf 'unexpected-line\n' >> "${external_extra_archive}.sha256"
 restore_command=(
   "${RESTORE_SCRIPT}"
   --archive "${valid_archive}"
-  --env-file "${fixture}/deploy/env/standalone.env"
+  --env-file "${fixture}/deploy/.env"
   --project-name mine-restore
   --expected-release-version 0.1.0-test
   --confirm-backup-id "${MINE_BACKUP_ID}"
@@ -233,14 +233,14 @@ assert_no_volume_create() {
 : > "${FAKE_DOCKER_LOG}"
 run_expect_failure "未确认 backupId 时恢复仍然成功" \
   "${RESTORE_SCRIPT}" --archive "${valid_archive}" \
-  --env-file "${fixture}/deploy/env/standalone.env" --project-name mine-restore \
+  --env-file "${fixture}/deploy/.env" --project-name mine-restore \
   --expected-release-version 0.1.0-test
 [[ ! -s "${FAKE_DOCKER_LOG}" ]] || fail "未确认 backupId 时不应调用 Docker"
 
 : > "${FAKE_DOCKER_LOG}"
 run_expect_failure "错误 backupId 仍被接受" \
   "${RESTORE_SCRIPT}" --archive "${valid_archive}" \
-  --env-file "${fixture}/deploy/env/standalone.env" --project-name mine-restore \
+  --env-file "${fixture}/deploy/.env" --project-name mine-restore \
   --expected-release-version 0.1.0-test --confirm-backup-id 20260720T220000Z-deadbeef
 assert_no_volume_create "错误 backupId 时不应创建卷"
 
@@ -249,7 +249,7 @@ for archive in "${external_corrupt_archive}" "${external_extra_archive}" "${corr
   : > "${FAKE_DOCKER_LOG}"
   run_expect_failure "损坏或非法备份仍然恢复成功：$(basename "${archive}")" \
     "${RESTORE_SCRIPT}" --archive "${archive}" \
-    --env-file "${fixture}/deploy/env/standalone.env" --project-name mine-restore \
+    --env-file "${fixture}/deploy/.env" --project-name mine-restore \
     --expected-release-version 0.1.0-test --confirm-backup-id "${MINE_BACKUP_ID}"
   assert_no_volume_create "损坏或非法备份不应创建卷"
 done
@@ -263,7 +263,7 @@ assert_no_volume_create "外层 tar 包含链接时不应创建卷"
 : > "${FAKE_DOCKER_LOG}"
 run_expect_failure "发行版本不一致时恢复仍然成功" \
   "${RESTORE_SCRIPT}" --archive "${valid_archive}" \
-  --env-file "${fixture}/deploy/env/standalone.env" --project-name mine-restore \
+  --env-file "${fixture}/deploy/.env" --project-name mine-restore \
   --expected-release-version 0.2.0-test --confirm-backup-id "${MINE_BACKUP_ID}"
 assert_no_volume_create "发行版本不一致时不应创建卷"
 

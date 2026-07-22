@@ -13,7 +13,7 @@ ENV_FILE=""
 PROJECT_NAME=""
 EXPECTED_RELEASE_VERSION=""
 CONFIRMED_BACKUP_ID=""
-COMPOSE_FILE="${ROOT_DIR}/deploy/compose/compose-standalone.yml"
+COMPOSE_FILE="${ROOT_DIR}/deploy/docker-compose.yml"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -216,4 +216,4 @@ done
 
 echo "PASS: 已恢复备份 ${CONFIRMED_BACKUP_ID} 到新项目 ${PROJECT_NAME}"
 echo "目标卷：${CREATED_VOLUMES[*]}"
-echo "尚未启动服务；请准备匹配的 secret/config 后人工启动并完成数据库、队列、对象和 API 对账。"
+echo "尚未启动服务；请准备匹配的 deploy/.env 与证书后人工启动并完成数据库、队列、对象和 API 对账。"

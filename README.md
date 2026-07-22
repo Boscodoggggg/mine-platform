@@ -125,12 +125,14 @@ Prerequisites: JDK 21, Node.js 20.19+, pnpm 10.5+ and Docker Engine 24+ with Com
 git clone https://github.com/Boscodoggggg/mine-platform.git
 cd mine-platform
 
-./mvnw -B -ntp test
+./mvnw -B -ntp package
 pnpm --dir mine-web install --frozen-lockfile
 pnpm --dir mine-web typecheck
 pnpm --dir mine-web test:unit
 pnpm --dir mine-web build
 ```
+
+The standard build commands automatically generate `release/mine-server.jar`, `release/mine-gateway.jar`, `release/mine-telemetry.jar` and `release/mine-web.zip`; no separate packaging command is required.
 
 Run the complete repository gate, including deployment contracts and SBOM generation:
 
@@ -142,7 +144,7 @@ bash scripts/verify.sh
 
 The production-shaped single-host profile includes the application services, RabbitMQ, PostgreSQL, TimescaleDB, Redis, RustFS, HTTPS/MQTTS ingress and an optional observability profile.
 
-Follow the [Standalone deployment guide](deploy/README.md) to create local secrets, validate prerequisites and start the stack. Never use example credentials or development certificates in a real mine.
+Follow the [Standalone deployment guide](deploy/README.md) to stage artifacts under `deploy/`, configure `deploy/.env`, mount site certificates, validate prerequisites and start the stack. Never use example credentials or development certificates in a real mine.
 
 ### 3. Simulate mine devices
 

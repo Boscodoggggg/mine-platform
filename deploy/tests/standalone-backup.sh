@@ -16,9 +16,9 @@ trap 'rm -rf "${work_dir}"' EXIT
 fixture="${work_dir}/fixture"
 fake_bin="${work_dir}/bin"
 output_dir="${work_dir}/output"
-mkdir -p "${fixture}/deploy/compose" "${fixture}/deploy/env" "${fake_bin}" "${output_dir}"
+mkdir -p "${fixture}/deploy" "${fake_bin}" "${output_dir}"
 
-cat > "${fixture}/deploy/compose/compose-standalone.yml" <<'YAML'
+cat > "${fixture}/deploy/docker-compose.yml" <<'YAML'
 services:
   postgres:
     image: example/postgres:18
@@ -34,7 +34,7 @@ volumes:
   rabbitmq_data: {}
   rustfs_data: {}
 YAML
-printf 'MINE_TEST=true\n' > "${fixture}/deploy/env/standalone.env"
+printf 'MINE_TEST=true\n' > "${fixture}/deploy/.env"
 printf '0.1.0-test\n' > "${fixture}/VERSION"
 
 cat > "${fake_bin}/docker" <<'FAKE_DOCKER'
@@ -91,7 +91,7 @@ tests=0
 
 backup_command=(
   "${BACKUP_SCRIPT}"
-  --env-file "${fixture}/deploy/env/standalone.env"
+  --env-file "${fixture}/deploy/.env"
   --project-name mine-review
   --release-version 0.1.0-test
   --output-dir "${output_dir}"
@@ -112,7 +112,7 @@ run_expect_failure "未确认安全目的地时备份仍然成功" "${backup_com
 
 : > "${FAKE_DOCKER_LOG}"
 run_expect_failure "非法项目名仍被接受" \
-  "${BACKUP_SCRIPT}" --env-file "${fixture}/deploy/env/standalone.env" \
+  "${BACKUP_SCRIPT}" --env-file "${fixture}/deploy/.env" \
   --project-name 'Mine Invalid' --release-version 0.1.0-test \
   --output-dir "${output_dir}" --confirm-secure-destination
 [[ ! -s "${FAKE_DOCKER_LOG}" ]] || fail "非法项目名不应调用 Docker"
@@ -180,8 +180,8 @@ else
   (cd "${output_dir}" && shasum -a 256 --check "$(basename "${checksum}")" >/dev/null)
 fi
 
-if tar -tf "${archive}" | grep -Eq '(^|/)(deploy/env|deploy/secrets|redis_data|prometheus_data|scene_upload_workspace|gateway_configuration_cache)(/|$)'; then
-  fail "备份包含环境、secret 或非事实卷"
+if tar -tf "${archive}" | grep -Eq '(^|/)(deploy/\.env|deploy/certs|redis_data|prometheus_data|scene_upload_workspace|gateway_configuration_cache)(/|$)'; then
+  fail "备份包含环境、证书或非事实卷"
 fi
 
 : > "${FAKE_DOCKER_LOG}"

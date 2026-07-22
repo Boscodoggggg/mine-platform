@@ -59,7 +59,7 @@ Standalone 部署显式启用以下两条独立链路；应用默认值为关闭
 ```bash
 bash deploy/tests/compose-config.sh
 bash deploy/tests/prometheus-rules.sh
-docker compose -f deploy/compose/compose-standalone.yml config --quiet
+docker compose -f deploy/docker-compose.yml config --quiet
 ```
 
 ### 3.2 主数据与权限

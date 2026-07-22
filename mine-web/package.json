@@ -15,7 +15,7 @@
   "author": "Bosco Mine contributors",
   "type": "module",
   "scripts": {
-    "build": "vite build --mode prod",
+    "build": "vite build --mode prod && node scripts/package-release.mjs",
     "build:test": "vite build --mode test",
     "check:ui-governance": "vitest run src/test/ui-governance.test.ts",
     "cleanup": "sa cleanup",
@@ -74,6 +74,7 @@
     "@vitejs/plugin-vue-jsx": "5.1.5",
     "@vue/compiler-sfc": "3.5.34",
     "@vue/test-utils": "2.4.11",
+    "@zip.js/zip.js": "2.8.31",
     "consola": "3.4.2",
     "eslint": "10.3.0",
     "happy-dom": "20.10.6",

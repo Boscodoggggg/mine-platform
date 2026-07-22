@@ -129,25 +129,21 @@ RabbitMQ、PostgreSQL、TimescaleDB 的升级顺序遵循各自官方支持路�
 
 ## 9. 构建产物
 
-每个正式版本必须生成：
+标准 Maven 与前端构建先生成便于直接拿取的扁平发行制品：
 
 ~~~text
 release/
-├── images/
-├── images.lock
-├── checksums.sha256
-├── sbom/
-├── licenses/
-├── config/
-├── migrations/
-├── web/cesium/              # 与前端版本锁一致的 Workers/Assets/Widgets/ThirdParty
-├── demo/scene/              # 自制确定性演示资产、许可证和摘要
-├── scripts/
-└── RELEASE-NOTES.md
+├── mine-server.jar
+├── mine-gateway.jar
+├── mine-telemetry.jar
+└── mine-web.zip
 ~~~
 
-正式发行清单必须记录前端 lockfile、Cesium 版本/许可证、Cesium 静态目录摘要、演示资源生成器版本和 SHA-256。客户模型默认不进入
-公开发行包；确需交付时必须在客户授权边界内单独列出来源、许可、摘要、坐标版本和适用矿区。
+`./mvnw package` 自动输出三个 Spring Boot 可执行 JAR，`pnpm --dir mine-web build` 自动把 `dist/` 内容压缩为根层含
+`index.html` 的 `mine-web.zip`，不需要额外手工打包命令。包含镜像、SBOM、许可证、配置、脚本、摘要和 Release Notes 的正式
+离线交付包仍由发布门禁生成，不能用上述四个应用制品替代。正式发行清单必须记录前端 lockfile、Cesium 版本/许可证、Cesium
+静态目录摘要、演示资源生成器版本和 SHA-256。客户模型默认不进入公开发行包；确需交付时必须在客户授权边界内单独列出来源、
+许可、摘要、坐标版本和适用矿区。
 
 ## 10. 官方资料
 

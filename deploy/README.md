@@ -38,7 +38,27 @@
 bash scripts/verify.sh
 ~~~
 
-Compose 直接以只读方式挂载三个可执行 JAR 和 `mine-web/dist`。正式离线发行后会进一步封装为带 digest 的应用镜像，但应用配置键和数据卷不会改变。
+也可以分别执行标准构建命令：
+
+~~~bash
+./mvnw -B -ntp package
+pnpm --dir mine-web build
+~~~
+
+构建完成后会自动得到 `release/mine-server.jar`、`release/mine-gateway.jar`、`release/mine-telemetry.jar` 和
+`release/mine-web.zip`，不需要再运行单独的打包脚本。`release/` 是对外拿取构建产物的位置；Maven `target/` 与
+`mine-web/dist/` 仍是构建过程目录。
+
+部署始终使用通用 Java 21 JRE 和 Nginx 镜像：三个 Java 服务分别只读挂载 `deploy/backend/*.jar`，Nginx 只读挂载
+`deploy/frontend/dist`。业务制品不封装进应用镜像，升级时替换挂载制品并重建对应容器。
+
+需要在本机直接启动 Compose 时，再把 Maven 和前端构建结果安装到 `deploy/`：
+
+~~~bash
+deploy/scripts/prepare-artifacts.sh
+~~~
+
+该脚本只负责准备运行挂载目录，不参与生成 `release/` 发行包。
 
 生成包含全部基础镜像、JAR、前端、Compose、配置模板、CycloneDX SBOM、许可证、镜像 ID 锁和 SHA-256 清单的离线包：
 
@@ -48,72 +68,67 @@ deploy/scripts/build-offline-bundle.sh \
   --output-dir target/offline
 ~~~
 
-打包脚本只使用本地镜像；任一基线镜像缺失都会失败，不会在打包过程中隐式拉取。输出为 `mine-platform-<version>.tar` 和对应 `.sha256`。离线包同时交付 `backup-standalone.sh`、`restore-standalone.sh`、共享校验库和对应自动化契约；它不包含任何现场备份、环境文件、secret 或私钥。备份恢复只支持同发行版本、同镜像 ID 的四个事实卷，且恢复只写不存在的新卷，不自动启动服务。
+打包脚本只使用本地镜像；任一基线镜像缺失都会失败，不会在打包过程中隐式拉取。输出为 `mine-platform-<version>.tar` 和对应 `.sha256`。离线包中的 `deploy/` 已包含 Compose、JAR、前端、静态配置和运维脚本；它不包含现场 `.env`、TLS 私钥或现场备份。备份恢复只支持同发行版本、同镜像 ID 的四个事实卷，且恢复只写不存在的新卷，不自动启动服务。
 
-## 4. 初始化配置与 secret
+## 4. 初始化配置与证书
 
 ~~~bash
-cp deploy/env/standalone.env.example deploy/env/standalone.env
-mkdir -p deploy/secrets
+cp deploy/.env.example deploy/.env
+chmod 600 deploy/.env
+mkdir -p deploy/certs
 ~~~
 
-按 [secrets.example/README.md](secrets.example/README.md) 创建全部 secret 文件。普通密码文件只放一行随机值；Redis Exporter 使用独立 JSON 密码映射。私钥文件权限建议为 `0600`。现场证书应由矿区信任的 CA 签发，并包含浏览器访问域名和设备连接域名。
+所有账号、密码、数据加密密钥、镜像、端口、JVM 参数、制品路径和业务开关都在 `deploy/.env` 配置。真实文件不得提交 Git，必须设置为 `0600`；Compose 只向每个容器注入该服务实际需要的变量。该文件同时由 Bash 运维脚本加载，包含空格、`#`、`$` 或引号的值必须使用兼容 Bash 的单引号写法。环境变量会被具有 Docker 管理权限的人员通过容器元数据读取，因此 Docker 主机管理权限必须严格限制。
 
-然后修改 `deploy/env/standalone.env`：
+修改 `deploy/.env`：
 
-- 修改初始管理员用户名和显示名；初始密码在 secret 文件中配置。
+- 替换所有 `change-me-*` 密码、令牌和数据密钥占位值。
+- 修改初始管理员用户名、显示名和初始密码。
 - 需要避开现有端口时，修改 `MINE_HTTPS_PORT` 和 `MINE_MQTTS_PORT`。
 - 镜像标签在发布前固定；生产离线包应额外记录镜像 digest。
 - `MINE_TLS_SERVER_NAME` 必须与证书名称一致。
 - 修改示例中的 `MINE_RUSTFS_ACCESS_KEY` 和 `MINE_RUSTFS_SECRET_KEY`；生产环境不得继续使用开发默认值。
 
-环境文件和 `deploy/secrets/` 已被 Git 忽略，不得提交仓库。
+把现场证书链保存为 `deploy/certs/tls.crt`，私钥保存为 `deploy/certs/tls.key` 并执行 `chmod 600 deploy/certs/tls.key`。证书应由矿区信任的 CA 签发，并同时包含浏览器访问域名和设备连接域名。Nginx 以只读方式直接挂载该目录；Gateway 与 RabbitMQ 的初始化任务以 root 读取宿主私钥，再复制到各自专属命名卷并按服务 UID 收敛为 `0400`，业务容器只读挂载，禁止为了兼容非 root 服务把宿主私钥放宽为全局可读。真实 `.env`、证书、私钥和部署制品均被 Git 忽略。
 
-将归档和外部 SHA-256 文件传到离线主机，先核对外部校验和再解包。随后在解包目录创建 `deploy/env/standalone.env` 和 `deploy/secrets/`，执行：
+从旧版 `deploy/env/standalone.env` 与 `deploy/secrets/` 升级时执行：
+
+~~~bash
+deploy/scripts/migrate-legacy-env.sh
+~~~
+
+脚本生成权限为 `0600` 的 `deploy/.env`、迁移 TLS 文件但保留旧目录；若检测到历史公开 RustFS 开发凭据，会生成新的随机凭据且不会输出明文。目标文件已存在时必须显式使用 `--force`，覆盖前应先备份并确认当前容器使用的配置。
+
+将归档和外部 SHA-256 文件传到离线主机，先核对外部校验和再解包。随后在解包目录创建 `deploy/.env` 和 `deploy/certs/`，执行：
 
 ~~~bash
 deploy/scripts/install-offline.sh \
   --bundle-dir . \
-  --env-file deploy/env/standalone.env \
+  --env-file deploy/.env \
   --project-name mine-standalone
 ~~~
 
-安装器先验证包内全部文件，再 `docker load` 并逐个核对 `manifests/images.lock` 中的镜像 ID，最后使用 `--pull never` 启动、等待健康并执行完整单机冒烟。`--load-only` 只导入和复核镜像，不启动服务。离线包不包含任何现场 secret 或私钥。
+安装器先验证包内全部文件，再 `docker load` 并逐个核对 `manifests/images.lock` 中的镜像 ID，最后使用 `--pull never` 启动、等待健康并执行完整单机冒烟。`--load-only` 只导入和复核镜像，不启动服务。离线包不包含任何现场 `.env`、证书或私钥。
 
 启用 `--profile observability` 时项目名必须使用 `mine-standalone`，因为当前 Alloy 和 Grafana 日志查询按该 Compose 项目标签隔离采集；核心服务的临时验收环境可以使用其他项目名。
 
 ## 5. 启动与验收
 
-先执行前置检查：
+直接启动核心服务：
 
 ~~~bash
-bash deploy/scripts/preflight.sh
+deploy/scripts/start.sh
 ~~~
 
-启动：
+启用生产可观测组件：
 
 ~~~bash
-docker compose \
-  --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml \
-  up -d
+MINE_DEPLOY_PROFILE=observability deploy/scripts/start.sh
 ~~~
 
-三个 Java 服务只读挂载各自稳定的 `target/` 目录，启动时由 `run-java-service.sh` 校验并复制完整 JAR 到容器
-`/tmp/mine-runtime/app.jar`，JVM 只运行该不可变副本。禁止把 `target/*.jar` 直接绑定为运行文件；否则容器运行期间执行
-Maven `package`/`verify` 会替换可执行 JAR，造成运行时 classpath 撕裂。构建新版本后必须重建对应服务容器，不能把宿主机
-构建当作热更新。
+`deploy/.env.example` 默认不启用 profile；也可以在现场 `.env` 中持久配置 `MINE_DEPLOY_PROFILE=observability`。调用命令前显式设置的 `MINE_DEPLOY_PROFILE` 优先，可用空值临时只启动核心服务。
 
-生产现场建议同时启动可观测组件：
-
-~~~bash
-MINE_PREFLIGHT_PROFILE=observability bash deploy/scripts/preflight.sh
-docker compose \
-  --profile observability \
-  --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml \
-  up -d
-~~~
+启动脚本会先检查 `.env` 权限、占位密码、旧版公开开发凭据、JAR、前端、证书、磁盘、文件句柄和 Compose。三个 Java 服务挂载独立发行 JAR，`run-java-service.sh` 校验后复制到容器临时目录再运行；不要直接把 Maven `target/` 当作部署目录，也不要在容器运行期间覆盖 `deploy/backend/*.jar`。更新制品或轮换证书后使用 `deploy/scripts/restart.sh` 强制重建容器和 TLS 暂存任务。
 
 启动后执行完整健康检查：
 
@@ -147,14 +162,14 @@ bash deploy/tests/prometheus-rules.sh
 健康检查会等待全部容器健康，并验证 HTTPS API、MQTTS 证书、PostgreSQL、TimescaleDB 扩展、RabbitMQ 和 Redis。查看状态与日志：
 
 ~~~bash
-docker compose --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml ps
-docker compose --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml logs --tail=200 mine-server
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml ps
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml logs --tail=200 mine-server
 ~~~
 
 TimescaleDB 基线固定为 PostgreSQL 18.4 + TimescaleDB 2.28.2 OSS，并在容器健康检查和冒烟测试中要求
-`timescaledb.license=apache`。已经从旧示例复制过 `deploy/env/standalone.env` 的开发环境，需要同步更新
+`timescaledb.license=apache`。已经从旧示例复制过 `deploy/.env` 的开发环境，需要同步更新
 `MINE_TIMESCALE_IMAGE`；生产环境应改为现场离线仓库中复核过的同一 digest。
 
 已有 PostgreSQL 17 Timescale 数据卷不能直接挂载给 PostgreSQL 18 镜像。升级前必须完成可恢复备份，使用
@@ -174,18 +189,18 @@ TimescaleDB 基线固定为 PostgreSQL 18.4 + TimescaleDB 2.28.2 OSS，并在容
 可观测性单独验收：
 
 ~~~bash
-MINE_ENV_FILE=deploy/env/standalone.env bash deploy/tests/observability-smoke.sh
+MINE_ENV_FILE=deploy/.env bash deploy/tests/observability-smoke.sh
 ~~~
 
-该脚本验证三个 Java 服务、RabbitMQ、PostgreSQL 和 TimescaleDB 的 Prometheus target 均为 `up`，Grafana/Loki 可用，并生成一次 HTTPS 请求后按 `X-Request-Id` 在 Loki 中反查日志。Grafana 管理密码来自 `deploy/secrets/grafana_admin_password`，总览仪表板和 Prometheus/Loki 数据源会自动配置。
+该脚本验证三个 Java 服务、RabbitMQ、PostgreSQL 和 TimescaleDB 的 Prometheus target 均为 `up`，Grafana/Loki 可用，并生成一次 HTTPS 请求后按 `X-Request-Id` 在 Loki 中反查日志。Grafana 管理密码来自 `deploy/.env` 的 `MINE_GRAFANA_ADMIN_PASSWORD`，总览仪表板和 Prometheus/Loki 数据源会自动配置。
 
 ## 6. 停止与清理
 
 正常停止但保留数据卷：
 
 ~~~bash
-docker compose --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml down
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml down
 ~~~
 
 不要在生产环境执行 `down -v`，它会删除 PostgreSQL、TimescaleDB、RabbitMQ、Redis 和 RustFS 数据卷。确需销毁测试环境时，必须先确认没有生产数据并完成备份。
@@ -194,7 +209,7 @@ docker compose --env-file deploy/env/standalone.env \
 
 离线包中的 `deploy/scripts/backup-standalone.sh` 只允许在全部 Compose 服务停止后归档四个事实卷；
 `deploy/scripts/restore-standalone.sh` 会先验证外部/内部 SHA-256、manifest、backupId、发行版本、镜像引用/ID 和全部目标卷，
-再恢复到新项目的四个不存在卷。两者都不会自动停止、启动或删除服务和卷，也不包含环境文件、secret 或 TLS 材料。
+再恢复到新项目的四个不存在卷。两者都不会自动停止、启动或删除服务和卷，也不包含 `.env`、证书或 TLS 私钥。
 
 完整的停写审批、命令、异地保留、分阶段启动、数据对账和失败卷人工清理边界见
 [Standalone 同版本冷备份与恢复运行手册](../docs/runbooks/standalone-backup-restore.md)。禁止在线归档、跳过校验、覆盖已有卷或执行

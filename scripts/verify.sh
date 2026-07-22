@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${ROOT_DIR}/deploy/compose/compose-standalone.yml"
-ENV_FILE="${ROOT_DIR}/deploy/env/standalone.env.example"
+COMPOSE_FILE="${ROOT_DIR}/deploy/docker-compose.yml"
+ENV_FILE="${ROOT_DIR}/deploy/.env.example"
 
 for command in java node pnpm docker jq ruby; do
   command -v "${command}" >/dev/null || { echo "FAIL: 缺少命令 ${command}" >&2; exit 1; }
@@ -14,6 +14,7 @@ bash "${ROOT_DIR}/build-tests/community-health.sh"
 
 echo "[2/6] 后端测试、集成测试和架构规则"
 "${ROOT_DIR}/mvnw" -B -ntp verify
+bash "${ROOT_DIR}/build-tests/maven-release-publication.sh"
 
 echo "[3/6] 前端依赖、类型、代码规范、测试和生产构建"
 pnpm --dir "${ROOT_DIR}/mine-web" install --frozen-lockfile
@@ -21,11 +22,20 @@ pnpm --dir "${ROOT_DIR}/mine-web" typecheck
 pnpm --dir "${ROOT_DIR}/mine-web" lint:check
 pnpm --dir "${ROOT_DIR}/mine-web" test
 pnpm --dir "${ROOT_DIR}/mine-web" build
+bash "${ROOT_DIR}/build-tests/release-artifacts.sh"
+bash "${ROOT_DIR}/build-tests/frontend-release-reproducibility.sh"
 
 echo "[4/6] Shell 与 Docker Compose 配置"
 find "${ROOT_DIR}/build-tests" "${ROOT_DIR}/scripts" "${ROOT_DIR}/deploy/scripts" "${ROOT_DIR}/deploy/tests" \
   -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
 docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --quiet
+bash "${ROOT_DIR}/deploy/tests/deployment-layout.sh"
+bash "${ROOT_DIR}/deploy/tests/deployment-commands.sh"
+bash "${ROOT_DIR}/deploy/tests/legacy-env-migration.sh"
+bash "${ROOT_DIR}/deploy/tests/prepare-artifacts.sh"
+bash "${ROOT_DIR}/deploy/tests/timescale-init-env.sh"
+bash "${ROOT_DIR}/deploy/tests/compose-config.sh"
+bash "${ROOT_DIR}/deploy/tests/java-artifact-isolation.sh"
 bash "${ROOT_DIR}/deploy/tests/standalone-backup.sh"
 bash "${ROOT_DIR}/deploy/tests/standalone-restore.sh"
 

@@ -2,14 +2,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-ENV_FILE="${MINE_ENV_FILE:-${ROOT_DIR}/deploy/env/standalone.env}"
+ENV_FILE="${MINE_ENV_FILE:-${ROOT_DIR}/deploy/.env}"
 TIMEOUT_SECONDS="${MINE_HEALTH_TIMEOUT_SECONDS:-180}"
 deadline=$((SECONDS + TIMEOUT_SECONDS))
 compose=(docker compose)
 if [[ -n "${MINE_COMPOSE_PROJECT_NAME:-}" ]]; then
   compose+=(-p "${MINE_COMPOSE_PROJECT_NAME}")
 fi
-compose+=(--env-file "${ENV_FILE}" -f "${ROOT_DIR}/deploy/compose/compose-standalone.yml")
+compose+=(--env-file "${ENV_FILE}" -f "${ROOT_DIR}/deploy/docker-compose.yml")
 
 while (( SECONDS < deadline )); do
   if MINE_ENV_FILE="${ENV_FILE}" bash "${ROOT_DIR}/deploy/tests/standalone-smoke.sh"; then

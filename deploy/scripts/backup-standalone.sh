@@ -13,7 +13,7 @@ PROJECT_NAME=""
 RELEASE_VERSION=""
 OUTPUT_DIR=""
 SECURE_DESTINATION_CONFIRMED=false
-COMPOSE_FILE="${ROOT_DIR}/deploy/compose/compose-standalone.yml"
+COMPOSE_FILE="${ROOT_DIR}/deploy/docker-compose.yml"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

@@ -58,8 +58,8 @@
 ~~~bash
 bash deploy/scripts/preflight.sh
 bash deploy/tests/standalone-smoke.sh
-docker compose --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml ps
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml ps
 ~~~
 
 预期所有核心服务为 `healthy`，HTTPS、MQTTS、PostgreSQL、TimescaleDB、RabbitMQ、Redis 均通过。现场还必须检查：
@@ -136,8 +136,8 @@ Phase 1 使用 `deploy/config/gateway/device-identities.json` 作为运行时身
 - 文件写入后等待一个轮询周期，不重启服务。先在 gateway 容器内查询内部管理端口，确认 `deviceIdentitySnapshot.version`、`sha256` 和 `deviceCount` 与发布记录一致，再用新 `clientId` 做 MQTTS 连接和单帧上报，并在 gateway、历史和最新值三处验证后，才能认定快照生效。查询示例：
 
 ~~~bash
-docker compose --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml exec -T mine-gateway bash -ec '
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml exec -T mine-gateway bash -ec '
     exec 3<>/dev/tcp/127.0.0.1/18081
     printf "GET /actuator/info HTTP/1.0\r\nHost: localhost\r\n\r\n" >&3
     cat <&3

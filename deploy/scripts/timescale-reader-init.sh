@@ -22,23 +22,18 @@ if [[ "${reader_user}" == "${writer_user}" || "${reader_user}" == "postgres" ]];
   exit 1
 fi
 
-export MINE_TIMESCALE_READER_PASSWORD
-MINE_TIMESCALE_READER_PASSWORD="$(< /run/secrets/timescale_reader_password)"
+export MINE_TIMESCALE_READER_PASSWORD="${TIMESCALE_READER_PASSWORD:?必须配置 TIMESCALE_READER_PASSWORD}"
 if [[ -z "${MINE_TIMESCALE_READER_PASSWORD}" ]]; then
   echo "TimescaleDB 只读密码不能为空" >&2
   exit 1
 fi
-export MINE_TIMESCALE_REPLAY_PASSWORD
-MINE_TIMESCALE_REPLAY_PASSWORD="$(< /run/secrets/timescale_replay_password)"
+export MINE_TIMESCALE_REPLAY_PASSWORD="${TIMESCALE_REPLAY_PASSWORD:?必须配置 TIMESCALE_REPLAY_PASSWORD}"
 if [[ -z "${MINE_TIMESCALE_REPLAY_PASSWORD}" ]]; then
   echo "TimescaleDB 空间重放密码不能为空" >&2
   exit 1
 fi
 
-if [[ -f /run/secrets/timescale_password ]]; then
-  export PGPASSWORD
-  PGPASSWORD="$(< /run/secrets/timescale_password)"
-fi
+export PGPASSWORD="${PGPASSWORD:-${TIMESCALE_PASSWORD:-${POSTGRES_PASSWORD:?必须配置 POSTGRES_PASSWORD}}}"
 
 psql_arguments=(
   --set=ON_ERROR_STOP=1

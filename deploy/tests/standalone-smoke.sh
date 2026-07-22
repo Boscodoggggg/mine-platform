@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-COMPOSE_FILE="${MINE_COMPOSE_FILE:-${ROOT_DIR}/deploy/compose/compose-standalone.yml}"
-ENV_FILE="${MINE_ENV_FILE:-${ROOT_DIR}/deploy/env/standalone.env}"
+COMPOSE_FILE="${MINE_COMPOSE_FILE:-${ROOT_DIR}/deploy/docker-compose.yml}"
+ENV_FILE="${MINE_ENV_FILE:-${ROOT_DIR}/deploy/.env}"
 
 if [[ ! -f "${COMPOSE_FILE}" ]]; then
   echo "FAIL: 缺少单机 Compose：${COMPOSE_FILE}" >&2
@@ -55,12 +55,12 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
   -tAc "SHOW timescaledb.license" | grep -qx apache
 "${compose[@]}" exec -T rabbitmq rabbitmq-diagnostics -q ping
 "${compose[@]}" exec -T rabbitmq sh -ec \
-  'rabbitmqctl -q authenticate_user "$(cat /run/secrets/rabbitmq_admin_username)" "$(cat /run/secrets/rabbitmq_admin_password)"'
+  'rabbitmqctl -q authenticate_user "${RABBITMQ_ADMIN_USERNAME}" "${RABBITMQ_ADMIN_PASSWORD}"'
 "${compose[@]}" exec -T rabbitmq sh -ec \
-  'rabbitmqctl -q list_user_permissions "$(cat /run/secrets/rabbitmq_admin_username)"' \
+  'rabbitmqctl -q list_user_permissions "${RABBITMQ_ADMIN_USERNAME}"' \
   | grep -q '^/mine-platform'
 "${compose[@]}" exec -T rabbitmq sh -ec \
-  'rabbitmqctl -q authenticate_user mine-telemetry "$(cat /run/secrets/rabbitmq_telemetry_password)"'
+  'rabbitmqctl -q authenticate_user mine-telemetry "${RABBITMQ_TELEMETRY_PASSWORD}"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-gateway-device \
   | grep -Eq '^/mine-device[[:space:]]+\^\$[[:space:]]+\^amq\\\.topic\$[[:space:]]+\^\(mine\\\.gateway\\\.uplink\\\.q\|mine\\\.gateway\\\.location-uplink\\\.q\|mine\\\.gateway\\\.command-ack\\\.q\)\$$'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-gateway-platform \
@@ -72,19 +72,19 @@ openssl s_client -connect "127.0.0.1:${MINE_MQTTS_PORT:-8883}" -servername "${MI
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform name consumers \
   | awk '$1 == "mine.realtime.server.standalone.q" && $2 >= 1 { found = 1 } END { exit !found }'
 "${compose[@]}" exec -T rabbitmq sh -ec \
-  'rabbitmqctl -q authenticate_user mine-server-command "$(cat /run/secrets/rabbitmq_server_command_password)"'
+  'rabbitmqctl -q authenticate_user mine-server-command "${RABBITMQ_SERVER_COMMAND_PASSWORD}"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-command \
   | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\(mine\\\.command\\\.x\|mine\\\.config\\\.x\|mine\\\.strategy\\\.x\|mine\\\.location-config\\\.x\)\$[[:space:]]+\^mine\\\.server\\\.command-status\\\.q\$$'
 "${compose[@]}" exec -T rabbitmq sh -ec \
-  'rabbitmqctl -q authenticate_user mine-server-alarm "$(cat /run/secrets/rabbitmq_server_alarm_password)"'
+  'rabbitmqctl -q authenticate_user mine-server-alarm "${RABBITMQ_SERVER_ALARM_PASSWORD}"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-alarm \
   | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\$[[:space:]]+\^mine\\\.server\\\.alarm-event\\\.q\$$'
 "${compose[@]}" exec -T rabbitmq sh -ec \
-  'rabbitmqctl -q authenticate_user mine-server-operation "$(cat /run/secrets/rabbitmq_server_operation_password)"'
+  'rabbitmqctl -q authenticate_user mine-server-operation "${RABBITMQ_SERVER_OPERATION_PASSWORD}"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-operation \
   | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^\$[[:space:]]+\^mine\\\.server\\\.operation-spatial\\\.q\$$'
 "${compose[@]}" exec -T rabbitmq sh -ec \
-  'rabbitmqctl -q authenticate_user mine-server-operation-outbox "$(cat /run/secrets/rabbitmq_server_operation_outbox_password)"'
+  'rabbitmqctl -q authenticate_user mine-server-operation-outbox "${RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD}"'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_user_permissions mine-server-operation-outbox \
   | grep -Eq '^/mine-platform[[:space:]]+\^\$[[:space:]]+\^mine\\\.realtime\\\.x\$[[:space:]]+\^\$$'
 "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-device name consumers \
@@ -113,7 +113,7 @@ if "${compose[@]}" exec -T rabbitmq rabbitmqctl -q list_queues -p /mine-platform
   exit 1
 fi
 "${compose[@]}" exec -T redis sh -ec \
-  'redis-cli --no-auth-warning -a "$(cat /run/secrets/redis_password)" ping' | grep -q PONG
+  'redis-cli --no-auth-warning -a "${REDIS_PASSWORD}" ping' | grep -q PONG
 "${compose[@]}" exec -T rustfs curl --fail --silent --show-error http://127.0.0.1:9000/health >/dev/null
 
 if [[ -n "${MINE_SMOKE_ADMIN_PASSWORD:-}" ]]; then
