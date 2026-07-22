@@ -109,7 +109,7 @@ Compose profiles：
 |---|---|---|---|
 | 443 | 办公/调度网 | VIP/Nginx | HTTPS/WSS |
 | 8883 | 设备网 | node-1/2 VIP → Nginx stream → RabbitMQ | MQTTS 透传；必要时启用 PROXY protocol 保留源地址 |
-| 9000（示例，可配置） | 指定设备网段 | gateway | `UNIFIED` 时一个 TLS 端口按产品路由多个插件；`LEGACY` 时一个监听器绑定一个插件；宿主默认仅发布到 127.0.0.1 |
+| 9000（示例，可配置） | 指定设备网段 | gateway | `UNIFIED` 时一个 TLS 端口按产品路由多个插件；`LEGACY` 时一个监听器绑定一个插件 |
 | 5671 | 应用节点 | RabbitMQ | AMQPS |
 | 5432 | 应用/备份节点 | PostgreSQL/TimescaleDB | 数据库 TLS |
 | 6379 或 TLS 端口 | 应用节点 | Redis | ACL/TLS |
@@ -117,6 +117,11 @@ Compose profiles：
 | 18081/18082 | 容器健康检查/监控网 | gateway/telemetry 管理端口 | 默认仅监听 127.0.0.1；Compose 接入隔离监控网时显式改为 0.0.0.0，禁止发布到设备网和办公网 |
 
 真实端口以现场网络设计为准；默认拒绝未列端口。
+
+单机 `deploy/docker-compose.yml` 是受控矿区内网的现场维护基线，会在宿主全部网卡常驻发布 PostgreSQL `5432`、
+TimescaleDB `5433`、Redis `6379`、RabbitMQ AMQP `5672`、RabbitMQ 管理页面 `15672`、MQTTS `8883`、
+Gateway TCP `9000` 和 RustFS 控制台 `9001`。这不改变容器间服务发现地址；部署主机必须没有公网端口转发，并由
+防火墙按办公、运维和设备来源网段限制访问。多节点正式拓扑仍应使用上表中的 TLS、ACL 和网络隔离原则。
 
 ## 6. 容器要求
 
@@ -228,9 +233,9 @@ Compose profiles：
 
 ### 7.4 TCP 二进制 Gateway 参数
 
-TCP 二进制监听器在应用默认配置中关闭，Standalone Compose 为可复现纵向样例显式开启。容器内部监听全部接口，
-宿主发布地址默认 `127.0.0.1`；只有设备网防火墙、来源白名单、证书、身份快照和告警全部就绪后，才能把
-`MINE_GATEWAY_TCP_PUBLISHED_ADDRESS` 改为设备网地址。
+TCP 二进制监听器在应用默认配置中关闭，Standalone Compose 为可复现纵向样例显式开启。容器和宿主默认监听全部接口，
+仅适用于已确认无公网端口转发的受控矿区内网；设备网防火墙、来源白名单、证书、身份快照和告警必须随现场部署一起验收。
+需要收窄监听范围时，通过 `MINE_GATEWAY_TCP_PUBLISHED_ADDRESS` 指定设备网地址。
 
 | 环境变量 | 应用/Standalone 默认值 | 安全边界与说明 |
 |---|---:|---|

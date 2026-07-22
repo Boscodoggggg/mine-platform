@@ -207,10 +207,13 @@ services:
     read_only: true
     security_opt:
       - no-new-privileges:true
+    ports:
+      - "${MINE_RUSTFS_CONSOLE_PORT:-9001}:9001"
     environment:
       RUSTFS_VOLUMES: /data
       RUSTFS_ADDRESS: 0.0.0.0:9000
-      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
       RUSTFS_ACCESS_KEY: "${MINE_RUSTFS_ACCESS_KEY:?请配置 MINE_RUSTFS_ACCESS_KEY}"
       RUSTFS_SECRET_KEY: "${MINE_RUSTFS_SECRET_KEY:?请配置 MINE_RUSTFS_SECRET_KEY}"
       RUSTFS_OBS_LOGGER_LEVEL: warn
@@ -302,7 +305,7 @@ services:
       MINE_GATEWAY_TCP_TLS_CERTIFICATE: /etc/mine/certs/tls.crt
       MINE_GATEWAY_TCP_TLS_PRIVATE_KEY: /etc/mine/certs/tls.key
     ports:
-      - "${MINE_GATEWAY_TCP_PUBLISHED_ADDRESS:-127.0.0.1}:${MINE_GATEWAY_TCP_PORT:-9000}:${MINE_GATEWAY_TCP_PORT:-9000}"
+      - "${MINE_GATEWAY_TCP_PUBLISHED_ADDRESS:-0.0.0.0}:${MINE_GATEWAY_TCP_PORT:-9000}:${MINE_GATEWAY_TCP_PORT:-9000}"
     volumes:
       - ${MINE_GATEWAY_JAR_PATH:-./backend/mine-gateway.jar}:/opt/mine/source/app.jar:ro
       - ./scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
@@ -429,6 +432,8 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
+      - "${MINE_RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${MINE_RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
       - "${MINE_MQTTS_PORT:-8883}:8883"
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
@@ -474,6 +479,8 @@ services:
     init: true
     security_opt:
       - no-new-privileges:true
+    ports:
+      - "${MINE_POSTGRES_PORT:-5432}:5432"
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       POSTGRES_DB: ${POSTGRES_DB:-mine}
@@ -502,6 +509,8 @@ services:
     init: true
     security_opt:
       - no-new-privileges:true
+    ports:
+      - "${MINE_TIMESCALE_PORT:-5433}:5432"
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       POSTGRES_DB: ${TIMESCALE_DB:-mine_telemetry}
@@ -567,6 +576,8 @@ services:
     read_only: true
     security_opt:
       - no-new-privileges:true
+    ports:
+      - "${MINE_REDIS_PORT:-6379}:6379"
     command:
       - /bin/sh
       - -ec
