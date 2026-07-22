@@ -11,6 +11,7 @@ node_modules/
 mine-web/test-results/
 mine-web/playwright-report/
 dist/
+release/
 coverage/
 .vite/
 

@@ -38,14 +38,27 @@
 bash scripts/verify.sh
 ~~~
 
+也可以分别执行标准构建命令：
+
+~~~bash
+./mvnw -B -ntp package
+pnpm --dir mine-web build
+~~~
+
+构建完成后会自动得到 `release/mine-server.jar`、`release/mine-gateway.jar`、`release/mine-telemetry.jar` 和
+`release/mine-web.zip`，不需要再运行单独的打包脚本。`release/` 是对外拿取构建产物的位置；Maven `target/` 与
+`mine-web/dist/` 仍是构建过程目录。
+
 部署始终使用通用 Java 21 JRE 和 Nginx 镜像：三个 Java 服务分别只读挂载 `deploy/backend/*.jar`，Nginx 只读挂载
 `deploy/frontend/dist`。业务制品不封装进应用镜像，升级时替换挂载制品并重建对应容器。
 
-把 Maven 和前端构建结果准备到 `deploy/`：
+需要在本机直接启动 Compose 时，再把 Maven 和前端构建结果安装到 `deploy/`：
 
 ~~~bash
 deploy/scripts/prepare-artifacts.sh
 ~~~
+
+该脚本只负责准备运行挂载目录，不参与生成 `release/` 发行包。
 
 生成包含全部基础镜像、JAR、前端、Compose、配置模板、CycloneDX SBOM、许可证、镜像 ID 锁和 SHA-256 清单的离线包：
 

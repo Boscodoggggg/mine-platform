@@ -125,12 +125,14 @@ flowchart LR
 git clone https://github.com/Boscodoggggg/mine-platform.git
 cd mine-platform
 
-./mvnw -B -ntp test
+./mvnw -B -ntp package
 pnpm --dir mine-web install --frozen-lockfile
 pnpm --dir mine-web typecheck
 pnpm --dir mine-web test:unit
 pnpm --dir mine-web build
 ```
+
+标准构建命令会自动生成 `release/mine-server.jar`、`release/mine-gateway.jar`、`release/mine-telemetry.jar` 和 `release/mine-web.zip`，无需再执行单独的打包脚本。
 
 运行包含部署契约和 SBOM 的完整仓库门禁：
 

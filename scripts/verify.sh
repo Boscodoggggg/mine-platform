@@ -14,6 +14,7 @@ bash "${ROOT_DIR}/build-tests/community-health.sh"
 
 echo "[2/6] 后端测试、集成测试和架构规则"
 "${ROOT_DIR}/mvnw" -B -ntp verify
+bash "${ROOT_DIR}/build-tests/maven-release-publication.sh"
 
 echo "[3/6] 前端依赖、类型、代码规范、测试和生产构建"
 pnpm --dir "${ROOT_DIR}/mine-web" install --frozen-lockfile
@@ -21,6 +22,8 @@ pnpm --dir "${ROOT_DIR}/mine-web" typecheck
 pnpm --dir "${ROOT_DIR}/mine-web" lint:check
 pnpm --dir "${ROOT_DIR}/mine-web" test
 pnpm --dir "${ROOT_DIR}/mine-web" build
+bash "${ROOT_DIR}/build-tests/release-artifacts.sh"
+bash "${ROOT_DIR}/build-tests/frontend-release-reproducibility.sh"
 
 echo "[4/6] Shell 与 Docker Compose 配置"
 find "${ROOT_DIR}/build-tests" "${ROOT_DIR}/scripts" "${ROOT_DIR}/deploy/scripts" "${ROOT_DIR}/deploy/tests" \

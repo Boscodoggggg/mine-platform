@@ -26,6 +26,19 @@ jobs:
           cache: maven
       - name: 运行 Maven 质量门禁
         run: ./mvnw -B -ntp verify
+      - name: 校验 Maven 发行制品发布配置
+        run: bash build-tests/maven-release-publication.sh
+      - name: 校验后端发行制品
+        env:
+          MINE_RELEASE_ARTIFACTS_SCOPE: backend
+        run: bash build-tests/release-artifacts.sh
+      - name: 上传后端发行制品
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-release-artifacts
+          path: release/*.jar
+          if-no-files-found: error
+          retention-days: 14
       - name: 上传后端测试报告
         if: always()
         uses: actions/upload-artifact@v6
@@ -78,6 +91,19 @@ jobs:
       - name: 生产构建
         working-directory: mine-web
         run: pnpm build
+      - name: 校验前端发行制品
+        env:
+          MINE_RELEASE_ARTIFACTS_SCOPE: frontend
+        run: |
+          bash build-tests/release-artifacts.sh
+          bash build-tests/frontend-release-reproducibility.sh
+      - name: 上传前端发行制品
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-release-artifact
+          path: release/mine-web.zip
+          if-no-files-found: error
+          retention-days: 14
       - name: 上传前端测试报告
         if: always()
         uses: actions/upload-artifact@v6
