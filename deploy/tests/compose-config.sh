@@ -8,7 +8,8 @@ ENV_FILE="${ROOT_DIR}/deploy/.env.example"
 rendered="$(mktemp)"
 rendered_tcp_disabled="$(mktemp)"
 rendered_tcp_unified="$(mktemp)"
-trap 'rm -f "${rendered}" "${rendered_tcp_disabled}" "${rendered_tcp_unified}"' EXIT
+rendered_custom_ports="$(mktemp)"
+trap 'rm -f "${rendered}" "${rendered_tcp_disabled}" "${rendered_tcp_unified}" "${rendered_custom_ports}"' EXIT
 
 docker compose --profile observability --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" config --format json \
   >"${rendered}"
@@ -36,6 +37,12 @@ MINE_GATEWAY_TCP_MODE=UNIFIED MINE_GATEWAY_TCP_PROTOCOL_KEY= MINE_GATEWAY_TCP_TL
   docker compose --profile observability --env-file "${ENV_FILE}" \
   -f "${COMPOSE_FILE}" config --format json >"${rendered_tcp_unified}"
 
+MINE_POSTGRES_PORT=15432 MINE_TIMESCALE_PORT=15433 MINE_REDIS_PORT=16379 \
+  MINE_RABBITMQ_AMQP_PORT=25672 MINE_RABBITMQ_MANAGEMENT_PORT=25673 MINE_MQTTS_PORT=28883 \
+  MINE_GATEWAY_TCP_PORT=19000 MINE_RUSTFS_CONSOLE_PORT=19001 \
+  docker compose --profile observability --env-file "${ENV_FILE}" \
+  -f "${COMPOSE_FILE}" config --format json >"${rendered_custom_ports}"
+
 jq -e '.services["redis-exporter"]' "${rendered}" >/dev/null \
   || { echo "FAIL: observability profile 缺少 redis-exporter" >&2; exit 1; }
 
@@ -57,7 +64,8 @@ jq -e '.services.rustfs.image | startswith("rustfs/rustfs:1.0.0-beta.10@sha256:"
   "${rendered}" >/dev/null \
   || { echo "FAIL: RustFS 必须固定到已验证的版本和镜像摘要" >&2; exit 1; }
 
-jq -e '.services.rustfs.environment.RUSTFS_CONSOLE_ENABLE == "false"
+jq -e '.services.rustfs.environment.RUSTFS_CONSOLE_ENABLE == "true"
+  and .services.rustfs.environment.RUSTFS_CONSOLE_ADDRESS == "0.0.0.0:9001"
   and (.services.rustfs.volumes | any(.source == "rustfs_data" and .target == "/data"))
   and .services["mine-server"].environment.MINE_SCENE_MULTIPART_MAX_FILE_SIZE == "2GB"
   and .services["mine-server"].environment.MINE_SCENE_MULTIPART_MAX_REQUEST_SIZE == "2050MB"
@@ -191,12 +199,47 @@ jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_TCP_MODE == "UNIFIED"
   "${rendered_tcp_unified}" >/dev/null \
   || { echo "FAIL: 统一 TCP 入口必须支持清空静态协议键并启用 TLS" >&2; exit 1; }
 
-jq -e '(.services["mine-gateway"].ports | any(.target == 9000 and .published == "9000" and .host_ip == "127.0.0.1"))
+jq -e '(.services["mine-gateway"].ports | any(.target == 9000 and .published == "9000" and ((.host_ip // "0.0.0.0") == "0.0.0.0")))
   and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_CERTIFICATE == "/etc/mine/certs/tls.crt"
   and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_PRIVATE_KEY == "/etc/mine/certs/tls.key"
   and (.services["mine-gateway"].volumes | any(.target == "/etc/mine/certs" and .read_only == true))' \
   "${rendered}" >/dev/null \
   || { echo "FAIL: TCP 端口和 TLS 文件必须通过受控发布及只读证书目录提供" >&2; exit 1; }
+
+jq -e '
+  def published($service; $target; $published):
+    (.services[$service].ports // [])
+    | any(.target == $target and .published == $published and ((.host_ip // "0.0.0.0") == "0.0.0.0"));
+  published("postgres"; 5432; "5432")
+  and published("timescale"; 5432; "5433")
+  and published("redis"; 6379; "6379")
+  and published("rabbitmq"; 5672; "5672")
+  and published("rabbitmq"; 15672; "15672")
+  and published("rabbitmq"; 8883; "8883")
+  and published("rustfs"; 9001; "9001")
+' "${rendered}" >/dev/null \
+  || { echo "FAIL: 受控矿区内网部署必须常驻发布数据库、Redis、RabbitMQ、Gateway 和 RustFS 控制台端口" >&2; exit 1; }
+
+for variable in \
+  MINE_POSTGRES_PORT MINE_TIMESCALE_PORT MINE_REDIS_PORT \
+  MINE_RABBITMQ_AMQP_PORT MINE_RABBITMQ_MANAGEMENT_PORT MINE_RUSTFS_CONSOLE_PORT; do
+  grep -q "^${variable}=" "${ENV_FILE}" \
+    || { echo "FAIL: .env.example 缺少 ${variable}" >&2; exit 1; }
+done
+
+jq -e '
+  def published($service; $target; $published):
+    (.services[$service].ports // []) | any(.target == $target and .published == $published);
+  published("postgres"; 5432; "15432")
+  and published("timescale"; 5432; "15433")
+  and published("redis"; 6379; "16379")
+  and published("rabbitmq"; 5672; "25672")
+  and published("rabbitmq"; 15672; "25673")
+  and published("rabbitmq"; 8883; "28883")
+  and published("mine-gateway"; 19000; "19000")
+  and published("rustfs"; 9001; "19001")
+' "${rendered_custom_ports}" >/dev/null \
+  || { echo "FAIL: 自定义宿主端口必须发布到对应的中间件、Gateway 和 RustFS 服务" >&2; exit 1; }
 
 jq -e '.services.prometheus.depends_on // {} | keys | all(. != "mine-server" and . != "mine-gateway" and . != "mine-telemetry" and . != "rabbitmq" and . != "postgres-exporter" and . != "timescale-exporter" and . != "redis-exporter")' \
   "${rendered}" >/dev/null \

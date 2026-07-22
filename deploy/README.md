@@ -7,18 +7,21 @@
 | 服务 | 作用 | 是否发布到宿主机 |
 |---|---|---|
 | `nginx` | 管理端静态资源、HTTPS 与 API 反向代理 | `443`，可配置 |
-| `rabbitmq` | 平台内部 AMQP 消息与设备 MQTTS 接入 | `8883`，可配置 |
+| `rabbitmq` | 平台内部 AMQP、管理页面与设备 MQTTS 接入 | `5672`、`15672`、`8883`，可配置 |
 | `mine-server` | 系统管理和矿山业务 API | 否 |
-| `mine-gateway` | 设备接入和协议处理 | 否 |
+| `mine-gateway` | 设备 TCP Binary 接入和协议处理 | `9000`，可配置 |
 | `mine-telemetry` | 遥测消费、处理和入库 | 否 |
-| `postgres` | 业务数据 | 否 |
-| `timescale` | 遥测时序数据 | 否 |
-| `redis` | 会话、缓存和实时状态 | 否 |
-| `rustfs` | 开发与测试环境的 S3 兼容对象存储 | 否 |
+| `postgres` | 业务数据 | `5432`，可配置 |
+| `timescale` | 遥测时序数据 | 宿主 `5433` → 容器 `5432`，可配置 |
+| `redis` | 会话、缓存和实时状态 | `6379`，可配置 |
+| `rustfs` | S3 兼容对象存储与管理控制台 | 控制台 `9001`，可配置；S3 API 仅容器内 `9000` |
 
 启用 `observability` profile 后还会启动 Prometheus、Grafana、Loki、Alloy 以及 PostgreSQL/TimescaleDB exporter。Grafana `3000`、Prometheus `9090` 和 Loki `3100` 默认都只绑定宿主机 `127.0.0.1`。需要让运维工作站直接访问 Grafana 时，把 `MINE_GRAFANA_BIND_ADDRESS` 改为指定管理网 IP，并由现场防火墙限制来源；不要把它开放到设备网。
 
-数据库、Redis、AMQP 管理端口和应用管理端口只存在于 Compose 隔离网络。现场防火墙只需按需开放 HTTPS 和 MQTTS，不要把数据库端口直接暴露到办公网或设备网。
+Standalone 为方便矿区内网开发、验收和现场排障，常驻发布数据库、Redis、RabbitMQ、Gateway TCP 和 RustFS
+控制台端口，默认监听宿主全部网卡。该基线只适用于没有公网 IP、没有公网端口转发且受现场防火墙保护的矿区内网；
+防火墙必须按办公网、运维网和设备网来源限制访问，禁止把这些端口直接发布到互联网。Java 应用端口、Actuator、RustFS
+S3 API、Exporter 和 Alloy 管理端口仍只存在于 Compose 隔离网络。
 
 ## 2. 前置条件
 
@@ -26,7 +29,7 @@
 - Docker Engine 24+，Docker Compose v2。
 - 联网构建机需要 JDK 21、Node.js 20+、pnpm、jq、Docker Engine 24+ 和 Docker Compose v2，用于编译制品、生成并校验 SBOM、归档本地镜像。
 - 现场离线机需要 Bash、Docker Engine 24+、Docker Compose v2、curl、OpenSSL、jq，以及常见 Linux 基础命令：`awk`、`df`、`grep`、`sort`、`stat`、`seq` 和 `sha256sum`（也兼容 `shasum`）。安装器会在导入镜像前统一检查。
-- 已确认 `443`、`8883` 未被占用，系统时间同步正常。
+- 已确认 `443`、`5432`、`5433`、`5672`、`6379`、`8883`、`9000`、`9001`、`15672` 未被占用，系统时间同步正常。
 
 生产环境不要直接使用示例密码或临时自签名证书。
 
@@ -84,10 +87,26 @@ mkdir -p deploy/certs
 
 - 替换所有 `change-me-*` 密码、令牌和数据密钥占位值。
 - 修改初始管理员用户名、显示名和初始密码。
-- 需要避开现有端口时，修改 `MINE_HTTPS_PORT` 和 `MINE_MQTTS_PORT`。
+- 需要避开现有端口时，修改对应的 `MINE_*_PORT`；业务 PostgreSQL 与 TimescaleDB 使用不同宿主端口。
 - 镜像标签在发布前固定；生产离线包应额外记录镜像 digest。
 - `MINE_TLS_SERVER_NAME` 必须与证书名称一致。
 - 修改示例中的 `MINE_RUSTFS_ACCESS_KEY` 和 `MINE_RUSTFS_SECRET_KEY`；生产环境不得继续使用开发默认值。
+
+默认内网连接入口如下；主机地址以现场服务器 IP 为准：
+
+| 工具或协议 | 默认入口 | 凭据来源 |
+|---|---|---|
+| DBeaver / PostgreSQL | `服务器IP:5432` | `POSTGRES_USER` / `POSTGRES_PASSWORD` |
+| DBeaver / TimescaleDB | `服务器IP:5433` | `TIMESCALE_READER_USER` / `TIMESCALE_READER_PASSWORD` |
+| RedisInsight / redis-cli | `服务器IP:6379` | `REDIS_PASSWORD` |
+| RabbitMQ AMQP | `服务器IP:5672` | 对应最小权限 RabbitMQ 账号 |
+| RabbitMQ 管理页面 | `http://服务器IP:15672` | `RABBITMQ_ADMIN_USERNAME` / `RABBITMQ_ADMIN_PASSWORD` |
+| RustFS 管理控制台 | `http://服务器IP:9001` | `MINE_RUSTFS_ACCESS_KEY` / `MINE_RUSTFS_SECRET_KEY` |
+
+`5432`、`5433`、`5672`、`6379`、`15672` 和 `9001` 当前是带认证的内网明文连接，不得穿越不可信网络。
+设备 MQTTS `8883` 使用 TLS；Gateway TCP `9000` 是否启用 TLS 由 `MINE_GATEWAY_TCP_TLS_ENABLED` 控制。
+从旧版配置升级时，如果现有 `deploy/.env` 仍包含 `MINE_GATEWAY_TCP_PUBLISHED_ADDRESS='127.0.0.1'`，需要按本次
+内网常驻发布方案改为 `0.0.0.0`；缺少其余新增端口变量时 Compose 会使用表中的默认端口。
 
 把现场证书链保存为 `deploy/certs/tls.crt`，私钥保存为 `deploy/certs/tls.key` 并执行 `chmod 600 deploy/certs/tls.key`。证书应由矿区信任的 CA 签发，并同时包含浏览器访问域名和设备连接域名。Nginx 以只读方式直接挂载该目录；Gateway 与 RabbitMQ 的初始化任务以 root 读取宿主私钥，再复制到各自专属命名卷并按服务 UID 收敛为 `0400`，业务容器只读挂载，禁止为了兼容非 root 服务把宿主私钥放宽为全局可读。真实 `.env`、证书、私钥和部署制品均被 Git 忽略。
 
