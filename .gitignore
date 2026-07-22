@@ -34,6 +34,11 @@ Thumbs.db
 *.local.yaml
 secrets/
 deploy/env/*.env
+deploy/backend/*
+!deploy/backend/.gitkeep
+deploy/frontend/dist/
+deploy/certs/*
+!deploy/certs/README.md
 data/
 logs/
 

@@ -25,13 +25,12 @@
 生产部署必须创建与人员数据密钥不同的通知密钥：
 
 ```bash
-openssl rand -base64 32 > deploy/secrets/mine_notification_data_key
-chmod 600 deploy/secrets/mine_notification_data_key
+openssl rand -base64 32
 ```
 
-Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用通过 `MINE_NOTIFICATION_DATA_KEY_FILE` 读取。密钥用于 AES-256-GCM，渠道标识、凭据用途和乐观锁版本共同参与 AAD；相同明文不会产生相同密文。应用启动时会使用数据库密钥身份哨兵验证当前密钥，密钥缺失、格式错误或与既有数据不匹配时直接阻止实例进入健康状态。升级时，启动门禁会把旧版通用 Webhook 的 `configuration.endpointUrl` 原子迁入凭据密文并提升渠道版本；记录无法安全迁移时阻断启动，避免继续暴露明文地址。
+把输出填写到权限为 `0600` 的 `deploy/.env` 中的 `MINE_NOTIFICATION_DATA_KEY`，且不得与 `MINE_PERSON_DATA_KEY` 复用。Java 启动脚本会在容器内生成临时只读文件供应用加载。密钥用于 AES-256-GCM，渠道标识、凭据用途和乐观锁版本共同参与 AAD；相同明文不会产生相同密文。应用启动时会使用数据库密钥身份哨兵验证当前密钥，密钥缺失、格式错误或与既有数据不匹配时直接阻止实例进入健康状态。升级时，启动门禁会把旧版通用 Webhook 的 `configuration.endpointUrl` 原子迁入凭据密文并提升渠道版本；记录无法安全迁移时阻断启动，避免继续暴露明文地址。
 
-禁止把密钥写入环境变量、Git、镜像、数据库、日志或工单。密钥文件必须纳入现场受控备份。当前版本尚未提供在线密钥轮换作业，轮换前必须先实现并演练批量重加密；直接替换会导致历史渠道凭据无法解密。
+禁止把密钥写入 Git、镜像、数据库、日志或工单。真实 `deploy/.env` 必须纳入现场受控加密备份并限制 Docker 主机管理权限。当前版本尚未提供在线密钥轮换作业，轮换前必须先实现并演练批量重加密；直接替换会导致历史渠道凭据无法解密。
 
 ## 3. 管理接口与权限拆分
 
@@ -54,7 +53,7 @@ Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用
 
 普通列表和详情响应仅返回 `secretConfigured` 或脱敏目标，不得返回明文、密文或可复原内容；只有独立敏感接口可以返回真实值，其响应使用 `Cache-Control: no-store`，审计只记录资源、版本和字段名，不记录字段值。密码、Webhook、AccessKey 等字段默认遮挡，可通过输入框显隐按钮查看。服务端还会依据 Provider 元数据从普通响应配置中剔除误存的敏感字段。禁用渠道可以保存不完整草稿，启用前必须满足 Provider 必填配置。
 
-发布权限不得因为用户拥有策略编辑权限而自动授予。管理员菜单是否可见同时依赖 V57/V61 菜单迁移、角色权限和当前登录令牌；升级后如果页面仍是旧菜单，先确认 Nginx 使用的新 `mine-web/dist` 已发布，再让用户重新登录刷新权限快照，不要通过前端硬编码绕过菜单或按钮权限。
+发布权限不得因为用户拥有策略编辑权限而自动授予。管理员菜单是否可见同时依赖 V57/V61 菜单迁移、角色权限和当前登录令牌；升级后如果页面仍是旧菜单，先确认 Nginx 挂载的 `deploy/frontend/dist` 已更新，再让用户重新登录刷新权限快照，不要通过前端硬编码绕过菜单或按钮权限。
 
 ## 4. 网络与重复发送边界
 
@@ -73,13 +72,13 @@ Compose 将其只读挂载为 `/run/secrets/mine_notification_data_key`，应用
 
 1. 备份 PostgreSQL 事实库，并在独立受控介质中确认 `mine_notification_data_key` 可恢复；记录当前不可变镜像、前端制品摘要和 Flyway 版本。
 2. 运行 `bash deploy/scripts/preflight.sh`，确认通知密钥存在、权限正确、证书与 Compose 配置有效。
-3. 先发布能执行 V53～V62 的新 `mine-server`，等待 Flyway 完成和健康检查通过，再发布匹配的 `mine-web/dist` 与 Nginx。
+3. 先更新并重建能执行 V53～V62 的 `mine-server`，等待 Flyway 完成和健康检查通过，再更新 `deploy/frontend/dist` 并重建 Nginx。
 4. 使用拥有相应权限的管理员重新登录，检查四个页签、脱敏列表、受控回显、草稿保存、发布和归档；验收策略必须使用不会命中真实告警的唯一规则范围，并在验证后归档、停用验收渠道。
 5. 检查 `sys_operation_log` 中的创建、敏感读取、发布、归档记录，不在日志或验收报告中保存真实凭据和触达目标。
 
 ### 5.2 备份与恢复
 
-PostgreSQL 一致性备份必须包含 `notification_channel`、`notification_recipient_group`、`notification_recipient`、`notification_template`、`notification_policy`、`notification_policy_version`、`notification_policy_step`、`notification_secret_key_guard` 和关联 `sys_operation_log`。Standalone 事实备份有意排除所有 secret，因此通知密钥必须通过密码库或独立加密离线介质备份，不能塞回普通事实归档。
+PostgreSQL 一致性备份必须包含 `notification_channel`、`notification_recipient_group`、`notification_recipient`、`notification_template`、`notification_policy`、`notification_policy_version`、`notification_policy_step`、`notification_secret_key_guard` 和关联 `sys_operation_log`。Standalone 事实备份有意排除 `deploy/.env`，因此通知密钥必须通过密码库或独立加密离线介质备份，不能塞回普通事实归档。
 
 恢复顺序固定为：恢复原通知密钥并校验权限 → 恢复 PostgreSQL → 启动单个 `mine-server` 完成密钥哨兵和 Flyway 校验 → 检查敏感字段可受控读取 → 扩容服务和开放管理入口。缺少原密钥时历史密文不可恢复；不得删除哨兵、清空密文或生成新密钥强行启动。当前没有在线轮换作业，轮换必须先实现可恢复的批量重加密和双人演练。
 

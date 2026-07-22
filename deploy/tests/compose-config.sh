@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-COMPOSE_FILE="${ROOT_DIR}/deploy/compose/compose-standalone.yml"
-ENV_FILE="${ROOT_DIR}/deploy/env/standalone.env.example"
+COMPOSE_FILE="${ROOT_DIR}/deploy/docker-compose.yml"
+ENV_FILE="${ROOT_DIR}/deploy/.env.example"
 
 rendered="$(mktemp)"
 rendered_tcp_disabled="$(mktemp)"
@@ -39,22 +39,19 @@ MINE_GATEWAY_TCP_MODE=UNIFIED MINE_GATEWAY_TCP_PROTOCOL_KEY= MINE_GATEWAY_TCP_TL
 jq -e '.services["redis-exporter"]' "${rendered}" >/dev/null \
   || { echo "FAIL: observability profile 缺少 redis-exporter" >&2; exit 1; }
 
-jq -e '.services["redis-exporter"].environment.REDIS_PASSWORD_FILE == "/run/secrets/redis_exporter_passwords"
-  and (.services["redis-exporter"].secrets | any(.source == "redis_exporter_passwords"))' "${rendered}" >/dev/null \
-  || { echo "FAIL: redis-exporter 必须使用专用 JSON 密码映射 secret" >&2; exit 1; }
+jq -e '.services["redis-exporter"].environment.REDIS_PASSWORD == "change-me-redis"' "${rendered}" >/dev/null \
+  || { echo "FAIL: redis-exporter 必须从 env 获取 Redis 密码" >&2; exit 1; }
 
 jq -e '.services["mine-server"].environment.MINE_CONFIGURATION_DISTRIBUTION_ENABLED == "true"
-  and (.services["mine-server"].secrets | any(.source == "mine_configuration_distribution_token"))
+  and .services["mine-server"].environment.MINE_CONFIGURATION_DISTRIBUTION_TOKEN == "change-me-configuration-distribution-token"
   and .services["mine-gateway"].environment.MINE_GATEWAY_CONFIGURATION_DISTRIBUTION_ENABLED == "true"
   and .services["mine-gateway"].environment.MINE_GATEWAY_CONFIGURATION_SERVER_URL == "http://mine-server:8080"
-  and (.services["mine-gateway"].secrets | any(.source == "mine_configuration_distribution_token"))' "${rendered}" >/dev/null \
-  || { echo "FAIL: server 与 gateway 必须启用基于 secret 的配置分发闭环" >&2; exit 1; }
+  and .services["mine-gateway"].environment.MINE_CONFIGURATION_DISTRIBUTION_TOKEN == "change-me-configuration-distribution-token"' "${rendered}" >/dev/null \
+  || { echo "FAIL: server 与 gateway 必须启用基于 env 令牌的配置分发闭环" >&2; exit 1; }
 
-jq -e '.services["mine-server"].environment.MINE_NOTIFICATION_DATA_KEY_FILE == "/run/secrets/mine_notification_data_key"
-  and (.services["mine-server"].secrets | any(.source == "mine_notification_data_key"))
-  and (.secrets.mine_notification_data_key.file | endswith("/deploy/secrets/mine_notification_data_key"))' \
+jq -e '.services["mine-server"].environment.MINE_NOTIFICATION_DATA_KEY == "change-me-notification-data-key"' \
   "${rendered}" >/dev/null \
-  || { echo "FAIL: mine-server 必须挂载独立通知 AES-256-GCM 数据密钥" >&2; exit 1; }
+  || { echo "FAIL: mine-server 必须从 env 获取独立通知 AES-256-GCM 数据密钥" >&2; exit 1; }
 
 jq -e '.services.rustfs.image | startswith("rustfs/rustfs:1.0.0-beta.10@sha256:")' \
   "${rendered}" >/dev/null \
@@ -86,9 +83,9 @@ grep -Fq 'location: ${MINE_SCENE_MULTIPART_LOCATION:/tmp}' \
 
 jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED == "true"
   and .services["mine-telemetry"].environment.MINE_TELEMETRY_STRATEGY_SERVER_URL == "http://mine-server:8080"
-  and (.services["mine-telemetry"].secrets | any(.source == "mine_configuration_distribution_token"))
+  and .services["mine-telemetry"].environment.MINE_CONFIGURATION_DISTRIBUTION_TOKEN == "change-me-configuration-distribution-token"
   and .services["mine-telemetry"].depends_on["mine-server"].condition == "service_healthy"' "${rendered}" >/dev/null \
-  || { echo "FAIL: telemetry 必须通过 secret 和内部接口加载策略快照" >&2; exit 1; }
+  || { echo "FAIL: telemetry 必须通过 env 令牌和内部接口加载策略快照" >&2; exit 1; }
 
 jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_RETENTION_ENABLED == "true"
   and .services["mine-telemetry"].environment.MINE_TELEMETRY_RETENTION_INSTANCE_ID == "standalone-telemetry"
@@ -107,10 +104,9 @@ jq -e '.services["mine-telemetry"].environment.MINE_TELEMETRY_AGGREGATION_ENABLE
   || { echo "FAIL: standalone telemetry 必须显式启用受控有界数值聚合和重算消费" >&2; exit 1; }
 
 jq -e '.services["mine-server"].environment.MINE_ALARM_RABBIT_ENABLED == "true"
-  and .services["mine-server"].environment.MINE_ALARM_RABBIT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_alarm_password"
-  and (.services["mine-server"].secrets | any(.source == "rabbitmq_server_alarm_password"))
-  and (.services.rabbitmq.secrets | any(.source == "rabbitmq_server_alarm_password"))' "${rendered}" >/dev/null \
-  || { echo "FAIL: mine-server 必须使用独立 secret 启用告警消息消费" >&2; exit 1; }
+  and .services["mine-server"].environment.RABBITMQ_SERVER_ALARM_PASSWORD == "change-me-rabbitmq-server-alarm"
+  and .services.rabbitmq.environment.RABBITMQ_SERVER_ALARM_PASSWORD == "change-me-rabbitmq-server-alarm"' "${rendered}" >/dev/null \
+  || { echo "FAIL: mine-server 必须使用 env 中的独立账号密码启用告警消息消费" >&2; exit 1; }
 
 jq -e '.services["mine-server"].environment.MINE_OPERATION_RUNTIME_RABBIT_ENABLED == "true"
   and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_AUTO_STARTUP == "true"
@@ -123,10 +119,9 @@ jq -e '.services["mine-server"].environment.MINE_OPERATION_RUNTIME_RABBIT_ENABLE
   and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_STEP_TIMEOUT == "2h"
   and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_DRAIN_LIMIT == "100"
   and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_ACCOUNT_USERNAME == "mine-server-operation"
-  and .services["mine-server"].environment.MINE_OPERATION_RUNTIME_ACCOUNT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_operation_password"
-  and (.services["mine-server"].secrets | any(.source == "rabbitmq_server_operation_password"))
-  and (.services.rabbitmq.secrets | any(.source == "rabbitmq_server_operation_password"))' "${rendered}" >/dev/null \
-  || { echo "FAIL: mine-server 必须使用独立 secret 启用运营空间事件持久消费" >&2; exit 1; }
+  and .services["mine-server"].environment.RABBITMQ_SERVER_OPERATION_PASSWORD == "change-me-rabbitmq-server-operation"
+  and .services.rabbitmq.environment.RABBITMQ_SERVER_OPERATION_PASSWORD == "change-me-rabbitmq-server-operation"' "${rendered}" >/dev/null \
+  || { echo "FAIL: mine-server 必须使用 env 中的独立账号密码启用运营空间事件持久消费" >&2; exit 1; }
 
 jq -e '.services["mine-server"].environment.MINE_OPERATION_OUTBOX_ENABLED == "true"
   and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_CONFIRM_TIMEOUT == "5s"
@@ -135,10 +130,9 @@ jq -e '.services["mine-server"].environment.MINE_OPERATION_OUTBOX_ENABLED == "tr
   and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_RECOVERY_LIMIT == "500"
   and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_RECOVERY_INTERVAL == "1s"
   and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_RABBIT_USERNAME == "mine-server-operation-outbox"
-  and .services["mine-server"].environment.MINE_OPERATION_OUTBOX_RABBIT_PASSWORD_FILE == "/run/secrets/rabbitmq_server_operation_outbox_password"
-  and (.services["mine-server"].secrets | any(.source == "rabbitmq_server_operation_outbox_password"))
-  and (.services.rabbitmq.secrets | any(.source == "rabbitmq_server_operation_outbox_password"))' "${rendered}" >/dev/null \
-  || { echo "FAIL: mine-server 必须使用独立最小权限账号启用运营事件可靠发布" >&2; exit 1; }
+  and .services["mine-server"].environment.RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD == "change-me-rabbitmq-server-operation-outbox"
+  and .services.rabbitmq.environment.RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD == "change-me-rabbitmq-server-operation-outbox"' "${rendered}" >/dev/null \
+  || { echo "FAIL: mine-server 必须使用 env 中的独立最小权限账号启用运营事件可靠发布" >&2; exit 1; }
 
 grep -Fq '# 关闭后空间事件仍会保留在持久队列，但不会自动形成运营记录。' \
   "${ROOT_DIR}/mine-server/src/main/resources/application.yml" \
@@ -149,11 +143,10 @@ grep -Fq '# 关闭后运营事实仍会提交，但实时变更将留在 Outbox 
 
 jq -e '.services["mine-server"].environment.MINE_SPATIAL_REPLAY_ENABLED == "true"
   and .services["mine-server"].environment.MINE_SPATIAL_REPLAY_USERNAME == "mine_ts_replay"
-  and .services["mine-server"].environment.MINE_SPATIAL_REPLAY_PASSWORD_FILE == "/run/secrets/timescale_replay_password"
-  and (.services["mine-server"].secrets | any(.source == "timescale_replay_password"))
+  and .services["mine-server"].environment.TIMESCALE_REPLAY_PASSWORD == "change-me-timescale-replay"
   and .services["timescale-reader-bootstrap"].environment.TIMESCALE_REPLAY_USER == "mine_ts_replay"
-  and (.services["timescale-reader-bootstrap"].secrets | any(.source == "timescale_replay_password"))' "${rendered}" >/dev/null \
-  || { echo "FAIL: 空间重放登记必须使用独立 TimescaleDB 最小权限账号和 secret" >&2; exit 1; }
+  and .services["timescale-reader-bootstrap"].environment.TIMESCALE_REPLAY_PASSWORD == "change-me-timescale-replay"' "${rendered}" >/dev/null \
+  || { echo "FAIL: 空间重放登记必须使用 env 中的独立 TimescaleDB 最小权限账号" >&2; exit 1; }
 
 replay_bootstrap="${ROOT_DIR}/deploy/scripts/timescale-reader-init.sh"
 grep -q "GRANT SELECT, INSERT ON TABLE spatial_replay_request" "${replay_bootstrap}" \
@@ -199,12 +192,11 @@ jq -e '.services["mine-gateway"].environment.MINE_GATEWAY_TCP_MODE == "UNIFIED"
   || { echo "FAIL: 统一 TCP 入口必须支持清空静态协议键并启用 TLS" >&2; exit 1; }
 
 jq -e '(.services["mine-gateway"].ports | any(.target == 9000 and .published == "9000" and .host_ip == "127.0.0.1"))
-  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_CERTIFICATE == "/run/secrets/tcp_tls_certificate"
-  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_PRIVATE_KEY == "/run/secrets/tcp_tls_private_key"
-  and (.services["mine-gateway"].secrets | any(.source == "tls_certificate" and .target == "tcp_tls_certificate"))
-  and (.services["mine-gateway"].secrets | any(.source == "tls_private_key" and .target == "tcp_tls_private_key"))' \
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_CERTIFICATE == "/etc/mine/certs/tls.crt"
+  and .services["mine-gateway"].environment.MINE_GATEWAY_TCP_TLS_PRIVATE_KEY == "/etc/mine/certs/tls.key"
+  and (.services["mine-gateway"].volumes | any(.target == "/etc/mine/certs" and .read_only == true))' \
   "${rendered}" >/dev/null \
-  || { echo "FAIL: TCP 端口和 TLS 文件必须通过受控发布及只读 secret 提供" >&2; exit 1; }
+  || { echo "FAIL: TCP 端口和 TLS 文件必须通过受控发布及只读证书目录提供" >&2; exit 1; }
 
 jq -e '.services.prometheus.depends_on // {} | keys | all(. != "mine-server" and . != "mine-gateway" and . != "mine-telemetry" and . != "rabbitmq" and . != "postgres-exporter" and . != "timescale-exporter" and . != "redis-exporter")' \
   "${rendered}" >/dev/null \

@@ -4,8 +4,8 @@
 
 - Docker Compose 是唯一一期编排方式。
 - 单机和五节点使用同一套镜像、配置键和数据迁移。
-- 所有镜像在联网环境构建并打包，矿区可完全离线安装。
-- 配置、secret、数据卷和镜像分离。
+- 所有通用运行时和基础设施镜像在联网环境锁定并打包，矿区可完全离线安装。
+- 挂载制品、环境配置、证书、数据卷和镜像分离。
 - 不使用 Nacos；服务地址由 Compose DNS、内部 DNS、VIP 和主机清单提供。
 - 生产镜像使用不可变版本与 digest，不使用 latest。
 
@@ -13,38 +13,40 @@
 
 ~~~text
 deploy/
-├── compose/
-│   ├── compose-standalone.yml
-│   ├── compose-access.yml
-│   ├── compose-data-primary.yml
-│   ├── compose-data-standby.yml
-│   └── compose-infra.yml
-├── env/
-│   ├── standalone.env.example
-│   └── production.env.example
+├── docker-compose.yml
+├── .env.example
+├── .env
+├── backend/
+│   ├── mine-server.jar
+│   ├── mine-gateway.jar
+│   └── mine-telemetry.jar
+├── frontend/
+│   └── dist/
 ├── config/
 │   ├── rabbitmq/
 │   ├── nginx/
 │   ├── prometheus/
 │   ├── alloy/
-│   └── app/
-├── secrets.example/
+│   └── grafana/
+├── certs/
+│   ├── tls.crt
+│   └── tls.key
 ├── scripts/
 │   ├── install-offline.sh
 │   ├── preflight.sh
-│   ├── deploy.sh
+│   ├── prepare-artifacts.sh
+│   ├── stage-tls-certificates.sh
+│   ├── start.sh
+│   ├── stop.sh
+│   ├── restart.sh
+│   ├── status.sh
 │   ├── health-check.sh
-│   ├── backup.sh
-│   ├── restore.sh
-│   ├── upgrade.sh
-│   └── rollback.sh
-├── manifests/
-│   ├── images.lock
-│   └── checksums.sha256
-└── runbooks/
+│   ├── backup-standalone.sh
+│   └── restore-standalone.sh
+└── tests/
 ~~~
 
-示例 secret 目录只能有字段说明，不能有默认生产密码。
+`deploy/.env.example` 只能包含明确的 `change-me-*` 占位值，不能包含生产密码；真实 `deploy/.env` 必须保持 Git 忽略并设置为 `0600`。
 
 ## 3. 单机方案
 
@@ -128,9 +130,8 @@ Compose profiles：
 - 优雅关闭。
 - 使用本地时区只做展示，应用内部 UTC。
 - 不把业务日志写入无限增长容器文件。
-- Java 服务不得直接运行宿主机 `target/*.jar` 单文件挂载。Compose 只读挂载稳定的 `target/` 目录，启动时复制并校验
-  完整 JAR 到容器内临时文件系统后再启动 JVM；运行期间 Maven 重打包不得改变当前进程 classpath。生产发布优先使用
-  带 digest 的不可变应用镜像。
+- Java 服务只读挂载 `deploy/backend/*.jar` 独立发行制品。启动脚本校验并复制完整 JAR 到容器临时目录，再从不可变副本启动；
+  禁止直接挂载 Maven `target/` 或在运行期间覆盖部署 JAR，构建新版本后必须重建容器。
 
 数据库容器要有明确 uid/gid、挂载权限和数据卷检查，升级前验证镜像与卷格式兼容。
 
@@ -142,7 +143,7 @@ Compose profiles：
 镜像默认值
 → 环境公共配置
 → 主机角色配置
-→ secret文件
+→ deploy/.env 凭据
 → 平台动态策略
 ~~~
 
@@ -150,11 +151,12 @@ Compose profiles：
 
 - 数据库地址、线程数、JVM、监听端口属于部署配置。
 - 物模型、协议、映射、告警、保留和数值聚合属于平台策略。
-- secret 只能由 secret 文件/受控环境注入。
-- gateway 访问 RabbitMQ 使用两个独立密码文件：`rabbitmq_gateway_device_password` 只读设备上行队列，
-  `rabbitmq_gateway_platform_password` 只写平台遥测交换机；不得复用 RabbitMQ 管理员密码。
+- 密码、令牌和数据密钥统一由权限为 `0600` 的 `deploy/.env` 注入；Compose 必须限制每个服务只接收自身需要的变量。
+- TLS 私钥保留在宿主 `deploy/certs/tls.key` 且权限为 `0600`；非 root Gateway/RabbitMQ 不直接读取宿主私钥，必须由一次性 root 初始化任务复制到服务专属命名卷、收敛为服务 UID 所有的 `0400` 文件，再由业务容器只读挂载。证书轮换必须强制重建初始化任务和消费者容器。
+- gateway 访问 RabbitMQ 使用两个独立环境变量：`RABBITMQ_GATEWAY_DEVICE_PASSWORD` 只读设备上行队列，
+  `RABBITMQ_GATEWAY_PLATFORM_PASSWORD` 只写平台遥测交换机；不得复用 RabbitMQ 管理员密码。
 - `mine-telemetry` 使用 `TIMESCALE_USER` 完成迁移和写入；`mine-server` 必须使用独立的
-  `TIMESCALE_READER_USER` 与 `timescale_reader_password`，数据库仅授予 CONNECT、schema USAGE 和遥测表 SELECT。
+  `TIMESCALE_READER_USER` 与 `TIMESCALE_READER_PASSWORD`，数据库仅授予 CONNECT、schema USAGE 和遥测表 SELECT。
 - `timescale-reader-bootstrap` 在每次 Compose 启动时幂等创建/授权只读账号并应用密码轮换，兼容已有数据卷；
   `mine-server` 与 `mine-telemetry` 必须等待该任务成功。角色通过数据库注释标识为平台托管账号；同名但没有标识的
   现场账号一律拒绝接管。脚本会清除托管角色的高权限属性、角色成员关系和全部非系统 schema 的已有对象权限，
@@ -182,11 +184,11 @@ Compose profiles：
 - WSS 反向代理必须转发 `Upgrade` 和 `Connection` 头。浏览器 25 秒应用层心跳只维护连接，不执行 Inbox、Outbox
   或业务表扫描。
 
-所有服务启动时输出“非敏感有效配置摘要”和版本，不打印 secret。
+所有服务启动时输出“非敏感有效配置摘要”和版本，不打印密码、令牌或数据密钥。
 
 ### 7.1 通知控制面密钥与恢复顺序
 
-`mine-server` 通过只读文件 `/run/secrets/mine_notification_data_key` 加载通知独立 AES-256-GCM 数据密钥。该密钥与 PostgreSQL 中的渠道凭据、接收目标和 `notification_secret_key_guard` 必须作为同一恢复集合管理，但 `deploy/scripts/backup-standalone.sh` 生成的事实备份有意排除 `deploy/secrets/`；部署方必须把密钥单独写入受控密码库或离线密钥备份，禁止把它附加到普通数据库归档、Git、镜像、日志或工单。
+`mine-server` 从 `deploy/.env` 的 `MINE_NOTIFICATION_DATA_KEY` 接收通知独立 AES-256-GCM 数据密钥，启动脚本会在容器内把它转换成权限为 `0400` 的临时文件后清除对应明文进程环境。该密钥与 PostgreSQL 中的渠道凭据、接收目标和 `notification_secret_key_guard` 必须作为同一恢复集合管理，但 `deploy/scripts/backup-standalone.sh` 生成的事实备份有意排除 `deploy/.env`；部署方必须把密钥单独写入受控密码库或离线密钥备份，禁止把它附加到普通数据库归档、Git、镜像、日志或工单。
 
 恢复时先从受控介质恢复原通知密钥并校验文件权限，再恢复 PostgreSQL，最后启动 `mine-server`。密钥缺失或与数据库哨兵不匹配时启动门禁会保持服务不健康；不得通过删除哨兵、清空密文或替换随机密钥绕过。完整发布、备份、恢复和回退步骤见 [通知 Provider 配置与安全运行手册](runbooks/notification-providers.md)。
 
@@ -245,8 +247,8 @@ TCP 二进制监听器在应用默认配置中关闭，Standalone Compose 为可
 | `MINE_GATEWAY_TCP_READ_IDLE_SECONDS` | `120` | 1～86400 秒无入站字节后关闭会话 |
 | `MINE_GATEWAY_TCP_SHUTDOWN_TIMEOUT` | `30s` | 1 秒～2 分钟，先停监听并关闭活动连接，再停止业务和 IO 线程 |
 | `MINE_GATEWAY_TCP_TLS_ENABLED` | `false` | 明文只允许回环或受控内网演示；生产必须为 `true` |
-| `MINE_GATEWAY_TCP_TLS_CERTIFICATE` | `/run/secrets/tcp_tls_certificate` | PEM 证书链绝对路径，通过只读 Compose/Kubernetes secret 挂载 |
-| `MINE_GATEWAY_TCP_TLS_PRIVATE_KEY` | `/run/secrets/tcp_tls_private_key` | PEM 私钥绝对路径，不进入镜像、环境变量、日志或离线示例 |
+| `MINE_GATEWAY_TCP_TLS_CERTIFICATE` | `/etc/mine/certs/tls.crt` | PEM 证书链绝对路径，通过只读证书目录挂载 |
+| `MINE_GATEWAY_TCP_TLS_PRIVATE_KEY` | `/etc/mine/certs/tls.key` | PEM 私钥绝对路径，不进入镜像、环境变量、日志或离线包 |
 
 证书和私钥只在监听器启动时加载，轮换必须走受控重启；当前没有原地热加载。`UNIFIED` 模式还要求完整产品协议快照和含 `tcpUsername`、`tcpSecretHash` 的设备身份快照；摘要使用 BCrypt，原始 secret 只在设备端保存。插件安装、身份快照、模拟器、告警、
 暂停、升级与回退步骤见 [TCP 二进制 Gateway 运行手册](runbooks/tcp-binary-gateway.md)。
@@ -362,9 +364,9 @@ TimescaleDB 的 PostgreSQL major 版本升级不是普通容器重建。PG17 数
 
 数据库不可逆迁移必须有单独恢复方案，不能承诺简单回退镜像即可恢复。
 
-TCP 插件升级属于应用镜像升级，不支持把 JAR 直接复制进运行容器。协议 ABI、协议键和 `protocolVersion` 不变时可按 Gateway
+TCP 插件升级属于 Gateway JAR 制品升级，不支持把 JAR 直接复制进运行容器。协议 ABI、协议键和 `protocolVersion` 不变时可按 Gateway
 实例滚动升级；协议版本变化时，旧新实例无法同时共享单一身份快照版本，必须使用新协议键/新端口并行迁移，或申请维护窗口完成
-全量切换。失败时回退到上一不可变镜像和匹配的完整身份快照；已收到 ACK 的遥测不得由运维伪造重放，未收到 ACK 的设备应按原序号重传。
+全量切换。失败时回退到上一已校验 JAR 和匹配的完整身份快照；已收到 ACK 的遥测不得由运维伪造重放，未收到 ACK 的设备应按原序号重传。
 
 ## 14. 离线安装
 
@@ -373,7 +375,7 @@ TCP 插件升级属于应用镜像升级，不支持把 JAR 直接复制进运�
 - 不访问公网镜像仓库、npm、Maven 或地图服务。
 - 所有前端字体、图标、Cesium 资源和地图/模型本地化。
 - install-offline 导入镜像并验证 digest。
-- 初始化 secret 和证书。
+- 初始化权限为 `0600` 的 `deploy/.env` 和现场证书。
 - preflight 检查 Docker、Compose、内核参数、文件句柄、时间同步和磁盘。
 - 生成部署报告和默认访问地址。
 

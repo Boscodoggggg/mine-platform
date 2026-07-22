@@ -60,14 +60,14 @@ fi
 
 compose=(docker compose -p "${PROJECT_NAME}")
 if ! ${LOAD_ONLY}; then
-  [[ -n "${ENV_FILE}" ]] || ENV_FILE="${BUNDLE_DIR}/deploy/env/standalone.env"
+  [[ -n "${ENV_FILE}" ]] || ENV_FILE="${BUNDLE_DIR}/deploy/.env"
   [[ -f "${ENV_FILE}" ]] || {
-    echo "FAIL: 缺少现场环境文件 ${ENV_FILE}，请从 standalone.env.example 复制并配置" >&2
+    echo "FAIL: 缺少现场环境文件 ${ENV_FILE}，请从 deploy/.env.example 复制并配置" >&2
     exit 1
   }
   MINE_ENV_FILE="${ENV_FILE}" MINE_PREFLIGHT_PROFILE="${PROFILE}" \
     "${BUNDLE_DIR}/deploy/scripts/preflight.sh"
-  compose+=(--env-file "${ENV_FILE}" -f "${BUNDLE_DIR}/deploy/compose/compose-standalone.yml")
+  compose+=(--env-file "${ENV_FILE}" -f "${BUNDLE_DIR}/deploy/docker-compose.yml")
   [[ -n "${PROFILE}" ]] && compose+=(--profile "${PROFILE}")
 
   desired_count=0

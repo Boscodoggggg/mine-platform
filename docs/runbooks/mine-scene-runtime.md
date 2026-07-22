@@ -53,10 +53,10 @@ GLB 或 3D Tiles ZIP
 Standalone 使用只读应用容器和独立 `scene_upload_workspace` 暂存卷，初始化容器把目录创建为 UID/GID `10001` 可写且权限 `0700`。确认：
 
 ```bash
-docker compose --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml config --quiet
-docker compose --env-file deploy/env/standalone.env \
-  -f deploy/compose/compose-standalone.yml ps --all mine-scene-staging-init mine-server rustfs
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml config --quiet
+docker compose --env-file deploy/.env \
+  -f deploy/docker-compose.yml ps --all mine-scene-staging-init mine-server rustfs
 ```
 
 不得把 `MINE_SCENE_STORAGE_ROOT` 指向 Web 根目录、共享临时目录或其他服务数据目录。上传限制必须同时满足反向代理、Multipart 和业务存储三层配置，不能只提高其中一层。

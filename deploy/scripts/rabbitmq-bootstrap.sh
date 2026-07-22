@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export SEED_USERNAME="$(cat /run/secrets/rabbitmq_admin_username)"
-export SEED_USER_PASSWORD="$(cat /run/secrets/rabbitmq_admin_password)"
+export SEED_USERNAME="${RABBITMQ_ADMIN_USERNAME:?必须配置 RABBITMQ_ADMIN_USERNAME}"
+export SEED_USER_PASSWORD="${RABBITMQ_ADMIN_PASSWORD:?必须配置 RABBITMQ_ADMIN_PASSWORD}"
 
 broker_pid=""
 
@@ -63,14 +63,14 @@ if [[ -n "${legacy_command_messages}" ]]; then
   rabbitmqctl -q delete_queue -p /mine-platform mine.command.q >/dev/null
 fi
 
-gateway_device_password="$(cat /run/secrets/rabbitmq_gateway_device_password)"
-gateway_platform_password="$(cat /run/secrets/rabbitmq_gateway_platform_password)"
-telemetry_password="$(cat /run/secrets/rabbitmq_telemetry_password)"
-server_realtime_password="$(cat /run/secrets/rabbitmq_server_realtime_password)"
-server_command_password="$(cat /run/secrets/rabbitmq_server_command_password)"
-server_alarm_password="$(cat /run/secrets/rabbitmq_server_alarm_password)"
-server_operation_password="$(cat /run/secrets/rabbitmq_server_operation_password)"
-server_operation_outbox_password="$(cat /run/secrets/rabbitmq_server_operation_outbox_password)"
+gateway_device_password="${RABBITMQ_GATEWAY_DEVICE_PASSWORD:?必须配置 RABBITMQ_GATEWAY_DEVICE_PASSWORD}"
+gateway_platform_password="${RABBITMQ_GATEWAY_PLATFORM_PASSWORD:?必须配置 RABBITMQ_GATEWAY_PLATFORM_PASSWORD}"
+telemetry_password="${RABBITMQ_TELEMETRY_PASSWORD:?必须配置 RABBITMQ_TELEMETRY_PASSWORD}"
+server_realtime_password="${RABBITMQ_SERVER_REALTIME_PASSWORD:?必须配置 RABBITMQ_SERVER_REALTIME_PASSWORD}"
+server_command_password="${RABBITMQ_SERVER_COMMAND_PASSWORD:?必须配置 RABBITMQ_SERVER_COMMAND_PASSWORD}"
+server_alarm_password="${RABBITMQ_SERVER_ALARM_PASSWORD:?必须配置 RABBITMQ_SERVER_ALARM_PASSWORD}"
+server_operation_password="${RABBITMQ_SERVER_OPERATION_PASSWORD:?必须配置 RABBITMQ_SERVER_OPERATION_PASSWORD}"
+server_operation_outbox_password="${RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD:?必须配置 RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD}"
 upsert_user "mine-gateway-device" "${gateway_device_password}"
 upsert_user "mine-gateway-platform" "${gateway_platform_password}"
 upsert_user "mine-telemetry" "${telemetry_password}"

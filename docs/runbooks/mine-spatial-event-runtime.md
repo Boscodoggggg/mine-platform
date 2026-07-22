@@ -42,7 +42,7 @@
    `MINE_TELEMETRY_SPATIAL_ENABLED` 只控制评估、重放和空间 Outbox 后台任务，不控制位置事务内的空间入队：活动区域和定位流量
    仍存在时将持续形成 `PENDING` 积压，不能把该开关当成空间入队熔断器。
 2. 确认管理 PostgreSQL 已迁移到 V41，TimescaleDB 已迁移到 V28；不要通过手工 DDL 绕过 Flyway。
-3. 确认 `mine-server` 查询账号为最小权限 `mine_ts_reader`，重放登记账号为 `mine_ts_replay`，密码从只读 secret 文件加载。
+3. 确认 `mine-server` 查询账号为最小权限 `mine_ts_reader`，重放登记账号为 `mine_ts_replay`，密码分别由 `deploy/.env` 的 `TIMESCALE_READER_PASSWORD` 和 `TIMESCALE_REPLAY_PASSWORD` 提供。
    浏览器和普通管理账号不得获得两个时序库账号。
 4. 在目标矿区完成来源坐标系、唯一活动统一坐标系、不可变转换版本、定位标签及发生时绑定，并验证定位运行快照已加载。
 5. 为用户授予目标矿区数据范围和所需最小权限：查看 `mine:spatial:view`、编辑 `mine:spatial:edit`、发布

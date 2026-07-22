@@ -13,9 +13,9 @@ fail() {
 [[ -x "${BUILD_SCRIPT}" ]] || fail "缺少可执行打包脚本"
 [[ -x "${INSTALL_SCRIPT}" ]] || fail "缺少可执行安装脚本"
 grep -Eq 'timescale_data:/var/lib/postgresql[[:space:]]*$' \
-  "${ROOT_DIR}/deploy/compose/compose-standalone.yml" \
+  "${ROOT_DIR}/deploy/docker-compose.yml" \
   || fail "PostgreSQL 18 TimescaleDB 数据卷必须挂载到 /var/lib/postgresql"
-if [[ "${ROOT_DIR}" == "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" ]]; then
+if [[ -s "${ROOT_DIR}/mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar" ]]; then
   jar tf "${ROOT_DIR}/mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar" \
     | grep -Eq '^BOOT-INF/lib/snakeyaml-[^/]+\.jar$' \
     || fail "mine-telemetry 生产 JAR 缺少 SnakeYAML"
@@ -25,14 +25,16 @@ work_dir="$(mktemp -d)"
 trap 'rm -rf "${work_dir}"' EXIT
 fixture="${work_dir}/fixture"
 fake_bin="${work_dir}/bin"
-mkdir -p "${fixture}"/{deploy/{compose,config/gateway,env,scripts/lib,tests,secrets.example},mine-server/target,mine-gateway/target,mine-telemetry/target,mine-web/dist,target/sbom} "${fake_bin}"
+mkdir -p "${fixture}"/{deploy/{config/gateway,scripts/lib,tests,certs},mine-server/target,mine-gateway/target,mine-telemetry/target,mine-web/dist,target/sbom} "${fake_bin}"
 
 printf 'license\n' > "${fixture}/LICENSE"
 printf 'notice\n' > "${fixture}/NOTICE"
 printf 'third party\n' > "${fixture}/THIRD-PARTY-NOTICES.md"
-printf 'services: {}\n' > "${fixture}/deploy/compose/compose-standalone.yml"
-printf 'MINE_TEST=true\n' > "${fixture}/deploy/env/standalone.env.example"
-printf 'SITE_SECRET=must-not-be-packed\n' > "${fixture}/deploy/env/site.env"
+printf 'services: {}\n' > "${fixture}/deploy/docker-compose.yml"
+printf 'MINE_TEST=true\n' > "${fixture}/deploy/.env.example"
+printf 'SITE_SECRET=must-not-be-packed\n' > "${fixture}/deploy/.env"
+printf 'certificate instructions\n' > "${fixture}/deploy/certs/README.md"
+printf 'private key\n' > "${fixture}/deploy/certs/tls.key"
 printf '{"version":1,"devices":[]}\n' > "${fixture}/deploy/config/gateway/device-identities.json"
 printf '#!/usr/bin/env bash\necho "preflight profile=${MINE_PREFLIGHT_PROFILE:-}" >> "${FAKE_DOCKER_LOG}"\n' > "${fixture}/deploy/scripts/preflight.sh"
 printf '#!/usr/bin/env bash\necho "health project=${MINE_COMPOSE_PROJECT_NAME:-}" >> "${FAKE_DOCKER_LOG}"\n' > "${fixture}/deploy/scripts/health-check.sh"
@@ -107,8 +109,14 @@ bundle="${work_dir}/extract/mine-platform-0.1.0-test"
 [[ -s "${bundle}/images/images.tar" ]] || fail "离线包缺少镜像归档"
 [[ -s "${bundle}/manifests/images.lock" ]] || fail "离线包缺少镜像锁"
 [[ -s "${bundle}/sbom/backend.json" && -s "${bundle}/sbom/frontend.json" ]] || fail "离线包缺少 SBOM"
-[[ ! -e "${bundle}/deploy/secrets" ]] || fail "离线包不得包含 secret"
-[[ ! -e "${bundle}/deploy/env/site.env" ]] || fail "离线包只能包含环境变量示例，不能包含现场环境文件"
+[[ -s "${bundle}/deploy/docker-compose.yml" ]] || fail "离线包缺少 deploy/docker-compose.yml"
+[[ -s "${bundle}/deploy/.env.example" ]] || fail "离线包缺少 deploy/.env.example"
+[[ -s "${bundle}/deploy/backend/mine-server.jar" ]] || fail "离线包缺少 server JAR"
+[[ -s "${bundle}/deploy/backend/mine-gateway.jar" ]] || fail "离线包缺少 gateway JAR"
+[[ -s "${bundle}/deploy/backend/mine-telemetry.jar" ]] || fail "离线包缺少 telemetry JAR"
+[[ -s "${bundle}/deploy/frontend/dist/index.html" ]] || fail "离线包缺少前端 dist"
+[[ ! -e "${bundle}/deploy/.env" ]] || fail "离线包只能包含环境变量示例，不能包含现场 .env"
+[[ ! -e "${bundle}/deploy/certs/tls.key" ]] || fail "离线包不得包含现场 TLS 私钥"
 recovery_assets=(
   deploy/scripts/backup-standalone.sh
   deploy/scripts/restore-standalone.sh
@@ -161,11 +169,11 @@ if "${bundle}/deploy/scripts/install-offline.sh" --bundle-dir "${bundle}" --env-
 fi
 ! grep -q '^load ' "${FAKE_DOCKER_LOG}" || fail "镜像引用不匹配时不应导入镜像"
 
-printf 'corrupted\n' >> "${bundle}/mine-web/dist/index.html"
+printf 'corrupted\n' >> "${bundle}/deploy/frontend/dist/index.html"
 : > "${FAKE_DOCKER_LOG}"
 if "${bundle}/deploy/scripts/install-offline.sh" --bundle-dir "${bundle}" --load-only >/dev/null 2>&1; then
   fail "文件损坏后安装脚本仍然成功"
 fi
 [[ ! -s "${FAKE_DOCKER_LOG}" ]] || fail "校验和失败后不应调用 Docker"
 
-echo "PASS: 离线包内容、secret 排除、校验和、镜像导入与镜像 ID 复核均正确"
+echo "PASS: 离线 deploy 目录、现场敏感文件排除、校验和、镜像导入与镜像 ID 复核均正确"

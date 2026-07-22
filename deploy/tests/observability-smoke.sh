@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-COMPOSE_FILE="${MINE_COMPOSE_FILE:-${ROOT_DIR}/deploy/compose/compose-standalone.yml}"
-ENV_FILE="${MINE_ENV_FILE:-${ROOT_DIR}/deploy/env/standalone.env}"
+COMPOSE_FILE="${MINE_COMPOSE_FILE:-${ROOT_DIR}/deploy/docker-compose.yml}"
+ENV_FILE="${MINE_ENV_FILE:-${ROOT_DIR}/deploy/.env}"
 
 [[ -f "${ENV_FILE}" ]] || { echo "FAIL: 缺少环境变量文件：${ENV_FILE}" >&2; exit 1; }
 set -a
@@ -60,10 +60,8 @@ done
 curl --fail --silent --show-error --retry 20 --retry-all-errors --retry-delay 2 \
   "http://127.0.0.1:${MINE_GRAFANA_PORT:-3000}/api/health" \
   | grep -q '"database": "ok"'
-secrets_dir="$(cd "${ROOT_DIR}/deploy/compose" && cd "${MINE_SECRETS_DIR:-../secrets}" && pwd)"
-grafana_password="$(cat "${secrets_dir}/grafana_admin_password")"
 curl --fail --silent --show-error \
-  --user "${MINE_GRAFANA_ADMIN_USER:-mine-admin}:${grafana_password}" \
+  --user "${MINE_GRAFANA_ADMIN_USER:-mine-admin}:${MINE_GRAFANA_ADMIN_PASSWORD:?缺少 MINE_GRAFANA_ADMIN_PASSWORD}" \
   --get --data-urlencode 'query=智慧矿山平台总览' \
   "http://127.0.0.1:${MINE_GRAFANA_PORT:-3000}/api/search" \
   | grep -q '"uid":"mine-platform-overview"'

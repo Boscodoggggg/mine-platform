@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="${MINE_ROOT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 VERSION=""
 OUTPUT_DIR="${ROOT_DIR}/target/offline"
-ENV_FILE="${ROOT_DIR}/deploy/env/standalone.env.example"
+ENV_FILE="${ROOT_DIR}/deploy/.env.example"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -26,8 +26,9 @@ done
 
 required_files=(
   LICENSE NOTICE THIRD-PARTY-NOTICES.md
-  deploy/compose/compose-standalone.yml
-  deploy/env/standalone.env.example
+  deploy/docker-compose.yml
+  deploy/.env.example
+  deploy/certs/README.md
   mine-server/target/mine-server-0.1.0-SNAPSHOT.jar
   mine-gateway/target/mine-gateway-0.1.0-SNAPSHOT.jar
   mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar
@@ -49,25 +50,28 @@ bundle_name="mine-platform-${VERSION}"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "${work_dir}"' EXIT
 bundle_dir="${work_dir}/${bundle_name}"
-mkdir -p "${bundle_dir}"/{deploy,images,manifests,mine-server/target,mine-gateway/target,mine-telemetry/target,mine-web,sbom}
+mkdir -p "${bundle_dir}"/{deploy/backend,deploy/frontend,deploy/certs,images,manifests,sbom}
 
 cp "${ROOT_DIR}/LICENSE" "${ROOT_DIR}/NOTICE" "${ROOT_DIR}/THIRD-PARTY-NOTICES.md" "${bundle_dir}/"
 printf '%s\n' "${VERSION}" > "${bundle_dir}/VERSION"
-cp -R "${ROOT_DIR}/deploy/compose" "${ROOT_DIR}/deploy/config" \
-  "${ROOT_DIR}/deploy/scripts" "${ROOT_DIR}/deploy/tests" "${ROOT_DIR}/deploy/secrets.example" "${bundle_dir}/deploy/"
-mkdir -p "${bundle_dir}/deploy/env"
-cp "${ROOT_DIR}/deploy/env/standalone.env.example" "${bundle_dir}/deploy/env/"
-cp "${ROOT_DIR}/mine-server/target/mine-server-0.1.0-SNAPSHOT.jar" "${bundle_dir}/mine-server/target/"
-cp "${ROOT_DIR}/mine-gateway/target/mine-gateway-0.1.0-SNAPSHOT.jar" "${bundle_dir}/mine-gateway/target/"
-cp "${ROOT_DIR}/mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar" "${bundle_dir}/mine-telemetry/target/"
-cp -R "${ROOT_DIR}/mine-web/dist" "${bundle_dir}/mine-web/"
+cp -R "${ROOT_DIR}/deploy/config" "${ROOT_DIR}/deploy/scripts" \
+  "${ROOT_DIR}/deploy/tests" "${bundle_dir}/deploy/"
+cp "${ROOT_DIR}/deploy/docker-compose.yml" "${ROOT_DIR}/deploy/.env.example" "${bundle_dir}/deploy/"
+cp "${ROOT_DIR}/deploy/certs/README.md" "${bundle_dir}/deploy/certs/"
+cp "${ROOT_DIR}/mine-server/target/mine-server-0.1.0-SNAPSHOT.jar" \
+  "${bundle_dir}/deploy/backend/mine-server.jar"
+cp "${ROOT_DIR}/mine-gateway/target/mine-gateway-0.1.0-SNAPSHOT.jar" \
+  "${bundle_dir}/deploy/backend/mine-gateway.jar"
+cp "${ROOT_DIR}/mine-telemetry/target/mine-telemetry-0.1.0-SNAPSHOT.jar" \
+  "${bundle_dir}/deploy/backend/mine-telemetry.jar"
+cp -R "${ROOT_DIR}/mine-web/dist" "${bundle_dir}/deploy/frontend/"
 cp "${ROOT_DIR}/target/sbom/backend.json" "${ROOT_DIR}/target/sbom/frontend.json" "${bundle_dir}/sbom/"
 
 images=()
 while IFS= read -r image; do
   [[ -n "${image}" ]] && images+=("${image}")
 done < <(docker compose --profile observability --env-file "${ENV_FILE}" \
-  -f "${ROOT_DIR}/deploy/compose/compose-standalone.yml" config --images | LC_ALL=C sort -u)
+  -f "${ROOT_DIR}/deploy/docker-compose.yml" config --images | LC_ALL=C sort -u)
 (( ${#images[@]} > 0 )) || { echo "FAIL: Compose 未解析出镜像" >&2; exit 1; }
 
 : > "${bundle_dir}/manifests/images.lock"

@@ -29,13 +29,9 @@ services:
     ports:
       - "${MINE_HTTPS_PORT:-443}:443"
     volumes:
-      - ../config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ${MINE_WEB_DIST_PATH:-../../mine-web/dist}:/usr/share/nginx/html:ro
-    secrets:
-      - source: tls_certificate
-        target: tls_certificate
-      - source: tls_private_key
-        target: tls_private_key
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${MINE_WEB_DIST_PATH:-./frontend/dist}:/usr/share/nginx/html:ro
+      - ${MINE_CERTS_DIR:-./certs}:/etc/mine/certs:ro
     tmpfs:
       - /var/cache/nginx:size=64m,uid=101,gid=101
       - /var/run:size=8m,uid=101,gid=101
@@ -78,54 +74,50 @@ services:
 
   mine-server:
     <<: *java-service
-    command:
-      - /bin/bash
-      - -ec
-      - |
-        export SPRING_DATASOURCE_PASSWORD="$$(cat /run/secrets/postgres_password)"
-        export SPRING_DATA_REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"
-        exec /opt/mine/run-java-service.sh
+    command: ["/opt/mine/run-java-service.sh"]
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
-      MINE_APP_SOURCE_JAR: /opt/mine/source/mine-server-0.1.0-SNAPSHOT.jar
+      MINE_APP_SOURCE_JAR: /opt/mine/source/app.jar
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-mine}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-mine}
+      SPRING_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:?请配置 POSTGRES_PASSWORD}"
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: "${REDIS_PASSWORD:?请配置 REDIS_PASSWORD}"
       MINE_MANAGEMENT_ADDRESS: 0.0.0.0
       MINE_BOOTSTRAP_ADMIN_ENABLED: "true"
       MINE_BOOTSTRAP_ADMIN_ID: ${MINE_BOOTSTRAP_ADMIN_ID:-0198aef6-2e80-7000-8000-000000000001}
       MINE_BOOTSTRAP_ADMIN_USERNAME: ${MINE_BOOTSTRAP_ADMIN_USERNAME:-mine-admin}
       MINE_BOOTSTRAP_ADMIN_DISPLAY_NAME: ${MINE_BOOTSTRAP_ADMIN_DISPLAY_NAME:-矿区超级管理员}
-      MINE_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/mine_super_admin_password
-      MINE_PERSON_DATA_KEY_FILE: /run/secrets/mine_person_data_key
-      MINE_NOTIFICATION_DATA_KEY_FILE: /run/secrets/mine_notification_data_key
+      MINE_SUPER_ADMIN_PASSWORD: "${MINE_SUPER_ADMIN_PASSWORD:?请配置 MINE_SUPER_ADMIN_PASSWORD}"
+      MINE_PERSON_DATA_KEY: "${MINE_PERSON_DATA_KEY:?请配置 MINE_PERSON_DATA_KEY}"
+      MINE_NOTIFICATION_DATA_KEY: "${MINE_NOTIFICATION_DATA_KEY:?请配置 MINE_NOTIFICATION_DATA_KEY}"
       MINE_PASSWORD_BCRYPT_STRENGTH: ${MINE_PASSWORD_BCRYPT_STRENGTH:-12}
       MINE_AUTH_ACTIVE_TIMEOUT_SECONDS: ${MINE_AUTH_ACTIVE_TIMEOUT_SECONDS:-1800}
       MINE_RABBITMQ_ADMIN_BASE_URL: http://rabbitmq:15672
-      MINE_RABBITMQ_ADMIN_USERNAME_FILE: /run/secrets/rabbitmq_admin_username
-      MINE_RABBITMQ_ADMIN_PASSWORD_FILE: /run/secrets/rabbitmq_admin_password
+      RABBITMQ_ADMIN_USERNAME: "${RABBITMQ_ADMIN_USERNAME:?请配置 RABBITMQ_ADMIN_USERNAME}"
+      RABBITMQ_ADMIN_PASSWORD: "${RABBITMQ_ADMIN_PASSWORD:?请配置 RABBITMQ_ADMIN_PASSWORD}"
       MINE_TELEMETRY_QUERY_ENABLED: "true"
       MINE_TELEMETRY_QUERY_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
       MINE_TELEMETRY_QUERY_USERNAME: ${TIMESCALE_READER_USER:-mine_ts_reader}
-      MINE_TELEMETRY_QUERY_PASSWORD_FILE: /run/secrets/timescale_reader_password
+      TIMESCALE_READER_PASSWORD: "${TIMESCALE_READER_PASSWORD:?请配置 TIMESCALE_READER_PASSWORD}"
       MINE_SPATIAL_REPLAY_ENABLED: "true"
       MINE_SPATIAL_REPLAY_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
       MINE_SPATIAL_REPLAY_USERNAME: ${TIMESCALE_REPLAY_USER:-mine_ts_replay}
-      MINE_SPATIAL_REPLAY_PASSWORD_FILE: /run/secrets/timescale_replay_password
+      TIMESCALE_REPLAY_PASSWORD: "${TIMESCALE_REPLAY_PASSWORD:?请配置 TIMESCALE_REPLAY_PASSWORD}"
       MINE_REALTIME_ENABLED: "true"
       MINE_REALTIME_INSTANCE_ID: standalone
       MINE_REALTIME_RABBIT_ENABLED: "true"
       MINE_REALTIME_RABBIT_HOST: rabbitmq
-      MINE_REALTIME_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_realtime_password
+      RABBITMQ_SERVER_REALTIME_PASSWORD: "${RABBITMQ_SERVER_REALTIME_PASSWORD:?请配置 RABBITMQ_SERVER_REALTIME_PASSWORD}"
       MINE_COMMAND_OUTBOX_ENABLED: "true"
       MINE_COMMAND_OUTBOX_INSTANCE_ID: standalone
       MINE_COMMAND_OUTBOX_RABBIT_HOST: rabbitmq
-      MINE_COMMAND_OUTBOX_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_command_password
+      RABBITMQ_SERVER_COMMAND_PASSWORD: "${RABBITMQ_SERVER_COMMAND_PASSWORD:?请配置 RABBITMQ_SERVER_COMMAND_PASSWORD}"
       MINE_ALARM_RABBIT_ENABLED: "true"
       MINE_ALARM_RABBIT_HOST: rabbitmq
-      MINE_ALARM_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_alarm_password
+      RABBITMQ_SERVER_ALARM_PASSWORD: "${RABBITMQ_SERVER_ALARM_PASSWORD:?请配置 RABBITMQ_SERVER_ALARM_PASSWORD}"
       MINE_OPERATION_RUNTIME_RABBIT_ENABLED: "true"
       MINE_OPERATION_RUNTIME_AUTO_STARTUP: "true"
       MINE_OPERATION_RUNTIME_HOST: rabbitmq
@@ -143,7 +135,7 @@ services:
       MINE_OPERATION_RUNTIME_STEP_TIMEOUT: 2h
       MINE_OPERATION_RUNTIME_DRAIN_LIMIT: "100"
       MINE_OPERATION_RUNTIME_ACCOUNT_USERNAME: mine-server-operation
-      MINE_OPERATION_RUNTIME_ACCOUNT_PASSWORD_FILE: /run/secrets/rabbitmq_server_operation_password
+      RABBITMQ_SERVER_OPERATION_PASSWORD: "${RABBITMQ_SERVER_OPERATION_PASSWORD:?请配置 RABBITMQ_SERVER_OPERATION_PASSWORD}"
       MINE_OPERATION_OUTBOX_ENABLED: "true"
       MINE_OPERATION_OUTBOX_RABBIT_HOST: rabbitmq
       MINE_OPERATION_OUTBOX_CONFIRM_TIMEOUT: 5s
@@ -154,9 +146,9 @@ services:
       MINE_OPERATION_OUTBOX_RETRY_MAX_DELAY: 1m
       MINE_OPERATION_OUTBOX_RECOVERY_INTERVAL: 1s
       MINE_OPERATION_OUTBOX_RABBIT_USERNAME: mine-server-operation-outbox
-      MINE_OPERATION_OUTBOX_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_server_operation_outbox_password
+      RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD: "${RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD:?请配置 RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD}"
       MINE_CONFIGURATION_DISTRIBUTION_ENABLED: "true"
-      MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
+      MINE_CONFIGURATION_DISTRIBUTION_TOKEN: "${MINE_CONFIGURATION_DISTRIBUTION_TOKEN:?请配置 MINE_CONFIGURATION_DISTRIBUTION_TOKEN}"
       MINE_OPERATIONS_PROMETHEUS_ENABLED: "true"
       MINE_OPERATIONS_PROMETHEUS_URL: http://prometheus:9090
       MINE_SCENE_MULTIPART_MAX_FILE_SIZE: 2GB
@@ -170,30 +162,14 @@ services:
       MINE_OBJECT_STORAGE_S3_ENDPOINT: http://rustfs:9000
       MINE_OBJECT_STORAGE_S3_REGION: ${MINE_OBJECT_STORAGE_S3_REGION:-us-east-1}
       MINE_OBJECT_STORAGE_S3_BUCKET: ${MINE_OBJECT_STORAGE_S3_BUCKET:-mine-scene-assets}
-      MINE_OBJECT_STORAGE_S3_ACCESS_KEY: ${MINE_RUSTFS_ACCESS_KEY:-mine-rustfs-dev}
-      MINE_OBJECT_STORAGE_S3_SECRET_KEY: ${MINE_RUSTFS_SECRET_KEY:-mine-rustfs-dev-secret}
+      MINE_OBJECT_STORAGE_S3_ACCESS_KEY: "${MINE_RUSTFS_ACCESS_KEY:?请配置 MINE_RUSTFS_ACCESS_KEY}"
+      MINE_OBJECT_STORAGE_S3_SECRET_KEY: "${MINE_RUSTFS_SECRET_KEY:?请配置 MINE_RUSTFS_SECRET_KEY}"
       MINE_OBJECT_STORAGE_S3_PATH_STYLE_ACCESS: "true"
       MINE_OBJECT_STORAGE_S3_INITIALIZE_BUCKET: "true"
     volumes:
-      - ../../mine-server/target:/opt/mine/source:ro
-      - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
+      - ${MINE_SERVER_JAR_PATH:-./backend/mine-server.jar}:/opt/mine/source/app.jar:ro
+      - ./scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
       - scene_upload_workspace:/var/lib/mine/scene-upload
-    secrets:
-      - postgres_password
-      - redis_password
-      - mine_super_admin_password
-      - mine_person_data_key
-      - mine_notification_data_key
-      - rabbitmq_admin_username
-      - rabbitmq_admin_password
-      - timescale_reader_password
-      - timescale_replay_password
-      - rabbitmq_server_realtime_password
-      - rabbitmq_server_command_password
-      - rabbitmq_server_alarm_password
-      - rabbitmq_server_operation_password
-      - rabbitmq_server_operation_outbox_password
-      - mine_configuration_distribution_token
     depends_on:
       postgres:
         condition: service_healthy
@@ -235,8 +211,8 @@ services:
       RUSTFS_VOLUMES: /data
       RUSTFS_ADDRESS: 0.0.0.0:9000
       RUSTFS_CONSOLE_ENABLE: "false"
-      RUSTFS_ACCESS_KEY: ${MINE_RUSTFS_ACCESS_KEY:-mine-rustfs-dev}
-      RUSTFS_SECRET_KEY: ${MINE_RUSTFS_SECRET_KEY:-mine-rustfs-dev-secret}
+      RUSTFS_ACCESS_KEY: "${MINE_RUSTFS_ACCESS_KEY:?请配置 MINE_RUSTFS_ACCESS_KEY}"
+      RUSTFS_SECRET_KEY: "${MINE_RUSTFS_SECRET_KEY:?请配置 MINE_RUSTFS_SECRET_KEY}"
       RUSTFS_OBS_LOGGER_LEVEL: warn
       RUSTFS_OBS_LOG_DIRECTORY: /logs
     volumes:
@@ -275,22 +251,39 @@ services:
       - no-new-privileges:true
     logging: *default-logging
 
+  mine-gateway-tls-init:
+    image: ${MINE_JAVA_IMAGE:-eclipse-temurin:21.0.7_6-jre-jammy}
+    restart: "no"
+    user: "0:0"
+    read_only: true
+    command: ["/opt/mine/stage-tls-certificates.sh"]
+    environment:
+      MINE_TLS_TARGET_UID: "10001"
+      MINE_TLS_TARGET_GID: "10001"
+    volumes:
+      - ${MINE_CERTS_DIR:-./certs}:/opt/mine/source-certs:ro
+      - gateway_tls:/etc/mine/certs
+      - ./scripts/stage-tls-certificates.sh:/opt/mine/stage-tls-certificates.sh:ro
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
   mine-gateway:
     <<: *java-service
     command: ["/opt/mine/run-java-service.sh"]
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
-      MINE_APP_SOURCE_JAR: /opt/mine/source/mine-gateway-0.1.0-SNAPSHOT.jar
+      MINE_APP_SOURCE_JAR: /opt/mine/source/app.jar
       MINE_MANAGEMENT_ADDRESS: 0.0.0.0
       MINE_GATEWAY_RABBIT_ENABLED: "true"
       MINE_GATEWAY_RABBIT_HOST: rabbitmq
-      MINE_GATEWAY_DEVICE_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_gateway_device_password
-      MINE_GATEWAY_PLATFORM_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_gateway_platform_password
+      RABBITMQ_GATEWAY_DEVICE_PASSWORD: "${RABBITMQ_GATEWAY_DEVICE_PASSWORD:?请配置 RABBITMQ_GATEWAY_DEVICE_PASSWORD}"
+      RABBITMQ_GATEWAY_PLATFORM_PASSWORD: "${RABBITMQ_GATEWAY_PLATFORM_PASSWORD:?请配置 RABBITMQ_GATEWAY_PLATFORM_PASSWORD}"
       MINE_GATEWAY_IDENTITY_SNAPSHOT_FILE: /etc/mine/gateway/device-identities.json
       MINE_GATEWAY_CONFIGURATION_DISTRIBUTION_ENABLED: "true"
       MINE_GATEWAY_CONFIGURATION_SERVER_URL: http://mine-server:8080
-      MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
+      MINE_CONFIGURATION_DISTRIBUTION_TOKEN: "${MINE_CONFIGURATION_DISTRIBUTION_TOKEN:?请配置 MINE_CONFIGURATION_DISTRIBUTION_TOKEN}"
       MINE_GATEWAY_CONFIGURATION_CACHE_FILE: /var/lib/mine/gateway/protocol-snapshots.json
       MINE_GATEWAY_NODE_ID: standalone-gateway
       MINE_GATEWAY_TCP_ENABLED: ${MINE_GATEWAY_TCP_ENABLED:-true}
@@ -306,29 +299,24 @@ services:
       MINE_GATEWAY_TCP_READ_IDLE_SECONDS: ${MINE_GATEWAY_TCP_READ_IDLE_SECONDS:-120}
       MINE_GATEWAY_TCP_SHUTDOWN_TIMEOUT: ${MINE_GATEWAY_TCP_SHUTDOWN_TIMEOUT:-30s}
       MINE_GATEWAY_TCP_TLS_ENABLED: ${MINE_GATEWAY_TCP_TLS_ENABLED:-false}
-      MINE_GATEWAY_TCP_TLS_CERTIFICATE: /run/secrets/tcp_tls_certificate
-      MINE_GATEWAY_TCP_TLS_PRIVATE_KEY: /run/secrets/tcp_tls_private_key
+      MINE_GATEWAY_TCP_TLS_CERTIFICATE: /etc/mine/certs/tls.crt
+      MINE_GATEWAY_TCP_TLS_PRIVATE_KEY: /etc/mine/certs/tls.key
     ports:
       - "${MINE_GATEWAY_TCP_PUBLISHED_ADDRESS:-127.0.0.1}:${MINE_GATEWAY_TCP_PORT:-9000}:${MINE_GATEWAY_TCP_PORT:-9000}"
     volumes:
-      - ../../mine-gateway/target:/opt/mine/source:ro
-      - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
-      - ../config/gateway:/etc/mine/gateway:ro
+      - ${MINE_GATEWAY_JAR_PATH:-./backend/mine-gateway.jar}:/opt/mine/source/app.jar:ro
+      - ./scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
+      - ./config/gateway:/etc/mine/gateway:ro
+      - gateway_tls:/etc/mine/certs:ro
       - gateway_configuration_cache:/var/lib/mine/gateway
-    secrets:
-      - rabbitmq_gateway_device_password
-      - rabbitmq_gateway_platform_password
-      - mine_configuration_distribution_token
-      - source: tls_certificate
-        target: tcp_tls_certificate
-      - source: tls_private_key
-        target: tcp_tls_private_key
     depends_on:
       rabbitmq:
         condition: service_healthy
       mine-server:
         condition: service_healthy
       mine-gateway-cache-init:
+        condition: service_completed_successfully
+      mine-gateway-tls-init:
         condition: service_completed_successfully
     networks:
       - app
@@ -346,29 +334,25 @@ services:
 
   mine-telemetry:
     <<: *java-service
-    command:
-      - /bin/bash
-      - -ec
-      - |
-        export SPRING_DATASOURCE_PASSWORD="$$(cat /run/secrets/timescale_password)"
-        export SPRING_DATA_REDIS_PASSWORD="$$(cat /run/secrets/redis_password)"
-        exec /opt/mine/run-java-service.sh
+    command: ["/opt/mine/run-java-service.sh"]
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       JAVA_OPTS: "-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError -Duser.timezone=UTC"
-      MINE_APP_SOURCE_JAR: /opt/mine/source/mine-telemetry-0.1.0-SNAPSHOT.jar
+      MINE_APP_SOURCE_JAR: /opt/mine/source/app.jar
       SPRING_DATASOURCE_URL: jdbc:postgresql://timescale:5432/${TIMESCALE_DB:-mine_telemetry}
       SPRING_DATASOURCE_USERNAME: ${TIMESCALE_USER:-mine_ts}
+      SPRING_DATASOURCE_PASSWORD: "${TIMESCALE_PASSWORD:?请配置 TIMESCALE_PASSWORD}"
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: "${REDIS_PASSWORD:?请配置 REDIS_PASSWORD}"
       MINE_TELEMETRY_RABBIT_ENABLED: "true"
       MINE_TELEMETRY_RABBIT_HOST: rabbitmq
-      MINE_TELEMETRY_RABBIT_PASSWORD_FILE: /run/secrets/rabbitmq_telemetry_password
+      RABBITMQ_TELEMETRY_PASSWORD: "${RABBITMQ_TELEMETRY_PASSWORD:?请配置 RABBITMQ_TELEMETRY_PASSWORD}"
       MINE_TELEMETRY_STRATEGY_DISTRIBUTION_ENABLED: "true"
       MINE_TELEMETRY_STRATEGY_SERVER_URL: http://mine-server:8080
       MINE_TELEMETRY_LOCATION_DISTRIBUTION_ENABLED: "true"
       MINE_TELEMETRY_LOCATION_SERVER_URL: http://mine-server:8080
-      MINE_CONFIGURATION_DISTRIBUTION_TOKEN_FILE: /run/secrets/mine_configuration_distribution_token
+      MINE_CONFIGURATION_DISTRIBUTION_TOKEN: "${MINE_CONFIGURATION_DISTRIBUTION_TOKEN:?请配置 MINE_CONFIGURATION_DISTRIBUTION_TOKEN}"
       MINE_TELEMETRY_RETENTION_ENABLED: "true"
       MINE_TELEMETRY_RETENTION_INSTANCE_ID: standalone-telemetry
       MINE_TELEMETRY_RETENTION_BATCH_SIZE: ${MINE_TELEMETRY_RETENTION_BATCH_SIZE:-10000}
@@ -387,13 +371,8 @@ services:
       MINE_TELEMETRY_AGGREGATION_RECOMPUTE_LEASE: ${MINE_TELEMETRY_AGGREGATION_RECOMPUTE_LEASE:-10m}
       MINE_MANAGEMENT_ADDRESS: 0.0.0.0
     volumes:
-      - ../../mine-telemetry/target:/opt/mine/source:ro
-      - ../scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
-    secrets:
-      - timescale_password
-      - redis_password
-      - rabbitmq_telemetry_password
-      - mine_configuration_distribution_token
+      - ${MINE_TELEMETRY_JAR_PATH:-./backend/mine-telemetry.jar}:/opt/mine/source/app.jar:ro
+      - ./scripts/run-java-service.sh:/opt/mine/run-java-service.sh:ro
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -420,6 +399,22 @@ services:
           cpus: "2.0"
           memory: 1g
 
+  rabbitmq-tls-init:
+    image: ${MINE_RABBITMQ_IMAGE:-rabbitmq:4.1.8-management}
+    restart: "no"
+    user: "0:0"
+    read_only: true
+    command: ["/opt/mine/stage-tls-certificates.sh"]
+    environment:
+      MINE_TLS_TARGET_OWNER: rabbitmq
+    volumes:
+      - ${MINE_CERTS_DIR:-./certs}:/opt/mine/source-certs:ro
+      - rabbitmq_tls:/etc/mine/certs
+      - ./scripts/stage-tls-certificates.sh:/opt/mine/stage-tls-certificates.sh:ro
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
   rabbitmq:
     image: ${MINE_RABBITMQ_IMAGE:-rabbitmq:4.1.8-management}
     hostname: rabbitmq
@@ -437,27 +432,26 @@ services:
       - "${MINE_MQTTS_PORT:-8883}:8883"
     environment:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
+      RABBITMQ_ADMIN_USERNAME: "${RABBITMQ_ADMIN_USERNAME:?请配置 RABBITMQ_ADMIN_USERNAME}"
+      RABBITMQ_ADMIN_PASSWORD: "${RABBITMQ_ADMIN_PASSWORD:?请配置 RABBITMQ_ADMIN_PASSWORD}"
+      RABBITMQ_GATEWAY_DEVICE_PASSWORD: "${RABBITMQ_GATEWAY_DEVICE_PASSWORD:?请配置 RABBITMQ_GATEWAY_DEVICE_PASSWORD}"
+      RABBITMQ_GATEWAY_PLATFORM_PASSWORD: "${RABBITMQ_GATEWAY_PLATFORM_PASSWORD:?请配置 RABBITMQ_GATEWAY_PLATFORM_PASSWORD}"
+      RABBITMQ_TELEMETRY_PASSWORD: "${RABBITMQ_TELEMETRY_PASSWORD:?请配置 RABBITMQ_TELEMETRY_PASSWORD}"
+      RABBITMQ_SERVER_REALTIME_PASSWORD: "${RABBITMQ_SERVER_REALTIME_PASSWORD:?请配置 RABBITMQ_SERVER_REALTIME_PASSWORD}"
+      RABBITMQ_SERVER_COMMAND_PASSWORD: "${RABBITMQ_SERVER_COMMAND_PASSWORD:?请配置 RABBITMQ_SERVER_COMMAND_PASSWORD}"
+      RABBITMQ_SERVER_ALARM_PASSWORD: "${RABBITMQ_SERVER_ALARM_PASSWORD:?请配置 RABBITMQ_SERVER_ALARM_PASSWORD}"
+      RABBITMQ_SERVER_OPERATION_PASSWORD: "${RABBITMQ_SERVER_OPERATION_PASSWORD:?请配置 RABBITMQ_SERVER_OPERATION_PASSWORD}"
+      RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD: "${RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD:?请配置 RABBITMQ_SERVER_OPERATION_OUTBOX_PASSWORD}"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-      - ../config/rabbitmq/rabbitmq-standalone.conf:/etc/rabbitmq/rabbitmq.conf:ro
-      - ../config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
-      - ../config/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
-      - ../scripts/rabbitmq-bootstrap.sh:/opt/mine/rabbitmq-bootstrap.sh:ro
-    secrets:
-      - rabbitmq_admin_username
-      - rabbitmq_admin_password
-      - rabbitmq_gateway_device_password
-      - rabbitmq_gateway_platform_password
-      - rabbitmq_telemetry_password
-      - rabbitmq_server_realtime_password
-      - rabbitmq_server_command_password
-      - rabbitmq_server_alarm_password
-      - rabbitmq_server_operation_password
-      - rabbitmq_server_operation_outbox_password
-      - source: tls_certificate
-        target: tls_certificate
-      - source: tls_private_key
-        target: tls_private_key
+      - ./config/rabbitmq/rabbitmq-standalone.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./config/rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./config/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - ./scripts/rabbitmq-bootstrap.sh:/opt/mine/rabbitmq-bootstrap.sh:ro
+      - rabbitmq_tls:/etc/mine/certs:ro
+    depends_on:
+      rabbitmq-tls-init:
+        condition: service_completed_successfully
     networks:
       - ingress
       - app
@@ -484,11 +478,9 @@ services:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       POSTGRES_DB: ${POSTGRES_DB:-mine}
       POSTGRES_USER: ${POSTGRES_USER:-mine}
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?请配置 POSTGRES_PASSWORD}"
     volumes:
       - postgres_data:/var/lib/postgresql
-    secrets:
-      - postgres_password
     networks:
       - data
     healthcheck:
@@ -514,17 +506,15 @@ services:
       TZ: ${MINE_TIMEZONE:-Asia/Shanghai}
       POSTGRES_DB: ${TIMESCALE_DB:-mine_telemetry}
       POSTGRES_USER: ${TIMESCALE_USER:-mine_ts}
-      POSTGRES_PASSWORD_FILE: /run/secrets/timescale_password
+      POSTGRES_PASSWORD: "${TIMESCALE_PASSWORD:?请配置 TIMESCALE_PASSWORD}"
       TIMESCALE_READER_USER: ${TIMESCALE_READER_USER:-mine_ts_reader}
+      TIMESCALE_READER_PASSWORD: "${TIMESCALE_READER_PASSWORD:?请配置 TIMESCALE_READER_PASSWORD}"
       TIMESCALE_REPLAY_USER: ${TIMESCALE_REPLAY_USER:-mine_ts_replay}
+      TIMESCALE_REPLAY_PASSWORD: "${TIMESCALE_REPLAY_PASSWORD:?请配置 TIMESCALE_REPLAY_PASSWORD}"
     volumes:
       - timescale_data:/var/lib/postgresql
-      - ../config/timescale/init.sql:/docker-entrypoint-initdb.d/010-timescale.sql:ro
-      - ../scripts/timescale-reader-init.sh:/docker-entrypoint-initdb.d/020-timescale-reader-init.sh:ro
-    secrets:
-      - timescale_password
-      - timescale_reader_password
-      - timescale_replay_password
+      - ./config/timescale/init.sql:/docker-entrypoint-initdb.d/010-timescale.sql:ro
+      - ./scripts/timescale-reader-init.sh:/docker-entrypoint-initdb.d/020-timescale-reader-init.sh:ro
     networks:
       - data
     healthcheck:
@@ -551,14 +541,13 @@ services:
       PGHOST: timescale
       POSTGRES_DB: ${TIMESCALE_DB:-mine_telemetry}
       POSTGRES_USER: ${TIMESCALE_USER:-mine_ts}
+      PGPASSWORD: "${TIMESCALE_PASSWORD:?请配置 TIMESCALE_PASSWORD}"
       TIMESCALE_READER_USER: ${TIMESCALE_READER_USER:-mine_ts_reader}
+      TIMESCALE_READER_PASSWORD: "${TIMESCALE_READER_PASSWORD:?请配置 TIMESCALE_READER_PASSWORD}"
       TIMESCALE_REPLAY_USER: ${TIMESCALE_REPLAY_USER:-mine_ts_replay}
+      TIMESCALE_REPLAY_PASSWORD: "${TIMESCALE_REPLAY_PASSWORD:?请配置 TIMESCALE_REPLAY_PASSWORD}"
     volumes:
-      - ../scripts/timescale-reader-init.sh:/opt/mine/timescale-reader-init.sh:ro
-    secrets:
-      - timescale_password
-      - timescale_reader_password
-      - timescale_replay_password
+      - ./scripts/timescale-reader-init.sh:/opt/mine/timescale-reader-init.sh:ro
     depends_on:
       timescale:
         condition: service_healthy
@@ -583,19 +572,18 @@ services:
       - -ec
       - >-
         exec redis-server --appendonly yes
-        --requirepass "$$(cat /run/secrets/redis_password)"
+        --requirepass "$${REDIS_PASSWORD}"
         --maxmemory "$${MINE_REDIS_MAXMEMORY}"
         --maxmemory-policy noeviction
     environment:
       MINE_REDIS_MAXMEMORY: ${MINE_REDIS_MAXMEMORY:-384mb}
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?请配置 REDIS_PASSWORD}"
     volumes:
       - redis_data:/data
-    secrets:
-      - redis_password
     networks:
       - data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$(cat /run/secrets/redis_password)\" ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -620,11 +608,9 @@ services:
     environment:
       DATA_SOURCE_URI: postgres:5432/${POSTGRES_DB:-mine}?sslmode=disable
       DATA_SOURCE_USER: ${POSTGRES_USER:-mine}
-      DATA_SOURCE_PASS_FILE: /run/secrets/postgres_password
-    secrets:
-      - postgres_password
+      DATA_SOURCE_PASS: "${POSTGRES_PASSWORD:?请配置 POSTGRES_PASSWORD}"
     volumes:
-      - ../config/postgres-exporter/postgres_exporter.yml:/etc/postgres-exporter/postgres_exporter.yml:ro
+      - ./config/postgres-exporter/postgres_exporter.yml:/etc/postgres-exporter/postgres_exporter.yml:ro
     networks:
       - data
       - observability
@@ -653,11 +639,9 @@ services:
     environment:
       DATA_SOURCE_URI: timescale:5432/${TIMESCALE_DB:-mine_telemetry}?sslmode=disable
       DATA_SOURCE_USER: ${TIMESCALE_USER:-mine_ts}
-      DATA_SOURCE_PASS_FILE: /run/secrets/timescale_password
-    secrets:
-      - timescale_password
+      DATA_SOURCE_PASS: "${TIMESCALE_PASSWORD:?请配置 TIMESCALE_PASSWORD}"
     volumes:
-      - ../config/postgres-exporter/postgres_exporter.yml:/etc/postgres-exporter/postgres_exporter.yml:ro
+      - ./config/postgres-exporter/postgres_exporter.yml:/etc/postgres-exporter/postgres_exporter.yml:ro
     networks:
       - data
       - observability
@@ -684,10 +668,8 @@ services:
       - no-new-privileges:true
     environment:
       REDIS_ADDR: redis://redis:6379
-      REDIS_PASSWORD_FILE: /run/secrets/redis_exporter_passwords
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?请配置 REDIS_PASSWORD}"
       REDIS_EXPORTER_CONNECTION_TIMEOUT: 5s
-    secrets:
-      - redis_exporter_passwords
     networks:
       - data
       - observability
@@ -719,8 +701,8 @@ services:
       - "127.0.0.1:${MINE_PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - prometheus_data:/prometheus
-      - ../config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ../config/prometheus/rules:/etc/prometheus/rules:ro
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/rules:/etc/prometheus/rules:ro
     networks:
       - ingress
       - app
@@ -753,7 +735,7 @@ services:
       - "127.0.0.1:${MINE_LOKI_PORT:-3100}:3100"
     volumes:
       - loki_data:/loki
-      - ../config/loki/loki.yml:/etc/loki/loki.yml:ro
+      - ./config/loki/loki.yml:/etc/loki/loki.yml:ro
     networks:
       - ingress
       - observability
@@ -785,7 +767,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - alloy_data:/var/lib/alloy/data
-      - ../config/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./config/alloy/config.alloy:/etc/alloy/config.alloy:ro
     depends_on:
       loki:
         condition: service_healthy
@@ -816,7 +798,7 @@ services:
       - "${MINE_GRAFANA_BIND_ADDRESS:-127.0.0.1}:${MINE_GRAFANA_PORT:-3000}:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${MINE_GRAFANA_ADMIN_USER:-mine-admin}
-      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_SECURITY_ADMIN_PASSWORD: "${MINE_GRAFANA_ADMIN_PASSWORD:?请配置 MINE_GRAFANA_ADMIN_PASSWORD}"
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
@@ -825,11 +807,9 @@ services:
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ../config/grafana/provisioning/datasources/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
-      - ../config/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
-      - ../config/grafana/dashboards:/var/lib/grafana/dashboards:ro
-    secrets:
-      - grafana_admin_password
+      - ./config/grafana/provisioning/datasources/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./config/grafana/provisioning/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       prometheus:
         condition: service_healthy
@@ -872,53 +852,7 @@ volumes:
   loki_data: {}
   alloy_data: {}
   gateway_configuration_cache: {}
+  gateway_tls: {}
+  rabbitmq_tls: {}
   scene_upload_workspace: {}
   rustfs_data: {}
-
-secrets:
-  postgres_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/postgres_password
-  timescale_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/timescale_password
-  timescale_reader_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/timescale_reader_password
-  timescale_replay_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/timescale_replay_password
-  redis_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/redis_password
-  redis_exporter_passwords:
-    file: ${MINE_SECRETS_DIR:-../secrets}/redis_exporter_passwords.json
-  rabbitmq_admin_username:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_admin_username
-  rabbitmq_admin_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_admin_password
-  rabbitmq_gateway_device_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_gateway_device_password
-  rabbitmq_gateway_platform_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_gateway_platform_password
-  rabbitmq_telemetry_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_telemetry_password
-  rabbitmq_server_realtime_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_realtime_password
-  rabbitmq_server_command_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_command_password
-  rabbitmq_server_alarm_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_alarm_password
-  rabbitmq_server_operation_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_operation_password
-  rabbitmq_server_operation_outbox_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/rabbitmq_server_operation_outbox_password
-  mine_configuration_distribution_token:
-    file: ${MINE_SECRETS_DIR:-../secrets}/mine_configuration_distribution_token
-  mine_super_admin_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/mine_super_admin_password
-  mine_person_data_key:
-    file: ${MINE_SECRETS_DIR:-../secrets}/mine_person_data_key
-  mine_notification_data_key:
-    file: ${MINE_SECRETS_DIR:-../secrets}/mine_notification_data_key
-  grafana_admin_password:
-    file: ${MINE_SECRETS_DIR:-../secrets}/grafana_admin_password
-  tls_certificate:
-    file: ${MINE_SECRETS_DIR:-../secrets}/tls.crt
-  tls_private_key:
-    file: ${MINE_SECRETS_DIR:-../secrets}/tls.key

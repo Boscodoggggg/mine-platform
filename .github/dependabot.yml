@@ -31,7 +31,7 @@ updates:
       prefix: "chore(deps)"
 
   - package-ecosystem: docker-compose
-    directory: /deploy/compose
+    directory: /deploy
     schedule:
       interval: weekly
       day: monday

@@ -142,7 +142,7 @@ bash scripts/verify.sh
 
 The production-shaped single-host profile includes the application services, RabbitMQ, PostgreSQL, TimescaleDB, Redis, RustFS, HTTPS/MQTTS ingress and an optional observability profile.
 
-Follow the [Standalone deployment guide](deploy/README.md) to create local secrets, validate prerequisites and start the stack. Never use example credentials or development certificates in a real mine.
+Follow the [Standalone deployment guide](deploy/README.md) to stage artifacts under `deploy/`, configure `deploy/.env`, mount site certificates, validate prerequisites and start the stack. Never use example credentials or development certificates in a real mine.
 
 ### 3. Simulate mine devices
 
