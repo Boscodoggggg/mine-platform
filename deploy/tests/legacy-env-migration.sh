@@ -44,8 +44,8 @@ grep -q "^MINE_NOTIFICATION_DATA_KEY='fixture-mine_notification_data_key'$" "${t
   || { echo "FAIL: 未迁移 TLS 文件" >&2; exit 1; }
 [[ -s "${fixture}/deploy/secrets/postgres_password" ]] || { echo "FAIL: 迁移不应删除旧凭据" >&2; exit 1; }
 
-env_mode="$(stat -f '%Lp' "${target}" 2>/dev/null || stat -c '%a' "${target}")"
-key_mode="$(stat -f '%Lp' "${fixture}/deploy/certs/tls.key" 2>/dev/null || stat -c '%a' "${fixture}/deploy/certs/tls.key")"
+env_mode="$(stat -c '%a' "${target}" 2>/dev/null || stat -f '%Lp' "${target}")"
+key_mode="$(stat -c '%a' "${fixture}/deploy/certs/tls.key" 2>/dev/null || stat -f '%Lp' "${fixture}/deploy/certs/tls.key")"
 [[ "${env_mode}" == "600" && "${key_mode}" == "600" ]] \
   || { echo "FAIL: .env 或 TLS 私钥权限不正确" >&2; exit 1; }
 

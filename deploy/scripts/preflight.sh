@@ -16,7 +16,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
-env_mode="$(stat -f '%Lp' "${ENV_FILE}" 2>/dev/null || stat -c '%a' "${ENV_FILE}")"
+env_mode="$(stat -c '%a' "${ENV_FILE}" 2>/dev/null || stat -f '%Lp' "${ENV_FILE}")"
 [[ "${env_mode}" == "600" || "${env_mode}" == "400" ]] \
   || { echo "FAIL: deploy/.env 权限必须为 0600 或 0400" >&2; exit 1; }
 
@@ -66,7 +66,7 @@ done
 [[ -s "${web_dist}/index.html" ]] || { echo "FAIL: 前端制品缺少 index.html：${web_dist}" >&2; exit 1; }
 [[ -s "${certs_dir}/tls.crt" ]] || { echo "FAIL: TLS 证书缺失：${certs_dir}/tls.crt" >&2; exit 1; }
 [[ -s "${certs_dir}/tls.key" ]] || { echo "FAIL: TLS 私钥缺失：${certs_dir}/tls.key" >&2; exit 1; }
-key_mode="$(stat -f '%Lp' "${certs_dir}/tls.key" 2>/dev/null || stat -c '%a' "${certs_dir}/tls.key")"
+key_mode="$(stat -c '%a' "${certs_dir}/tls.key" 2>/dev/null || stat -f '%Lp' "${certs_dir}/tls.key")"
 [[ "${key_mode}" == "600" || "${key_mode}" == "400" ]] \
   || { echo "FAIL: tls.key 权限必须为 0600 或 0400" >&2; exit 1; }
 
